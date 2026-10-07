@@ -366,9 +366,9 @@ internal class PanelAssistantTransportOwner(
                         val opened = connector.connect(session.baseUrl, token)
                         connection = opened
                         publish(run, PanelAssistantTransportStatus(PanelAssistantTransportPhase.HANDSHAKING, attempt))
-                        // The stream has no TLS transport yet: only a plain http session offers it.
+                        // The stream dials ws or wss to match the session; any other scheme offers none.
                         val streamClientId = voiceStream
-                            ?.takeIf { session.baseUrl.trim().startsWith("http://", ignoreCase = true) }
+                            ?.takeIf { PanelAssistantTransportProtocol.voiceStreamScheme(session.baseUrl) != null }
                             ?.clientId()
                         val offered = PanelAssistantTransportProtocol.CAPABILITIES.filter { capability ->
                             when (capability) {

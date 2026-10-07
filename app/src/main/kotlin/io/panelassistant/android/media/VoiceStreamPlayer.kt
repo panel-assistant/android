@@ -12,6 +12,10 @@ import java.io.File
 import java.nio.ByteBuffer
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 /** The JNI surface of `libhapaneld_sendspin.so` (app/src/main/cpp/sendspin). */
 internal object SendspinNative {
@@ -37,6 +41,8 @@ internal object SendspinNative {
     @JvmStatic external fun nNowUs(): Long
     @JvmStatic external fun nDestroy(handle: Long)
     @JvmStatic external fun nWriteRecord(stateDir: String, serverId: String, psk: ByteArray): Boolean
+    @JvmStatic external fun nTakeOutbound(handle: Long, timeoutMs: Int): ByteArray?
+    @JvmStatic external fun nDeliver(handle: Long, transportId: Int, type: Int, data: ByteArray?, receiveUs: Long)
 
     const val EVENT_STREAM_START = 1
     const val EVENT_STREAM_END = 2
@@ -67,6 +73,8 @@ internal class VoiceStreamPlayer(
     private val softwareVersion: String,
     private val outputRate: () -> Int,
     val claims: VoiceStreamClaims = VoiceStreamClaims(),
+    /** The app's own WebSocket client, which carries the stream with the panel's TLS trust. */
+    private val sockets: SendspinSocketOpener = KtorSendspinSocketOpener(),
 ) : PanelAssistantVoiceStreamPeer {
     private val loop = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "sendspin-loop") }
 
@@ -132,6 +140,14 @@ internal class VoiceStreamPlayer(
         val writers = mutableListOf<StreamWriter>()
         var current: StreamWriter? = null
         var verified = false
+        val wire = object : SendspinWire {
+            override fun take(timeoutMs: Int) = SendspinNative.nTakeOutbound(handle, timeoutMs)
+            override fun deliver(transportId: Int, type: Int, data: ByteArray?, receiveUs: Long) =
+                SendspinNative.nDeliver(handle, transportId, type, data, receiveUs)
+            override fun nowUs() = SendspinNative.nNowUs()
+        }
+        val socketScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+        val pump = socketScope.launch { SendspinSocketPump(wire, sockets).run() }
         try {
             SendspinNative.nConnect(handle, url)
             Log.i(TAG, "voice stream connecting to Panel Assistant")
@@ -175,9 +191,11 @@ internal class VoiceStreamPlayer(
         } catch (error: Throwable) {
             Log.w(TAG, "voice stream session failed: ${error.javaClass.simpleName}")
         } finally {
-            // The writers read the client's buffer, so they stop before the client is destroyed.
+            // The writers and the socket pump use the client, so they stop before it is destroyed.
             writers.forEach { it.abort() }
             writers.forEach { it.join(WRITER_JOIN_MS) }
+            runBlocking { pump.cancelAndJoin() }
+            socketScope.cancel()
             SendspinNative.nDestroy(handle)
             Log.i(TAG, "voice stream disconnected")
         }

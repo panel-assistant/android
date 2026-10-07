@@ -232,7 +232,9 @@ class PanelAssistantTransportProtocolTest {
         assertTrue(granted.psk().contentEquals(ByteArray(32) { it.toByte() }))
         assertFalse(granted.toString().contains(key))
         assertEquals("ws://ha.local:8123/api/panel_assistant/sendspin", granted.url("http://ha.local:8123/"))
-        assertNull("no TLS transport: an https session keeps the URL path", granted.url("https://ha.example"))
+        assertEquals("wss://ha.example/api/panel_assistant/sendspin", granted.url("https://ha.example"))
+        assertEquals("wss://ha.example:8443/api/panel_assistant/sendspin", granted.url(" HTTPS://ha.example:8443/ "))
+        assertNull(granted.url("ftp://ha.example"))
 
         val short = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(31))
         listOf<JSONObject?>(

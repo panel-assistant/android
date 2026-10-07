@@ -1243,14 +1243,14 @@ class PanelAssistantTransportOwnerTest {
         }
     }
 
-    @Test fun voiceStreamIsOfferedOnlyOnAPlainHttpSessionWithAClientId() = runTest {
+    @Test fun voiceStreamIsOfferedOnHttpAndHttpsSessionsWithAClientId() = runTest {
         for ((case, expected) in listOf(
-            Triple("http://ha.local:8123", FakeVoiceStream(), true) to true,
-            Triple("https://ha.example", FakeVoiceStream(), true) to false,
-            Triple("http://ha.local:8123", FakeVoiceStream(id = null), true) to false,
-            Triple("http://ha.local:8123", null, false) to false,
+            Pair("http://ha.local:8123", FakeVoiceStream()) to true,
+            Pair("https://ha.example", FakeVoiceStream()) to true,
+            Pair("http://ha.local:8123", FakeVoiceStream(id = null)) to false,
+            Pair("http://ha.local:8123", null) to false,
         )) {
-            val (base, stream, _) = case
+            val (base, stream) = case
             val connection = FakeConnection(Ha.accepting())
             val harness = harness(connection, voiceStream = stream)
             harness.session = { HaApiSession(base, "token", owner = harness.credential) }
@@ -1279,6 +1279,15 @@ class PanelAssistantTransportOwnerTest {
         runCurrent()
         assertEquals("close", stream.events.last())
         harness.owner.close()
+        runCurrent()
+
+        val secure = FakeVoiceStream()
+        val tls = harness(FakeConnection(Ha.accepting(capabilities = listOf("voice_stream"), voiceStream = grant)), voiceStream = secure)
+        tls.session = { HaApiSession("https://hass.example.net", "token", owner = tls.credential) }
+        tls.owner.replaceDemand(DEMAND)
+        runCurrent()
+        assertEquals(listOf("open wss://hass.example.net/api/panel_assistant/sendspin $server"), secure.events)
+        tls.owner.close()
     }
 
     @Test fun aGrantedEmbedKeyIsHeldForItsSessionOnlyAndNeverLogged() = runTest {

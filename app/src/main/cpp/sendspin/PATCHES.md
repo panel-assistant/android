@@ -13,7 +13,7 @@ The host `SS_LOG*` macros write to stderr, which Android discards. When `__ANDRO
 ## 3. Build-level changes (no source edits)
 
 - `-U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0` on the `noise_c` target only. noise-c `src/protocol/patterns.c` (`noise_pattern_expand`) `memchr`s `NOISE_MAX_TOKENS - 2` bytes over a shorter static pattern array; bionic's FORTIFY aborts the first handshake (`FORTIFY: memchr: prevented 62-byte read from 10-byte buffer`). ESP-IDF has no FORTIFY, so upstream never sees it. The proper fix is a bounded loop in `patterns.c` upstream.
-- FetchContent is redirected to the vendored trees: `FETCHCONTENT_FULLY_DISCONNECTED=ON` and `FETCHCONTENT_SOURCE_DIR_{ARDUINOJSON,MICRO_FLAC,IXWEBSOCKET,NOISE_C}` point at `third_party/`, so configure never touches the network. The optional third codec is disabled (`SENDSPIN_ENABLE_OPUS=OFF`) and its library is not vendored; micro-flac is still compiled because `src/decoder.cpp` references it unconditionally, but the app advertises PCM only.
+- FetchContent is redirected to the vendored trees: `FETCHCONTENT_FULLY_DISCONNECTED=ON` and `FETCHCONTENT_SOURCE_DIR_{ARDUINOJSON,MICRO_FLAC,NOISE_C}` point at `third_party/`, so configure never touches the network. The optional third codec is disabled (`SENDSPIN_ENABLE_OPUS=OFF`) and its library is not vendored; micro-flac is still compiled because `src/decoder.cpp` references it unconditionally, but the app advertises PCM only.
 
 ## Exact diff
 
@@ -67,3 +67,76 @@ Paths are relative to `third_party/sendspin-cpp/`.
 ## 4. Comment wording (`sendspin-cpp/cmake/sources.cmake`)
 
 One upstream comment in the core source list named upstream's contributor-notes file, which is not vendored. The vendored copy reads "see upstream contributor notes on #ifdef discipline" instead. Comment only; no build effect.
+
+## 5. App-supplied WebSocket transport (`sendspin-cpp/cmake/host.cmake`, and `transport/`)
+
+The host build's client connection is IXWebSocket, which this build had without TLS, so a panel reaching Home Assistant over `https` could not dial `wss://`. With `SENDSPIN_HOST_TRANSPORT_DIR` set (our `CMakeLists.txt` points it at `transport/`), `host.cmake` takes `client_connection.cpp` from that directory instead of the IXWebSocket sources, searches it before `src/host` for headers, and neither fetches nor links IXWebSocket; `src/host/network_info.cpp` is still used. IXWebSocket is no longer vendored.
+
+`transport/` holds:
+
+- `client_connection.{h,cpp}`: `SendspinClientConnection` with the IXWebSocket class's interface and behaviour (open, complete messages into the inbound ring, close reporting, the released-while-connecting close), carried by a bridge: `start()` queues an open request for the app, sends queue frames, and the app (media/SendspinSocketPump.kt, over the app's own Ktor WebSocket client and therefore its TLS trust) delivers the socket's open, messages and close back. Each socket has a transport id, so frames from a replaced socket are dropped.
+- `bridge.h`: the app side of the bridge for the JNI shim (`nTakeOutbound`, `nDeliver`).
+- `server_connection.h`, `ws_server.h`: stand-ins for the inbound listener, which never starts (patch 1 already keeps it off).
+
+```diff
+--- a/cmake/host.cmake	2026-10-07 01:44:47.569923615 +0000
++++ b/cmake/host.cmake	2026-10-07 01:44:47.577889339 +0000
+@@ -10,6 +10,12 @@
+     #   - src: private implementation headers
+     # ESP networking headers live in src/esp/ (only added to ESP builds).
+     # =========================================================================
++    # SENDSPIN_HOST_TRANSPORT_DIR (patch): an application-supplied WebSocket transport replaces the
++    # IXWebSocket one. Its directory provides client_connection.{h,cpp}, server_connection.h and
++    # ws_server.h, and is searched before src/host; IXWebSocket is then neither fetched nor linked.
++    if(SENDSPIN_HOST_TRANSPORT_DIR)
++        target_include_directories(${TARGET_LIB} PUBLIC ${SENDSPIN_HOST_TRANSPORT_DIR})
++    endif()
+     target_include_directories(${TARGET_LIB} PUBLIC ${SOURCE_DIR}/src/host)
+     target_include_directories(${TARGET_LIB} PUBLIC ${SOURCE_DIR}/include)
+     target_include_directories(${TARGET_LIB} PRIVATE ${SOURCE_DIR}/src)
+@@ -21,7 +27,12 @@
+     # =========================================================================
+     # Host networking sources (IXWebSocket-based implementations)
+     # =========================================================================
+-    target_sources(${TARGET_LIB} PRIVATE ${SENDSPIN_HOST_SOURCES})
++    if(SENDSPIN_HOST_TRANSPORT_DIR)
++        target_sources(${TARGET_LIB} PRIVATE ${SENDSPIN_HOST_TRANSPORT_DIR}/client_connection.cpp
++                                             ${SOURCE_DIR}/src/host/network_info.cpp)
++    else()
++        target_sources(${TARGET_LIB} PRIVATE ${SENDSPIN_HOST_SOURCES})
++    endif()
+
+     # =========================================================================
+     # Compiler settings
+@@ -86,17 +97,19 @@
+         target_link_libraries(${TARGET_LIB} PUBLIC micro_opus)
+     endif()
+
+-    # IXWebSocket (WebSocket server/client for host networking)
+-    set(USE_TLS OFF CACHE BOOL "" FORCE)
+-    set(USE_ZLIB OFF CACHE BOOL "" FORCE)
+-    FetchContent_Declare(
+-        IXWebSocket
+-        GIT_REPOSITORY https://github.com/machinezone/IXWebSocket.git
+-        GIT_TAG        v12.0.1
+-        GIT_SHALLOW    TRUE
+-    )
+-    FetchContent_MakeAvailable(IXWebSocket)
+-    target_link_libraries(${TARGET_LIB} PUBLIC ixwebsocket)
++    if(NOT SENDSPIN_HOST_TRANSPORT_DIR)
++        # IXWebSocket (WebSocket server/client for host networking)
++        set(USE_TLS OFF CACHE BOOL "" FORCE)
++        set(USE_ZLIB OFF CACHE BOOL "" FORCE)
++        FetchContent_Declare(
++            IXWebSocket
++            GIT_REPOSITORY https://github.com/machinezone/IXWebSocket.git
++            GIT_TAG        v12.0.1
++            GIT_SHALLOW    TRUE
++        )
++        FetchContent_MakeAvailable(IXWebSocket)
++        target_link_libraries(${TARGET_LIB} PUBLIC ixwebsocket)
++    endif()
+
+     # Threading support (for shim implementations)
+     find_package(Threads REQUIRED)
+```

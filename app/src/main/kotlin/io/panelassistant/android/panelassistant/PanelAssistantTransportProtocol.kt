@@ -65,13 +65,13 @@ internal class PanelAssistantVoiceStreamGrant(val path: String, val serverId: St
     fun psk(): ByteArray = psk.copyOf()
 
     /**
-     * The WebSocket address for a session reached at [baseUrl], or null when that address is not plain
-     * `http`: this release has no TLS transport for the stream, so an `https` session keeps the URL path.
+     * The WebSocket address for a session reached at [baseUrl]: `ws://` for `http`, `wss://` for `https`,
+     * on the session's own host and port; null for any other scheme.
      */
     fun url(baseUrl: String): String? {
         val base = baseUrl.trim().trimEnd('/')
-        if (!base.startsWith("http://", ignoreCase = true)) return null
-        return "ws://" + base.substring("http://".length) + path
+        val scheme = PanelAssistantTransportProtocol.voiceStreamScheme(base) ?: return null
+        return scheme + base.substring(base.indexOf("://")) + path
     }
 
     override fun toString(): String = "PanelAssistantVoiceStreamGrant(path=$path, serverId=$serverId)"
@@ -176,10 +176,20 @@ internal object PanelAssistantTransportProtocol {
 
     /**
      * The panel plays voice from Panel Assistant's Sendspin stream, in step with the other panels. Offered
-     * only on a plain `http` session (no TLS transport for the stream yet), with the panel's client id in
-     * the hello's `voice_stream` object; granting it makes the reply's `voice_stream` grant required.
+     * on an `http` or `https` session (the stream dials `ws` or `wss` to match), with the panel's client id
+     * in the hello's `voice_stream` object; granting it makes the reply's `voice_stream` grant required.
      */
     const val CAPABILITY_VOICE_STREAM = "voice_stream"
+
+    /** The stream's WebSocket scheme for a session at [baseUrl] (`ws` for http, `wss` for https), or null. */
+    fun voiceStreamScheme(baseUrl: String): String? {
+        val base = baseUrl.trim()
+        return when {
+            base.startsWith("http://", ignoreCase = true) -> "ws"
+            base.startsWith("https://", ignoreCase = true) -> "wss"
+            else -> null
+        }
+    }
 
     /** Channels described only once the session grants the capability that names them. */
     val GATED_CHANNELS: Map<String, String> = mapOf(CAPABILITY_MEDIA to "media")

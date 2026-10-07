@@ -10,6 +10,12 @@ function(sendspin_configure_host TARGET_LIB SOURCE_DIR)
     #   - src: private implementation headers
     # ESP networking headers live in src/esp/ (only added to ESP builds).
     # =========================================================================
+    # SENDSPIN_HOST_TRANSPORT_DIR (patch): an application-supplied WebSocket transport replaces the
+    # IXWebSocket one. Its directory provides client_connection.{h,cpp}, server_connection.h and
+    # ws_server.h, and is searched before src/host; IXWebSocket is then neither fetched nor linked.
+    if(SENDSPIN_HOST_TRANSPORT_DIR)
+        target_include_directories(${TARGET_LIB} PUBLIC ${SENDSPIN_HOST_TRANSPORT_DIR})
+    endif()
     target_include_directories(${TARGET_LIB} PUBLIC ${SOURCE_DIR}/src/host)
     target_include_directories(${TARGET_LIB} PUBLIC ${SOURCE_DIR}/include)
     target_include_directories(${TARGET_LIB} PRIVATE ${SOURCE_DIR}/src)
@@ -21,7 +27,12 @@ function(sendspin_configure_host TARGET_LIB SOURCE_DIR)
     # =========================================================================
     # Host networking sources (IXWebSocket-based implementations)
     # =========================================================================
-    target_sources(${TARGET_LIB} PRIVATE ${SENDSPIN_HOST_SOURCES})
+    if(SENDSPIN_HOST_TRANSPORT_DIR)
+        target_sources(${TARGET_LIB} PRIVATE ${SENDSPIN_HOST_TRANSPORT_DIR}/client_connection.cpp
+                                             ${SOURCE_DIR}/src/host/network_info.cpp)
+    else()
+        target_sources(${TARGET_LIB} PRIVATE ${SENDSPIN_HOST_SOURCES})
+    endif()
 
     # =========================================================================
     # Compiler settings
@@ -86,17 +97,19 @@ function(sendspin_configure_host TARGET_LIB SOURCE_DIR)
         target_link_libraries(${TARGET_LIB} PUBLIC micro_opus)
     endif()
 
-    # IXWebSocket (WebSocket server/client for host networking)
-    set(USE_TLS OFF CACHE BOOL "" FORCE)
-    set(USE_ZLIB OFF CACHE BOOL "" FORCE)
-    FetchContent_Declare(
-        IXWebSocket
-        GIT_REPOSITORY https://github.com/machinezone/IXWebSocket.git
-        GIT_TAG        v12.0.1
-        GIT_SHALLOW    TRUE
-    )
-    FetchContent_MakeAvailable(IXWebSocket)
-    target_link_libraries(${TARGET_LIB} PUBLIC ixwebsocket)
+    if(NOT SENDSPIN_HOST_TRANSPORT_DIR)
+        # IXWebSocket (WebSocket server/client for host networking)
+        set(USE_TLS OFF CACHE BOOL "" FORCE)
+        set(USE_ZLIB OFF CACHE BOOL "" FORCE)
+        FetchContent_Declare(
+            IXWebSocket
+            GIT_REPOSITORY https://github.com/machinezone/IXWebSocket.git
+            GIT_TAG        v12.0.1
+            GIT_SHALLOW    TRUE
+        )
+        FetchContent_MakeAvailable(IXWebSocket)
+        target_link_libraries(${TARGET_LIB} PUBLIC ixwebsocket)
+    endif()
 
     # Threading support (for shim implementations)
     find_package(Threads REQUIRED)

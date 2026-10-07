@@ -23,6 +23,7 @@
 #include <string>
 #include <vector>
 
+#include "bridge.h"
 #include "sendspin/client.h"
 #include "sendspin/persistence_codec.h"
 #include "sendspin/persistence_keys.h"
@@ -333,6 +334,44 @@ extern "C" JNIEXPORT void JNICALL JNI_FN(nDestroy)(JNIEnv*, jclass, jlong handle
     inst->ring.close();  // releases a sync thread blocked in on_audio_write before stop() joins it
     inst->client.stop();
     delete inst;
+    sendspin_bridge::reset();
+}
+
+// The socket bridge (transport/client_connection.h): the app's own WebSocket client carries the
+// connection. nTakeOutbound returns [type, transport id (4 bytes, big-endian), payload] or null on
+// timeout; nDeliver hands back the socket's open, each message and its close. Both run on the app's
+// socket thread, and stop before nDestroy.
+extern "C" JNIEXPORT jbyteArray JNICALL JNI_FN(nTakeOutbound)(JNIEnv* env, jclass, jlong handle, jint timeoutMs) {
+    if (handle == 0) return nullptr;
+    sendspin_bridge::Outbound item;
+    if (!sendspin_bridge::take(item, timeoutMs)) return nullptr;
+    const jsize size = static_cast<jsize>(5 + item.data.size());
+    jbyteArray out = env->NewByteArray(size);
+    if (out == nullptr) return nullptr;
+    const uint8_t header[5] = {item.type, static_cast<uint8_t>(item.transport_id >> 24),
+                               static_cast<uint8_t>(item.transport_id >> 16),
+                               static_cast<uint8_t>(item.transport_id >> 8),
+                               static_cast<uint8_t>(item.transport_id)};
+    env->SetByteArrayRegion(out, 0, 5, reinterpret_cast<const jbyte*>(header));
+    if (!item.data.empty()) {
+        env->SetByteArrayRegion(out, 5, static_cast<jsize>(item.data.size()),
+                                reinterpret_cast<const jbyte*>(item.data.data()));
+    }
+    return out;
+}
+
+extern "C" JNIEXPORT void JNICALL JNI_FN(nDeliver)(JNIEnv* env, jclass, jlong handle, jint transportId, jint type,
+                                                   jbyteArray data, jlong receiveUs) {
+    if (handle == 0) return;
+    std::vector<uint8_t> bytes;
+    if (data != nullptr) {
+        bytes.resize(static_cast<size_t>(env->GetArrayLength(data)));
+        if (!bytes.empty()) {
+            env->GetByteArrayRegion(data, 0, static_cast<jsize>(bytes.size()), reinterpret_cast<jbyte*>(bytes.data()));
+        }
+    }
+    sendspin_bridge::deliver(static_cast<uint32_t>(transportId), static_cast<uint8_t>(type), bytes.data(),
+                             bytes.size(), static_cast<int64_t>(receiveUs));
 }
 
 extern "C" JNIEXPORT jboolean JNICALL JNI_FN(nWriteRecord)(JNIEnv* env, jclass, jstring jStateDir,

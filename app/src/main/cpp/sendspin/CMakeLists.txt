@@ -6,7 +6,6 @@ set(SENDSPIN_THIRD_PARTY ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
 set(FETCHCONTENT_FULLY_DISCONNECTED ON CACHE BOOL "" FORCE)
 set(FETCHCONTENT_SOURCE_DIR_ARDUINOJSON ${SENDSPIN_THIRD_PARTY}/arduinojson CACHE PATH "" FORCE)
 set(FETCHCONTENT_SOURCE_DIR_MICRO_FLAC ${SENDSPIN_THIRD_PARTY}/micro-flac CACHE PATH "" FORCE)
-set(FETCHCONTENT_SOURCE_DIR_IXWEBSOCKET ${SENDSPIN_THIRD_PARTY}/ixwebsocket CACHE PATH "" FORCE)
 set(FETCHCONTENT_SOURCE_DIR_NOISE_C ${SENDSPIN_THIRD_PARTY}/noise-c CACHE PATH "" FORCE)
 
 set(SENDSPIN_ENABLE_PLAYER ON CACHE BOOL "" FORCE)
@@ -17,6 +16,9 @@ set(SENDSPIN_ENABLE_OPUS OFF CACHE BOOL "" FORCE)
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(SENDSPIN_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 
+# The app's own WebSocket client carries the connection (transport/), so wss:// uses the panel's TLS
+# trust and IXWebSocket is not built; see PATCHES.md.
+set(SENDSPIN_HOST_TRANSPORT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/transport CACHE PATH "" FORCE)
 add_subdirectory(third_party/sendspin-cpp)
 
 # noise-c's patterns.c memchr()s past its static pattern arrays; bionic FORTIFY aborts the first
