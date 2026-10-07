@@ -5493,7 +5493,7 @@ class PaneldService : Service() {
             if (IdentityMigrationGate.disposition(context) == StartDisposition.RETIRED_BRIDGE) return
             // An armed upgrade has deliberately claimed this service down so an install can proceed
             // against a quiesced database. Every route that legitimately resumes it — cancelAndResume,
-            // releaseAndResume — disarms the gate first and then calls back in here, so refusing while
+            // failShutdown — disarms the gate first and then calls back in here, so refusing while
             // armed blocks only an *undeliberate* start, such as the accessibility revival below.
             // The refusal lives here rather than at the caller because this is the single entry point:
             // a second copy in PanelAccessibilityService would be a second definition of the contract,

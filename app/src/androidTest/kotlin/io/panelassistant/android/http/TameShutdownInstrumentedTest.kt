@@ -118,7 +118,7 @@ class TameShutdownInstrumentedTest {
                 assertEquals(NONCE, nonce)
                 readyProof = proof
             }
-            override fun failed(reason: String) = error("unexpected shutdown failure: $reason")
+            override fun failed(reason: String) = check(readyProof != null) { "unexpected shutdown failure: $reason" }
         }))
         val claim = checkNotNull(gate.claimShutdown())
         val freeze = checkNotNull(AppState.freezeForServiceShutdown(context))
@@ -149,13 +149,13 @@ class TameShutdownInstrumentedTest {
             }
             assertFalse("READY must retain the admission freeze", state.edit().clear().commit())
             assertEquals(proof.sha256, sha256(databaseFile))
-            val released = gate.release(NONCE)
+            val released = gate.cancelClaim(claim, "install_finished")
             assertTrue(released.matched)
             assertNotNull(released.freeze)
             released.freeze!!.close()
             assertTrue("matching release must reopen writes", state.edit().putString("resumed", "yes").commit())
         } finally {
-            gate.release(NONCE).freeze?.close()
+            gate.cancelClaim(claim, "test_cleanup").freeze?.close()
             freeze.close()
         }
     }
