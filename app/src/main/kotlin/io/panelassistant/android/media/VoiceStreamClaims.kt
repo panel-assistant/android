@@ -15,6 +15,12 @@ import kotlinx.coroutines.withTimeout
  * next one to start, and returns once that stream has ended and its audio has played out. Cancelling [play]
  * drops the claimed stream: its audio stops at once and the rest is discarded.
  *
+ * An announcement that stops waiting before its stream starts (it fell back to the URL, or was cancelled)
+ * still owns that stream: the next stream to start is dropped on arrival, so it never plays over or after
+ * the URL speech. A newer announcement's event ends that ownership, since the server streams only its
+ * latest announcement and the abandoned stream may never come. A stream nobody claims within
+ * [windowNs] plus a margin can no longer be claimed, and is dropped too.
+ *
  * The player reports [started] and [ended] (after playing out) and asks [dropped] before writing each
  * buffer. Thread-safe.
  */
@@ -35,6 +41,9 @@ internal class VoiceStreamClaims(
         val stream = CompletableDeferred<Stream>()
 
         @Volatile var assigned: Stream? = null
+
+        /** It stopped waiting; the stream it would have taken is dropped. Guarded by the claims' lock. */
+        var abandoned = false
     }
 
     private val lock = Any()
@@ -50,8 +59,12 @@ internal class VoiceStreamClaims(
         val waiter = waiters.removeFirstOrNull()
         if (waiter != null) {
             stream.claimed = true
-            waiter.assigned = stream
-            waiter.stream.complete(stream)
+            if (waiter.abandoned) {
+                stream.dropped = true
+            } else {
+                waiter.assigned = stream
+                waiter.stream.complete(stream)
+            }
         }
         stream.id
     }
@@ -61,12 +74,19 @@ internal class VoiceStreamClaims(
         synchronized(lock) { recent.firstOrNull { it.id == id } }?.ended?.complete(Unit)
     }
 
-    /** Whether stream [id] was dropped by the cancellation of the announcement that claimed it. */
-    fun dropped(id: Long): Boolean = synchronized(lock) { recent.firstOrNull { it.id == id }?.dropped == true }
+    /** Whether stream [id] is dropped: its announcement was cancelled or gave up on it, or nobody can claim it. */
+    fun dropped(id: Long): Boolean = synchronized(lock) {
+        val stream = recent.firstOrNull { it.id == id } ?: return false
+        if (!stream.claimed && !stream.dropped && nanoTime() - stream.startedAtNs > windowNs + UNCLAIMED_MARGIN_NS) {
+            stream.dropped = true
+        }
+        stream.dropped
+    }
 
     override suspend fun play(eventAtNs: Long) {
         val waiter = Waiter()
         val recentEnough = synchronized(lock) {
+            waiters.removeAll { it.abandoned }
             val found = recent.firstOrNull {
                 !it.claimed && !it.dropped && it.startedAtNs - (eventAtNs - windowNs) >= 0L
             }
@@ -95,8 +115,15 @@ internal class VoiceStreamClaims(
         }
     }
 
-    /** True when [waiter] was still waiting and is now withdrawn; false when a stream already went to it. */
-    private fun abandon(waiter: Waiter): Boolean = synchronized(lock) { waiters.remove(waiter) }
+    /**
+     * True when [waiter] was still waiting and now gives its stream up (dropped when it starts); false when
+     * a stream already went to it.
+     */
+    private fun abandon(waiter: Waiter): Boolean = synchronized(lock) {
+        val waiting = waiter in waiters
+        if (waiting) waiter.abandoned = true
+        waiting
+    }
 
     private fun drop(stream: Stream) {
         stream.dropped = true
@@ -105,6 +132,9 @@ internal class VoiceStreamClaims(
     private companion object {
         const val CLAIM_WINDOW_NS = 2_000_000_000L
         const val START_TIMEOUT_MS = 3_000L
+
+        /** An event's claim may run a moment after the event arrived; an unclaimed stream waits this long more. */
+        const val UNCLAIMED_MARGIN_NS = 1_000_000_000L
         const val MAX_RECENT = 8
     }
 }
@@ -115,7 +145,7 @@ internal fun interface VoiceStreamSource {
     suspend fun play(eventAtNs: Long)
 }
 
-/** No stream started for a streamed announcement in time; a stream starting later is not claimed. */
+/** No stream started for a streamed announcement in time; a stream starting later is dropped. */
 internal class VoiceStreamMissing : java.io.IOException("no voice stream started for the announcement")
 
 /**

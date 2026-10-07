@@ -3,6 +3,12 @@
 // Threads: nCreate, nClientId, nConnect, nLoop, nNextEvent, nServerId and nDestroy run on one
 // dedicated Kotlin thread (the library's main-loop thread). nRead, nPlayed and nNowUs run on the
 // audio writer thread. nWriteRecord runs while no instance is alive for its directory.
+//
+// Lifetime: nDestroy frees the instance, so nothing may use the handle during or after it. The shim
+// does not enforce that itself; the Kotlin side does. Every call from a thread other than the loop
+// thread (nRead, nPlayed, nTakeOutbound, nDeliver) goes through SendspinHandle.call, and nDestroy is
+// reached only through SendspinHandle.destroy, which waits for such a call in flight to return and
+// refuses any later one (VoiceStreamPlayer.kt).
 
 #include <android/log.h>
 #include <jni.h>

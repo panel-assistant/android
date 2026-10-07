@@ -109,9 +109,9 @@ class StreamedSpeechPlaybackTest {
         assertTrue(coordinator.close(1_000L))
     }
 
-    @Test fun withNoStreamWithinThreeSecondsTheEventsUrlsPlayInsteadAndALateStreamIsNotClaimed() = runTest {
+    /** A lane whose URL fallback records what it plays into [played]. */
+    private fun TestScope.fallbackLane(played: MutableList<String>): Pair<AudioPlaybackCoordinator, VoiceStreamClaims> {
         val claims = VoiceStreamClaims(nanoTime = { nowNs })
-        val played = mutableListOf<String>()
         val factory = object : AudioPlaybackRunFactory {
             override fun create(url: String) = error("streamed speech never plays as media")
             override fun createSpeech(url: String) = object : AudioPlaybackRun {
@@ -121,7 +121,12 @@ class StreamedSpeechPlaybackTest {
             override fun createStream(eventAtNs: Long, fallbackUrls: List<String>): AudioPlaybackRun =
                 StreamedSpeechRun(claims, eventAtNs, fallbackUrls, ::createSpeech)
         }
-        val coordinator = AudioPlaybackCoordinator(factory, StandardTestDispatcher(testScheduler))
+        return AudioPlaybackCoordinator(factory, StandardTestDispatcher(testScheduler)) to claims
+    }
+
+    @Test fun withNoStreamWithinThreeSecondsTheEventsUrlsPlayInsteadAndALateStreamIsDropped() = runTest {
+        val played = mutableListOf<String>()
+        val (coordinator, claims) = fallbackLane(played)
         val generation = requireNotNull(coordinator.submitStreamForGeneration(nowNs, listOf("chime.mp3", "message.mp3")))
         runCurrent()
         advanceTimeBy(2_999L)
@@ -133,8 +138,50 @@ class StreamedSpeechPlaybackTest {
         assertEquals(AudioPlaybackCoordinator.Snapshot(AudioPlaybackCoordinator.State.IDLE, generation), coordinator.snapshot())
         val late = claims.started()
         runCurrent()
-        assertFalse("a stream after the fallback belongs to no announcement", claims.dropped(late))
+        assertTrue("the fallen-back announcement's late stream never plays over its URL speech", claims.dropped(late))
         assertTrue(coordinator.close(1_000L))
+    }
+
+    @Test fun aStreamArrivingAfterItsAnnouncementWasCancelledIsDropped() = runTest {
+        val (coordinator, claims) = lane()
+        val generation = requireNotNull(coordinator.submitStreamForGeneration(nowNs))
+        runCurrent()
+        assertTrue(coordinator.cancelGeneration(generation))
+        runCurrent()
+        val late = claims.started()
+        runCurrent()
+        assertTrue("a cancelled announcement's stream is discarded when it arrives", claims.dropped(late))
+        assertTrue(coordinator.close(1_000L))
+    }
+
+    @Test fun afterAFallbackWhoseStreamNeverCameTheNextAnnouncementsStreamPlays() = runTest {
+        val played = mutableListOf<String>()
+        val (coordinator, claims) = fallbackLane(played)
+        coordinator.submitStreamForGeneration(nowNs, listOf("message.mp3"))
+        runCurrent()
+        advanceTimeBy(3_001L)
+        runCurrent()
+        assertEquals(listOf("message.mp3"), played)
+        nowNs += 10 * SECOND
+        val next = requireNotNull(coordinator.submitStreamForGeneration(nowNs, listOf("other.mp3")))
+        runCurrent()
+        val stream = claims.started()
+        runCurrent()
+        assertFalse("the newer announcement owns the next stream", claims.dropped(stream))
+        claims.ended(stream)
+        runCurrent()
+        assertEquals(AudioPlaybackCoordinator.Snapshot(AudioPlaybackCoordinator.State.IDLE, next), coordinator.snapshot())
+        assertEquals(listOf("message.mp3"), played)
+        assertTrue(coordinator.close(1_000L))
+    }
+
+    @Test fun aStreamNoAnnouncementClaimsIsDroppedOnceNoEventCanStillClaimIt() {
+        val claims = VoiceStreamClaims(nanoTime = { nowNs })
+        val stream = claims.started()
+        nowNs += 3 * SECOND
+        assertFalse("an event may still arrive for it", claims.dropped(stream))
+        nowNs += 1
+        assertTrue(claims.dropped(stream))
     }
 
     private companion object {
