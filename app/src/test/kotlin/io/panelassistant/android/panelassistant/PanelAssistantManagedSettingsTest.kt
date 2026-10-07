@@ -12,8 +12,9 @@ class PanelAssistantManagedSettingsTest {
     private suspend fun apply(settings: Map<String, String>, valid: Boolean = true, commits: Boolean = true) =
         PanelAssistantManagedSettings.apply(
             settings,
+            admit = { true },
             validate = { values -> if (valid) values.mapValues { it.value.trim() } else null },
-            commit = { accepted -> committed += accepted; commits },
+            commit = { accepted, _ -> committed += accepted; commits },
         )
 
     @Test fun `wake words pass the Configure validation and reach the store`() = runTest {

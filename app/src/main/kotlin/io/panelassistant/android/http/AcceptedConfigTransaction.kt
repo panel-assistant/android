@@ -102,6 +102,8 @@ internal class AcceptedConfigTransaction(
         onDurableRevision: (String) -> Unit = {},
         afterCommitBeforeRenderer: (RendererConfigEffects, String) -> Unit = { _, _ -> },
         afterApply: () -> Unit = {},
+        /** Checked once every lock is held, immediately before the commit: false makes the whole call [ApplyAcceptedResult.Stale]. */
+        admit: () -> Boolean = { true },
     ): ApplyAcceptedResult = withContext(Dispatchers.IO) {
         if (existingOperationTicket != null && !InstallProgress.owns(existingOperationTicket)) {
             return@withContext ApplyAcceptedResult.CompatibilityRefused(
@@ -119,6 +121,10 @@ internal class AcceptedConfigTransaction(
             var earlyResult: ApplyAcceptedResult? = null
             var committed: AcceptedCommit? = null
             config.synchronizedTransaction {
+                if (!admit()) {
+                    earlyResult = ApplyAcceptedResult.Stale
+                    return@synchronizedTransaction
+                }
                 if (expectedConfig != null &&
                     io.panelassistant.android.config.ConfigHash.of(configConcurrencyValues(values.currentValues())) != expectedConfig
                 ) {

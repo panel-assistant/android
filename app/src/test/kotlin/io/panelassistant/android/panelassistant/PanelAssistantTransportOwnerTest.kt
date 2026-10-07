@@ -1101,6 +1101,33 @@ class PanelAssistantTransportOwnerTest {
         harness.owner.close()
     }
 
+    @Test fun aSettingsWriteStillQueuedWhenItsSessionEndsIsNotAdmitted() = runTest {
+        val queued = CompletableDeferred<Unit>()
+        val admitted = mutableListOf<Boolean>()
+        val management = object : PanelAssistantManagement by FakeManagement() {
+            // The store's commit, waiting behind another commit's lock, which cancellation cannot interrupt.
+            override suspend fun applySettings(settings: Map<String, String>, admit: () -> Boolean): String? {
+                withContext(NonCancellable) { queued.await() }
+                admitted += admit()
+                return null
+            }
+        }
+        val first = FakeConnection(Ha.accepting(capabilities = listOf("management")))
+        val harness = harness(first, FakeConnection(Ha.accepting(capabilities = listOf("management"))), management = management)
+        harness.owner.replaceDemand(DEMAND)
+        runCurrent()
+        first.inbound.trySend(Ha.manage("w1", "settings", settings = JSONObject().put("voice_wake_words", "[]")))
+        runCurrent()
+        first.inbound.trySend(Ha.sessionClosed("entry_unloaded"))
+        advanceTimeBy(5_000)
+        runCurrent()
+        queued.complete(Unit)
+        runCurrent()
+
+        assertEquals(listOf(false), admitted)
+        harness.owner.close()
+    }
+
     @Test fun aSessionThatDoesNotGrantManagementNeverRunsIt() = runTest {
         val management = FakeManagement()
         val connection = FakeConnection(Ha.accepting(capabilities = emptyList()))
@@ -1509,7 +1536,7 @@ class PanelAssistantTransportOwnerTest {
             return PanelAssistantManagementSnapshot("ha-paneld 0.9.11 panel=alpha build=1 cfg=1a2b3c4d\n", """{"warnings":[],"capabilities":[]}""")
         }
 
-        override suspend fun applySettings(settings: Map<String, String>): String? {
+        override suspend fun applySettings(settings: Map<String, String>, admit: () -> Boolean): String? {
             written += settings
             return null
         }

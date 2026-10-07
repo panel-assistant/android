@@ -789,9 +789,10 @@ class PaneldServer internal constructor(
     }
 
     /** Settings Panel Assistant writes over its session, through the Configure page's own validation. */
-    internal suspend fun applyManagedSettings(settings: Map<String, String>): String? =
+    internal suspend fun applyManagedSettings(settings: Map<String, String>, admit: () -> Boolean): String? =
         io.panelassistant.android.panelassistant.PanelAssistantManagedSettings.apply(
             settings,
+            admit,
             validate = { values ->
                 val raw = io.ktor.http.Parameters.build { values.forEach { (key, value) -> append(key, value) } }
                 when (val result = normalizeConfigPostParameters(raw, liveCapabilities(managementObservations.snapStaleOk().caps))) {
@@ -799,7 +800,7 @@ class PaneldServer internal constructor(
                     is ConfigPostParameters.Bad -> null
                 }
             },
-            commit = { accepted -> acceptedConfigTransaction().applyAccepted(accepted) == ApplyAcceptedResult.Applied },
+            commit = { accepted, admitted -> acceptedConfigTransaction().applyAccepted(accepted, admit = admitted) == ApplyAcceptedResult.Applied },
         )
 
     private fun directConfigPost() = acceptedConfigTransaction().directPost(
