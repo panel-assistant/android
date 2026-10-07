@@ -3,6 +3,8 @@ package io.panelassistant.android.panelassistant
 import io.panelassistant.android.config.ChannelOption
 import io.panelassistant.android.config.SettingSpec
 import io.panelassistant.android.config.SettingsRegistry
+import io.panelassistant.android.control.ZigbeeHealthState
+import io.panelassistant.android.mqttButtonEventTypes
 import io.panelassistant.android.mqtt.SoftwareComponent
 import io.panelassistant.android.mqtt.SoftwareUpdateEntities
 import io.panelassistant.android.storage.StorageHealthSeverity
@@ -12,7 +14,7 @@ import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 
 /** How an MQTT state payload becomes a typed value on the native transport (protocol section 7). */
-internal enum class PanelAssistantValueKind { BOOLEAN, NUMBER, OPTION, TEXT, LIGHT, UPDATE, BUTTON, MEDIA }
+internal enum class PanelAssistantValueKind { BOOLEAN, NUMBER, OPTION, TEXT, LIGHT, UPDATE, BUTTON, MEDIA, IMAGE, EVENT }
 
 /** One channel as the `hello` describes it. Codes and facts only, never display text. */
 internal data class PanelAssistantChannelDescriptor(
@@ -81,6 +83,7 @@ internal object PanelAssistantChannelCatalog {
     val FOLDED: Map<String, String> = mapOf(
         "storage_health_attributes" to "storage_health",
         "diag_wifi_outages_attributes" to "diag_wifi_outages_24h",
+        "zigbee_gateway_health_attributes" to "zigbee_gateway_health",
     )
 
     private val RENAMED: Map<String, String> = SoftwareComponent.entries.associate {
@@ -176,6 +179,17 @@ internal object PanelAssistantChannelCatalog {
             choices = choices,
         )
 
+    /**
+     * The hardware button event channel, whose event types are the MQTT event types this profile adds to the
+     * common set. The wire carries lowercase codes (protocol codes are lowercase); each code's label is the
+     * `KEYCODE_…` name the button bus emits and MQTT publishes.
+     */
+    fun buttonDescriptor(profileEventTypes: Set<String> = emptySet()) = PanelAssistantChannelDescriptor(
+        channel = "button", platform = "event", translationKey = "button", uniqueSuffix = "button",
+        kind = PanelAssistantValueKind.EVENT,
+        choices = mqttButtonEventTypes(profileEventTypes).map { ChannelOption(it.lowercase(Locale.ROOT), it) },
+    )
+
     /** A value set whose MQTT payloads are already the codes. */
     private fun sameAsCode(codes: List<String>) = codes.map { ChannelOption(it, it) }
 
@@ -218,6 +232,17 @@ internal object PanelAssistantChannelCatalog {
             uniqueSuffix = "storage_health", kind = PanelAssistantValueKind.OPTION, entityCategory = "diagnostic",
             choices = sameAsCode(StorageHealthSeverity.entries.map { it.name.lowercase(Locale.ROOT) }),
         ),
+        PanelAssistantChannelDescriptor(
+            channel = "zigbee_gateway_health", platform = "sensor", translationKey = "zigbee_gateway_health",
+            uniqueSuffix = "zigbee_gateway_health", kind = PanelAssistantValueKind.OPTION,
+            entityCategory = "diagnostic", choices = sameAsCode(ZigbeeHealthState.entries.map { it.wireValue }),
+        ),
+        // The value is the snapshot URL; Home Assistant fetches a frame from it only when somebody looks.
+        PanelAssistantChannelDescriptor(
+            channel = "camera_snapshot", platform = "image", translationKey = "camera_snapshot",
+            uniqueSuffix = "camera_snapshot", kind = PanelAssistantValueKind.IMAGE,
+        ),
+        buttonDescriptor(),
         wireOnly("watchdog", "switch"),
         wireOnly("silence_boot_chime", "switch"),
         wireOnly("prevent_idle_dim", "switch"),

@@ -37,6 +37,9 @@ internal class PanelAssistantShadowReporter(
     private val outstanding = LinkedHashMap<Long, Batch>()
     private var phase = Phase.IDLE
     private var described: Set<String> = emptySet()
+    /** Events waiting for the session loop, each a wire channel and the event as its source emitted it. */
+    private val events = ArrayDeque<Pair<String, String>>()
+    private var lastEventId = 0L
 
     /** Gated channels the last session did not grant; until a grant, a hello leaves them out. */
     @Volatile private var withheld: Set<String> = PanelAssistantTransportProtocol.GATED_CHANNELS.values.toSet()
@@ -153,9 +156,37 @@ internal class PanelAssistantShadowReporter(
         return PanelAssistantHelloOffer(descriptors.values.toList(), unsupported)
     }
 
+    /**
+     * A transient event such as a button press (`report_event`). It is kept only while a session has
+     * completed its full sync and describes [channel]: Home Assistant refuses events before that, and a
+     * press replayed after a reconnect would fire an automation long after the person pressed.
+     */
+    fun event(channel: String, event: String) {
+        synchronized(lock) {
+            if (phase != Phase.DELTA || channel !in described) return
+            if (events.size >= MAX_EVENTS) events.removeFirst()
+            events.addLast(channel to event)
+        }
+        wake.trySend(Unit)
+    }
+
+    private fun nextEventLocked(id: Long, session: String): String? {
+        while (phase == Phase.DELTA) {
+            val (channel, event) = events.removeFirstOrNull() ?: return null
+            val code = describe(channel)?.code(event)
+            if (code == null) {
+                log("native transport dropped an undeclared event channel=$channel")
+                continue
+            }
+            return PanelAssistantTransportProtocol.reportEvent(id, session, channel, ++lastEventId, code)
+        }
+        return null
+    }
+
     /** Start reporting on an accepted shadow session described by [channels]. */
     fun open(channels: Collection<PanelAssistantChannelDescriptor>) = synchronized(lock) {
         described = channels.mapTo(HashSet()) { it.channel }
+        events.clear()
         outstanding.clear()
         entries.values.forEach {
             it.inFlight = false
@@ -171,6 +202,7 @@ internal class PanelAssistantShadowReporter(
     /** Stop reporting; late results for this session are ignored. */
     fun close() = synchronized(lock) {
         phase = Phase.IDLE
+        events.clear()
         outstanding.clear()
         entries.values.forEach { it.inFlight = false }
     }
@@ -203,6 +235,7 @@ internal class PanelAssistantShadowReporter(
      * lock the sink takes, so a large batch never holds up the convergence pump.
      */
     fun next(id: Long, session: String, now: Long): String? {
+        synchronized(lock) { nextEventLocked(id, session) }?.let { return it }
         val descriptors = describable()
         val (sync, candidates) = synchronized(lock) { plan(now, descriptors) } ?: return null
         val translated = candidates.map { candidate ->
@@ -230,7 +263,11 @@ internal class PanelAssistantShadowReporter(
             if (!entry.dirty || entry.inFlight || now < entry.retryAt || wire !in described) continue
             val descriptor = descriptors[wire] ?: continue
             val observation = entry.observation ?: continue
-            if (entry.rejected == entry.revision || entry.skipped == entry.revision) {
+            // Home Assistant fetches a new frame for every image report, so an acknowledged snapshot URL is
+            // never repeated for freshness: that would open the camera on the panel's schedule.
+            if (entry.rejected == entry.revision || entry.skipped == entry.revision ||
+                descriptor.kind == PanelAssistantValueKind.IMAGE && entry.acknowledged == entry.revision
+            ) {
                 entry.dirty = false
                 continue
             }
@@ -363,6 +400,7 @@ internal class PanelAssistantShadowReporter(
         /** Protocol section 8: at most four outstanding `report_state` requests. */
         const val MAX_OUTSTANDING = 4
         private const val MAX_DELTA = 64
+        private const val MAX_EVENTS = 16
     }
 }
 
