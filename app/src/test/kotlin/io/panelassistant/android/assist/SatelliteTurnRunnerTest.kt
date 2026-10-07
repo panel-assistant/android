@@ -72,19 +72,22 @@ class SatelliteTurnRunnerTest {
                 { AutoCloseable {} },
                 object : AssistPlayback {
                     override suspend fun play(url: String) { played += url }
-                    override suspend fun playStream(cue: io.panelassistant.android.media.StreamCue, fallbackUrls: List<String>) { played += "stream" }
+                    override suspend fun playStream(streamId: String): Boolean {
+                        played += "stream@$streamId"
+                        return false
+                    }
                 },
             )
         }
         runCurrent()
         val runId = link.request(PanelAssistantVoice.COMMAND_VOICE_RUN).getLong("id")
         link.answer(runId, JSONObject().put("handler_id", 5))
-        link.event(runId, "play", "url" to "/api/tts_proxy/r.mp3", "stream" to true)
+        link.event(runId, "play", "url" to "/api/tts_proxy/r.mp3", "stream" to true, "stream_id" to "s1")
         link.event(runId, "end")
         runCurrent()
         assertNull(turn.await().error)
         link.pump()
-        assertEquals(listOf("stream"), played)
+        assertEquals(listOf("stream@s1"), played)
         assertTrue(link.sent.any { it.optString("type") == PanelAssistantVoice.COMMAND_VOICE_PLAYED && !it.has("announce_id") })
     }
 

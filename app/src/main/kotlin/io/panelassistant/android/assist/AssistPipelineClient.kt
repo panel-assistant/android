@@ -64,10 +64,9 @@ internal fun interface AssistPlayback {
     suspend fun play(url: String)
 
     /**
-     * Play the stream Panel Assistant names in [cue], until it has played out; when no stream turns up in
-     * time, play [fallbackUrls] in order instead.
+     * Hold for the stream [streamId] Panel Assistant plays until it ends; returns its end's `listen_after`.
      */
-    suspend fun playStream(cue: io.panelassistant.android.media.StreamCue, fallbackUrls: List<String>): Unit =
+    suspend fun playStream(streamId: String): Boolean =
         throw AssistPlaybackException(AssistPipelineClient.CODE_PLAYBACK_FAILED, "This panel has no voice stream")
 }
 

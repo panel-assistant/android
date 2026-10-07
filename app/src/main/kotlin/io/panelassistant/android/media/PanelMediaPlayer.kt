@@ -5,11 +5,8 @@ import java.net.URI
 
 /** One `media` channel command (protocol section 18). */
 internal sealed interface PanelMediaCommand {
-    /**
-     * [stream]: an announcement Panel Assistant delivers on the voice stream rather than at [url], the one
-     * whose first sample is at [streamStartUs] (`stream_start_us`; null plays [url]).
-     */
-    data class Play(val url: String, val announce: Boolean, val stream: Boolean = false, val streamStartUs: Long? = null) : PanelMediaCommand
+    /** [stream]: the stream id of an announcement Panel Assistant plays on the voice stream rather than at [url]. */
+    data class Play(val url: String, val announce: Boolean, val stream: String? = null) : PanelMediaCommand
     data object Pause : PanelMediaCommand
     data object Resume : PanelMediaCommand
     data object Stop : PanelMediaCommand
@@ -30,12 +27,8 @@ internal sealed interface PanelMediaCommand {
                         is Boolean -> raw
                         else -> return null
                     }
-                    val stream = when (val raw = json.opt("stream")) {
-                        null -> false
-                        is Boolean -> raw
-                        else -> return null
-                    }
-                    Play(url, announce, announce && stream, streamStartUs(json))
+                    if (json.opt("stream").let { it != null && it !is Boolean }) return null
+                    Play(url, announce, if (announce) streamedId(json) else null)
                 }
                 "pause" -> Pause
                 "resume" -> Resume
@@ -82,8 +75,8 @@ internal fun interface MediaStreamFactory {
 internal class PanelMediaPlayer(
     private val streams: MediaStreamFactory,
     private val post: (() -> Unit) -> Unit,
-    /** Play an announcement: the URL, and the stream if Panel Assistant streams it instead. */
-    private val announce: (url: String, stream: StreamCue?) -> Boolean,
+    /** Play an announcement: the URL, or the stream id if Panel Assistant streams it instead. */
+    private val announce: (url: String, stream: String?) -> Boolean,
     private val cancelAnnouncement: () -> Unit,
     private val muted: () -> Boolean,
     private val setMuted: (Boolean) -> Unit,
@@ -124,7 +117,7 @@ internal class PanelMediaPlayer(
     fun command(command: PanelMediaCommand): Boolean {
         when (command) {
             is PanelMediaCommand.Play -> if (command.announce) {
-                return announce(command.url, if (command.stream) StreamCue(System.nanoTime(), command.streamStartUs) else null)
+                return announce(command.url, command.stream)
             } else {
                 owner { play(command.url) }
             }

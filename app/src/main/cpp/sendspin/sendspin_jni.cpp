@@ -1,6 +1,6 @@
 // JNI bridge for media/SendspinNative.kt: one sendspin-cpp player client per handle.
 //
-// Threads: nCreate, nClientId, nConnect, nLoop, nNextEvent, nEventValue, nServerId and nDestroy run on one
+// Threads: nCreate, nClientId, nConnect, nLoop, nNextEvent, nServerId and nDestroy run on one
 // dedicated Kotlin thread (the library's main-loop thread). nRead, nPlayed and nNowUs run on the
 // audio writer thread. nWriteRecord runs while no instance is alive for its directory.
 //
@@ -46,10 +46,12 @@ constexpr int kEventStreamStart = 1;
 constexpr int kEventStreamEnd = 2;
 constexpr int kEventTrustUser = 3;
 constexpr int kEventTrustNone = 4;
-// The current stream's first chunk carries the event's value as its server timestamp (microseconds on
-// Panel Assistant's clock, unmapped: the panel matches it to the event's stream_start_us); read with
-// nEventValue right after nNextEvent returns it.
-constexpr int kEventStreamFirstChunk = 5;
+
+// The formats the player declares, most preferred first (Panel Assistant decodes speech at its native rate
+// and does not upsample): mono 16-bit PCM at the common speech rates, then 44.1 and 48 kHz.
+constexpr uint32_t kRates[] = {24000, 22050, 16000, 44100, 48000};
+constexpr uint32_t kMaxRate = 48000;
+constexpr size_t kFrameBytes = 2;  // mono, 16-bit
 
 std::string join_path(const std::string& dir, const std::string& name) {
     return dir + "/" + name;
@@ -177,7 +179,6 @@ struct PlayerListener : PlayerRoleListener {
     size_t on_audio_write(uint8_t* data, size_t length, uint32_t timeout_ms) override;
     void on_stream_start() override;
     void on_stream_end() override;
-    void on_stream_first_chunk(int64_t server_timestamp_us) override;
 };
 
 struct ClientListener : SendspinClientListener {
@@ -194,21 +195,14 @@ struct Instance {
     SendspinClient client;
     PlayerRole* player = nullptr;
     std::mutex events_mutex;
-    std::deque<std::pair<int, int64_t>> events;
-    int64_t event_value = 0;  // the value of the event nNextEvent last returned; loop thread only
-    // Pairs each stream's first-chunk timestamp (inbound dispatch thread) with its start event (main
-    // loop, drained later), so the timestamp is always queued right after its own start.
-    std::mutex first_chunk_mutex;
-    bool first_chunk_ready = false;   // a first chunk arrived before its start was reported
-    int64_t first_chunk_us = 0;
-    bool start_unpaired = false;      // a start was reported before its first chunk arrived
+    std::deque<int> events;
 
     Instance(SendspinClientConfig cfg, size_t ring_bytes, size_t frame_bytes)
         : ring(ring_bytes, frame_bytes), client(std::move(cfg)) {}
 
-    void push_event(int e, int64_t value = 0) {
+    void push_event(int e) {
         std::lock_guard<std::mutex> lk(events_mutex);
-        events.emplace_back(e, value);
+        events.push_back(e);
     }
 };
 
@@ -221,32 +215,9 @@ void PlayerListener::on_stream_start() {
     const int sr = static_cast<int>(p.sample_rate.value_or(0));
     const int ch = static_cast<int>(p.channels.value_or(0));
     inst->push_event(kEventStreamStart | ((ch & 0xF) << 4) | (sr << 8));
-    std::lock_guard<std::mutex> lk(inst->first_chunk_mutex);
-    if (inst->first_chunk_ready) {
-        inst->first_chunk_ready = false;
-        inst->push_event(kEventStreamFirstChunk, inst->first_chunk_us);
-    } else {
-        inst->start_unpaired = true;
-    }
-}
-
-void PlayerListener::on_stream_first_chunk(int64_t server_timestamp_us) {
-    std::lock_guard<std::mutex> lk(inst->first_chunk_mutex);
-    if (inst->start_unpaired) {
-        inst->start_unpaired = false;
-        inst->push_event(kEventStreamFirstChunk, server_timestamp_us);
-    } else {
-        inst->first_chunk_ready = true;
-        inst->first_chunk_us = server_timestamp_us;
-    }
 }
 
 void PlayerListener::on_stream_end() {
-    {
-        // A first chunk already waiting belongs to the next stream, whose start has not drained yet.
-        std::lock_guard<std::mutex> lk(inst->first_chunk_mutex);
-        inst->start_unpaired = false;
-    }
     inst->ring.clear();
     inst->push_event(kEventStreamEnd);
 }
@@ -273,12 +244,7 @@ std::string to_std(JNIEnv* env, jstring s) {
 #define JNI_FN(name) Java_io_panelassistant_android_media_SendspinNative_##name
 
 extern "C" JNIEXPORT jlong JNICALL JNI_FN(nCreate)(JNIEnv* env, jclass, jstring jStateDir, jstring jName,
-                                                   jstring jVersion, jint sampleRate, jint channels,
-                                                   jint requiredLeadMs) {
-    if (sampleRate <= 0 || channels <= 0 || channels > 15) {
-        SHIM_LOGE("nCreate: bad format %d Hz x %d", sampleRate, channels);
-        return 0;
-    }
+                                                   jstring jVersion, jint requiredLeadMs) {
     const std::string dir = to_std(env, jStateDir);
     if (dir.empty() || !ensure_dir(dir)) return 0;
 
@@ -288,16 +254,14 @@ extern "C" JNIEXPORT jlong JNICALL JNI_FN(nCreate)(JNIEnv* env, jclass, jstring 
     cfg.software_version = to_std(env, jVersion);
     cfg.server_port = 0;  // no inbound listener (PATCHES.md): only connect_to() reaches the client
 
-    const size_t frame = static_cast<size_t>(channels) * 2;
-    const size_t ring_bytes = static_cast<size_t>(sampleRate) * frame / 2;  // 500 ms
-    auto* inst = new Instance(std::move(cfg), ring_bytes, frame);
+    const size_t ring_bytes = kMaxRate * kFrameBytes / 2;  // 500 ms at the highest rate
+    auto* inst = new Instance(std::move(cfg), ring_bytes, kFrameBytes);
     inst->store.dir = dir;
     inst->player_listener.inst = inst;
     inst->client_listener.inst = inst;
 
     PlayerRoleConfig pc;
-    pc.audio_formats.push_back({SendspinCodecFormat::PCM, static_cast<uint8_t>(channels),
-                                static_cast<uint32_t>(sampleRate), 16});
+    for (const uint32_t rate : kRates) pc.audio_formats.push_back({SendspinCodecFormat::PCM, 1, rate, 16});
     if (requiredLeadMs > 0) pc.required_lead_time_ms = static_cast<uint16_t>(std::min(requiredLeadMs, 65535));
     inst->player = &inst->client.add_player(std::move(pc));
     inst->player->set_listener(&inst->player_listener);
@@ -333,15 +297,9 @@ extern "C" JNIEXPORT jint JNICALL JNI_FN(nNextEvent)(JNIEnv*, jclass, jlong hand
     Instance* inst = from(handle);
     std::lock_guard<std::mutex> lk(inst->events_mutex);
     if (inst->events.empty()) return 0;
-    const auto [e, value] = inst->events.front();
+    const int e = inst->events.front();
     inst->events.pop_front();
-    inst->event_value = value;
     return e;
-}
-
-extern "C" JNIEXPORT jlong JNICALL JNI_FN(nEventValue)(JNIEnv*, jclass, jlong handle) {
-    if (handle == 0) return 0;
-    return static_cast<jlong>(from(handle)->event_value);
 }
 
 extern "C" JNIEXPORT jstring JNICALL JNI_FN(nServerId)(JNIEnv* env, jclass, jlong handle) {
@@ -384,10 +342,10 @@ extern "C" JNIEXPORT void JNICALL JNI_FN(nDestroy)(JNIEnv*, jclass, jlong handle
     sendspin_bridge::reset();
 }
 
-// The socket bridge (transport/client_connection.h): the app's own WebSocket client carries the
-// connection. nTakeOutbound returns [type, transport id (4 bytes, big-endian), payload] or null on
-// timeout; nDeliver hands back the socket's open, each message and its close. Both run on the app's
-// socket thread, and stop before nDestroy.
+// The socket bridge (transport/client_connection.h): the Panel Assistant session carries the connection.
+// nTakeOutbound returns [type, transport id (4 bytes, big-endian), payload] or null on timeout; nDeliver
+// hands back the open, each message and the close. Both run on the app's bridge threads, and stop before
+// nDestroy.
 extern "C" JNIEXPORT jbyteArray JNICALL JNI_FN(nTakeOutbound)(JNIEnv* env, jclass, jlong handle, jint timeoutMs) {
     if (handle == 0) return nullptr;
     sendspin_bridge::Outbound item;

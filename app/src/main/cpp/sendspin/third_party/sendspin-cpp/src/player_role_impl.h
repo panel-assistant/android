@@ -193,9 +193,6 @@ struct PlayerRole::Impl : RoleTeardown {
     std::unique_ptr<EventState> event_state;
     Inbox* inbox{nullptr};
     PlayerRoleListener* listener{nullptr};
-    /// ha-paneld: set by handle_stream_start(), cleared by the next accepted chunk, which is reported
-    /// through PlayerRoleListener::on_stream_first_chunk(). Inbound dispatch thread only.
-    bool first_chunk_pending{false};
     SendspinPersistenceProvider* persistence{nullptr};
     std::unique_ptr<SyncTask> sync_task;
 

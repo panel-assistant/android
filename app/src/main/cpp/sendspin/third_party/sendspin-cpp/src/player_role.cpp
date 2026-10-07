@@ -341,11 +341,6 @@ SS_HOT void PlayerRole::Impl::handle_binary(InboundMessage& message) {
         SS_LOGV(TAG, "Audio chunk carries no encoded frame");
         return;
     }
-    // ha-paneld: report the first chunk's server timestamp after each stream start (PATCHES.md 6).
-    if (this->first_chunk_pending && this->listener != nullptr) {
-        this->first_chunk_pending = false;
-        this->listener->on_stream_first_chunk(chunk->timestamp_us);
-    }
     // roles/player/v1.md "client/hello player@v1 support object": the server keeps the
     // advertised buffer_capacity, which the quota covers at the smallest chunk size.
     (void)inbound.hand_message(message,
@@ -357,7 +352,6 @@ SS_HOT void PlayerRole::Impl::handle_binary(InboundMessage& message) {
 }
 
 void PlayerRole::Impl::handle_stream_start(const ServerPlayerStreamObject& player_obj) {
-    this->first_chunk_pending = true;  // ha-paneld (PATCHES.md 6)
     const uint32_t generation = this->cleanup_generation.load(std::memory_order_acquire);
     bool header_sent = false;
     // Numbers the codec header and the STREAM_START, so the sync task starts the stream only on

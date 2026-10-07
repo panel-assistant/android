@@ -115,12 +115,12 @@ class PanelAssistantTransportContractFixtureTest {
                 } else if (case.getJSONObject("result").has("embed")) {
                     assertNull("$name must ignore an ungranted embed proof", accepted.session.embed)
                 }
-                if (PanelAssistantTransportProtocol.CAPABILITY_VOICE_STREAM in accepted.session.capabilities) {
+                if (PanelAssistantTransportProtocol.CAPABILITY_VOICE_STREAM_SESSION in accepted.session.capabilities) {
                     val stream = accepted.session.voiceStream
                     assertNotNull("$name must carry its granted voice stream", stream)
-                    assertEquals("/api/panel_assistant/sendspin", stream!!.path)
+                    assertEquals("CAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg", stream!!.serverId)
                     assertArrayEquals(ByteArray(32) { it.toByte() }, stream.psk())
-                } else if (case.getJSONObject("result").has("voice_stream")) {
+                } else if (case.getJSONObject("result").has("voice_stream_session")) {
                     assertNull("$name must ignore an ungranted voice stream", accepted.session.voiceStream)
                 }
             } else {
@@ -133,19 +133,38 @@ class PanelAssistantTransportContractFixtureTest {
     }
 
     @Test
-    fun `a streamed event claims exactly the stream its vector names`() {
+    fun `a streamed message plays exactly the stream its vector names`() {
         val vectors = JSONObject(resource(FIXTURE)).getJSONArray("streamed").objects()
         assertTrue("the shared vectors carry streamed cases", vectors.isNotEmpty())
         vectors.forEach { case ->
             val payload = case.getJSONObject("payload")
-            val claimed = if (payload.optString("kind").isEmpty()) {
-                (io.panelassistant.android.media.PanelMediaCommand.parse(payload) as? io.panelassistant.android.media.PanelMediaCommand.Play)
-                    ?.takeIf { it.stream }?.streamStartUs
+            val plays = if (payload.optString("kind").isEmpty()) {
+                (io.panelassistant.android.media.PanelMediaCommand.parse(payload) as? io.panelassistant.android.media.PanelMediaCommand.Play)?.stream
             } else {
-                if (payload.opt("stream") == true) io.panelassistant.android.media.streamStartUs(payload) else null
+                io.panelassistant.android.media.streamedId(payload)
             }
-            val expected = (case.opt("claims") as? Number)?.toLong() // null: the event claims no stream
-            assertEquals(case.getString("name"), expected, claimed)
+            assertEquals(case.getString("name"), case.opt("plays").takeUnless { it == JSONObject.NULL }, plays)
+        }
+    }
+
+    @Test
+    fun `the stream's session events reach the player or the playback exactly when their vector is valid`() {
+        val vectors = JSONObject(resource(FIXTURE)).getJSONArray("session_events").objects()
+        assertTrue("the shared vectors carry session events", vectors.isNotEmpty())
+        vectors.forEach { case ->
+            val received = mutableListOf<ByteArray>()
+            val stream = PanelAssistantVoiceStream(object : PanelAssistantVoiceStreamPeer {
+                override fun clientId() = null
+                override fun open(grant: PanelAssistantVoiceStreamGrant, send: (ByteArray, Boolean) -> Unit) = Unit
+                override fun receive(frame: ByteArray, text: Boolean) { received += frame }
+                override fun mute() = Unit
+                override fun unmute() = Unit
+                override fun close() = Unit
+            })
+            val event = case.getJSONObject("event")
+            assertTrue(case.getString("name"), stream.onFrame(JSONObject().put("id", HELLO_ID).put("type", "event").put("event", event), HELLO_ID))
+            val delivered = received.isNotEmpty() || stream.ended(event.optString("stream_id")) != null
+            assertEquals(case.getString("name"), case.getBoolean("valid"), delivered)
         }
     }
 

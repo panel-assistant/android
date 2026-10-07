@@ -130,10 +130,10 @@ internal data class VoiceAnnouncement(
     /** Listen for an answer afterwards, as for `start_conversation`. */
     val listenAfter: Boolean,
     /**
-     * The stream if Panel Assistant streams the announcement, chime and speech together; null plays
+     * The stream id if Panel Assistant streams the announcement, chime and speech together; null plays
      * [preannounceUrl] and [url] as before.
      */
-    val stream: io.panelassistant.android.media.StreamCue? = null,
+    val stream: String? = null,
     /** Called once the announcement has played, or could not be. */
     val done: () -> Unit,
 )
@@ -368,17 +368,17 @@ class VoiceAssistantCoordinator internal constructor(
     private fun beginRun(activation: WakeWordActivation?, current: VoiceSettings): RunAdmission =
         beginRun(activation, current, null)
 
+    /** A media player announcement Panel Assistant streams: played like a satellite announcement, wake word paused. */
+    internal fun announceStreamedMedia(url: String, stream: String): Boolean {
+        announce(VoiceAnnouncement(url, null, listenAfter = false, done = {}, stream = stream))
+        return true
+    }
+
     /**
      * Play what Home Assistant asked the panel to say, replacing whatever it was saying or hearing: Home
      * Assistant has already ended that pipeline. The wake-word listener is paused for the playback, so the
      * panel never wakes itself; with [VoiceAnnouncement.listenAfter] a turn follows, as after a wake word.
      */
-    /** A media player announcement Panel Assistant streams: played like a satellite announcement, wake word paused. */
-    internal fun announceStreamedMedia(url: String, stream: io.panelassistant.android.media.StreamCue): Boolean {
-        announce(VoiceAnnouncement(url, null, listenAfter = false, done = {}, stream = stream))
-        return true
-    }
-
     internal fun announce(announcement: VoiceAnnouncement) {
         if (closed.get()) return announcement.done()
         scope.launch {
@@ -411,7 +411,7 @@ class VoiceAssistantCoordinator internal constructor(
         // still plays where the microphone has not proven itself.
         val usable = microphoneStatus().usable
         if (announcement == null && !usable) return RunAdmission.NOT_ELIGIBLE
-        val listens = announcement == null || (announcement.listenAfter && usable)
+        var listens = announcement == null || (announcement.listenAfter && usable)
         val mic = obtainSource()
         if (listens && mic == null) return RunAdmission.NOT_ELIGIBLE
         synchronized(lock) {
@@ -432,7 +432,8 @@ class VoiceAssistantCoordinator internal constructor(
                         val played = runCatching {
                             val stream = announcement.stream
                             if (stream != null) {
-                                playback.playStream(stream, listOfNotNull(announcement.preannounceUrl, announcement.url))
+                                // Panel Assistant's end decides whether to listen, within what the event allowed.
+                                if (!playback.playStream(stream)) listens = false
                             } else {
                                 announcement.preannounceUrl?.let { playback.play(it) }
                                 playback.play(announcement.url)

@@ -1,9 +1,9 @@
-// Outbound Sendspin connection carried by the app's own WebSocket client (see PATCHES.md).
+// Outbound Sendspin connection carried by the Panel Assistant session (see PATCHES.md).
 //
-// The library's IXWebSocket client is replaced by a bridge: start() asks the app to open the URL,
-// sends become queued frames the app writes to its socket, and the app hands back the socket's open,
-// each received message and its close. The app's client brings the panel's TLS trust, so wss://
-// behaves exactly as the Home Assistant session does. Frames are complete WebSocket messages.
+// The library's IXWebSocket client is replaced by a bridge: start() asks the app to open the
+// connection, sends become queued frames the app sends as session commands, and the app hands back the
+// open, each frame Panel Assistant sent on the session (in session order) and the close. Frames are
+// complete WebSocket messages.
 #pragma once
 
 #include "bridge.h"

@@ -16,8 +16,8 @@ set(SENDSPIN_ENABLE_OPUS OFF CACHE BOOL "" FORCE)
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(SENDSPIN_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 
-# The app's own WebSocket client carries the connection (transport/), so wss:// uses the panel's TLS
-# trust and IXWebSocket is not built; see PATCHES.md.
+# The Panel Assistant session carries the connection (transport/), so there is no second socket and
+# IXWebSocket is not built; see PATCHES.md.
 set(SENDSPIN_HOST_TRANSPORT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/transport CACHE PATH "" FORCE)
 add_subdirectory(third_party/sendspin-cpp)
 

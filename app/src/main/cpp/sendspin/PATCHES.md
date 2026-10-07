@@ -70,11 +70,11 @@ One upstream comment in the core source list named upstream's contributor-notes 
 
 ## 5. App-supplied WebSocket transport (`sendspin-cpp/cmake/host.cmake`, and `transport/`)
 
-The host build's client connection is IXWebSocket, which this build had without TLS, so a panel reaching Home Assistant over `https` could not dial `wss://`. With `SENDSPIN_HOST_TRANSPORT_DIR` set (our `CMakeLists.txt` points it at `transport/`), `host.cmake` takes `client_connection.cpp` from that directory instead of the IXWebSocket sources, searches it before `src/host` for headers, and neither fetches nor links IXWebSocket; `src/host/network_info.cpp` is still used. IXWebSocket is no longer vendored.
+The host build's client connection is IXWebSocket, a socket of its own. The panel carries Sendspin inside its existing Panel Assistant session instead, so there is no second connection, no second TLS trust and no endpoint to reach. With `SENDSPIN_HOST_TRANSPORT_DIR` set (our `CMakeLists.txt` points it at `transport/`), `host.cmake` takes `client_connection.cpp` from that directory instead of the IXWebSocket sources, searches it before `src/host` for headers, and neither fetches nor links IXWebSocket; `src/host/network_info.cpp` is still used. IXWebSocket is no longer vendored.
 
 `transport/` holds:
 
-- `client_connection.{h,cpp}`: `SendspinClientConnection` with the IXWebSocket class's interface and behaviour (open, complete messages into the inbound ring, close reporting, the released-while-connecting close), carried by a bridge: `start()` queues an open request for the app, sends queue frames, and the app (media/SendspinSocketPump.kt, over the app's own Ktor WebSocket client and therefore its TLS trust) delivers the socket's open, messages and close back. Each socket has a transport id, so frames from a replaced socket are dropped.
+- `client_connection.{h,cpp}`: `SendspinClientConnection` with the IXWebSocket class's interface and behaviour (open, complete messages into the inbound ring, close reporting, the released-while-connecting close), carried by a bridge: `start()` queues an open request for the app, sends queue frames, and the app (media/VoiceStreamPlayer.kt) delivers the open, messages and close back. The app answers the open at once (the session is already up), sends each queued frame as the session command `panel_assistant/voice_stream_frame`, delivers each `sendspin` session event in session order, and reports the close when the session ends. Each connection has a transport id, so frames for a replaced one are dropped.
 - `bridge.h`: the app side of the bridge for the JNI shim (`nTakeOutbound`, `nDeliver`).
 - `server_connection.h`, `ws_server.h`: stand-ins for the inbound listener, which never starts (patch 1 already keeps it off).
 
@@ -139,62 +139,4 @@ The host build's client connection is IXWebSocket, which this build had without 
 
      # Threading support (for shim implementations)
      find_package(Threads REQUIRED)
-```
-
-## 6. First-chunk timestamp of each stream (`sendspin-cpp/include/sendspin/player_role.h`, `sendspin-cpp/src/player_role_impl.h`, `sendspin-cpp/src/player_role.cpp`)
-
-The panel decides which announcement a stream belongs to by exact correlation: Panel Assistant sends `stream_start_us` (the server-clock time of the stream's first sample) with each streamed event, and the panel owns a stream only if its first audio chunk carries that timestamp. Upstream keeps chunk timestamps inside the player role. `handle_stream_start()` now sets `first_chunk_pending`, and `handle_binary()` reports the next chunk accepted for decoding through a new `PlayerRoleListener::on_stream_first_chunk(int64_t server_timestamp_us)` (default no-op, so other listeners are unaffected). Both run on the inbound dispatch thread, in wire order, so the reported chunk is always the stream's first. The callback can precede `on_stream_start()`, which the main loop drains later; the JNI shim pairs the two and queues the raw timestamp (event 5, read with `nEventValue`) right after its stream's start.
-
-```diff
---- a/include/sendspin/player_role.h
-+++ b/include/sendspin/player_role.h
-@@ -107,6 +107,14 @@
-
-     /// @brief Called when the output delay is changed by the server
-     virtual void on_output_delay_changed(uint16_t /*delay_ms*/) {}
-+
-+    /// @brief Called with the server timestamp of the first audio chunk accepted after each
-+    /// stream/start
-+    ///
-+    /// ha-paneld addition. Fires on the thread that dispatches inbound messages, in order with
-+    /// stream/start and the chunks, and so possibly before on_stream_start() (which the main loop
-+    /// drains later); implementations must be thread-safe.
-+    virtual void on_stream_first_chunk(int64_t /*server_timestamp_us*/) {}
- };
-
- /**
---- a/src/player_role.cpp
-+++ b/src/player_role.cpp
-@@ -341,6 +341,11 @@
-         SS_LOGV(TAG, "Audio chunk carries no encoded frame");
-         return;
-     }
-+    // ha-paneld: report the first chunk's server timestamp after each stream start (PATCHES.md 6).
-+    if (this->first_chunk_pending && this->listener != nullptr) {
-+        this->first_chunk_pending = false;
-+        this->listener->on_stream_first_chunk(chunk->timestamp_us);
-+    }
-     // roles/player/v1.md "client/hello player@v1 support object": the server keeps the
-     // advertised buffer_capacity, which the quota covers at the smallest chunk size.
-     (void)inbound.hand_message(message,
-@@ -352,6 +357,7 @@
- }
-
- void PlayerRole::Impl::handle_stream_start(const ServerPlayerStreamObject& player_obj) {
-+    this->first_chunk_pending = true;  // ha-paneld (PATCHES.md 6)
-     const uint32_t generation = this->cleanup_generation.load(std::memory_order_acquire);
-     bool header_sent = false;
-     // Numbers the codec header and the STREAM_START, so the sync task starts the stream only on
---- a/src/player_role_impl.h
-+++ b/src/player_role_impl.h
-@@ -193,6 +193,9 @@
-     std::unique_ptr<EventState> event_state;
-     Inbox* inbox{nullptr};
-     PlayerRoleListener* listener{nullptr};
-+    /// ha-paneld: set by handle_stream_start(), cleared by the next accepted chunk, which is reported
-+    /// through PlayerRoleListener::on_stream_first_chunk(). Inbound dispatch thread only.
-+    bool first_chunk_pending{false};
-     SendspinPersistenceProvider* persistence{nullptr};
-     std::unique_ptr<SyncTask> sync_task;
-
 ```

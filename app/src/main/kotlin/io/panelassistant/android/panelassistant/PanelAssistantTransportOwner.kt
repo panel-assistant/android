@@ -46,13 +46,21 @@ internal interface PanelAssistantTransportConnection {
     suspend fun sendBinary(bytes: ByteArray): Unit = throw UnsupportedOperationException("binary frames")
 }
 
-/** The panel's synchronised voice player, which Panel Assistant streams to over Sendspin. */
+/** The panel's synchronised voice player, which Panel Assistant streams to over Sendspin inside the session. */
 internal interface PanelAssistantVoiceStreamPeer {
     /** The panel's Sendspin client id (its persisted public key), or null when the player cannot run here. */
     fun clientId(): String?
 
-    /** Connect to the granted stream at [url] for the session that granted it. */
-    fun open(url: String, grant: PanelAssistantVoiceStreamGrant)
+    /** The session granted the stream: connect, sending each of the player's messages to [send] in order. */
+    fun open(grant: PanelAssistantVoiceStreamGrant, send: (frame: ByteArray, text: Boolean) -> Unit)
+
+    /** One message Panel Assistant sent; called in session order. */
+    fun receive(frame: ByteArray, text: Boolean)
+
+    /** Silence the stream playing now, and any that starts, until [unmute]. */
+    fun mute()
+
+    fun unmute()
 
     /** The session that opened the stream ended. */
     fun close()
@@ -206,8 +214,8 @@ internal class PanelAssistantTransportOwner(
     private val embedKeys: io.panelassistant.android.http.EmbedProofKeyring? = null,
     /** The Assist satellite; null, or one reporting no configuration, offers no `voice`. */
     private val voice: PanelAssistantVoice? = null,
-    /** The synchronised voice player; null, or one with no client id, offers no `voice_stream`. */
-    private val voiceStream: PanelAssistantVoiceStreamPeer? = null,
+    /** The synchronised voice stream; null, or one whose player has no client id, offers no `voice_stream_session`. */
+    private val voiceStream: PanelAssistantVoiceStream? = null,
     /** Fresh interface addresses for each hello; independent of demand identity. */
     private val addresses: () -> List<String> = { emptyList() },
     private val onConnection: (io.panelassistant.android.sensors.HaApiSession, PanelAssistantSession) -> Boolean = { _, _ -> true },
@@ -366,10 +374,7 @@ internal class PanelAssistantTransportOwner(
                         val opened = connector.connect(session.baseUrl, token)
                         connection = opened
                         publish(run, PanelAssistantTransportStatus(PanelAssistantTransportPhase.HANDSHAKING, attempt))
-                        // The stream dials ws or wss to match the session; any other scheme offers none.
-                        val streamClientId = voiceStream
-                            ?.takeIf { PanelAssistantTransportProtocol.voiceStreamScheme(session.baseUrl) != null }
-                            ?.clientId()
+                        val streamClientId = voiceStream?.clientId()
                         val offered = PanelAssistantTransportProtocol.CAPABILITIES.filter { capability ->
                             when (capability) {
                                 PanelAssistantTransportProtocol.CAPABILITY_STATE -> shadow != null
@@ -379,7 +384,7 @@ internal class PanelAssistantTransportOwner(
                                 PanelAssistantTransportProtocol.CAPABILITY_EMBED_PROOF -> embedKeys != null
                                 PanelAssistantTransportProtocol.CAPABILITY_VOICE -> voice?.offered() == true
                                 PanelAssistantTransportProtocol.CAPABILITY_MEDIA -> shadow != null
-                                PanelAssistantTransportProtocol.CAPABILITY_VOICE_STREAM -> streamClientId != null
+                                PanelAssistantTransportProtocol.CAPABILITY_VOICE_STREAM_SESSION -> streamClientId != null
                                 else -> commands != null
                             }
                         }
@@ -437,18 +442,15 @@ internal class PanelAssistantTransportOwner(
                                     PanelAssistantTransportProtocol.CAPABILITY_VOICE in outcome.session.capabilities
                                 }
                                 val streamGrant = outcome.session.voiceStream
-                                val streamUrl = streamGrant?.url(session.baseUrl)
-                                val streaming = voiceStream?.takeIf { streamUrl != null }
+                                val streaming = voiceStream?.takeIf { streamGrant != null }
                                 val reason = try {
-                                    if (streaming != null && streamGrant != null && streamUrl != null) {
-                                        streaming.open(streamUrl, streamGrant)
-                                    }
+                                    if (streaming != null && streamGrant != null) streaming.open(outcome.session.token, streamGrant)
                                     if (reporting != null && !observeForHello()) {
                                         throw PanelAssistantProtocolException("panel state owner changed during hello")
                                     }
                                     reporting?.open(described)
                                     speaking?.open(opened, outcome.session.token, session.baseUrl)
-                                    holdSession(run, opened, outcome.session, reporting, commanding, withdrawAfterSync, speaking)
+                                    holdSession(run, opened, outcome.session, reporting, commanding, withdrawAfterSync, speaking, streaming)
                                 } finally {
                                     publish(run, PanelAssistantTransportStatus(PanelAssistantTransportPhase.WAITING, attempt))
                                     speaking?.close()
@@ -603,6 +605,7 @@ internal class PanelAssistantTransportOwner(
         commanding: PanelAssistantCommandProcessor?,
         withdrawAfterSync: Boolean,
         speaking: PanelAssistantVoice?,
+        streaming: PanelAssistantVoiceStream?,
     ): String = coroutineScope {
         val frames = Channel<String>(Channel.UNLIMITED)
         val reader = launch {
@@ -616,7 +619,7 @@ internal class PanelAssistantTransportOwner(
             }
         }
         try {
-            sessionLoop(run, connection, session, reporting, commanding, frames, withdrawAfterSync, speaking)
+            sessionLoop(run, connection, session, reporting, commanding, frames, withdrawAfterSync, speaking, streaming)
         } finally {
             reader.cancel()
         }
@@ -631,6 +634,7 @@ internal class PanelAssistantTransportOwner(
         frames: Channel<String>,
         withdrawAfterSync: Boolean,
         speaking: PanelAssistantVoice?,
+        streaming: PanelAssistantVoiceStream?,
     ): String {
         var nextMessageId = HELLO_ID + 1
         // A withdrawal still owed to the bridge once this session's full sync is acknowledged.
@@ -673,7 +677,7 @@ internal class PanelAssistantTransportOwner(
                     continue
                 }
             }
-            val spoken = speaking?.next(nextMessageId)
+            val spoken = speaking?.next(nextMessageId) ?: streaming?.next(nextMessageId)
             if (spoken != null) {
                 connection.send(spoken)
                 nextMessageId++
@@ -696,10 +700,12 @@ internal class PanelAssistantTransportOwner(
                 commanding?.wake?.onReceive { null }
                 restartWake.onReceive { null }
                 speaking?.wake?.onReceive { null }
+                streaming?.wake?.onReceive { null }
                 onTimeout((due - now).coerceAtLeast(0L)) { null }
             } ?: continue
             pongDeadline = null
             val frame = parse(text)
+            if (streaming != null && streaming.onFrame(frame, HELLO_ID)) continue
             if (speaking != null && speaking.onFrame(frame, HELLO_ID)) continue
             when (val event = PanelAssistantTransportProtocol.sessionEvent(frame, HELLO_ID)) {
                 is PanelAssistantSessionEvent.Lifecycle -> lifecycleCurrent(run) { onLifecycleNotice(event.notice) }

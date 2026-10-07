@@ -107,14 +107,6 @@ public:
 
     /// @brief Called when the output delay is changed by the server
     virtual void on_output_delay_changed(uint16_t /*delay_ms*/) {}
-
-    /// @brief Called with the server timestamp of the first audio chunk accepted after each
-    /// stream/start
-    ///
-    /// ha-paneld addition. Fires on the thread that dispatches inbound messages, in order with
-    /// stream/start and the chunks, and so possibly before on_stream_start() (which the main loop
-    /// drains later); implementations must be thread-safe.
-    virtual void on_stream_first_chunk(int64_t /*server_timestamp_us*/) {}
 };
 
 /**
