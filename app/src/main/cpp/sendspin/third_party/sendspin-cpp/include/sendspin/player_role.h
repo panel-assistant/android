@@ -108,13 +108,13 @@ public:
     /// @brief Called when the output delay is changed by the server
     virtual void on_output_delay_changed(uint16_t /*delay_ms*/) {}
 
-    /// @brief Called with the server timestamp of the first sample of every audio chunk accepted
-    /// for decoding
+    /// @brief Called with the server timestamp of the first audio chunk accepted after each
+    /// stream/start
     ///
-    /// ha-paneld addition. Fires on the thread that delivers inbound messages (the protocol
-    /// task), not the main loop; implementations must be thread-safe. Lets the application learn
-    /// when a stream is scheduled to play (via SendspinClient::get_client_time()).
-    virtual void on_audio_chunk(int64_t /*server_timestamp_us*/) {}
+    /// ha-paneld addition. Fires on the thread that dispatches inbound messages, in order with
+    /// stream/start and the chunks, and so possibly before on_stream_start() (which the main loop
+    /// drains later); implementations must be thread-safe.
+    virtual void on_stream_first_chunk(int64_t /*server_timestamp_us*/) {}
 };
 
 /**

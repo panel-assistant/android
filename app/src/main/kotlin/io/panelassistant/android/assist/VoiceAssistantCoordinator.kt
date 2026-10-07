@@ -130,10 +130,10 @@ internal data class VoiceAnnouncement(
     /** Listen for an answer afterwards, as for `start_conversation`. */
     val listenAfter: Boolean,
     /**
-     * When the event arrived if Panel Assistant streams the announcement, chime and speech together;
-     * null plays [preannounceUrl] and [url] as before.
+     * The stream if Panel Assistant streams the announcement, chime and speech together; null plays
+     * [preannounceUrl] and [url] as before.
      */
-    val streamAtNs: Long? = null,
+    val stream: io.panelassistant.android.media.StreamCue? = null,
     /** Called once the announcement has played, or could not be. */
     val done: () -> Unit,
 )
@@ -374,8 +374,8 @@ class VoiceAssistantCoordinator internal constructor(
      * panel never wakes itself; with [VoiceAnnouncement.listenAfter] a turn follows, as after a wake word.
      */
     /** A media player announcement Panel Assistant streams: played like a satellite announcement, wake word paused. */
-    internal fun announceStreamedMedia(url: String): Boolean {
-        announce(VoiceAnnouncement(url, null, listenAfter = false, done = {}, streamAtNs = System.nanoTime()))
+    internal fun announceStreamedMedia(url: String, stream: io.panelassistant.android.media.StreamCue): Boolean {
+        announce(VoiceAnnouncement(url, null, listenAfter = false, done = {}, stream = stream))
         return true
     }
 
@@ -430,9 +430,9 @@ class VoiceAssistantCoordinator internal constructor(
                     if (announcement != null) {
                         state.set(VoiceState.RESPONDING)
                         val played = runCatching {
-                            val streamAt = announcement.streamAtNs
-                            if (streamAt != null) {
-                                playback.playStream(streamAt, listOfNotNull(announcement.preannounceUrl, announcement.url))
+                            val stream = announcement.stream
+                            if (stream != null) {
+                                playback.playStream(stream, listOfNotNull(announcement.preannounceUrl, announcement.url))
                             } else {
                                 announcement.preannounceUrl?.let { playback.play(it) }
                                 playback.play(announcement.url)

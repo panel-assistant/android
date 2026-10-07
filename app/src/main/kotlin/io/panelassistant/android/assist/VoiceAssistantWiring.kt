@@ -57,8 +57,8 @@ internal class AnnouncementLanePlayback(
         watch(audio.submitForGeneration(url, speech = true))
     }
 
-    override suspend fun playStream(eventAtNs: Long, fallbackUrls: List<String>) {
-        watch(audio.submitStreamForGeneration(eventAtNs, fallbackUrls))
+    override suspend fun playStream(cue: io.panelassistant.android.media.StreamCue, fallbackUrls: List<String>) {
+        watch(audio.submitStreamForGeneration(cue, fallbackUrls))
     }
 
     private suspend fun watch(submitted: Long?) {

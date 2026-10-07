@@ -6,6 +6,7 @@ import io.panelassistant.android.audio.MicrophonePresence
 import io.panelassistant.android.audio.MicrophoneStatus
 import io.panelassistant.android.audio.PcmConsumer
 import io.panelassistant.android.audio.PcmFrame
+import io.panelassistant.android.media.streamStartUs
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -55,10 +56,10 @@ internal data class PanelAssistantAnnouncement(
     val preannounceUrl: String?,
     val listenAfter: Boolean,
     /**
-     * When the event arrived (`System.nanoTime()` base) if Panel Assistant streams the audio (`stream:
-     * true`); null for the URL path. A streamed announcement plays the voice stream, not [url].
+     * When the event arrived and the stream it names (`stream_start_us`) if Panel Assistant streams the
+     * audio (`stream: true`); null for the URL path. A streamed announcement plays the voice stream, not [url].
      */
-    val streamAtNs: Long? = null,
+    val stream: io.panelassistant.android.media.StreamCue? = null,
 )
 
 /** What Home Assistant says during one conversation turn. */
@@ -66,8 +67,8 @@ internal sealed interface VoiceTurnEvent {
     /** Stop streaming: speech-to-text has heard the end of the command. */
     data object ListenEnd : VoiceTurnEvent
 
-    /** [streamAtNs] as on [PanelAssistantAnnouncement]: non-null when the reply arrives on the voice stream. */
-    data class Play(val url: String, val continueConversation: Boolean, val streamAtNs: Long? = null) : VoiceTurnEvent
+    /** [stream] as on [PanelAssistantAnnouncement]: non-null when the reply arrives on the voice stream. */
+    data class Play(val url: String, val continueConversation: Boolean, val stream: io.panelassistant.android.media.StreamCue? = null) : VoiceTurnEvent
 
     data class Failed(val code: String) : VoiceTurnEvent
 
@@ -277,12 +278,13 @@ internal class PanelAssistantVoice(
             url = resolve(url),
             preannounceUrl = (event.opt("preannounce_url") as? String)?.takeIf { it.isNotBlank() }?.let(::resolve),
             listenAfter = event.opt("listen_after") == true,
-            streamAtNs = streamAt(event),
+            stream = streamCue(event),
         )
     }
 
-    /** The arrival time of an event Panel Assistant streams (`stream: true`), or null for the URL path. */
-    private fun streamAt(event: JSONObject): Long? = if (event.opt("stream") == true) nanoTime() else null
+    /** An event Panel Assistant streams (`stream: true`): its arrival and `stream_start_us`; null for the URL path. */
+    private fun streamCue(event: JSONObject): io.panelassistant.android.media.StreamCue? =
+        if (event.opt("stream") == true) io.panelassistant.android.media.StreamCue(nanoTime(), streamStartUs(event)) else null
 
     private fun colors(map: JSONObject?): Map<String, Int> {
         map ?: return emptyMap()
@@ -298,7 +300,7 @@ internal class PanelAssistantVoice(
     private fun turnEvent(event: JSONObject?): VoiceTurnEvent? = when (event?.optString("kind")) {
         "listen_end" -> VoiceTurnEvent.ListenEnd
         "play" -> (event.opt("url") as? String)?.takeIf { it.isNotBlank() }?.let { url ->
-            VoiceTurnEvent.Play(resolve(url), event.opt("continue_conversation") == true, streamAt(event))
+            VoiceTurnEvent.Play(resolve(url), event.opt("continue_conversation") == true, streamCue(event))
         }
         "error" -> VoiceTurnEvent.Failed((event.opt("code") as? String).orEmpty().ifEmpty { "error" })
         "end" -> VoiceTurnEvent.End

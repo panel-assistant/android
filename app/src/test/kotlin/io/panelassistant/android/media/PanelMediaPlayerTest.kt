@@ -20,7 +20,7 @@ class PanelMediaPlayerTest {
     private class Harness(duration: Int = 120_000) {
         val streams = mutableListOf<FakeStream>()
         val announced = mutableListOf<String>()
-        val streamed = mutableListOf<Boolean>()
+        val streamed = mutableListOf<StreamCue?>()
         var cancelled = 0
         var muted = false
         var changes = 0
@@ -149,8 +149,13 @@ class PanelMediaPlayerTest {
 
     @Test fun aStreamedAnnouncementParsesOnlyWithAnnounceAndReachesTheLaneAsStreamed() {
         fun parse(json: String) = PanelMediaCommand.parse(JSONObject(json))
-        val streamed = parse("""{"action":"play","url":"$url","announce":true,"stream":true}""")
-        assertEquals(PanelMediaCommand.Play(url, announce = true, stream = true), streamed)
+        val streamed = parse("""{"action":"play","url":"$url","announce":true,"stream":true,"stream_start_us":1759830000500000}""")
+        assertEquals(PanelMediaCommand.Play(url, announce = true, stream = true, streamStartUs = 1_759_830_000_500_000L), streamed)
+        assertEquals(
+            "a stream without its start plays the URL",
+            PanelMediaCommand.Play(url, announce = true, stream = true, streamStartUs = null),
+            parse("""{"action":"play","url":"$url","announce":true,"stream":true}"""),
+        )
         assertEquals(PanelMediaCommand.Play(url, true, false), parse("""{"action":"play","url":"$url","announce":true,"stream":false}"""))
         assertEquals("stream without announce is plain media", PanelMediaCommand.Play(url, false, false), parse("""{"action":"play","url":"$url","stream":true}"""))
         assertNull(parse("""{"action":"play","url":"$url","announce":true,"stream":"yes"}"""))
@@ -158,7 +163,8 @@ class PanelMediaPlayerTest {
         val h = Harness()
         assertTrue(h.player.command(streamed!!))
         assertTrue(h.player.command(PanelMediaCommand.Play(url, announce = true)))
-        assertEquals(listOf(true, false), h.streamed)
+        assertEquals("the streamed one reaches the lane with its start", listOf(1_759_830_000_500_000L, null), h.streamed.map { it?.startUs })
+        assertEquals(listOf(true, false), h.streamed.map { it != null })
         assertTrue("a streamed announcement opens no media stream", h.streams.isEmpty())
     }
 

@@ -1383,7 +1383,7 @@ class PaneldService : Service() {
                     voice.announce(
                         io.panelassistant.android.assist.VoiceAnnouncement(
                             announcement.url, announcement.preannounceUrl, announcement.listenAfter,
-                            streamAtNs = announcement.streamAtNs, done = done,
+                            stream = announcement.stream, done = done,
                         ),
                     )
                 } else {
@@ -1566,7 +1566,7 @@ class PaneldService : Service() {
             streams = { url, onPrepared, onEnded -> AndroidMediaStream(url, onPrepared, onEnded) },
             post = { block -> mainHandler.post(block) },
             announce = { url, stream ->
-                if (stream && ::voice.isInitialized) voice.announceStreamedMedia(url) else audio.submitForGeneration(url, speech = true) != null
+                if (stream != null && ::voice.isInitialized) voice.announceStreamedMedia(url, stream) else audio.submitForGeneration(url, speech = true) != null
             },
             cancelAnnouncement = { audio.snapshot().let { audio.cancelGeneration(it.generation) } },
             muted = volume::isMuted,

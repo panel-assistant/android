@@ -107,7 +107,7 @@ class VoiceAssistantCoordinatorTest {
             state.set(VoiceState.RESPONDING)
         }
 
-        override suspend fun playStream(eventAtNs: Long, fallbackUrls: List<String>) = play("stream@$eventAtNs")
+        override suspend fun playStream(cue: io.panelassistant.android.media.StreamCue, fallbackUrls: List<String>) = play("stream@${cue.startUs}")
     }
 
     /** Each cue's wake word, with the phase the panel was in when it was cued. */
@@ -863,7 +863,7 @@ class VoiceAssistantCoordinatorTest {
         val c = coordinator()
         c.start()
         val done = CompletableDeferred<Unit>()
-        c.announce(VoiceAnnouncement("question.mp3", "chime.mp3", listenAfter = true, done = { done.complete(Unit) }, streamAtNs = 42L))
+        c.announce(VoiceAnnouncement("question.mp3", "chime.mp3", listenAfter = true, done = { done.complete(Unit) }, stream = io.panelassistant.android.media.StreamCue(7L, 42L)))
         val runner = awaitRunner(0)
         assertTrue(done.isCompleted)
         assertEquals("the stream carries chime and speech; neither URL is fetched", listOf("stream@42"), played)

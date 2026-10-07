@@ -141,9 +141,9 @@ The host build's client connection is IXWebSocket, which this build had without 
      find_package(Threads REQUIRED)
 ```
 
-## 6. Scheduled time of each audio chunk (`sendspin-cpp/include/sendspin/player_role.h`, `sendspin-cpp/src/player_role.cpp`)
+## 6. First-chunk timestamp of each stream (`sendspin-cpp/include/sendspin/player_role.h`, `sendspin-cpp/src/player_role_impl.h`, `sendspin-cpp/src/player_role.cpp`)
 
-The panel decides which announcement a stream belongs to by when the stream is scheduled to play, not by when its `stream/start` happens to arrive. Upstream keeps each chunk's server timestamp inside the player role. A new `PlayerRoleListener::on_audio_chunk(int64_t server_timestamp_us)` (default no-op, so other listeners are unaffected) is called from `PlayerRole::Impl::handle_binary()` for every chunk accepted for decoding, on the thread that delivers inbound messages. The JNI shim maps the first chunk after each stream start through `SendspinClient::get_client_time()` (documented as callable from any thread) and reports it as event 5 with `nEventValue`.
+The panel decides which announcement a stream belongs to by exact correlation: Panel Assistant sends `stream_start_us` (the server-clock time of the stream's first sample) with each streamed event, and the panel owns a stream only if its first audio chunk carries that timestamp. Upstream keeps chunk timestamps inside the player role. `handle_stream_start()` now sets `first_chunk_pending`, and `handle_binary()` reports the next chunk accepted for decoding through a new `PlayerRoleListener::on_stream_first_chunk(int64_t server_timestamp_us)` (default no-op, so other listeners are unaffected). Both run on the inbound dispatch thread, in wire order, so the reported chunk is always the stream's first. The callback can precede `on_stream_start()`, which the main loop drains later; the JNI shim pairs the two and queues the raw timestamp (event 5, read with `nEventValue`) right after its stream's start.
 
 ```diff
 --- a/include/sendspin/player_role.h
@@ -153,27 +153,48 @@ The panel decides which announcement a stream belongs to by when the stream is s
      /// @brief Called when the output delay is changed by the server
      virtual void on_output_delay_changed(uint16_t /*delay_ms*/) {}
 +
-+    /// @brief Called with the server timestamp of the first sample of every audio chunk accepted
-+    /// for decoding
++    /// @brief Called with the server timestamp of the first audio chunk accepted after each
++    /// stream/start
 +    ///
-+    /// ha-paneld addition. Fires on the thread that delivers inbound messages (the protocol
-+    /// task), not the main loop; implementations must be thread-safe. Lets the application learn
-+    /// when a stream is scheduled to play (via SendspinClient::get_client_time()).
-+    virtual void on_audio_chunk(int64_t /*server_timestamp_us*/) {}
++    /// ha-paneld addition. Fires on the thread that dispatches inbound messages, in order with
++    /// stream/start and the chunks, and so possibly before on_stream_start() (which the main loop
++    /// drains later); implementations must be thread-safe.
++    virtual void on_stream_first_chunk(int64_t /*server_timestamp_us*/) {}
  };
 
  /**
 --- a/src/player_role.cpp
 +++ b/src/player_role.cpp
-@@ -341,6 +341,10 @@
+@@ -341,6 +341,11 @@
          SS_LOGV(TAG, "Audio chunk carries no encoded frame");
          return;
      }
-+    // ha-paneld: report the chunk's scheduled server time (PATCHES.md section 6).
-+    if (this->listener != nullptr) {
-+        this->listener->on_audio_chunk(chunk->timestamp_us);
++    // ha-paneld: report the first chunk's server timestamp after each stream start (PATCHES.md 6).
++    if (this->first_chunk_pending && this->listener != nullptr) {
++        this->first_chunk_pending = false;
++        this->listener->on_stream_first_chunk(chunk->timestamp_us);
 +    }
      // roles/player/v1.md "client/hello player@v1 support object": the server keeps the
      // advertised buffer_capacity, which the quota covers at the smallest chunk size.
      (void)inbound.hand_message(message,
+@@ -352,6 +357,7 @@
+ }
+
+ void PlayerRole::Impl::handle_stream_start(const ServerPlayerStreamObject& player_obj) {
++    this->first_chunk_pending = true;  // ha-paneld (PATCHES.md 6)
+     const uint32_t generation = this->cleanup_generation.load(std::memory_order_acquire);
+     bool header_sent = false;
+     // Numbers the codec header and the STREAM_START, so the sync task starts the stream only on
+--- a/src/player_role_impl.h
++++ b/src/player_role_impl.h
+@@ -193,6 +193,9 @@
+     std::unique_ptr<EventState> event_state;
+     Inbox* inbox{nullptr};
+     PlayerRoleListener* listener{nullptr};
++    /// ha-paneld: set by handle_stream_start(), cleared by the next accepted chunk, which is reported
++    /// through PlayerRoleListener::on_stream_first_chunk(). Inbound dispatch thread only.
++    bool first_chunk_pending{false};
+     SendspinPersistenceProvider* persistence{nullptr};
+     std::unique_ptr<SyncTask> sync_task;
+
 ```

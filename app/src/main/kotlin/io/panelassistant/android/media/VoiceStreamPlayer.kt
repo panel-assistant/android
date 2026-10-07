@@ -26,7 +26,7 @@ internal interface SendspinApi {
     fun loop(handle: Long)
     fun nextEvent(handle: Long): Int
 
-    /** The value of the event [nextEvent] last returned (the schedule of [SendspinNative.EVENT_STREAM_SCHEDULED]). */
+    /** The value of the event [nextEvent] last returned (the time of [SendspinNative.EVENT_STREAM_FIRST_CHUNK]). */
     fun eventValue(handle: Long): Long
     fun serverId(handle: Long): String?
     fun read(handle: Long, buffer: ByteBuffer, maxBytes: Int, waitMs: Int): Int
@@ -88,8 +88,8 @@ internal object SendspinNative : SendspinApi {
     const val EVENT_TRUST_USER = 3
     const val EVENT_TRUST_NONE = 4
 
-    /** The current stream's first sample is scheduled at [SendspinApi.eventValue] (microseconds, the [nNowUs] base). */
-    const val EVENT_STREAM_SCHEDULED = 5
+    /** The current stream's first chunk carries server time [SendspinApi.eventValue] (microseconds, Panel Assistant's clock). */
+    const val EVENT_STREAM_FIRST_CHUNK = 5
 }
 
 /**
@@ -196,9 +196,8 @@ internal class AudioTrackOutput(rate: Int, channels: Int) : VoiceOutput {
  * the session's end disconnects it. Its keypair is generated and kept by the library in the same store.
  *
  * The speaker is opened only for a stream an announcement owns ([VoiceStreamClaims], matched by the
- * stream's scheduled start): until then the stream is held, unread; a stream that is dropped (its
- * announcement was cancelled or fell back to the URL, or no announcement can claim it) never opens the
- * speaker. `stream/end` lets what was written play out, then releases the output. While it plays, the presentation time of every buffer goes back to the library,
+ * server time of the stream's first chunk): until then the stream is held, unread; a stream that is
+ * dropped (its announcement was cancelled or fell back to the URL) never opens the speaker. `stream/end` lets what was written play out, then releases the output. While it plays, the presentation time of every buffer goes back to the library,
  * which aligns the audio to Panel Assistant's clock.
  *
  * One thread runs the library's main loop (the library requires its start, loop and stop on one thread);
@@ -307,8 +306,8 @@ internal class VoiceStreamPlayer(
                                 it.start()
                             }
                         }
-                        SendspinNative.EVENT_STREAM_SCHEDULED -> current?.let {
-                            claims.scheduled(it.streamId, native.eventValue(raw) * 1_000L)
+                        SendspinNative.EVENT_STREAM_FIRST_CHUNK -> current?.let {
+                            claims.firstChunk(it.streamId, native.eventValue(raw))
                         }
                         SendspinNative.EVENT_STREAM_END -> {
                             current?.finish()
