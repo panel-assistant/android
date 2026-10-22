@@ -1,6 +1,6 @@
 schema: 2
 id: s9e
-version: 2.0.3
+version: 2.1.0
 display_name: Smatek S9E
 soc_class: rk3566
 soc:
@@ -31,7 +31,7 @@ requires:
     - access.android-su
     - relay.gpio-button-led
     - relay.sysfs
-    - screen.brightness-zero
+    - screen.su-blpower
     - sensor.gpio-proximity
     - update.webview
 match:
@@ -72,7 +72,11 @@ hardware:
   led:
     mechanism: none
     transfer: identity
-  screen_off: brightness-zero
+  # su-blpower writes /sys/class/backlight/<dev>/bl_power=4 (FB_BLANK powerdown) for a true backlight-off
+  # while Android stays interactive, so buttons still work and no keyguard is raised. brightness-zero only
+  # drove brightness to 0, which left the backlight powered (a dim panel, not off). Confirmed on live
+  # hardware; the panel already writes sysfs via su for its relays (app_can_su: true).
+  screen_off: su-blpower
   has_button_backlight: false
   relay_base: /sys/class/strelay
   relay_base_fallbacks:
