@@ -32,6 +32,7 @@ requires:
     - relay.gpio-button-led
     - relay.sysfs
     - screen.su-blpower
+    - sensor.cht8305-daemon
     - sensor.gpio-proximity
     - update.webview
 match:
@@ -84,7 +85,11 @@ hardware:
   button_led_gpio_base: 147
 sensors:
   proximity_gpio: 18
-  cht8305: false
+  # Read from the fixed i2c 1-0040 device-tree path (/sys/devices/platform/twi.1/i2c-1/1-0040/
+  # {temp1_input,humidity1_input}, milli-units). This driver registers no hwmon humidity node (the only
+  # hwmon instance is an unrelated battery thermal), so the helper's cht8305 reader uses its direct-path
+  # fallback rather than a /sys/class/hwmon scan.
+  cht8305: true
   room_temp_offset_c: 0.0
 identity:
   manufacturer: Smatek

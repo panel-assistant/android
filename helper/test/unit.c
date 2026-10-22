@@ -2126,6 +2126,70 @@ static void test_room_climate_input_discovery(void) {
           "an unreadable member of an exact-name pair fails closed\n");
 }
 
+static void test_room_climate_hwmon_discovery(void) {
+    long temp = 0, humidity = 0;
+
+    // The Smatek S9E route: one hwmon instance with a full temp+humidity pair in milli-units. The pair
+    // converts to the centi-unit reply contract (milli / 10, rounded) that MetricParse.parseCht8305 reads.
+    const struct cht8305_test_hwmon s9e[] = {
+        { 1, 23456, 1, 55123 },
+    };
+    CHECK(cht8305_test_resolve_hwmon(s9e, sizeof s9e / sizeof s9e[0], &temp, &humidity) &&
+          temp == 2346 && humidity == 5512,
+          "an S9E hwmon pair converts milli-units to rounded centi-units\n");
+
+    // A bare SoC/thermal hwmon exposes temperature but no humidity: not a room-climate sensor, fail closed
+    // rather than publish SoC die temperature as the room reading.
+    const struct cht8305_test_hwmon temp_only[] = {
+        { 1, 48000, 0, 0 },
+    };
+    CHECK(!cht8305_test_resolve_hwmon(temp_only, sizeof temp_only / sizeof temp_only[0], &temp, &humidity),
+          "a temperature-only hwmon instance fails closed\n");
+
+    // The coherent-pair rule skips unrelated single-axis instances and selects the one full pair.
+    const struct cht8305_test_hwmon with_thermal[] = {
+        { 1, 52000, 0, 0 },
+        { 1, 21000, 1, 48000 },
+    };
+    CHECK(cht8305_test_resolve_hwmon(with_thermal, sizeof with_thermal / sizeof with_thermal[0],
+                                     &temp, &humidity) && temp == 2100 && humidity == 4800,
+          "a full hwmon pair is selected alongside a temperature-only thermal zone\n");
+
+    // Two full pairs are ambiguous — we cannot know which is the room sensor, so fail closed.
+    const struct cht8305_test_hwmon two_pairs[] = {
+        { 1, 21000, 1, 48000 },
+        { 1, 22000, 1, 49000 },
+    };
+    CHECK(!cht8305_test_resolve_hwmon(two_pairs, sizeof two_pairs / sizeof two_pairs[0], &temp, &humidity),
+          "two full hwmon pairs are ambiguous and fail closed\n");
+
+    // No climate instance at all (only unrelated/empty hwmon) is an ordinary absence.
+    CHECK(!cht8305_test_resolve_hwmon(NULL, 0, &temp, &humidity),
+          "no hwmon climate instance fails closed\n");
+
+    // Negative temperatures round away from zero symmetrically with positive ones.
+    const struct cht8305_test_hwmon freezing[] = {
+        { 1, -5123, 1, 90000 },
+    };
+    CHECK(cht8305_test_resolve_hwmon(freezing, sizeof freezing / sizeof freezing[0], &temp, &humidity) &&
+          temp == -512 && humidity == 9000,
+          "a below-zero hwmon temperature rounds away from zero\n");
+}
+
+static void test_room_climate_direct_discovery(void) {
+    long temp = 0, humidity = 0;
+    // The S9E direct device-tree route: both leaves present → milli converts to centi. Live hardware read
+    // temp1_input=23880 humidity1_input=51892, which is 23.88 C / 51.89 %RH.
+    CHECK(cht8305_test_resolve_direct(1, 23880, 1, 51892, &temp, &humidity) &&
+          temp == 2388 && humidity == 5189,
+          "an S9E direct-path pair converts milli-units to centi-units\n");
+    // Either leaf missing (absent or unreadable node) fails closed rather than publishing half a reading.
+    CHECK(!cht8305_test_resolve_direct(1, 23880, 0, 0, &temp, &humidity),
+          "a direct-path read missing humidity fails closed\n");
+    CHECK(!cht8305_test_resolve_direct(0, 0, 1, 51892, &temp, &humidity),
+          "a direct-path read missing temperature fails closed\n");
+}
+
 // GRANT. Its whole safety argument is that it cannot be pointed at a package other than the app's
 // own id and takes no free-form permission or setting name, so the assertions here are about the
 // exact command it runs and about everything it refuses.
@@ -2351,6 +2415,8 @@ int main(int argc, char **argv) {
     test_vi530x_start_contract();
     test_room_climate_event_node_names();
     test_room_climate_input_discovery();
+    test_room_climate_hwmon_discovery();
+    test_room_climate_direct_discovery();
     test_grant_verb();
     test_grant_accessibility();
 
