@@ -1659,12 +1659,17 @@ browserTest('Touch inactivity can enable Auto-sleep without an Area and sends a 
   assert.equal(await page.locator('#cfg-auto_sleep_touch_delay_seconds input').inputValue(), '30');
   assert.equal(await toggle.getAttribute('aria-disabled'), 'false');
   await page.getByText('Home Assistant and presence sensors are not required.', { exact: false }).waitFor();
+  const toggleSaved = page.waitForResponse((response) => response.request().method() === 'POST'
+    && (response.request().postData() || '').includes('auto_sleep=true'));
   await toggle.click();
   assert.equal(await toggle.getAttribute('aria-checked'), 'true');
+  // The save's answer re-renders the card; a fill begun before that render ends in the replaced field.
+  await toggleSaved;
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0))));
   const delay = page.locator('#cfg-auto_sleep_touch_delay_seconds input');
   await delay.fill('45');
   await delay.press('Tab');
-  for (let attempt = 0; attempt < 40 && posts.length < 3; attempt++) await page.waitForTimeout(25);
+  for (const end = Date.now() + 10_000; posts.length < 3 && Date.now() < end;) await page.waitForTimeout(25);
   assert.equal(await page.locator('#auto-sleep-chart').count(), 0);
   // Each finished gesture sends its own setting, in the order the person made them.
   assert.deepEqual(posts, [{ auto_sleep_source: 'touch' }, { auto_sleep: 'true' }, { auto_sleep_touch_delay_seconds: '45' }]);
