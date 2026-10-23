@@ -114,7 +114,8 @@ class DeviceProfileCapabilityTest {
             "room-climate capability ownership changed",
             // smt1019 joined 2026-08-14: same GXHT30 part and the same `sun-ths`/`sun-hum` evdev
             // route the helper already reads for zx-smt156, so it is the established capability, not a new one.
-            setOf("smt1019", "tpa10", "zx-smt156"),
+            // s9e joined 2026-10-23 (merdok): a CHT8305-class part the helper reads from its sysfs node.
+            setOf("s9e", "smt1019", "tpa10", "zx-smt156"),
             all.filter { it.hasCht8305 }.mapTo(mutableSetOf()) { it.id },
         )
     }
