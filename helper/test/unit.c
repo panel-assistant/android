@@ -2169,10 +2169,10 @@ static void test_room_climate_hwmon_discovery(void) {
 
     // Negative temperatures round away from zero symmetrically with positive ones.
     const struct cht8305_test_hwmon freezing[] = {
-        { 1, -5123, 1, 90000 },
+        { 1, -5125, 1, 90000 },
     };
     CHECK(cht8305_test_resolve_hwmon(freezing, sizeof freezing / sizeof freezing[0], &temp, &humidity) &&
-          temp == -512 && humidity == 9000,
+          temp == -513 && humidity == 9000,
           "a below-zero hwmon temperature rounds away from zero\n");
 }
 
