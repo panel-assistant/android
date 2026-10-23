@@ -178,11 +178,23 @@ internal class ManageDoorTest : PanelRuntimeRig() {
     @Test fun aSubscriptionSendsTheCurrentValueThenOneLaterUpdateForChangesInsideTheFloor() = testApplication {
         val table = ManageTable()
         val value = AtomicInteger(1)
+        // The read of 4 is held until the subscription has closed, so a read in flight at close is what is tested.
+        val readingFour = CountDownLatch(1)
+        val closed = CountDownLatch(1)
         application {
             paneldRoot({ emptySet() }, { false }, { "/setup" }) {
                 serveOperations(table)
                 route("/api/v1") {
-                    ops { get("/probe") { call.respondText("""{"v":${value.get()}}""", ContentType.Application.Json) } }
+                    ops {
+                        get("/probe") {
+                            val read = value.get()
+                            if (read == 4) {
+                                readingFour.countDown()
+                                closed.await(10, TimeUnit.SECONDS)
+                            }
+                            call.respondText("""{"v":$read}""", ContentType.Application.Json)
+                        }
+                    }
                 }
             }
         }
@@ -201,8 +213,10 @@ internal class ManageDoorTest : PanelRuntimeRig() {
         assertEquals("""{"v":3}""", updates.poll(5, TimeUnit.SECONDS))
         assertNull("an unchanged value sends nothing", updates.poll(FLOOR_MS * 3, TimeUnit.MILLISECONDS))
 
-        subscription.close()
         value.set(4)
+        assertTrue(readingFour.await(10, TimeUnit.SECONDS))
+        subscription.close()
+        closed.countDown()
         assertNull("a closed subscription sends nothing", updates.poll(FLOOR_MS * 3, TimeUnit.MILLISECONDS))
     }
 

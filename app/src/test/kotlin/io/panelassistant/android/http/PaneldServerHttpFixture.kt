@@ -80,6 +80,7 @@ internal class PaneldServerHttpFixture(
         { _, _ -> error("Unexpected diagnostic read") },
         scope,
         { false },
+        nowMs = { 0L },
     )
     val sizingCache get() = observations.densityCache
     val snapCache get() = observations.snapCache
@@ -259,7 +260,7 @@ internal class PaneldServerHttpFixture(
         val observations = ManagementObservations(
             context, io.panelassistant.android.control.DensityController(canSu = false),
             { error("Unexpected management probe") }, { _, _ -> error("Unexpected diagnostic probe") },
-            scope, { false },
+            scope, { false }, nowMs = { 0L },
         )
         observations.snapCache.set(ManagementSnapshot(
             emptyMap(), emptyMap(), io.panelassistant.android.config.Capabilities(), emptyList(),

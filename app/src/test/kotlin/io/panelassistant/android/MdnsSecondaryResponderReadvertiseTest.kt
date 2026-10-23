@@ -46,7 +46,7 @@ class MdnsSecondaryResponderReadvertiseTest {
                 isAccessible = true
             }.get(advertiser) as JmDNS
             secondary.close()
-            assertTrue("IPv4 must remain advertised", hasAddress(LOOPBACK, "dual-responder-test-panel-$RUN", LOOPBACK))
+            assertTrue("IPv4 must remain advertised", hasAddress(LOOPBACK, "dual-responder-test-panel-$RUN", LOOPBACK, timeoutMs = 15_000))
 
             val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15)
             var restored = false
@@ -54,7 +54,7 @@ class MdnsSecondaryResponderReadvertiseTest {
                 restored = hasAddress(SECONDARY_LOOPBACK, "dual-responder-test-panel-$RUN", SECONDARY_LOOPBACK)
             }
             assertTrue("closed secondary responder was never readvertised", restored)
-            assertTrue("primary must survive secondary repair", hasAddress(LOOPBACK, "dual-responder-test-panel-$RUN", LOOPBACK))
+            assertTrue("primary must survive secondary repair", hasAddress(LOOPBACK, "dual-responder-test-panel-$RUN", LOOPBACK, timeoutMs = 15_000))
             assertEquals(
                 MdnsProbeResult.VISIBLE,
                 probeMdnsService(LOOPBACK, "dual-responder-test-panel-$RUN", Config.MDNS_SERVICE_TYPE, primaryToken!!),

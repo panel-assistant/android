@@ -28,9 +28,11 @@ internal class ManagementObservations(
     private val diagnosticReport: (ManagementSnapshot, () -> TermuxBridgeProbe.State) -> String,
     private val scope: CoroutineScope,
     private val isStopping: () -> Boolean,
+    /** The snapshot and density caches' clock; a test freezes it so a seeded snapshot outlives a slow run. */
+    nowMs: () -> Long = Cached.MONOTONIC_MS,
 ) {
     // The density trio is shared with the Configure tab's Display card (the bulk of ITS slow render).
-    val densityCache = Cached(DENSITY_TTL_MS) { density.observeSizing() }
+    val densityCache = Cached(DENSITY_TTL_MS, nowMs) { density.observeSizing() }
     val companionHelperCache = Cached(SU_TTL_MS) {
         val companionSupported = HelperClient.supportsCompanionData()
         val bundledBuildMatches = HelperClient.matchesBundledHelper()
@@ -82,7 +84,7 @@ internal class ManagementObservations(
         )
     }
 
-    val snapCache = Cached(SNAP_TTL_MS) {
+    val snapCache = Cached(SNAP_TTL_MS, nowMs) {
         val privilege = privilegeObservation()
         val management = managementProjection(privilege)
         val d = densityCache.getWithSupplier { density.observeSizing(privilege) }
