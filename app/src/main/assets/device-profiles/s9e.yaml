@@ -1,6 +1,6 @@
 schema: 2
 id: s9e
-version: 2.0.3
+version: 2.1.0
 display_name: Smatek S9E
 soc_class: rk3566
 soc:
@@ -31,7 +31,8 @@ requires:
     - access.android-su
     - relay.gpio-button-led
     - relay.sysfs
-    - screen.brightness-zero
+    - screen.su-blpower
+    - sensor.cht8305-daemon
     - sensor.gpio-proximity
     - update.webview
 match:
@@ -72,7 +73,11 @@ hardware:
   led:
     mechanism: none
     transfer: identity
-  screen_off: brightness-zero
+  # su-blpower writes /sys/class/backlight/<dev>/bl_power=4 (FB_BLANK powerdown) for a true backlight-off
+  # while Android stays interactive, so buttons still work and no keyguard is raised. brightness-zero only
+  # drove brightness to 0, which left the backlight powered (a dim panel, not off). Confirmed on live
+  # hardware; the panel already writes sysfs via su for its relays (app_can_su: true).
+  screen_off: su-blpower
   has_button_backlight: false
   relay_base: /sys/class/strelay
   relay_base_fallbacks:
@@ -80,7 +85,11 @@ hardware:
   button_led_gpio_base: 147
 sensors:
   proximity_gpio: 18
-  cht8305: false
+  # Read from the fixed i2c 1-0040 device-tree path (/sys/devices/platform/twi.1/i2c-1/1-0040/
+  # {temp1_input,humidity1_input}, milli-units). This driver registers no hwmon humidity node (the only
+  # hwmon instance is an unrelated battery thermal), so the helper's cht8305 reader uses its direct-path
+  # fallback rather than a /sys/class/hwmon scan.
+  cht8305: true
   room_temp_offset_c: 0.0
 identity:
   manufacturer: Smatek

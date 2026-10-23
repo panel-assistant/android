@@ -563,7 +563,8 @@ class AutoSleepControllerTest {
 
             assertTrue(h.offer(aggregate(request, 2L, HaPresenceValue.ON)))
             h.await { !h.screen.isIntendedOff() }
-            assertTrue(h.backlightPowered())
+            // The intent flips before the daemon powers the backlight, so wait for the power itself.
+            h.await { h.backlightPowered() }
         }
 
     @Test fun `a refresh landing after the start is dequeued still adopts the inherited dark`() = runTest {

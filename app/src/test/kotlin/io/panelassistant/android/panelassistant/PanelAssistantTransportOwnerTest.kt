@@ -1283,10 +1283,12 @@ class PanelAssistantTransportOwnerTest {
         val events = mutableListOf<String>()
         val received = mutableListOf<Pair<Boolean, String>>()
         var send: ((ByteArray, Boolean) -> Unit)? = null
+        var closed: (() -> Unit)? = null
         override fun clientId(): String? = id
-        override fun open(grant: PanelAssistantVoiceStreamGrant, send: (frame: ByteArray, text: Boolean) -> Unit) {
+        override fun open(grant: PanelAssistantVoiceStreamGrant, closed: () -> Unit, send: (frame: ByteArray, text: Boolean) -> Unit) {
             events += "open ${grant.serverId}"
             this.send = send
+            this.closed = closed
         }
         override fun receive(frame: ByteArray, text: Boolean) {
             received += text to String(frame, Charsets.UTF_8)
@@ -1339,6 +1341,43 @@ class PanelAssistantTransportOwnerTest {
         }
     }
 
+    @Test fun slowInitialObservationDoesNotConsumeThePlayersHandshakeWindow() = runTest {
+        val observed = CompletableDeferred<Unit>()
+        val player = FakePlayer()
+        var openedAt = -1L
+        var firstFrameDelay = -1L
+        val peer = object : PanelAssistantVoiceStreamPeer by player {
+            override fun open(grant: PanelAssistantVoiceStreamGrant, closed: () -> Unit, send: (ByteArray, Boolean) -> Unit) {
+                openedAt = testScheduler.currentTime
+                player.open(grant, closed, send)
+            }
+            override fun receive(frame: ByteArray, text: Boolean) {
+                firstFrameDelay = testScheduler.currentTime - openedAt
+                player.receive(frame, text)
+            }
+        }
+        val shadow = Shadow(listOf("screen"))
+        val connection = FakeConnection(Ha.accepting(
+            capabilities = listOf("state", "voice_stream_session"), voiceStream = streamGrant,
+        ))
+        val harness = harness(connection, shadow = shadow.reporter, voiceStream = PanelAssistantVoiceStream(peer),
+            observeForHello = { observed.await(); true })
+        try {
+            harness.owner.replaceDemand(DEMAND)
+            runCurrent()
+            advanceTimeBy(40_000)
+            observed.complete(Unit)
+            runCurrent()
+            connection.inbound.trySend(sendspin("handshake", false, null))
+            runCurrent()
+            assertEquals(listOf(false to "handshake"), player.received)
+            assertTrue("the native nursery allows 30 s to establish: $firstFrameDelay ms", firstFrameDelay in 0L until 30_000L)
+        } finally {
+            harness.owner.close()
+            runCurrent()
+        }
+    }
+
     @Test fun aGrantedSessionConnectsThePlayerAndAnUngrantedOneDoesNot() = runTest {
         val player = FakePlayer()
         val first = FakeConnection(Ha.accepting(capabilities = listOf("voice_stream_session"), voiceStream = streamGrant))
@@ -1358,6 +1397,82 @@ class PanelAssistantTransportOwnerTest {
         runCurrent()
         assertTrue("an ungranted session never connects the player", refused.events.none { it.startsWith("open") })
         ungranted.owner.close()
+    }
+
+    @Test fun aClosedVoiceLinkRecoversImmediatelyWithoutReplacingItsSession() = runTest {
+        val player = FakePlayer()
+        val stream = PanelAssistantVoiceStream(player)
+        val connection = FakeConnection(Ha.accepting(capabilities = listOf("voice_stream_session"), voiceStream = streamGrant))
+        val harness = harness(connection, voiceStream = stream)
+        try {
+            harness.owner.replaceDemand(DEMAND)
+            runCurrent()
+            val oldSender = player.send!!
+            val oldClose = player.closed!!
+            val held = async { stream.play("interrupted") }
+            runCurrent()
+            oldSender("queued-old-ciphertext".toByteArray(), false)
+            connection.inbound.trySend(streamEvent(JSONObject().put("kind", "sendspin_closed")))
+            runCurrent()
+            val resets = connection.sent.map(::JSONObject).filter { it.getString("type") == "panel_assistant/voice_stream_reset" }
+            assertEquals("known close requests an immediate reset", 1, resets.size)
+            val resetRequest = resets.single()
+            assertEquals("old server frames must not reach a replacement before its reset result", 1, player.events.count { it.startsWith("open") })
+            connection.inbound.trySend(sendspin("old-server-frame", false, null))
+            connection.inbound.trySend(streamEvent(JSONObject().put("kind", "sendspin_closed")))
+            runCurrent()
+            assertTrue(player.received.isEmpty())
+            connection.inbound.trySend(JSONObject().put("id", resetRequest.getLong("id")).put("type", "result").put("success", true).put("result", JSONObject()).toString())
+            runCurrent()
+            assertEquals("a known close starts recovery without advancing the retry clock", 2, player.events.count { it.startsWith("open") })
+            assertEquals(PanelAssistantTransportPhase.CONNECTED, harness.owner.status.phase)
+            assertEquals(1, connection.sent.map(::JSONObject).count { it.getString("type") == "panel_assistant/hello" })
+            assertEquals("failed", held.await().outcome)
+            oldSender("late-old-ciphertext".toByteArray(), false)
+            oldClose()
+            player.send!!("new-handshake".toByteArray(), false)
+            runCurrent()
+            val commands = connection.sent.map(::JSONObject)
+            assertEquals("old native close cannot reset the replacement", 1, commands.count { it.getString("type") == "panel_assistant/voice_stream_reset" })
+            val reset = commands.indexOfFirst { it.getString("type") == "panel_assistant/voice_stream_reset" }
+            assertTrue("reset is ordered before the replacement handshake", reset >= 0)
+            val following = commands.drop(reset + 1).filter { it.getString("type") == "panel_assistant/voice_stream_frame" }
+            assertEquals(listOf("new-handshake"), following.map { String(java.util.Base64.getDecoder().decode(it.getString("frame"))) })
+            connection.inbound.trySend(sendspin("new-server-frame", false, null))
+            runCurrent()
+            assertEquals(false to "new-server-frame", player.received.last())
+        } finally {
+            harness.owner.close()
+            runCurrent()
+        }
+    }
+
+    @Test fun aLocalVoiceCloseCannotRetryAnUnsupportedResetOrDisturbItsCarrier() = runTest {
+        val player = FakePlayer()
+        val stream = PanelAssistantVoiceStream(player)
+        val connection = FakeConnection(Ha.accepting(capabilities = listOf("voice_stream_session"), voiceStream = streamGrant))
+        val harness = harness(connection, voiceStream = stream)
+        try {
+            harness.owner.replaceDemand(DEMAND)
+            runCurrent()
+            val oldClose = player.closed!!
+            oldClose()
+            runCurrent()
+            val reset = connection.sent.map(::JSONObject).single { it.getString("type") == "panel_assistant/voice_stream_reset" }
+            connection.inbound.trySend(JSONObject().put("id", reset.getLong("id")).put("type", "result").put("success", false)
+                .put("error", JSONObject().put("code", "unknown_command")).toString())
+            runCurrent()
+            oldClose()
+            advanceTimeBy(30_001)
+            runCurrent()
+            assertEquals(1, connection.sent.map(::JSONObject).count { it.getString("type") == "panel_assistant/voice_stream_reset" })
+            assertEquals(1, player.events.count { it.startsWith("open") })
+            assertEquals(PanelAssistantTransportPhase.CONNECTED, harness.owner.status.phase)
+            assertTrue("normal carrier pings continue", connection.sent.map(::JSONObject).any { it.getString("type") == "ping" })
+        } finally {
+            harness.owner.close()
+            runCurrent()
+        }
     }
 
     @Test fun theSessionCarriesThePlayersFramesBothWaysInOrder() = runTest {

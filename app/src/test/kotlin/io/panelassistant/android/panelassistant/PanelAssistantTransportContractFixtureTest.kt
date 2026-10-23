@@ -148,7 +148,7 @@ internal class PanelAssistantTransportContractFixtureTest : PanelRuntimeRig() {
         val received = mutableListOf<ByteArray>()
         var send: ((ByteArray, Boolean) -> Unit)? = null
         override fun clientId() = null
-        override fun open(grant: PanelAssistantVoiceStreamGrant, send: (ByteArray, Boolean) -> Unit) { this.send = send }
+        override fun open(grant: PanelAssistantVoiceStreamGrant, closed: () -> Unit, send: (ByteArray, Boolean) -> Unit) { this.send = send }
         override fun receive(frame: ByteArray, text: Boolean) { received += frame }
         override fun mute() = Unit
         override fun unmute() = Unit
@@ -167,6 +167,7 @@ internal class PanelAssistantTransportContractFixtureTest : PanelRuntimeRig() {
                 PanelAssistantVoiceStream.EVENT_SENDSPIN, PanelAssistantVoiceStream.EVENT_STREAM_END -> {
                     val player = VectorPlayer()
                     val stream = PanelAssistantVoiceStream(player)
+                    stream.open("session", PanelAssistantVoiceStreamGrant("S".repeat(43), ByteArray(32)))
                     val frame = JSONObject().put("id", HELLO_ID).put("type", "event").put("event", payload)
                     assertTrue(name, stream.onFrame(frame, HELLO_ID))
                     val taken = player.received.isNotEmpty() || stream.ended(payload.optString("stream_id")) != null

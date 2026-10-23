@@ -36,6 +36,38 @@ class NavbarOverscanRecoveryTest {
         assertFalse(file.exists())
     }
 
+    /** Leaving Always on resets through this readback; while it could not verify, the bar stayed in
+     *  Always on whatever mode was chosen. */
+    @Test fun anAndroid81ReadbackVerifiesTheResetAndStillShowsACrop() = withRecovery { file, recovery, commands ->
+        assertTrue(DurableRecoveryMarker(file).arm())
+        commands.output = android81Readback(overscan = "overscan (0,0,0,56), ")
+
+        assertFalse(recovery.resetAndVerify())
+        assertTrue(file.isFile)
+
+        commands.output = android81Readback(overscan = "")
+        assertTrue(recovery.resetAndVerify())
+        assertFalse(file.exists())
+    }
+
+    /** The bar drops by this amount to sit on the glass below the crop, so it must be the crop in place. */
+    @Test fun theCropItReportsIsTheOneInPlace() = withRecovery { _, recovery, commands ->
+        assertTrue(recovery.applyBottom(56))
+        assertEquals(56, recovery.croppedPx)
+
+        commands.output = android81Readback(overscan = "overscan (0,0,0,56), ")
+        assertFalse(recovery.resetAndVerify())
+        assertEquals("a reset that did not verify leaves the crop", 56, recovery.croppedPx)
+
+        commands.output = android81Readback(overscan = "")
+        assertTrue(recovery.resetAndVerify())
+        assertEquals(0, recovery.croppedPx)
+
+        commands.runResult = { false }
+        assertFalse(recovery.applyBottom(56))
+        assertEquals("a refused crop is not held", 0, recovery.croppedPx)
+    }
+
     @Test fun malformedOrMissingReadbackRemainsRetryable() = withRecovery { file, recovery, commands ->
         assertTrue(DurableRecoveryMarker(file).arm())
         commands.output = "DisplayInfo unavailable"
@@ -159,6 +191,7 @@ class NavbarOverscanRecoveryTest {
         assertTrue("Always on must still succeed and draw its bar", recovery.applyBottom(56))
         assertFalse("arming here is what wedged every later transition", file.exists())
         assertTrue("no crop may be attempted", commands.runs.none { it.startsWith("wm overscan") })
+        assertEquals("so the bar keeps its place", 0, recovery.croppedPx)
     }
 
     @Test fun anImpossibleCropIsNotLeftPendingForever() = withRecovery { file, recovery, commands ->
@@ -211,6 +244,16 @@ class NavbarOverscanRecoveryTest {
             directory.deleteRecursively()
         }
     }
+
+    /** `dumpsys display` and `dumpsys window policy` from a Sonoff NSPanel 86 on Android 8.1, trimmed to
+     *  the lines the readback reads. Only the override line carries a crop; the firmware withholds 48 px
+     *  from apps either way. */
+    private fun android81Readback(overscan: String) = """
+        |      PhysicalDisplayInfo{480 x 480, 60.000004 fps, density 1.0, 169.333 x 174.171 dpi, secure true}
+        |    mBaseDisplayInfo=DisplayInfo{"Built-in Screen", uniqueId "local:0", app 480 x 480, real 480 x 480, largest app 480 x 480}
+        |    mOverrideDisplayInfo=DisplayInfo{"Built-in Screen", uniqueId "local:0", app 480 x 432, real 480 x 480, ${overscan}largest app 480 x 432}
+        |    mOverscanScreen=(0,0) 480x480
+    """.trimMargin()
 
     private class Commands {
         val runs = mutableListOf<String>()

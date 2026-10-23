@@ -30,6 +30,9 @@ internal class PanelAssistantVoiceStream(
 
     private val lock = Any()
     private var token: String? = null
+    private var grant: PanelAssistantVoiceStreamGrant? = null
+    private var sender: Any? = null
+    private var resetRequest: Long? = null
     private val outbound = ArrayDeque<JSONObject>()
     private val requests = HashSet<Long>()
 
@@ -48,15 +51,37 @@ internal class PanelAssistantVoiceStream(
     fun open(sessionToken: String, grant: PanelAssistantVoiceStreamGrant) {
         synchronized(lock) {
             token = sessionToken
+            this.grant = grant
             outbound.clear()
             requests.clear()
+            resetRequest = null
             stopped = null
+            connectPlayer()
         }
-        player.open(grant) { frame, text ->
-            // One Sendspin message is at most one Noise frame; Panel Assistant refuses anything larger.
+    }
+
+    /** Called under lock: a sender belongs only to this player lifetime, including its close callback. */
+    private fun connectPlayer() {
+        val granted = grant ?: return
+        val mine = Any().also { sender = it }
+        player.open(granted, closed = { synchronized(lock) { if (sender === mine) reset() } }) { frame, text ->
             if (frame.size > MAX_FRAME_BYTES) return@open log("voice stream dropped an oversized frame (${frame.size} bytes)")
-            enqueue(JSONObject().put("type", COMMAND_FRAME).put("frame", Base64.getEncoder().encodeToString(frame)).put("text", text))
+            synchronized(lock) {
+                if (sender !== mine) return@open
+                enqueue(JSONObject().put("type", COMMAND_FRAME).put("frame", Base64.getEncoder().encodeToString(frame)).put("text", text))
+            }
         }
+    }
+
+    /** The ordered reset result separates old server frames from the replacement handshake. */
+    private fun reset() {
+        if (token == null || sender == null) return
+        sender = null
+        outbound.clear()
+        resetRequest = null
+        player.close()
+        ends.values.filter { !it.isCompleted }.forEach { it.complete(VoiceStreamEnd(OUTCOME_FAILED, listenAfter = false)) }
+        enqueue(JSONObject().put("type", COMMAND_RESET))
     }
 
     /** The next command to send as message [id], or null when none is waiting. */
@@ -64,6 +89,7 @@ internal class PanelAssistantVoiceStream(
         val session = token ?: return null
         val item = outbound.removeFirstOrNull() ?: return null
         requests += id
+        if (item.optString("type") == COMMAND_RESET) resetRequest = id
         item.put("id", id).put("session", session).toString()
     }
 
@@ -76,6 +102,7 @@ internal class PanelAssistantVoiceStream(
                 val event = frame.optJSONObject("event") ?: return false
                 when (event.optString("kind")) {
                     EVENT_SENDSPIN -> {
+                        if (synchronized(lock) { sender == null }) return true
                         val bytes = (event.opt("frame") as? String)?.let { runCatching { Base64.getDecoder().decode(it) }.getOrNull() }
                         val text = event.opt("text") as? Boolean
                         val streamId = event.opt("stream_id").takeUnless { it == JSONObject.NULL }
@@ -86,6 +113,7 @@ internal class PanelAssistantVoiceStream(
                         streamIdOf(streamId)?.let(::playing)
                         player.receive(bytes, text)
                     }
+                    EVENT_CLOSED -> synchronized(lock) { reset() }
                     EVENT_STREAM_END -> {
                         val streamId = streamIdOf(event.opt("stream_id"))
                         val outcome = (event.opt("outcome") as? String)?.takeIf { it in OUTCOMES }
@@ -101,6 +129,10 @@ internal class PanelAssistantVoiceStream(
             }
             "result" -> synchronized(lock) {
                 if (!requests.remove(id)) return false
+                if (id == resetRequest) {
+                    resetRequest = null
+                    if (frame.opt("success") == true) connectPlayer()
+                }
                 if (frame.opt("success") != true) {
                     log("voice stream command refused: ${frame.optJSONObject("error")?.optString("code").orEmpty().ifEmpty { "failed" }}")
                 }
@@ -114,6 +146,9 @@ internal class PanelAssistantVoiceStream(
     fun close() {
         val held = synchronized(lock) {
             token = null
+            grant = null
+            sender = null
+            resetRequest = null
             outbound.clear()
             requests.clear()
             stopped = null
@@ -188,6 +223,8 @@ internal class PanelAssistantVoiceStream(
 
     companion object {
         const val COMMAND_FRAME = "panel_assistant/voice_stream_frame"
+        const val COMMAND_RESET = "panel_assistant/voice_stream_reset"
+        const val EVENT_CLOSED = "sendspin_closed"
         const val COMMAND_STOP = "panel_assistant/voice_stream_stop"
         const val EVENT_SENDSPIN = "sendspin"
         const val EVENT_STREAM_END = "voice_stream_end"

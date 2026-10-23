@@ -309,13 +309,13 @@ internal class VoiceStreamPlayer(
         return identity
     }
 
-    override fun open(grant: PanelAssistantVoiceStreamGrant, send: (frame: ByteArray, text: Boolean) -> Unit) {
+    override fun open(grant: PanelAssistantVoiceStreamGrant, closed: () -> Unit, send: (frame: ByteArray, text: Boolean) -> Unit) {
         if (!native.available) return
         val mine = session.incrementAndGet()
         val queue = LinkedBlockingQueue<Inbound>()
         inbound = queue
         muted = false
-        loop.execute { runSession(mine, grant, queue, send) }
+        loop.execute { runSession(mine, grant, queue, closed, send) }
     }
 
     /** Called on the session loop, in session order; stamped now, delivered by the inbound thread. */
@@ -339,7 +339,7 @@ internal class VoiceStreamPlayer(
         inbound = null
     }
 
-    private fun runSession(mine: Long, grant: PanelAssistantVoiceStreamGrant, queue: LinkedBlockingQueue<Inbound>, send: (ByteArray, Boolean) -> Unit) {
+    private fun runSession(mine: Long, grant: PanelAssistantVoiceStreamGrant, queue: LinkedBlockingQueue<Inbound>, closed: () -> Unit, send: (ByteArray, Boolean) -> Unit) {
         if (session.get() != mine) return
         val psk = grant.psk()
         val written = try {
@@ -359,7 +359,7 @@ internal class VoiceStreamPlayer(
         val handle = SendspinHandle(raw, native::destroy)
         val writers = mutableListOf<StreamWriter>()
         var verified = false
-        val link = SessionLink(handle, mine, queue, send)
+        val link = SessionLink(handle, mine, queue, closed, send)
         try {
             link.start()
             native.connect(raw, SESSION_URL)
@@ -430,6 +430,7 @@ internal class VoiceStreamPlayer(
         private val handle: SendspinHandle,
         private val mine: Long,
         private val queue: LinkedBlockingQueue<Inbound>,
+        private val closed: () -> Unit,
         private val send: (ByteArray, Boolean) -> Unit,
     ) {
         @Volatile private var transportId = 0
@@ -454,6 +455,7 @@ internal class VoiceStreamPlayer(
                         transportId = 0
                         handle.call(Unit) { native.deliver(it, id, SendspinNative.CLOSE, null, 0L) }
                         Log.i(TAG, "voice stream connection closed by the player")
+                        closed()
                     }
                 }
             }

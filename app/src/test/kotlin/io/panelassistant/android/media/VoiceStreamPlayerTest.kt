@@ -247,6 +247,23 @@ class VoiceStreamPlayerTest {
             player.open(PanelAssistantVoiceStreamGrant(serverId, ByteArray(32))) { frame, text -> sent += text to String(frame, Charsets.ISO_8859_1) }
         }
 
+    @Test fun aNativeCloseIsReportedToTheSessionThatCanRecoverIt() {
+        val library = Library()
+        val speakers = Speakers()
+        val closed = CountDownLatch(1)
+        val player = VoiceStreamPlayer(temp.newFolder(), { "Panel" }, "test", native = library, openOutput = speakers.factory)
+        try {
+            player.open(PanelAssistantVoiceStreamGrant(serverId, ByteArray(32)), closed = { closed.countDown() }) { _, _ -> }
+            library.request(SendspinNative.OPEN, 5)
+            await("the library's transport opened") { library.delivered.any { it.first == 5 && it.second == SendspinNative.OPEN } }
+            library.request(SendspinNative.CLOSE, 5)
+            assertTrue("known native close reaches its recovery owner immediately", closed.await(2, TimeUnit.SECONDS))
+        } finally {
+            player.close()
+            assertTrue(library.destroyedLatch.await(10, TimeUnit.SECONDS))
+        }
+    }
+
     /** 20 ms of non-silent mono PCM, distinct per [n]. */
     private fun chunk(n: Int) = ByteArray(RATE / 50 * FRAME_BYTES) { (n + 1).toByte() }
 

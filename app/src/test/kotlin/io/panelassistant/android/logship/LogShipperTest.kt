@@ -53,8 +53,8 @@ class LogShipperTest {
             connected.countDown()
         }
 
-        override fun send(lines: List<String>) {
-            this.lines.addAll(lines)
+        override fun send(lines: List<CapturedLogLine>) {
+            this.lines.addAll(lines.map { it.line })
         }
 
         override fun close() {
@@ -98,7 +98,7 @@ class LogShipperTest {
             sinkFactory = LogSinkFactory { _, encode ->
                 object : LogSink {
                     override fun connect() = Unit
-                    override fun send(lines: List<String>) { lines.forEach { framed += encode(it) } }
+                    override fun send(lines: List<CapturedLogLine>) { lines.forEach { framed += encode(it) } }
                     override fun close() = Unit
                 }
             },
@@ -171,7 +171,7 @@ class LogShipperTest {
         run.offer("two")
         run.offer("three")
 
-        assertEquals(listOf("two", "three"), run.takeBatch(2, 0))
+        assertEquals(listOf("two", "three"), run.takeBatch(2, 0).map { it.line })
         assertEquals(1L, run.status().dropped)
         assertEquals(1L, instrumentedDrops.get())
 
@@ -198,13 +198,13 @@ class LogShipperTest {
             repeat(64) { run.offerSystem(completeEntry) }
             run.offerSystem(completeEntry)
             assertEquals(1L, run.status().dropped)
-            assertEquals(List(64) { completeEntry }, run.takeBatch(100, 0))
+            assertEquals(List(64) { completeEntry }, run.takeBatch(100, 0).map { it.line })
 
             now.set(1_000_000_000L)
             repeat(16) { run.offerSystem(completeEntry) }
             run.offerSystem(completeEntry)
             assertEquals(2L, run.status().dropped)
-            assertEquals(List(16) { completeEntry }, run.takeBatch(100, 0))
+            assertEquals(List(16) { completeEntry }, run.takeBatch(100, 0).map { it.line })
 
             run.offerSystem("z".repeat(8_193))
             assertEquals(3L, run.status().dropped)
@@ -338,7 +338,7 @@ class LogShipperTest {
             sinkFactory = LogSinkFactory { _, _ ->
                 object : LogSink {
                     override fun connect() = Unit
-                    override fun send(lines: List<String>) {
+                    override fun send(lines: List<CapturedLogLine>) {
                         sendAttempted.countDown()
                         throw IOException("collector rejected line")
                     }
@@ -373,7 +373,7 @@ class LogShipperTest {
                 if (generations.getAndIncrement() == 0) {
                     object : LogSink {
                         override fun connect() = Unit
-                        override fun send(lines: List<String>) {
+                        override fun send(lines: List<CapturedLogLine>) {
                             throw IOException("operator:super-secret@collector.lan refused connection")
                         }
                         override fun close() = Unit
@@ -428,7 +428,7 @@ class LogShipperTest {
             sinkFactory = LogSinkFactory { _, _ ->
                 object : LogSink {
                     override fun connect() = Unit
-                    override fun send(lines: List<String>) {
+                    override fun send(lines: List<CapturedLogLine>) {
                         throw IOException(
                             "HTTP 401 for https://operator:super-secret@collector.lan/ingest?token=abc123",
                         )
@@ -526,8 +526,8 @@ class LogShipperTest {
                         releaseConnect.await(2, TimeUnit.SECONDS)
                     }
 
-                    override fun send(lines: List<String>) {
-                        sent.addAll(lines)
+                    override fun send(lines: List<CapturedLogLine>) {
+                        sent.addAll(lines.map { it.line })
                     }
 
                     override fun close() {
@@ -577,7 +577,7 @@ class LogShipperTest {
                         closeCalled.await(10, TimeUnit.SECONDS)
                         throw IOException("closed")
                     }
-                    override fun send(lines: List<String>) = Unit
+                    override fun send(lines: List<CapturedLogLine>) = Unit
                     override fun close() {
                         closeCalled.countDown()
                     }

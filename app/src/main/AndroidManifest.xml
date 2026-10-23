@@ -148,12 +148,15 @@
              front-door launch ambiguous (Android resolves it to the system chooser instead of
              MainActivity, hiding the QR standing screen). MainActivity stays the sole launcher icon.
              not become the default merely by being installed. exported so the privileged am start path
-             can open it. -->
+             can open it. Its own task affinity keeps this app's other pages out of its task: sharing the
+             package's affinity let a page opened from the drawer stack on top of it, and every later
+             Launcher press then brought that page forward instead of the drawer. -->
         <activity
             android:name="io.panelassistant.android.AdminLauncherActivity"
             android:exported="true"
             android:label="@string/admin_launcher_activity_label"
             android:excludeFromRecents="true"
+            android:taskAffinity="${applicationId}.launcher"
             android:theme="@style/Theme.AppCompat.DayNight">
             <!-- Selectable / last-resort HOME. Companion remains the default home app. -->
             <intent-filter>

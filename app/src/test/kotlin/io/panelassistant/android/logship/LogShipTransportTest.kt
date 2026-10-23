@@ -17,7 +17,9 @@ import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.UnknownHostException
+import java.time.Instant
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -369,6 +371,70 @@ class LogShipTransportTest {
                 harness.start()
                 harness.emit(logcatLine("I", "udp attempt"))
                 await { receiver.datagrams.isNotEmpty() }
+            }
+        }
+    }
+
+    @Test fun queuedTcpRecordsKeepCaptureTimes() {
+        TcpReceiver().use { receiver ->
+            queuedRecordsKeepCaptureTimes(LogShipEndpoint.SYSLOG_TCP, receiver.port) {
+                receiver.text().lines().filter { it.isNotEmpty() }
+            }
+        }
+    }
+
+    @Test fun queuedUdpRecordsKeepCaptureTimes() {
+        UdpReceiver().use { receiver ->
+            queuedRecordsKeepCaptureTimes(LogShipEndpoint.SYSLOG_UDP, receiver.port) {
+                receiver.datagrams.map { it.toString(Charsets.UTF_8) }
+            }
+        }
+    }
+
+    @Test fun queuedHttpRecordsKeepCaptureTimes() {
+        HttpReceiver().use { receiver ->
+            queuedRecordsKeepCaptureTimes(LogShipEndpoint.HTTP, receiver.port) {
+                receiver.bodies.flatMap { it.lines() }.filter { it.isNotEmpty() }
+            }
+        }
+    }
+
+    private fun queuedRecordsKeepCaptureTimes(protocol: String, port: Int, received: () -> List<String>) {
+        val connecting = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val held = LogSinkFactory { target, encode ->
+            NetworkLogSinkFactory.create(target, encode, LogAddressResolver { _, _ ->
+                connecting.countDown()
+                check(release.await(5, TimeUnit.SECONDS))
+                listOf(InetAddress.getLoopbackAddress())
+            }, 5_000L)
+        }
+        Harness(protocol, port, sinkFactory = held).use { harness ->
+            try {
+                harness.start()
+                assertTrue(connecting.await(2, TimeUnit.SECONDS))
+                val captured = (1..2).map { number ->
+                    val before = System.currentTimeMillis()
+                    harness.emit(logcatLine("I", "queued $number"))
+                    val after = System.currentTimeMillis()
+                    Thread.sleep(20)
+                    before..after
+                }
+                release.countDown()
+                await { received().size == 2 }
+                val frames = received()
+                captured.forEachIndexed { index, times ->
+                    val frame = frames[index]
+                    val timestamp = if (protocol == LogShipEndpoint.HTTP) {
+                        JSONObject(frame).getString("timestamp")
+                    } else {
+                        requireNotNull(RFC5424.matchEntire(frame.trimEnd('\n'))).groupValues[2]
+                    }
+                    assertTrue(frame, "queued ${index + 1}" in frame)
+                    assertTrue("$timestamp must be in capture interval $times", Instant.parse(timestamp).toEpochMilli() in times)
+                }
+            } finally {
+                release.countDown()
             }
         }
     }

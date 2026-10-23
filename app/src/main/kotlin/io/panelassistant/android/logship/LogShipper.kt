@@ -73,14 +73,17 @@ internal fun logShipTrafficText(sent: Long, dropped: Long): String =
     "$sent ${if (sent == 1L) "record" else "records"} sent" +
         if (dropped > 0) " · $dropped dropped" else ""
 
+/** Capture time belongs to the record, including while its sink is unavailable. */
+internal data class CapturedLogLine(val line: String, val capturedAtMs: Long)
+
 /** A transport is created inert, attached to its run, and only then allowed to block in [connect]. */
 internal interface LogSink : AutoCloseable {
     fun connect()
-    fun send(lines: List<String>)
+    fun send(lines: List<CapturedLogLine>)
 }
 
 internal fun interface LogSinkFactory {
-    fun create(target: LogShipTarget, encode: (String) -> String): LogSink
+    fun create(target: LogShipTarget, encode: (CapturedLogLine) -> String): LogSink
 }
 
 /**
@@ -131,11 +134,12 @@ internal class LogShipRun(
     /** Bounded, drop-oldest admission. A closed generation rejects lines from a late capture callback. */
     fun offer(line: String) {
         if (!open) return
-        if (!queue.offer(line)) {
+        val captured = CapturedLogLine(line, System.currentTimeMillis())
+        if (!queue.offer(captured)) {
             queue.poll()
             dropped.incrementAndGet()
             onDropped?.invoke(1)
-            queue.offer(line)
+            queue.offer(captured)
         }
     }
 
@@ -155,14 +159,14 @@ internal class LogShipRun(
         if (admitted) offer(entry) else recordDropped(1)
     }
 
-    /** A close wake-up is deliberately not a String, so it can never collide with captured content. */
-    fun takeBatch(max: Int, timeoutSeconds: Long): List<String> {
-        val first = queue.poll(timeoutSeconds, TimeUnit.SECONDS) as? String ?: return emptyList()
-        val out = ArrayList<String>(max)
+    /** A close wake-up is deliberately not a CapturedLogLine, so it can never collide with captured content. */
+    fun takeBatch(max: Int, timeoutSeconds: Long): List<CapturedLogLine> {
+        val first = queue.poll(timeoutSeconds, TimeUnit.SECONDS) as? CapturedLogLine ?: return emptyList()
+        val out = ArrayList<CapturedLogLine>(max)
         out.add(first)
         while (out.size < max) {
             val next = queue.poll() ?: break
-            if (next is String) out.add(next)
+            if (next is CapturedLogLine) out.add(next)
         }
         return out
     }
@@ -398,7 +402,7 @@ class LogShipper internal constructor(
         // Draining what is already queued never adds latency — the poll after the first line does not
         // block — so there is no reason for the two to have ever been coupled.
         val batchMax = BATCH_MAX
-        val encode: (String) -> String = if (target.protocol == LogShipEndpoint.HTTP) {
+        val encode: (CapturedLogLine) -> String = if (target.protocol == LogShipEndpoint.HTTP) {
             { line -> jsonEvent(line, target.panelId) }
         } else {
             { line -> syslogFrame(line, target.panelId) }
@@ -448,7 +452,7 @@ class LogShipper internal constructor(
                             outcome = outcome,
                             workUnits = batch.size.toLong(),
                             workBytes = if (featureCosts.recordingEnabled) {
-                                boundedUtf8Bytes(batch, SHIP_WORK_BYTES_MAX)
+                                boundedUtf8Bytes(batch.asSequence().map { it.line }.asIterable(), SHIP_WORK_BYTES_MAX)
                             } else {
                                 0L
                             },
@@ -492,13 +496,13 @@ class LogShipper internal constructor(
         return "${e.javaClass.simpleName} (${LogShipEndpoint.displayHost(host)})"
     }
 
-    private fun timestamp(): String = synchronized(rfc3339) { rfc3339.format(Date()) }
+    private fun timestamp(capturedAtMs: Long): String = synchronized(rfc3339) { rfc3339.format(Date(capturedAtMs)) }
 
-    private fun syslogFrame(line: String, panelId: String): String =
-        LogShipRecord.syslogFrame(FACILITY_USER * 8 + severityOf(line), timestamp(), panelId, build, line)
+    private fun syslogFrame(record: CapturedLogLine, panelId: String): String =
+        LogShipRecord.syslogFrame(FACILITY_USER * 8 + severityOf(record.line), timestamp(record.capturedAtMs), panelId, build, record.line)
 
-    private fun jsonEvent(line: String, panelId: String): String =
-        LogShipRecord.jsonEvent(timestamp(), panelId, build, line)
+    private fun jsonEvent(record: CapturedLogLine, panelId: String): String =
+        LogShipRecord.jsonEvent(timestamp(record.capturedAtMs), panelId, build, record.line)
 
     private fun severityOf(line: String): Int {
         val level = (LEVEL_RE.find(line) ?: LONG_LEVEL_RE.find(line))?.groupValues?.get(1) ?: return SEV_INFO
@@ -625,12 +629,12 @@ internal data class LogSinkProbeResult(
 )
 
 internal object NetworkLogSinkFactory : LogSinkFactory {
-    override fun create(target: LogShipTarget, encode: (String) -> String): LogSink =
+    override fun create(target: LogShipTarget, encode: (CapturedLogLine) -> String): LogSink =
         create(target, encode, ProductionLogAddressResolver, LogShipper.NETWORK_TIMEOUT_MS.toLong())
 
     internal fun create(
         target: LogShipTarget,
-        encode: (String) -> String,
+        encode: (CapturedLogLine) -> String,
         resolver: LogAddressResolver,
         timeoutMs: Long,
     ): LogSink =
@@ -766,7 +770,7 @@ private fun postAcrossCandidates(
 /** RFC6587 non-transparent framing: newline-delimited RFC5424 frames on a stream. */
 private class TcpSyslogLogSink(
     private val target: LogShipTarget,
-    private val encode: (String) -> String,
+    private val encode: (CapturedLogLine) -> String,
     private val resolver: LogAddressResolver,
     private val timeoutMs: Long,
 ) : LogSink {
@@ -802,7 +806,7 @@ private class TcpSyslogLogSink(
         throw last ?: IOException("no address resolved for ${target.host}")
     }
 
-    override fun send(lines: List<String>) {
+    override fun send(lines: List<CapturedLogLine>) {
         val active = socket ?: throw IOException("tcp sink used before connect")
         val out = active.getOutputStream()
         for (line in lines) out.write(encode(line).toByteArray(Charsets.UTF_8))
@@ -824,7 +828,7 @@ private class TcpSyslogLogSink(
  */
 private class UdpSyslogLogSink(
     private val target: LogShipTarget,
-    private val encode: (String) -> String,
+    private val encode: (CapturedLogLine) -> String,
     private val resolver: LogAddressResolver,
     private val timeoutMs: Long,
 ) : LogSink {
@@ -843,7 +847,7 @@ private class UdpSyslogLogSink(
     /** The address datagrams are actually going to, so the status line can name it. */
     fun resolvedAddress(): InetAddress? = address
 
-    override fun send(lines: List<String>) {
+    override fun send(lines: List<CapturedLogLine>) {
         val destination = address ?: throw IOException("udp sink used before connect")
         for (line in lines) {
             // The trailing newline is stream framing (RFC6587). Inside a datagram the length is the
@@ -880,7 +884,7 @@ internal fun truncateUtf8(text: String, maxBytes: Int): ByteArray {
 
 private class HttpLogSink(
     private val target: LogShipTarget,
-    private val encode: (String) -> String,
+    private val encode: (CapturedLogLine) -> String,
     private val resolver: LogAddressResolver,
     private val timeoutMs: Long,
 ) : LogSink {
@@ -896,7 +900,7 @@ private class HttpLogSink(
         candidates = resolveCandidates(target.host, resolver, NetworkDeadline(timeoutMs))
     }
 
-    override fun send(lines: List<String>) {
+    override fun send(lines: List<CapturedLogLine>) {
         val body = lines.joinToString("\n") { encode(it) }.toByteArray(Charsets.UTF_8)
         val result = postAcrossCandidates(target, candidates, body, NetworkDeadline(timeoutMs)) { active ->
             synchronized(this) {

@@ -52,7 +52,7 @@ internal interface PanelAssistantVoiceStreamPeer {
     fun clientId(): String?
 
     /** The session granted the stream: connect, sending each of the player's messages to [send] in order. */
-    fun open(grant: PanelAssistantVoiceStreamGrant, send: (frame: ByteArray, text: Boolean) -> Unit)
+    fun open(grant: PanelAssistantVoiceStreamGrant, closed: () -> Unit = {}, send: (frame: ByteArray, text: Boolean) -> Unit)
 
     /** One message Panel Assistant sent; called in session order. */
     fun receive(frame: ByteArray, text: Boolean)
@@ -392,7 +392,6 @@ internal class PanelAssistantTransportOwner(
                                 val streamGrant = outcome.session.voiceStream
                                 val streaming = voiceStream?.takeIf { streamGrant != null }
                                 val reason = try {
-                                    if (streaming != null && streamGrant != null) streaming.open(outcome.session.token, streamGrant)
                                     if (reporting != null && !observeForHello()) {
                                         attemptedRoute = null // a local owner change, not the route's fault
                                         throw PanelAssistantProtocolException("panel state owner changed during hello")
@@ -402,6 +401,8 @@ internal class PanelAssistantTransportOwner(
                                         PanelAssistantTransportProtocol.CAPABILITY_UNKNOWN_STATE in outcome.session.capabilities,
                                     )
                                     speaking?.open(opened, outcome.session.token, session.baseUrl)
+                                    // Start the handshake only once initial sampling can no longer block its carrier.
+                                    if (streaming != null && streamGrant != null) streaming.open(outcome.session.token, streamGrant)
                                     holdSession(run, opened, outcome.session, reporting, commanding, speaking, streaming)
                                 } finally {
                                     publish(run, PanelAssistantTransportStatus(PanelAssistantTransportPhase.WAITING, attempt))

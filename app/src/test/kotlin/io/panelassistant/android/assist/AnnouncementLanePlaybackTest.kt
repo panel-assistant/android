@@ -52,7 +52,7 @@ class AnnouncementLanePlaybackTest {
         val stream = io.panelassistant.android.panelassistant.PanelAssistantVoiceStream(
             object : io.panelassistant.android.panelassistant.PanelAssistantVoiceStreamPeer {
                 override fun clientId() = "C".repeat(43)
-                override fun open(grant: io.panelassistant.android.panelassistant.PanelAssistantVoiceStreamGrant, send: (ByteArray, Boolean) -> Unit) = Unit
+                override fun open(grant: io.panelassistant.android.panelassistant.PanelAssistantVoiceStreamGrant, closed: () -> Unit, send: (ByteArray, Boolean) -> Unit) = Unit
                 override fun receive(frame: ByteArray, text: Boolean) = Unit
                 override fun mute() { player += "mute" }
                 override fun unmute() { player += "unmute" }

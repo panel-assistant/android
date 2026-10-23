@@ -372,7 +372,7 @@ internal class ManageOperations(
             val held = subscriptions.getOrPut(origin.subscriptionOwner) { LinkedHashMap() }
             held[family]?.let { shared -> return shared.attach(sink, args) }
             if (held.size >= maxSubscriptionsPerOrigin) return null
-            val created = FamilySubscription(definition, origin, sink, args)
+            val created = FamilySubscription(definition, origin, args)
             held[family] = created
             val handle = created.attach(sink, args)
             created.start()
@@ -427,7 +427,6 @@ internal class ManageOperations(
     private inner class FamilySubscription(
         private val definition: ManageFamily,
         private val origin: CommandOrigin,
-        @Volatile private var sink: ManageSink,
         @Volatile private var args: JSONObject,
     ) {
         private var worker: Job? = null
@@ -444,7 +443,7 @@ internal class ManageOperations(
         fun attach(newSink: ManageSink, newArgs: JSONObject): Handle {
             val handle = Handle(newSink, newArgs)
             handles += handle
-            replaceSink(newSink, newArgs)
+            replaceArgs(newArgs)
             // A new subscriber gets the current value now, not after the family's floor: a fresh read, or for a log
             // viewer its own source's backlog, as a new stream does.
             if (worker != null) {
@@ -464,7 +463,7 @@ internal class ManageOperations(
                     true
                 } else {
                     // A late unsubscribe of an older id leaves the newer subscriber in charge.
-                    handles.last().let { replaceSink(it.handleSink, it.handleArgs) }
+                    replaceArgs(handles.last().handleArgs)
                     false
                 }
             }
@@ -486,8 +485,7 @@ internal class ManageOperations(
             }
         }
 
-        fun replaceSink(replacement: ManageSink, newArgs: JSONObject) {
-            sink = replacement
+        fun replaceArgs(newArgs: JSONObject) {
             args = newArgs
             synchronized(slot) { last?.let { last = null } }
         }
@@ -555,9 +553,13 @@ internal class ManageOperations(
             if (send) deliver(update)
         }
 
-        /** Sends [update] to every live subscriber; the slot frees once each has sent it. */
+        /** Sends [update] to every live subscriber; the slot frees once each has sent it. A read that finishes after the last close sends nothing. */
         private fun deliver(update: Update) {
-            val sinks = synchronized(lock) { handles.map { it.handleSink } }.ifEmpty { listOf(sink) }
+            val sinks = synchronized(lock) { handles.map { it.handleSink } }
+            if (sinks.isEmpty()) {
+                synchronized(slot) { outstanding = false; unsent = null }
+                return
+            }
             val remaining = java.util.concurrent.atomic.AtomicInteger(sinks.size)
             sinks.forEach { target ->
                 val delivered = java.util.concurrent.atomic.AtomicBoolean(false)

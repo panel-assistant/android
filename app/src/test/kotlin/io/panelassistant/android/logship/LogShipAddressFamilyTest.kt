@@ -88,11 +88,11 @@ class LogShipAddressFamilyTest {
 
             val sink = NetworkLogSinkFactory.create(
                 LogShipTarget("collector.test", port, LogShipEndpoint.SYSLOG_TCP, "panel"),
-                { it },
+                { it.line },
                 LogAddressResolver { _, _ -> listOf(dead, live) },
                 1_500,
             )
-            sink.use { it.connect(); it.send(listOf("<14>1 t h ha-paneld - - - fallback-probe\n")) }
+            sink.use { it.connect(); it.send(listOf(CapturedLogLine("<14>1 t h ha-paneld - - - fallback-probe\n", 0L))) }
             val frame = requireNotNull(received.poll(10, java.util.concurrent.TimeUnit.SECONDS)) {
                 "nothing arrived at the live address"
             }
@@ -111,11 +111,11 @@ class LogShipAddressFamilyTest {
             serveHttp(accepted, 204, requests)
             val sink = NetworkLogSinkFactory.create(
                 LogShipTarget("collector.example", rejected.localPort, LogShipEndpoint.HTTP, "panel"),
-                { it },
+                { it.line },
                 LogAddressResolver { _, _ -> listOf(first, second) },
                 2_000,
             )
-            sink.use { it.connect(); it.send(listOf("{\"message\":\"fallback\"}")) }
+            sink.use { it.connect(); it.send(listOf(CapturedLogLine("{\"message\":\"fallback\"}", 0L))) }
             val seen = listOf(requireNotNull(requests.poll(2, TimeUnit.SECONDS)), requireNotNull(requests.poll(2, TimeUnit.SECONDS)))
             assertTrue(seen.all { "Host: collector.example:${rejected.localPort}" in it })
         } }
@@ -187,13 +187,13 @@ class LogShipAddressFamilyTest {
             Thread { runCatching { listener.accept() }.getOrNull()?.let { accepted.offer(it) } }.apply { isDaemon = true }.start()
             val sink = NetworkLogSinkFactory.create(
                 LogShipTarget("collector.test", listener.localPort, LogShipEndpoint.HTTP, "panel"),
-                { it },
+                { it.line },
                 LogAddressResolver { _, _ -> listOf(InetAddress.getLoopbackAddress()) },
                 4_000,
             )
             sink.connect()
             val failure = AtomicReference<Throwable?>()
-            val worker = Thread { runCatching { sink.send(listOf("{}")) }.exceptionOrNull().let(failure::set) }
+            val worker = Thread { runCatching { sink.send(listOf(CapturedLogLine("{}", 0L))) }.exceptionOrNull().let(failure::set) }
             worker.start()
             val socket = requireNotNull(accepted.poll(2, TimeUnit.SECONDS))
             sink.close()
@@ -219,13 +219,13 @@ class LogShipAddressFamilyTest {
             serveHttp(routes.second, 204, requests)
             val sink = NetworkLogSinkFactory.create(
                 LogShipTarget("collector.test", routes.port, LogShipEndpoint.HTTP, "panel"),
-                { it },
+                { it.line },
                 LogAddressResolver { _, _ -> listOf(first, first, second) },
                 DEADLINE_MS,
             )
             sink.connect()
             try {
-                assertThrows(java.io.IOException::class.java) { sink.send(listOf("{}")) }
+                assertThrows(java.io.IOException::class.java) { sink.send(listOf(CapturedLogLine("{}", 0L))) }
                 assertTrue("first route did not actually hang", hangs.acceptedOne())
                 assertTrue("the second route received a POST after the shared deadline", requests.isEmpty())
             } finally {

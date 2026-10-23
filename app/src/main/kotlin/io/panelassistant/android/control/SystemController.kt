@@ -78,7 +78,7 @@ class SystemController(
      * safety boundary: never bypass it through su or an in-process background activity start. */
     private fun privilegedStart(component: String): PrivilegedStartResult {
         if (!AndroidInput.isComponent(component)) return PrivilegedStartResult.FAILED
-        return when (daemon.send("START $component")) {
+        return when ((daemon.sendLong("START $component", 30_000L) as? DaemonLongResult.Reply)?.value) {
             "OK" -> PrivilegedStartResult.STARTED
             "BUSY" -> PrivilegedStartResult.BLOCKED
             else -> if (root.run("am start -n $component")) {
@@ -185,7 +185,7 @@ class SystemController(
             return started
         }
         if (!AndroidInput.isPackage(pkg)) { Log.w(TAG, "reload: invalid or missing dashboard package"); return false }
-        val daemonReply = daemon.send("RELOAD $pkg")
+        val daemonReply = (daemon.sendLong("RELOAD $pkg", 30_000L) as? DaemonLongResult.Reply)?.value
         if (daemonReply == "BUSY") {
             Log.i(TAG, "dashboard reload refused while helper owns Companion data")
             return false
@@ -352,7 +352,7 @@ class SystemController(
         // one admitted attempt (never falling through to another transport), while the automatic path
         // tries them in order via the shared router.
         val attempts = arrayOf(
-            EffectAttempt(PrivilegeRoute.DAEMON) { daemon.send("SETHOME $component") == "OK" },
+            EffectAttempt(PrivilegeRoute.DAEMON) { (daemon.sendLong("SETHOME $component", 30_000L) as? DaemonLongResult.Reply)?.value == "OK" },
             EffectAttempt(PrivilegeRoute.SU) { root.run("cmd package set-home-activity $component") },
         )
         if (admittedRoute != null) {
@@ -474,7 +474,7 @@ class SystemController(
         if (!AndroidInput.isPackage(pkg)) return AppState.UNKNOWN
         return ShortOperationRouter.value(
             ValueAttempt(PrivilegeRoute.DAEMON) {
-                when (daemon.send("APPSTATE $pkg")) {
+                when ((daemon.sendLong("APPSTATE $pkg", 30_000L) as? DaemonLongResult.Reply)?.value) {
                     "FG" -> AppState.FG
                     "BG" -> AppState.BG
                     "DEAD" -> AppState.DEAD

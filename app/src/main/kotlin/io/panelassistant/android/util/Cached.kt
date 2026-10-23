@@ -13,7 +13,7 @@ import java.util.concurrent.atomic.AtomicLong
  */
 class Cached<T : Any>(
     private val ttlMs: Long,
-    private val nowMs: () -> Long = { System.nanoTime() / 1_000_000L },
+    private val nowMs: () -> Long = MONOTONIC_MS,
     private val supplier: () -> T,
 ) {
     @Volatile private var value: T? = null
@@ -99,5 +99,10 @@ class Cached<T : Any>(
         val built = builtAt
         if (value == null || built == Long.MIN_VALUE || now < built) return Long.MAX_VALUE
         return now - built
+    }
+
+    companion object {
+        /** The default clock: monotonic milliseconds. */
+        val MONOTONIC_MS: () -> Long = { System.nanoTime() / 1_000_000L }
     }
 }

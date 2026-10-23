@@ -1,6 +1,7 @@
 package io.panelassistant.android.control
 
 import io.panelassistant.android.platform.Daemon
+import io.panelassistant.android.platform.DaemonLongResult
 import io.panelassistant.android.platform.RootShell
 import io.panelassistant.android.util.HelperClient
 
@@ -54,7 +55,7 @@ class DensityController(
         if (dpi < MIN_DPI || dpi > MAX_DPI) return false
         return routedEffect(
             su = { root.run("wm density $dpi") },
-            helper = { daemon.send("DENSITY $dpi") == "OK" },
+            helper = { (daemon.sendLong("DENSITY $dpi", 30_000L) as? DaemonLongResult.Reply)?.value == "OK" },
             app = { app?.setDensity(dpi) == true },
         )
     }
@@ -62,14 +63,14 @@ class DensityController(
     /** Remove the override and restore Android's factory/base logical density. */
     fun reset(): Boolean = routedEffect(
         su = { root.run("wm density reset") },
-        helper = { daemon.send("DENSITY reset") == "OK" },
+        helper = { (daemon.sendLong("DENSITY reset", 30_000L) as? DaemonLongResult.Reply)?.value == "OK" },
         app = { app?.setDensity(null) == true },
     )
 
     private fun readFontScale(privilege: PrivilegedRouteObservation? = null): Float = routedValue(
         privilege = privilege,
         su = { parseRootScale(root.runOutput("settings get system font_scale 2>/dev/null")) },
-        helper = { parseHelperScale(daemon.send("FONTSCALE")) },
+        helper = { parseHelperScale((daemon.sendLong("FONTSCALE", 30_000L) as? DaemonLongResult.Reply)?.value) },
         app = { app?.fontScale() },
     ) ?: 1.0f
 
@@ -78,7 +79,7 @@ class DensityController(
         if (!scale.isFinite() || scale < MIN_FONT || scale > MAX_FONT) return false
         return routedEffect(
             su = { root.run("settings put system font_scale $scale") },
-            helper = { daemon.send("FONTSCALE $scale") == "OK" },
+            helper = { (daemon.sendLong("FONTSCALE $scale", 30_000L) as? DaemonLongResult.Reply)?.value == "OK" },
             app = { app?.setFontScale(scale) == true },
         )
     }
@@ -86,7 +87,7 @@ class DensityController(
     /** Restore the default font scale (1.0). */
     fun resetFontScale(): Boolean = routedEffect(
         su = { root.run("settings delete system font_scale") },
-        helper = { daemon.send("FONTSCALE reset") == "OK" },
+        helper = { (daemon.sendLong("FONTSCALE reset", 30_000L) as? DaemonLongResult.Reply)?.value == "OK" },
         // An app may not delete the setting; Android writes 1.0 back for a deleted one anyway.
         app = { app?.setFontScale(1.0f) == true },
     )
@@ -94,7 +95,7 @@ class DensityController(
     private fun densityState(privilege: PrivilegedRouteObservation? = null): DensityState? = routedValue(
         privilege = privilege,
         su = { parseRootDensity(root.runOutput("wm density 2>/dev/null")) },
-        helper = { parseHelperDensity(daemon.send("DENSITY")) },
+        helper = { parseHelperDensity((daemon.sendLong("DENSITY", 30_000L) as? DaemonLongResult.Reply)?.value) },
         app = { app?.density()?.let { (base, override) -> DensityState(base, override) } },
     )
 

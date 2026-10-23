@@ -192,6 +192,9 @@ class VendorServiceStarterTest {
                         "APPSTATE $external" -> if (!observable) null else if (focused("$external/.Main")) "FG" else "BG"
                         else -> null
                     }
+                    override fun sendLong(cmd: String, timeoutMs: Long): io.panelassistant.android.platform.DaemonLongResult =
+                        send(cmd)?.let(io.panelassistant.android.platform.DaemonLongResult::Reply)
+                            ?: io.panelassistant.android.platform.DaemonLongResult.NotSubmitted
                 },
                 builtinForeground = { focused("$own/.DashboardActivity") },
                 adminForeground = { focused("$own/.AdminLauncherActivity") },
