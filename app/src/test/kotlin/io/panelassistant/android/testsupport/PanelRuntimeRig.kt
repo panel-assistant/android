@@ -207,6 +207,11 @@ internal abstract class PanelRuntimeRig {
         /** The SCREEN_OFF_TIMEOUT setting prevent_idle_dim writes; null keeps Android's, which is an inert stub here. */
         screenOffTimeout: io.panelassistant.android.control.ScreenTimeoutController? = null,
         brightnessSetting: io.panelassistant.android.control.BrightnessSetting? = null,
+        /** The screen-off route a profile declares, the backlight the screen controller reads (a test
+         *  moves its level as a vendor brightness writer would) and the root shell it powers it through. */
+        screenOff: ScreenOff = ScreenOff.BRIGHTNESS_ZERO,
+        screenBacklight: FakeBacklight = FakeBacklight(160),
+        screenRoot: RootShell = FakeRootShell(),
         /** Boot-chime hardware; null keeps the inert controller. When given, the controller persists its
          *  setting in this rig's Config, as production does. */
         bootChimeHardware: BootChimeHardware? = null,
@@ -270,8 +275,8 @@ internal abstract class PanelRuntimeRig {
         } else screenOffTimeout?.let { BrightnessController(context, FakeRootShell(), FakeDaemon(), screenTimeout = it) }
             ?: BrightnessController(context, FakeRootShell(), FakeDaemon())
         val screen = ScreenController(
-            if (brightnessSetting != null) brightness else FakeBacklight(160), FakeScreenPower(), FakeRootShell(), FakeDaemon(), FakeWakeTap(),
-            ScreenOff.BRIGHTNESS_ZERO, nap = {}, accessibility = io.panelassistant.android.control.FakeDreamAccessibility(false),
+            if (brightnessSetting != null) brightness else screenBacklight, FakeScreenPower(), screenRoot, FakeDaemon(), FakeWakeTap(),
+            screenOff, nap = {}, accessibility = io.panelassistant.android.control.FakeDreamAccessibility(false),
         )
         val companion = "io.homeassistant.companion.android.minimal"
         val system = SystemController(
