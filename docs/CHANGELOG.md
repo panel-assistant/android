@@ -46,6 +46,8 @@ Pairs with Panel Assistant 1.0.0-preview1, the Home Assistant integration.
 
 ### Fixed
 
+- The navigation bar follows its mode and sits on the bottom edge of the screen on Android 8.1 panels such as the Sonoff NSPanel Pro. Once set to Always on it could not be changed to another mode, it was drawn a bar-height above the edge with an empty band beneath it, and on a panel moved from the old app the band could stay in every mode.
+- The bar's Launcher button opens the panel launcher every time. After a page opened from the launcher, such as Panel Assistant, it could do nothing until recent apps were cleared.
 - Synchronised voice reconnects as soon as its audio connection closes, while panel controls stay connected.
 - Synchronised voice can connect after a slow initial state sample without exhausting its handshake window.
 - Display sizing and launcher controls wait for a slow root helper's reply instead of reporting a false failure or repeating the operation.

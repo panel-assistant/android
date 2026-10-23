@@ -36,6 +36,7 @@ import io.panelassistant.android.metrics.FeatureCosts
 import io.panelassistant.android.util.LatestDispatcher
 import io.panelassistant.android.util.submit
 import io.panelassistant.android.util.DurableRecoveryMarker
+import io.panelassistant.android.platform.RootShell
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
@@ -90,6 +91,7 @@ class NavbarController(
     private val onBrightnessApplied: () -> Unit = {},
     private val onVolumeChanged: () -> Unit = {},
     private val overlayHeld: () -> Boolean = { Settings.canDrawOverlays(context) },
+    private val overscanRoot: RootShell = Su,
 ) {
     private val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val main = Handler(Looper.getMainLooper())
@@ -102,8 +104,8 @@ class NavbarController(
     private val overscanApplyLock = Any()
     private val overscanRecovery = NavbarOverscanRecovery(
         marker = DurableRecoveryMarker(context.noBackupFilesDir.resolve(OVERSCAN_RECOVERY_FILE)),
-        run = Su::run,
-        runOutput = Su::runOutput,
+        run = overscanRoot::run,
+        runOutput = overscanRoot::runOutput,
     )
 
     private var bar: View? = null      // the visible button row
@@ -331,8 +333,14 @@ class NavbarController(
     private fun applyOverscanForMode(target: String): Boolean {
         if (target == MODE_ALWAYS) return !appCanSu || applyOwnedOverscan(BAR_HEIGHT_DP)
         // Avoid making ordinary Off/Swipe startup depend on transient su readiness when this process has
-        // never applied a crop and no crash-recovery marker says an older process left one behind.
-        if (!overscanRecovery.isArmed()) return true
+        // never applied a crop and no crash-recovery marker says an older process left one behind. A crop
+        // can still predate the marker: the app under its earlier package id is uninstalled by the move to
+        // this one, and the Always on crop it set outlives it. Zero that where root allows, without
+        // letting the result decide the mode change.
+        if (!overscanRecovery.isArmed()) {
+            if (appCanSu) synchronized(overscanApplyLock) { overscanRecovery.clearUnowned() }
+            return true
+        }
         return applyOwnedOverscan(0)
     }
 
@@ -513,9 +521,9 @@ class NavbarController(
             // Not focusable (don't steal key focus from the dashboard) but still touchable.
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                edgeLayout(),
             PixelFormat.TRANSLUCENT,
-        ).apply { gravity = Gravity.BOTTOM }
+        ).apply { gravity = Gravity.BOTTOM; y = -overscanRecovery.croppedPx }
         try {
             // Slide up from the bottom edge: start translated fully below the window frame, animate to 0.
             row.translationY = dp(BAR_HEIGHT_DP).toFloat()
@@ -627,12 +635,12 @@ class NavbarController(
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                 WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                edgeLayout(),
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.BOTTOM or Gravity.START
             x = (loc[0] + anchor.width / 2 - w / 2).coerceAtLeast(0)
-            y = dp(BAR_HEIGHT_DP) + dp(SLIDER_GAP_DP)
+            y = dp(BAR_HEIGHT_DP) + dp(SLIDER_GAP_DP) - overscanRecovery.croppedPx
         }
         try {
             wm.addView(container, lp); sliderView = container; sliderKind = kind; resetSliderTimeout()
@@ -1072,6 +1080,17 @@ class NavbarController(
 
     private fun overlayType(): Int = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
 
+    /**
+     * The bar and its slider measure from the glass. Always on crops the bottom of the display with
+     * `wm overscan`, and Android 8.1 lays an overlay out inside the cropped area and clamps it there (it
+     * honours FLAG_LAYOUT_IN_OVERSCAN only for application windows), so the bar floated a bar-height up
+     * over an empty band. While this app holds a crop, the bar drops by it ([overscanRecovery] croppedPx
+     * as a negative y) and asks for no limits so the drop is not clamped away; otherwise nothing changes.
+     */
+    private fun edgeLayout(): Int =
+        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            if (overscanRecovery.croppedPx > 0) WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS else 0
+
     private fun dp(v: Int): Int = PanelTokens.dp(v, context.resources.displayMetrics.density)
 
     private fun normalise(m: String): String =
@@ -1156,6 +1175,17 @@ internal class NavbarOverscanRecovery(
 
     fun isArmed(): Boolean = marker.isArmed()
 
+    /** The crop this process applied and still holds, in pixels; zero when it holds none. */
+    @Volatile var croppedPx = 0
+        private set
+
+    /** Zero a crop no marker owns. The support probe writes a zero crop, so running it is the clear, and
+     *  its cache makes that once per process: a definite answer is kept, while an unknown one (root not
+     *  ready yet) is tried again at the next mode change. */
+    fun clearUnowned() {
+        if (!marker.isArmed()) support()
+    }
+
     /**
      * Probe whether the crop command exists.
      *
@@ -1187,7 +1217,7 @@ internal class NavbarOverscanRecovery(
         // crop is cosmetic, and a drawn bar is far better than a navbar setting that can never change.
         if (support() != OverscanSupport.SUPPORTED) return true
         if (!marker.arm()) return false
-        return run("wm overscan 0,0,0,$bottom")
+        return run("wm overscan 0,0,0,$bottom").also { if (it) croppedPx = bottom }
     }
 
     fun resetAndVerify(): Boolean {
@@ -1198,7 +1228,7 @@ internal class NavbarOverscanRecovery(
         if (support() == OverscanSupport.UNIMPLEMENTED) return marker.recoverIfArmed { true }
         return marker.recoverIfArmed {
             displayOverscanIsZero(runOutput(RESET_AND_READBACK))
-        }
+        }.also { if (it) croppedPx = 0 }
     }
 
     companion object {
@@ -1233,8 +1263,14 @@ internal class NavbarOverscanRecovery(
         private val UNKNOWN_COMMAND = Regex("unknown command", RegexOption.IGNORE_CASE)
 
         internal fun displayOverscanIsZero(output: String?): Boolean {
-            val displayInfo = output.orEmpty().lineSequence()
-                .firstOrNull { line -> line.contains("DisplayInfo{") }
+            // Android 8.1 lists a PhysicalDisplayInfo, then the base DisplayInfo, then the override one.
+            // Only the override carries the crop: the first line had no size to read, so a reset could
+            // never verify and the bar could not leave Always on, and the base line would hide the crop.
+            val displayInfos = output.orEmpty().lineSequence()
+                .filter { line -> line.contains("DisplayInfo{") && REAL_SIZE.containsMatchIn(line) }
+                .toList()
+            val displayInfo = displayInfos.firstOrNull { it.contains("mOverrideDisplayInfo=") }
+                ?: displayInfos.firstOrNull()
                 ?: return false
             val real = REAL_SIZE.find(displayInfo) ?: return false
             val policy = OVERSCAN_SCREEN.find(output.orEmpty()) ?: return false
