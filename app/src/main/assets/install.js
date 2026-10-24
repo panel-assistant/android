@@ -248,49 +248,61 @@
     }
   }
 
-  // Populate a component's version choices for the chosen channel, newest first. Pre-select the newest
+  // Populate a component's version menu for the chosen channel, newest first. Pre-select the newest
   // installable release; fall back to the installed release only when the channel has no installable APK.
+  // A narrow menu can clip a refused release's reason, so verChanged also shows it in full beside the menu.
   window.loadVersions = function (name) {
     var r = row(name); if (!r) return;
     var channelSelect = r.querySelector('.cchan'), chan = channelSelect ? channelSelect.value : '', vsel = r.querySelector('.cvsel');
     var installed = r.getAttribute('data-installed-version') || (r.querySelector('.cver') || {}).textContent || '';
-    vsel.textContent = t('install.shared.loading', 'loading…');
+    placeholder(vsel, t('install.shared.loading', 'loading…'));
     var versionArgs = { name: name };
     if (channelSelect) versionArgs.channel = chan;
     return api('install.versions', versionArgs).then(function (d) {
         var vs = (d && d.versions) || [];
-        if (!vs.length) { vsel.textContent = t('install.progress.no_versions', 'no versions found'); verChanged(name); markVersionGeometryValid(); return true; }
+        if (!vs.length) { placeholder(vsel, t('install.progress.no_versions', 'no versions found')); verChanged(name); markVersionGeometryValid(); return true; }
         vsel.innerHTML = '';
         var firstInstallable = -1, installedIndex = -1;
         vs.forEach(function (v, i) {
-          var label = document.createElement('label'), o = document.createElement('input'), text = document.createElement('span');
-          o.type = 'radio'; o.name = 'version-' + name;
-          var unavailable = '';
+          var o = document.createElement('option'), unavailable = '';
           if (!v.installable) {
             if (v.unavailableReason === 'above_panel_limit') unavailable = t('install.progress.above_panel_limit', '(not supported by this panel; limit {version})', { version: v.maxVersion || '' });
             else unavailable = t('install.progress.no_matching_asset', '(no compatible download)');
           }
-          o.value = v.tag; text.textContent = v.version + (unavailable ? ' ' + unavailable : '');
+          o.value = v.tag; o.textContent = v.version + (unavailable ? ' ' + unavailable : '');
+          o.setAttribute('data-reason', unavailable);
           o.setAttribute('data-notes', v.notes || ''); o.setAttribute('data-installable', v.installable ? '1' : '0');
           o.setAttribute('data-action', presentation(v.presentations && v.presentations.action, v.action || 'Install').text);
           o.setAttribute('data-apk', v.apk || '');
           if (firstInstallable < 0 && v.installable) firstInstallable = i;
           if (v.version === installed) installedIndex = i;
-          label.appendChild(o); label.appendChild(text); vsel.appendChild(label);
+          vsel.appendChild(o);
         });
-        vsel.querySelectorAll('input')[firstInstallable >= 0 ? firstInstallable : (installedIndex >= 0 ? installedIndex : 0)].checked = true;
+        vsel.selectedIndex = firstInstallable >= 0 ? firstInstallable : (installedIndex >= 0 ? installedIndex : 0);
         verChanged(name);
         markVersionGeometryValid();
         return true;
-      }).catch(function () { installCardMemoryReady = false; vsel.textContent = t('install.progress.check_failed', 'check failed'); verChanged(name);
+      }).catch(function () { installCardMemoryReady = false; placeholder(vsel, t('install.progress.check_failed', 'check failed')); verChanged(name);
         if (window.CardSizeMemory) window.CardSizeMemory.invalidate('install-cards');return false; });
   };
 
-  // Sync the release-notes link + Install button to the currently-selected version.
+  // The menu shows a status line as its only, valueless option while it has no releases to offer.
+  function placeholder(vsel, text) {
+    vsel.textContent = '';
+    var o = document.createElement('option'); o.value = ''; o.textContent = text; vsel.appendChild(o);
+  }
+
+  function selectedVersion(r) {
+    var o = r.querySelector('.cvsel').selectedOptions[0];
+    return o && o.value ? o : null;
+  }
+
+  // Sync the reason, release-notes link + Install button to the currently-selected version.
   window.verChanged = function (name) {
     var r = row(name); if (!r) return;
-    var o = r.querySelector('.cvsel input:checked');
-    var notes = r.querySelector('.cnotes'), btn = r.querySelector('.cinstall'), dl = r.querySelector('.cdl');
+    var o = selectedVersion(r);
+    var notes = r.querySelector('.cnotes'), btn = r.querySelector('.cinstall'), dl = r.querySelector('.cdl'), why = r.querySelector('.cvreason');
+    if (why) { why.textContent = o ? o.getAttribute('data-reason') : ''; why.hidden = !why.textContent; }
     var url = o ? o.getAttribute('data-notes') : '', installable = o && o.getAttribute('data-installable') === '1';
     setSafeLink(notes, url, 'visibility', 'visible', 'hidden');
     if (btn) {
@@ -309,8 +321,8 @@
   // Install the selected version of a picker component.
   window.installSel = function (name, btn) {
     var r = row(name); if (!r) return;
-    var o = r.querySelector('.cvsel input:checked');
-    if (!o || !o.value) return;
+    var o = selectedVersion(r);
+    if (!o) return;
     start(name, { version: o.value }, btn);
   };
 

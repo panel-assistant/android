@@ -113,28 +113,31 @@ browserTest('Version picker explains unavailable releases and keeps permitted ch
   ];
   const { page } = await rig(t, {
     noHelper: true,
-    html: '<div class="comprow" data-name="companion"><span class="cver">1.0</span><select class="cchan"><option>stable</option></select><div class="cvsel choice-list"></div><a class="cnotes">Notes</a><button class="cinstall" data-root="1"></button><a class="cdl">Download</a></div>',
+    html: '<div class="comprow" data-name="companion"><span class="cver">1.0</span><select class="cchan"><option>stable</option></select><select class="cvsel"></select><a class="cnotes">Notes</a><button class="cinstall" data-root="1"></button><a class="cdl">Download</a><span class="cvreason" hidden></span></div>',
     route(request, response, url) {
       if (url.pathname !== '/api/v1/install/versions') return false;
       response.writeHead(200, { 'content-type': 'application/json' }); response.end(JSON.stringify({ versions })); return true;
     },
   });
   await page.evaluate(() => window.loadVersions('companion'));
-  assert.deepEqual(await page.locator('.cvsel span').allTextContents(), [
+  assert.deepEqual(await page.locator('.cvsel option').allTextContents(), [
     '4.0 (not supported by this panel; limit 2.0)', '2.0', '1.0 (no compatible download)', '0.9 (no compatible download)',
   ]);
-  assert.equal(await page.locator('.cvsel input:checked').inputValue(), 'v2');
+  assert.equal(await page.locator('.cvsel').inputValue(), 'v2');
   assert.equal(await page.locator('.cinstall').isDisabled(), false);
   assert.equal(await page.locator('.cdl').isVisible(), true);
-  for (const tag of ['v4', 'v1', 'legacy']) {
-    await page.locator('.cvsel input').evaluateAll((inputs, tag) => { for (const input of inputs) input.checked = input.value === tag; }, tag);
+  assert.equal(await page.locator('.cvreason').isVisible(), false);
+  for (const [tag, reason] of [['v4', '(not supported by this panel; limit 2.0)'], ['v1', '(no compatible download)'], ['legacy', '(no compatible download)']]) {
+    await page.locator('.cvsel').selectOption(tag);
     await page.evaluate(() => window.verChanged('companion'));
     assert.equal(await page.locator('.cinstall').isDisabled(), true, tag);
     assert.equal(await page.locator('.cdl').isVisible(), false, tag);
+    assert.equal(await page.locator('.cvreason').textContent(), reason, tag);
   }
-  await page.locator('.cvsel input[value="v2"]').check();
+  await page.locator('.cvsel').selectOption('v2');
   await page.evaluate(() => window.verChanged('companion'));
   assert.equal(await page.locator('.cinstall').isDisabled(), false);
+  assert.equal(await page.locator('.cvreason').isVisible(), false);
   for (const url of ['https://github.com/example/app/releases/tag/v2', 'javascript:alert(1)', 'http://github.com/example/app', 'https://github.com.evil.example/app']) {
     versions[1].notes = url; versions[1].apk = url;
     await page.evaluate(() => window.loadVersions('companion'));
@@ -149,7 +152,7 @@ browserTest('Version picker explains unavailable releases and keeps permitted ch
 browserTest('Version picker retains installed release fallback with a formatted version label', async (t) => {
   const { page } = await rig(t, {
     noHelper: true,
-    html: '<div class="comprow" data-name="companion" data-installed-version="0.9.9"><span class="cver">0.9.9 (1136)</span><div class="cvsel choice-list"></div></div>',
+    html: '<div class="comprow" data-name="companion" data-installed-version="0.9.9"><span class="cver">0.9.9 (1136)</span><select class="cvsel"></select></div>',
     route(request, response, url) {
       if (url.pathname !== '/api/v1/install/versions') return false;
       response.writeHead(200, { 'content-type': 'application/json' });
@@ -161,7 +164,7 @@ browserTest('Version picker retains installed release fallback with a formatted 
     },
   });
   await page.evaluate(() => window.loadVersions('companion'));
-  assert.equal(await page.locator('.cvsel input:checked').inputValue(), 'v0.9.9');
+  assert.equal(await page.locator('.cvsel').inputValue(), 'v0.9.9');
   assert.equal(await page.locator('.cver').textContent(), '0.9.9 (1136)');
 });
 
@@ -170,7 +173,7 @@ browserTest('Version picker uses every shipped locale for all unavailable reason
     const projection = await realCatalogueProjection(locale, ['install.']);
     const { page } = await rig(t, {
       projection,
-      html: '<div class="comprow" data-name="companion"><select class="cchan"><option>stable</option></select><div class="cvsel choice-list"></div></div>',
+      html: '<div class="comprow" data-name="companion"><select class="cchan"><option>stable</option></select><select class="cvsel"></select><span class="cvreason" hidden></span></div>',
       route(request, response, url) {
         if (url.pathname !== '/api/v1/install/versions') return false;
         response.writeHead(200, { 'content-type': 'application/json' });
@@ -179,11 +182,13 @@ browserTest('Version picker uses every shipped locale for all unavailable reason
       },
     });
     await page.evaluate(() => window.loadVersions('companion'));
-    assert.deepEqual(await page.locator('.cvsel span').allTextContents(), ['no_matching_asset', 'above_panel_limit'].map((reason) => {
+    for (const reason of ['no_matching_asset', 'above_panel_limit']) {
       const key = `install.progress.${reason}`;
       assert.equal(projection.languages[key], locale, `${locale}/${key}: reviewed translation required`);
-      return '4.0 ' + projection.strings[key].replace('{version}', '2.0');
-    }));
+      await page.locator('.cvsel').selectOption(reason);
+      await page.evaluate(() => window.verChanged('companion'));
+      assert.equal(await page.locator('.cvreason').textContent(), projection.strings[key].replace('{version}', '2.0'), `${locale}/${key}`);
+    }
   }
 });
 
@@ -553,10 +558,10 @@ browserTest('Restore preview shows escaped server warnings before confirmation',
   assert.equal(restores, 0);
 });
 
-for (const engine of ['Chromium', 'WebKit']) browserTest(`Release radio labels wrap and submit the chosen tag in ${engine}`, async t => {
+for (const engine of ['Chromium', 'WebKit']) browserTest(`Release menu shows the full reason beside the menu and submits the chosen tag in ${engine}`, async t => {
   let posted;
   const { page } = await rig(t, { engine, noHelper: true,
-    html: '<div class="comprow" data-name="companion"><div class="cvsel choice-list" onchange="verChanged(\'companion\')"></div><a class="cnotes">Notes</a><button class="cinstall" data-root="1" onclick="installSel(\'companion\',this)"></button><p id="comp-msg"></p></div>',
+    html: '<div class="comprow" data-name="companion"><div class="comppick"><label class="muted">Version <select class="cvsel" onchange="verChanged(\'companion\')"></select></label><a class="cnotes">Notes</a><button class="cinstall" data-root="1" onclick="installSel(\'companion\',this)"></button><span class="muted cvreason" hidden></span></div><p id="comp-msg"></p></div>',
     route(request, response, url) {
       if (url.pathname === '/api/v1/install/versions') {
         response.writeHead(200, { 'content-type': 'application/json' });
@@ -571,14 +576,14 @@ for (const engine of ['Chromium', 'WebKit']) browserTest(`Release radio labels w
   await page.setViewportSize({ width:390, height:844 });
   await page.addStyleTag({ content: await readFile(new URL('../../app/src/main/assets/info.css', import.meta.url), 'utf8') });
   await page.evaluate(() => loadVersions('companion'));
-  await page.locator('.cvsel input[value="too-new"]+span').click();
+  await page.locator('.cvsel').selectOption('too-new');
   assert.equal(await page.locator('.cinstall').isDisabled(), true);
-  assert.match(await page.locator('.cvsel input:checked+span').innerText(), /limit 2.0/);
-  assert.deepEqual(await page.locator('.cvsel span').evaluateAll(nodes => nodes.map(node => node.scrollWidth <= node.clientWidth)), [true,true,true]);
-  await page.locator('.cvsel input[value="v2"]').focus();
-  await page.keyboard.press('Space');
-  await page.keyboard.press('ArrowDown');
-  assert.equal(await page.locator('.cvsel input:checked').inputValue(), 'v1');
+  assert.match(await page.locator('.cvreason').innerText(), /limit 2.0/);
+  // The closed menu may clip a long label; the reason beside it must be whole and on screen.
+  assert.equal(await page.locator('.cvsel').evaluate(node => node.getBoundingClientRect().right <= innerWidth), true);
+  assert.equal(await page.locator('.cvreason').evaluate(node => node.scrollWidth <= node.clientWidth && node.getBoundingClientRect().right <= innerWidth), true);
+  await page.locator('.cvsel').selectOption('v1');
+  assert.equal(await page.locator('.cvreason').isVisible(), false);
   await page.locator('.cinstall').click();
   await page.waitForFunction(() => document.querySelector('#comp-msg').textContent.includes('Another install'));
   assert.equal(new URLSearchParams(posted).get('version'), 'v1');
