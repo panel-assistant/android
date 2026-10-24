@@ -747,12 +747,24 @@
       });
   };
 
+  var RESTORE_APPROVAL_HINT_MS = 2000;
   window.restoreConfirm = function (btn) {
     if (!rsFile) return;
     if (!confirm(t('install.backup.dynamic.restore_confirm', 'Restore overwrites this panel\'s config and Companion login. Continue?'))) return;
     var pw = (document.getElementById('rs-pw') || {}).value || '';
     btn.disabled = true; bkMsg(t('install.backup.dynamic.restoring', 'Restoring…'));
-    approved('restore', { passphrase: pw, blob: rsFile }).then(function (d) {
+    // Through Panel Assistant's sidebar a Hardened panel holds the restore until it is approved on its own
+    // screen, and the page hears nothing until then: say where to approve it while the answer is outstanding.
+    var waiting = setTimeout(function () {
+      bkMsg(t('install.backup.dynamic.restore_awaiting_approval', 'Waiting for the panel. If it is in Hardened mode, approve this restore on the panel within 10 minutes: Settings, then the menu, Security mode, Review approvals.'));
+    }, RESTORE_APPROVAL_HINT_MS);
+    transport.request('restore', { passphrase: pw, blob: rsFile }).then(function (reply) {
+        clearTimeout(waiting);
+        if (reply.outcome === 'refused' && reply.code === 'approval_timeout') { bkMsg(t('install.backup.dynamic.restore_approval_expired', 'Restore not started: it was not approved on the panel in time. Nothing was changed.')); btn.disabled = false; return; }
+        if (reply.outcome === 'refused' && reply.code === 'approval_denied') { bkMsg(t('install.backup.dynamic.restore_approval_denied', 'Restore not started: it was denied on the panel. Nothing was changed.')); btn.disabled = false; return; }
+        return approvalAwareJson(reply);
+      }, function (error) { clearTimeout(waiting); throw error; }).then(function (d) {
+        if (!d) return;
         if (d.status === 'busy') { bkMsg(t('install.progress.operation_busy', 'Another operation is running — try again shortly.')); btn.disabled = false; return; }
         if (d.status !== 'started') { bkMsg(t('install.progress.could_not_start', 'Could not start: {status}', { status: closedToken(COMPONENT_STATUS, d.status || 'error') })); btn.disabled = false; return; }
         pollRestore();

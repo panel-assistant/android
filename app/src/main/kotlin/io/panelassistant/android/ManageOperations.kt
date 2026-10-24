@@ -337,6 +337,8 @@ internal class ManageOperations(
                 return ManageReply.refused(PanelAssistantCommandProcessor.CODE_APPROVAL_TIMEOUT)
             }
             pendingSent = true
+            // Logged so a held command is visible in the panel's log: nothing else records it until it ends.
+            Log.i(TAG, "${request.op} for ${request.origin.approvalKey} waits for approval $approvalId on the panel")
             onPending()
             val heldAt = System.nanoTime()
             while (true) {
@@ -345,13 +347,15 @@ internal class ManageOperations(
                     ApprovalBroker.State.PENDING -> continue
                     ApprovalBroker.State.APPROVED -> break
                     // The broker keeps no denied state: gone before its lifetime ran out was denied.
-                    ApprovalBroker.State.ABSENT -> return ManageReply.refused(
-                        if ((System.nanoTime() - heldAt) / 1_000_000 >= approvalTtlMs) {
+                    ApprovalBroker.State.ABSENT -> {
+                        val code = if ((System.nanoTime() - heldAt) / 1_000_000 >= approvalTtlMs) {
                             PanelAssistantCommandProcessor.CODE_APPROVAL_TIMEOUT
                         } else {
                             PanelAssistantCommandProcessor.CODE_APPROVAL_DENIED
-                        },
-                    )
+                        }
+                        Log.i(TAG, "${request.op} approval $approvalId ended: $code")
+                        return ManageReply.refused(code)
+                    }
                 }
             }
         }

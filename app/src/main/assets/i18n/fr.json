@@ -12247,6 +12247,21 @@
       "text": "Tableau de bord introuvable",
       "sourceHash": "c947e038fffab8a5ec7abf38c5198354fe76061a2d636673487d485d7172730a",
       "state": "machine-cross-checked"
+    },
+    "install.backup.dynamic.restore_awaiting_approval": {
+      "text": "En attente du panneau. S’il est en mode renforcé, approuvez cette restauration sur le panneau dans les 10 minutes : Paramètres, puis le menu, Mode de sécurité, Examiner les approbations.",
+      "sourceHash": "b89d61b737afc6f5d7b69f9a56ef3a64f1fdd7185412439d1f702767a2897d7d",
+      "state": "machine-cross-checked"
+    },
+    "install.backup.dynamic.restore_approval_expired": {
+      "text": "Restauration non lancée : elle n’a pas été approuvée à temps sur le panneau. Rien n’a été modifié.",
+      "sourceHash": "b725b18d4578a86e00a020b60f1b1f48848b0556995a93058e50c9b48627684e",
+      "state": "machine-cross-checked"
+    },
+    "install.backup.dynamic.restore_approval_denied": {
+      "text": "Restauration non lancée : elle a été refusée sur le panneau. Rien n’a été modifié.",
+      "sourceHash": "ee31ab363037a0183a8e5d8e50408d3a565b31223f8a7ae4913b852e6947fa4e",
+      "state": "machine-cross-checked"
     }
   }
 }
