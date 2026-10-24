@@ -383,6 +383,7 @@ class PaneldService : Service() {
     private lateinit var mdnsRuntimeReconciler: MdnsRuntimeReconciler<NetworkRuntime>
     @Volatile private var stateObservationTick: OwnedThread? = null
     private var proximityWizard: ProximityWizardCoordinator? = null
+    private var approvalPrompt: ApprovalPrompt? = null
 
     /**
      * Whether this panel could repair its own Android System WebView, computed away from the screen.
@@ -1611,6 +1612,12 @@ class PaneldService : Service() {
             if (teardownBoundary.isStopping) return@runtimeStart
             controls.reassertFeedback()
             sensors.prepare()
+            approvalPrompt = ApprovalPrompt(
+                LocalApprovalBroker.instance,
+                wake = { displayPower.screen.ensureOn() },
+                launch = controls.system::launchApprovalPrompt,
+                post = { raise -> scope.launch { raise() } },
+            )
             proximityWizard = ProximityWizardCoordinator(
                 startSession = sensors::startProximityCalibration,
                 active = sensors::proximityCalibrationActive,
@@ -2011,6 +2018,7 @@ class PaneldService : Service() {
      * every controller exists; normal destruction has already initialized all of them.
      */
     private fun closeServiceAdmissions() {
+        approvalPrompt?.close()
         proximityWizard?.close()
         voiceAudio.closeAdmission()
         controls.closeAdmissions()

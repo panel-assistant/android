@@ -59,8 +59,23 @@ internal class ApprovalBroker(
 
     private val records = linkedMapOf<String, Record>()
 
-    @Synchronized
+    /** Told of each approval the broker starts waiting for, once, outside its lock: the panel raises it on its screen. */
+    @Volatile
+    var onRequested: ((PendingApproval) -> Unit)? = null
+
     fun request(operation: SensitiveOperation, peer: String, payload: String, summary: String): Pair<Decision, String> {
+        val (answer, created) = register(operation, peer, payload, summary)
+        created?.let { onRequested?.invoke(it) }
+        return answer
+    }
+
+    @Synchronized
+    private fun register(
+        operation: SensitiveOperation,
+        peer: String,
+        payload: String,
+        summary: String,
+    ): Pair<Pair<Decision, String>, PendingApproval?> {
         val now = monotonicMs()
         prune(now)
         val digest = requestDigest(operation, peer, payload)
@@ -68,17 +83,15 @@ internal class ApprovalBroker(
         if (match != null) {
             if (match.approved) {
                 records.remove(match.visible.id)
-                return Decision.APPROVED to match.visible.id
+                return (Decision.APPROVED to match.visible.id) to null
             }
-            return Decision.PENDING to match.visible.id
+            return (Decision.PENDING to match.visible.id) to null
         }
         while (records.size >= maxPending) records.remove(records.keys.first())
         val id = token()
-        records[id] = Record(
-            PendingApproval(id, operation, summary.take(MAX_SUMMARY_CHARS), peer, now),
-            digest,
-        )
-        return Decision.PENDING to id
+        val visible = PendingApproval(id, operation, summary.take(MAX_SUMMARY_CHARS), peer, now)
+        records[id] = Record(visible, digest)
+        return (Decision.PENDING to id) to visible
     }
 
     @Synchronized

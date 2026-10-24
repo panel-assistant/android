@@ -112,6 +112,17 @@
             android:launchMode="singleTop"
             android:label="@string/proximity_wizard_title" />
 
+        <!-- Exported for the privileged am start path, like the wizard; opening it decides nothing. Its own
+             task, so finishing returns to whatever was showing, never to this app's dashboard. -->
+        <activity
+            android:name="io.panelassistant.android.ApprovalPromptActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask"
+            android:taskAffinity="${applicationId}.approval"
+            android:label="@string/pending_approvals"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
         <activity
             android:name="io.panelassistant.android.GuardDbMaintenanceActivity"
             android:exported="false"

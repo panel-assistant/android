@@ -50,16 +50,17 @@ internal object NativeLocale {
         ConfigurationCompat.getLocales(Resources.getSystem().configuration)[0]?.toLanguageTag()
 
     fun string(context: Context, @StringRes id: Int, vararg formatArgs: Any): String {
-        val tag = resourceLanguageTag
-        val localized = if (tag == null) {
-            context
-        } else {
-            val configuration = Configuration(context.resources.configuration).apply {
-                setLocale(Locale.forLanguageTag(tag))
-            }
-            context.createConfigurationContext(configuration)
-        }
+        val localized = localized(context)
         return if (formatArgs.isEmpty()) localized.getString(id) else localized.getString(id, *formatArgs)
+    }
+
+    /** [context] in the panel's own language, for a plain Activity that AppCompat's locale does not reach. */
+    fun localized(context: Context): Context {
+        val tag = resourceLanguageTag ?: return context
+        val configuration = Configuration(context.resources.configuration).apply {
+            setLocale(Locale.forLanguageTag(tag))
+        }
+        return context.createConfigurationContext(configuration)
     }
 
     private const val AUTO_LANGUAGE = "auto"
