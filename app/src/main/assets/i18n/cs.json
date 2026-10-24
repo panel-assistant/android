@@ -7994,7 +7994,7 @@
       "state": "machine-cross-checked"
     },
     "profiles.action.fork": {
-      "text": "Fork",
+      "text": "Upravit místní kopii",
       "sourceHash": "8e5b1a73152cf01c1ce614f31711fc4159e8ecc177cd4c02975ed0145b3d3d45",
       "state": "machine-cross-checked"
     },
@@ -9649,7 +9649,7 @@
       "state": "machine-cross-checked"
     },
     "profiles.status.editing_fork": {
-      "text": "Upravujete samostatnou místní větev profilu. Revize dodaná v balíčku se nezmění.",
+      "text": "Upravujete samostatnou místní kopii profilu. Revize dodaná v balíčku se nezmění.",
       "sourceHash": "93181d80b2c7ba8be6d49f80d3bd6714e274805c789481b92f47488c198eb826",
       "state": "machine-cross-checked"
     },
@@ -10814,7 +10814,7 @@
       "state": "machine-cross-checked"
     },
     "settings.panel_id.label": {
-      "text": "Panel ID",
+      "text": "ID panelu",
       "sourceHash": "e738d52375d65eb02067cf41e0807c06c4e21f391d5334bb5bed79e9a2e61daf",
       "state": "machine-cross-checked"
     },
