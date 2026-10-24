@@ -301,7 +301,7 @@ class PanelAccessibilityService : AccessibilityService() {
         private var instance: PanelAccessibilityService? = null
         private var startupOverlayDismissal: PortalStartupOverlayDismissal? = null
 
-        /** Called on the service's existing IO startup lane after DB migrations and predecessor teardown. */
+        /** Called first on the service's IO startup lane, before settings migrations and predecessor teardown. */
         internal fun preparePortalStartupOverlayDismissal(context: Context, profileId: String): PortalStartupOverlayDismissal? {
             if (!PortalStartupOverlayDismissal.supportsProfile(profileId)) return null
             val vendor = runCatching { context.packageManager.getApplicationInfo(PortalStartupOverlayDismissal.PACKAGE, 0) }
