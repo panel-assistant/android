@@ -169,6 +169,8 @@ jobs:
           # Every colour and the scale rule come from tools/tokens/tokens.json; fail when a generated copy lags it.
           python3 tools/tokens/tokens.py --check
           python3 tools/brand/sync.py check
+          # The Pickles artwork is a pinned copy of maxlyth/pickles; fail when it was edited or lags its pin.
+          node tools/pickles/sync.mjs --check
           python3 tools/tests/brand_sync_test.py
 
       - name: Set up Node.js for the embedded profile editor

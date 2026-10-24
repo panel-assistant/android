@@ -67,7 +67,7 @@
     main.className = "pickles";
     main.setAttribute("role", "alert");
     var image = document.createElement("img");
-    // Artwork: https://github.com/maxlyth/pickles — refresh app/src/main/assets/pickles.svg from that source when needed.
+    // Artwork: https://github.com/maxlyth/pickles — refresh with: node tools/pickles/sync.mjs <pickles checkout> <commit>
     image.src = "assets/pickles.svg";
     image.alt = "";
     main.appendChild(image);
