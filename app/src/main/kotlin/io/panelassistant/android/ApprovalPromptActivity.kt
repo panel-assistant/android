@@ -1,6 +1,7 @@
 package io.panelassistant.android
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
@@ -65,6 +66,11 @@ class ApprovalPromptActivity : Activity() {
             show()
             if (!isFinishing) handler.postDelayed(this, REFRESH_MS)
         }
+    }
+
+    // The panel's own language, as the service speaks it: a plain Activity follows Android's locale otherwise.
+    override fun attachBaseContext(base: Context) {
+        super.attachBaseContext(NativeLocale.localized(base))
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
