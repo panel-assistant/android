@@ -43,9 +43,27 @@ Pairs with Panel Assistant 1.0.0-rc1, the Home Assistant integration.
 - **Entity filtering is tighter and settles faster.** A filtered dashboard now also hides the devices and registry entries of entities it does not allow, and learns which entities a template card uses before it first draws. The Entities page shows when the panel is still holding the dashboard while it learns.
 - **Tidier panel web pages.** Every warning and advisory on the panel's Dashboard, Configure and Entities pages now uses one notice style, and long field instructions and choice lists wrap instead of being cut off.
 - **Updates follow the build number.** The panel app now compares updates by build number alone, so a newer build is never refused as a downgrade because its version name sorts lower.
+- **Auto-sleep sources use a pop-up menu.** Pick the activity source on Configure from a menu instead of a list of radio buttons.
+- **Component versions use a pop-up menu.** Pick the HA Companion version on Install from a menu instead of a list of radio buttons; a version the panel cannot use still shows its full explanation.
+- **The network warning setting is on the System card.** It controls the Home Assistant connection notice and now sits with the other system settings on Configure.
+- **Refreshed Pickles artwork** on the panel's web pages.
+- **Panel app updates belong to Panel Assistant.** The panel app's own Install page no longer offers a separate panel app version picker; choose its update in Home Assistant.
+- **Uploaded wake words need approval in Hardened mode.** Importing your own wake word through the panel's web address now asks for approval on the panel, which requires physical access and cannot be approved remotely; downloads from the community list and imports through a Home Assistant administrator's sidebar keep working without that extra step.
 
 ### Fixed
 
+- **Reconnect sign-in works from the sidebar.** Reconnect opens Home Assistant sign-in in a separate window, and Configure follows the new account once sign-in finishes.
+- **Basic view keeps a blocked setting's prerequisites within reach.** If automatic brightness needs a light source, or auto-sleep needs a source or Area, those choices stay visible without switching to Advanced.
+- **Configure remembers your view in the sidebar.** Basic or Advanced, Descriptions, expanded settings and the setting filter survive a reload or a switch to another panel.
+- **Backup downloads have distinct names.** Downloading several backups, even in quick succession, no longer gives them the same name.
+- **Restore explains when it is waiting for approval.** In Hardened mode, the Install page tells you where to approve the restore on the panel and says whether approval was denied or timed out, with nothing changed.
+- **Settings imports distinguish applied changes from pending ones.** A setting still being applied is listed as pending, and a restore that changes saved panel state before another step fails reports a partial result.
+- **Meta Portal gets past its startup permission page.** After a reboot, the panel returns from Meta's denied overlay-permission page even when settings take longer to load.
+- **Whole-number settings round consistently.** Automatic brightness levels and response, and idle return, round changes from Home Assistant the same way as Configure.
+- **The dashboard starts in its chosen theme.** Its loading screen and first paint follow the panel's Dark or Light choice too.
+- **The restart notice survives a connection change.** Refreshing the connection to the same Home Assistant keeps its restart notice until Home Assistant reports its state again.
+- **Turning network debugging off waits for a slow panel.** A panel that takes longer to confirm debugging has stopped no longer reports a false failure.
+- **Process readings handle unusual app names.** A process name containing quotes or other special characters no longer breaks the CPU and memory readings.
 - Auto-sleep reports an authentication failure only after Home Assistant rejects the sign-in. A temporary failure to obtain a token now recovers when the connection returns.
 - The navigation bar follows its mode and sits on the bottom edge of the screen on Android 8.1 panels such as the Sonoff NSPanel Pro. Once set to Always on it could not be changed to another mode, it was drawn a bar-height above the edge with an empty band beneath it, and on a panel moved from the old app the band could stay in every mode.
 - The bar's Launcher button opens the panel launcher every time. After a page opened from the launcher, such as Panel Assistant, it could do nothing until recent apps were cleared.
@@ -73,7 +91,6 @@ Pairs with Panel Assistant 1.0.0-rc1, the Home Assistant integration.
 - **Setup follows a panel that changes address.** If the panel's network address changes during setup, its setup QR code and the sign-in address shown for your phone update to match, and a sign-in that was refused is not retried when the network comes back. A freshly installed panel waiting for setup no longer covers its setup code with a notice saying Panel Assistant is required.
 - **Restoring a backup onto a panel without root skips what it cannot apply.** The restore lists the settings that panel cannot apply instead of failing.
 - **Voice settings stay current.** The list of voice pipelines is fetched again when the panel's Home Assistant connection changes, and a new audio source takes effect as soon as the camera stream lets go of the microphone.
-- **The Install page and updates the panel downloads itself find releases again.** Since 0.9.10 the panel app is published under a file name the panel did not recognise as its own, so the Install page listed no panel app release and an update Panel Assistant asked the panel to download itself found nothing to install.
 - **Vendor apps are tamed on the first try on a slow panel.** On a panel whose root helper takes more than half a second to stop or disable an app, each action used to run a second time through su, and the whole taming pass repeated for several minutes after the app started. The helper is now given the time those commands take.
 - **Log shipping reports an outage once.** While the log collector cannot be reached, the panel logs the first failed attempt and, when it reconnects, one line saying how many attempts failed and the last reason, instead of a warning every few seconds.
 - **Translation corrections** across every shipped language, including the setup screens, the Voice card and the diagnostics page.
