@@ -249,29 +249,6 @@
       });
       return t;
     }
-    if (f.type === "ENUM" && f.key === "auto_sleep_source") {
-      var choices = cfg.el("div", { class: "choice-list", role: "radiogroup", "aria-label": f.label });
-      f.options.forEach(function (o, index) {
-        var input = cfg.el("input", { type: "radio", name: f.key, value: o });
-        input.checked = o === v;
-        input.addEventListener("change", function () {
-          if (!input.checked) return;
-          var focused = document.activeElement === input;
-          cfg.values[f.key] = input.value; cfg.localChange(f.key);
-          cfg.autoSleepPrerequisiteRequest++;
-          cfg.invalidateAutoSleepData(true);
-          var previousPanel = document.getElementById("auto-sleep-status");
-          if (previousPanel) previousPanel.remove();
-          cfg.render(); cfg.loadAutoSleepPrerequisite();
-          if (focused) {
-            var replacement = document.querySelector('#cfg-auto_sleep_source input:checked');
-            if (replacement) { try { replacement.focus({ preventScroll: true }); } catch (_) { replacement.focus(); } }
-          }
-        });
-        choices.appendChild(cfg.el("label", {}, [input, cfg.el("span", { text: cfg.localizedEnumOption(f, o, index) })]));
-      });
-      return choices;
-    }
     if (f.type === "ENUM") {
       var s = cfg.el("select");
       f.options.forEach(function (o, index) {
@@ -280,6 +257,13 @@
       });
       s.addEventListener("change", function () {
         cfg.values[f.key] = s.value; cfg.localChange(f.key);
+        if (f.key === "auto_sleep_source") {
+          cfg.autoSleepPrerequisiteRequest++;
+          cfg.invalidateAutoSleepData(true);
+          var previousPanel = document.getElementById("auto-sleep-status");
+          if (previousPanel) previousPanel.remove();
+          cfg.render(); cfg.loadAutoSleepPrerequisite();
+        }
       });
       return s;
     }

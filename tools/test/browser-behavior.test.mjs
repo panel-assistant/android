@@ -2417,7 +2417,7 @@ browserTest('Panel proximity Auto-sleep works without HA prerequisites or an HA 
   page.setDefaultTimeout(2_000);
   t.after(async () => { await browser.close(); await new Promise((resolve) => harness.server.close(resolve)); });
   await page.goto(harness.url, { waitUntil: 'domcontentloaded', timeout: 5_000 });
-  const source = page.locator('#cfg-auto_sleep_source .choice-list');
+  const source = page.locator('#cfg-auto_sleep_source select');
   await source.waitFor();
   await page.locator('#cfg-proximity-learning').waitFor();
   assert.deepEqual(await page.locator('#cfg-groups').evaluate((root) => Array.from(root.children).map((card) =>
@@ -2426,7 +2426,7 @@ browserTest('Panel proximity Auto-sleep works without HA prerequisites or an HA 
   'Presence follows the dedicated Auto-sleep card even when its script attaches after Configure');
   assert.equal(await page.locator('[data-config-group="Auto-sleep"] #cfg-auto_sleep').count(), 1);
   assert.equal(await page.locator('[data-config-group="Auto-sleep"] #cfg-auto_sleep_source').count(), 1);
-  assert.deepEqual(await source.locator('span').allTextContents(), ['This panel’s proximity sensor', 'Home Assistant Area devices']);
+  assert.deepEqual(await source.locator('option').allTextContents(), ['This panel’s proximity sensor', 'Home Assistant Area devices']);
   const toggle = page.locator('#cfg-auto_sleep [role=switch]');
   assert.equal(await toggle.getAttribute('aria-disabled'), 'false');
   await toggle.click();
@@ -2438,7 +2438,7 @@ browserTest('Panel proximity Auto-sleep works without HA prerequisites or an HA 
   assert.equal(await page.locator('#auto-sleep-status a').getAttribute('href'), '#cfg-proximity-learning');
   assert.equal(prerequisiteGets, 0);
   assert.equal(historyGets, 0);
-  await source.locator('input[value="home_assistant"]').check();
+  await source.selectOption('home_assistant');
   await page.waitForFunction(() => document.querySelector('#cfg-auto_sleep [role=switch]').getAttribute('aria-checked') === 'false');
   assert.equal(await page.locator('#cfg-auto_sleep [role=switch]').getAttribute('aria-disabled'), 'true');
   assert.ok(prerequisiteGets > 0);
@@ -2523,11 +2523,12 @@ for (const [engine, launcher] of [['Chromium', chromium], ['WebKit', webkit]]) {
 }
 
 for (const [engine, launcher] of [['Chromium', chromium], ['WebKit', webkit]]) {
-  browserTest(`Auto-sleep choices wrap and retain native arrow-key focus in ${engine}`, async (t) => {
-    const settings = { auto_sleep_source: 'panel' };
+  browserTest(`Auto-sleep source menu refreshes prerequisites and status and retains focus in ${engine}`, async (t) => {
+    const settings = { auto_sleep_source: 'panel', auto_sleep: 'true' };
+    let prerequisiteGets = 0, statusGets = 0;
     const posts = [];
     const harness = await startHarness(async (path, request) => {
-      if (path === '/api/v1/config/schema') return json([{ key: 'auto_sleep_source', label: 'Activity source', group: 'Behaviour', type: 'ENUM', available: true, options: ['panel', 'home_assistant', 'touch'] }]);
+      if (path === '/api/v1/config/schema') return json([{ key: 'auto_sleep_source', label: 'Activity source', group: 'Behaviour', type: 'ENUM', available: true, options: ['panel', 'home_assistant', 'touch'] }, { key: 'auto_sleep', label: 'Auto sleep', group: 'Behaviour', type: 'BOOL', available: true }]);
       if (path === '/api/v1/config') {
         if (request.method === 'POST') {
           const values = Object.fromEntries(new URLSearchParams(await requestBody(request)));
@@ -2536,30 +2537,45 @@ for (const [engine, launcher] of [['Chromium', chromium], ['WebKit', webkit]]) {
         return json({ settings, ha_expose: {} });
       }
       if (path === '/api/v1/apps') return json({ apps: [] });
-      if (path === '/api/v1/auto-sleep/prerequisite') return json({ eligible: false, phase: 'unassigned' });
+      if (path === '/api/v1/auto-sleep/prerequisite') { prerequisiteGets++; return json({ eligible: true, phase: 'assigned', area_name: 'Studio' }); }
+      if (path === '/api/v1/auto-sleep') { statusGets++; return json({ enabled: true, source: settings.auto_sleep_source, phase: 'live', area_name: 'Studio', source_count: statusGets, history_phase: 'ready' }); }
+      if (path === '/api/v1/auto-sleep/history') return json(autoSleepHistory({ hours: 24 }));
       if (path === '/api/v1/radio' || path === '/api/v1/proximity') return json({ present: false });
     });
     const browser = await launcher.launch(engine === 'Chromium' ? { executablePath: chrome, headless: true } : { headless: true });
     const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
     t.after(async () => { await browser.close(); await new Promise(resolve => harness.server.close(resolve)); });
     await page.goto(harness.url);
-    const selected = page.locator('#cfg-auto_sleep_source input:checked');
+    page.setDefaultTimeout(2_000);
+    const selected = page.locator('#cfg-auto_sleep_source select');
+    await selected.waitFor();
+    assert.deepEqual(await selected.locator('option').allTextContents(), ['This panel’s proximity sensor', 'Home Assistant Area devices', 'Touch inactivity']);
+    await page.waitForFunction(() => document.querySelector('#auto-sleep-summary-announcement')?.textContent.includes('Phase: Live'));
+    const initialStatusGets = statusGets;
     await selected.focus();
-    // The send's settle re-renders the row; focus returns to the chosen radio.
-    const focusSettled = () => page.waitForFunction(() => document.activeElement === document.querySelector('#cfg-auto_sleep_source input:checked'), null, { timeout: 1_000 });
-    await page.keyboard.press('ArrowDown');
-    assert.equal(await selected.inputValue(), 'home_assistant');
-    await focusSettled();
-    await page.keyboard.press('ArrowDown');
-    assert.equal(await selected.inputValue(), 'touch');
-    await focusSettled();
-    assert.equal(await selected.count(), 1);
-    // Each arrow key is a finished choice, sent at once; focus stays on the chosen radio across the sends.
-    for (let attempt = 0; attempt < 40 && posts.length < 2; attempt++) await page.waitForTimeout(25);
-    assert.deepEqual(posts, [{ auto_sleep_source: 'home_assistant' }, { auto_sleep_source: 'touch' }]);
-    await page.waitForTimeout(300);
-    assert.equal(await selected.inputValue(), 'touch');
+    const choose = async (source) => {
+      const saved = page.waitForResponse(response => response.url().endsWith('/api/v1/config') && response.request().method() === 'POST');
+      await selected.selectOption(source);
+      await saved;
+      await page.waitForFunction(() => document.activeElement === document.querySelector('#cfg-auto_sleep_source select'));
+      assert.equal(await selected.inputValue(), source);
+    };
+    await choose('home_assistant');
+    await page.locator('#auto-sleep-prerequisite-status').getByText('Home Assistant Area: Studio', { exact: true }).waitFor();
+    await page.waitForFunction(() => document.querySelector('#auto-sleep-summary-announcement')?.textContent.includes('Studio'));
+    assert.ok(prerequisiteGets > 0, 'choosing HA checks its prerequisite');
+    assert.ok(statusGets > initialStatusGets, 'choosing HA refreshes status');
+    await choose('touch');
+    await page.getByText('Home Assistant and presence sensors are not required.', { exact: false }).waitFor();
+    assert.equal(await page.locator('#auto-sleep-chart').count(), 0);
+    const beforeReturn = prerequisiteGets;
+    await choose('home_assistant');
+    await page.locator('#auto-sleep-prerequisite-status').getByText('Home Assistant Area: Studio', { exact: true }).waitFor();
+    assert.ok(prerequisiteGets > beforeReturn, 'returning to HA rechecks prerequisites');
+    await choose('panel');
+    await page.getByRole('link', { name: 'Set up proximity on panel' }).waitFor();
+    assert.deepEqual(posts, ['home_assistant', 'touch', 'home_assistant', 'panel'].map(auto_sleep_source => ({ auto_sleep_source })));
     assert.equal(await selected.evaluate(input => input === document.activeElement), true);
-    assert.deepEqual(await page.locator('#cfg-auto_sleep_source .choice-list span').evaluateAll(nodes => nodes.map(node => node.scrollWidth <= node.clientWidth)), [true, true, true]);
+    assert.equal(await page.locator('#cfg-auto_sleep_source').evaluate(row => row.scrollWidth <= row.clientWidth), true);
   });
 }

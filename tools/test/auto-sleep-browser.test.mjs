@@ -96,8 +96,8 @@ browserTest('Touch inactivity can enable Auto-sleep without an Area and sends a 
 
   const toggle = page.locator('#cfg-auto_sleep [role=switch]');
   await toggle.waitFor();
-  await page.locator('#cfg-auto_sleep_source input[value="touch"]').check();
-  assert.equal(await page.locator('#cfg-auto_sleep_source input:checked').inputValue(), 'touch');
+  await page.locator('#cfg-auto_sleep_source select').selectOption('touch');
+  assert.equal(await page.locator('#cfg-auto_sleep_source select').inputValue(), 'touch');
   assert.equal(await page.locator('#cfg-auto_sleep_touch_delay_seconds input').inputValue(), '30');
   assert.equal(await toggle.getAttribute('aria-disabled'), 'false');
   await page.getByText('Home Assistant and presence sensors are not required.', { exact: false }).waitFor();
