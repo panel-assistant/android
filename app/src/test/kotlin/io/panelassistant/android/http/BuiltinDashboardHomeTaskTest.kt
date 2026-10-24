@@ -86,7 +86,7 @@ class BuiltinDashboardHomeTaskTest {
     private suspend fun changeTheme() = PaneldServerHttpFixture().use { fixture ->
         fixture.config.setRaw(requireNotNull(SettingsRegistry.spec("friendly_name")), "Theme panel")
         val result = transaction(fixture).applyAccepted(mapOf("dashboard_theme" to "Dark"))
-        assertEquals(ApplyAcceptedResult.Applied, result)
+        org.junit.Assert.assertTrue(result is ApplyAcceptedResult.Applied)
     }
 
     private fun preparation() = RendererPreparationCoordinator(

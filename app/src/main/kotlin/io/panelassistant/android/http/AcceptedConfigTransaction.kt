@@ -29,7 +29,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 internal sealed interface ApplyAcceptedResult {
-    data object Applied : ApplyAcceptedResult
+    data class Applied(val appliedKeys: List<String>, val pendingKeys: List<String>) : ApplyAcceptedResult
     data object Stale : ApplyAcceptedResult
     data object CommitFailed : ApplyAcceptedResult
     data class CompatibilityRefused(val message: String) : ApplyAcceptedResult
@@ -40,6 +40,7 @@ internal sealed interface ApplyAcceptedResult {
 internal class ConfigLiveApplyRefused(
     val failedKey: String,
     val appliedKeys: List<String>,
+    val pendingKeys: List<String> = emptyList(),
 ) : IllegalStateException("$failedKey live apply refused")
 
 /** Ordered accepted-config commit and renderer effects shared by import, OAuth and restore. */
@@ -213,6 +214,7 @@ internal class AcceptedConfigTransaction(
             val appliedKeys = accepted.keys.filterTo(ArrayList()) {
                 it !in liveKeys && it != "dashboard_entity_learning"
             }
+            val pendingKeys = ArrayList<String>()
             runCatching {
                 // The base transaction deliberately excludes live keys. Publish every actually durable
                 // generation to rollback ownership, then converge all live values before any external
@@ -222,14 +224,16 @@ internal class AcceptedConfigTransaction(
                 phase.live.firstOrNull { it.first == "home_dashboard" }?.let { (_, value) ->
                     val applied = applySetting("home_dashboard", value)
                     onDurableRevision(io.panelassistant.android.config.ConfigHash.of(values.revisionValues()))
-                    if (!applied.legacyAcknowledged) throw ConfigLiveApplyRefused("home_dashboard", appliedKeys.toList())
+                    if (!applied.legacyAcknowledged) throw ConfigLiveApplyRefused("home_dashboard", appliedKeys.toList(), pendingKeys.toList())
                     if (applied == LiveSettingRequestOutcome.APPLIED) appliedKeys += "home_dashboard"
+                    else pendingKeys += "home_dashboard"
                 }
                 for ((k, v) in phase.live) if (k != "home_dashboard") {
                     val applied = applySetting(k, v)
                     onDurableRevision(io.panelassistant.android.config.ConfigHash.of(values.revisionValues()))
-                    if (!applied.legacyAcknowledged) throw ConfigLiveApplyRefused(k, appliedKeys.toList())
+                    if (!applied.legacyAcknowledged) throw ConfigLiveApplyRefused(k, appliedKeys.toList(), pendingKeys.toList())
                     if (applied == LiveSettingRequestOutcome.APPLIED) appliedKeys += k
+                    else pendingKeys += k
                 }
                 val homeChanged = normalizeDashboardEntityPath(config.homeDashboard) !=
                     normalizeDashboardEntityPath(previousHome)
@@ -242,8 +246,10 @@ internal class AcceptedConfigTransaction(
                         error("entity-learning transition failed")
                     }
                     onDurableRevision(io.panelassistant.android.config.ConfigHash.of(values.revisionValues()))
+                    appliedKeys += "dashboard_entity_learning"
                 }
-                // All accepted values are now durable. This same fence remains exact if either the
+                // Ordinary values and acknowledged live work are now durable; queued live work
+                // remains pending in the receipt. This same fence remains exact if either the
                 // Companion/renderer callback or the later profile callback fails.
                 afterCommitBeforeRenderer(
                     phase.effects,
@@ -255,7 +261,7 @@ internal class AcceptedConfigTransaction(
             onReconfigure(accepted.keys)
             rendererFailure?.let { throw it }
             afterApply()
-            ApplyAcceptedResult.Applied
+            ApplyAcceptedResult.Applied(appliedKeys.toList(), pendingKeys.toList())
         }
         result
         } finally {
@@ -364,7 +370,7 @@ internal class AcceptedConfigTransaction(
                     },
                     afterApply = afterApply,
                 )
-                check(result == ApplyAcceptedResult.Applied) {
+                check(result is ApplyAcceptedResult.Applied) {
                     if (result is ApplyAcceptedResult.CompatibilityRefused) {
                         "configuration refused: ${result.message}"
                     } else "configuration commit failed"
@@ -377,7 +383,7 @@ internal class AcceptedConfigTransaction(
                     expectedRevision = expectedRevision,
                     entityState = entityState,
                     existingOperationTicket = ticket,
-                ) == ApplyAcceptedResult.Applied
+                ) is ApplyAcceptedResult.Applied
             },
             restoreCompanion = restoreCompanion,
             reconcileAfterCompanionRestore = { transaction().reconcileAfterCompanionRestore(it) },

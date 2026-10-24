@@ -880,7 +880,7 @@ class PaneldServer internal constructor(
                     is ConfigPostParameters.Bad -> null
                 }
             },
-            commit = { accepted, admitted -> acceptedConfigTransaction().applyAccepted(accepted, admit = admitted) == ApplyAcceptedResult.Applied },
+            commit = { accepted, admitted -> acceptedConfigTransaction().applyAccepted(accepted, admit = admitted) is ApplyAcceptedResult.Applied },
         )
 
     private fun directConfigPost() = acceptedConfigTransaction().directPost(

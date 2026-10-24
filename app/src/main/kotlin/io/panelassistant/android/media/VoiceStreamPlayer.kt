@@ -374,12 +374,14 @@ internal class VoiceStreamPlayer(
                             current?.finish()
                             val streamRate = (event ushr 8).takeIf { it > 0 } ?: DEFAULT_RATE
                             val channels = ((event ushr 4) and 0xF).takeIf { it > 0 } ?: CHANNELS
-                            current = synchronized(streams) {
-                                StreamWriter(handle, streamRate, channels).also { if (muted) it.silence() }
-                            }.also {
-                                writers += it
-                                it.start()
+                            val writer = synchronized(streams) {
+                                StreamWriter(handle, streamRate, channels).also {
+                                    if (muted) it.silence()
+                                    current = it
+                                }
                             }
+                            writers += writer
+                            writer.start()
                         }
                         SendspinNative.EVENT_STREAM_END -> {
                             current?.finish()
