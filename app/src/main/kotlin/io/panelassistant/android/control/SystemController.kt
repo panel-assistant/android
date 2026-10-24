@@ -108,8 +108,13 @@ class SystemController(
         launchComponent(AppIdentity.component(env.ownPackage, ".CompanionHomeReturnActivity"), "Companion home return")
 
     /** Open the local instruction surface; visibility is acknowledged separately by its session. */
-    fun launchProximityWizard(): Boolean {
-        val component = AppIdentity.component(env.ownPackage, ".ProximityWizardActivity")
+    fun launchProximityWizard(): Boolean = launchOwnSurface(".ProximityWizardActivity")
+
+    /** Bring the on-screen approval of a pending sensitive request up over whatever is showing. */
+    fun launchApprovalPrompt(): Boolean = launchOwnSurface(".ApprovalPromptActivity")
+
+    private fun launchOwnSurface(cls: String): Boolean {
+        val component = AppIdentity.component(env.ownPackage, cls)
         return when (privilegedStart(component)) {
             PrivilegedStartResult.STARTED -> true
             PrivilegedStartResult.BLOCKED -> false

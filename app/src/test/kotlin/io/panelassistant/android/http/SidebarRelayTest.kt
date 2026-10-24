@@ -519,6 +519,38 @@ internal class SidebarRelayTest : io.panelassistant.android.testsupport.PanelRun
         }
     }
 
+    // Seen on a Hardened panel: the restore waited for an approval only Settings listed, so nobody saw it and it expired.
+    @Test fun aRelayedRestoreOnAHardenedPanelRaisesItsApprovalOnThePanelsScreenOnceAndApprovingItThereRunsIt() {
+        val screen = CopyOnWriteArrayList<String>()
+        val broker = LocalApprovalBroker.instance
+        io.panelassistant.android.ApprovalPrompt(
+            broker,
+            wake = { screen += "wake" },
+            launch = { screen += "prompt: " + broker.pending().joinToString { "${it.operation} for ${it.peer}" }; true },
+            post = { it() },
+        ).use {
+            withFullReadServer { config, fixture ->
+                assertTrue(config.setSecurityMode(io.panelassistant.android.Config.SecurityMode.HARDENED))
+                testApplication {
+                    application { fixture.mount(this) }
+                    startApplication()
+                    val backup = """{"kind":"ha-paneld-backup","schema":15,"config":{"friendly_name":"Approved on the panel"}}"""
+                    val reply = relayedApprovedBodyRequest(fixture, "restore", backup.toByteArray(), "reader-token-restore2", repeated = true)
+
+                    assertEquals(reply.toString(), "applied", reply.getString("outcome"))
+                    val until = System.nanoTime() + 15_000_000_000L
+                    while (config.friendlyName != "Approved on the panel" && System.nanoTime() < until) Thread.sleep(20)
+                    assertEquals("Approved on the panel", config.friendlyName)
+                }
+            }
+        }
+        assertEquals(
+            "the panel wakes and shows the restore's approval once, though the request arrived twice",
+            listOf("wake", "prompt: ${SensitiveOperation.BACKUP_RESTORE} for user:$USER"),
+            screen,
+        )
+    }
+
     @Test fun aRelayedConfigImportOverTheFrameLimitOnAHardenedPanelAppliesAfterItsApprovalHavingReadItsOneUseBlobOnce() {
         withFullReadServer { config, fixture ->
             assertTrue(config.setSecurityMode(io.panelassistant.android.Config.SecurityMode.HARDENED))
