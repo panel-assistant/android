@@ -35,7 +35,17 @@ internal fun createDashboardWebView(
     onThemeSignature: (String) -> Unit,
     entityGate: DashboardEntityGate,
     bridge: DashboardFrontendBridge,
-): WebView = WebView(activity).apply {
+): WebView = WebView(
+    // CSS media queries (including HA's loading screen) do not use the JavaScript matchMedia shim.
+    // Give the provider the panel's scheme before it can paint; Follow keeps the activity's theme.
+    when (DashboardTheme.forcedDark(config.dashboardThemeEffective)) {
+        false -> android.view.ContextThemeWrapper(activity, android.R.style.Theme_Material_Light_NoActionBar)
+        true -> android.view.ContextThemeWrapper(activity, android.R.style.Theme_Material_NoActionBar)
+        null -> activity
+    },
+).apply {
+    val themeSignature = config.dashboardThemeEffective
+    val forcedThemeDark = DashboardTheme.forcedDark(themeSignature)
     val documentStartOrigins = dashboardDocumentStartOrigins(config.haEffectiveUrl, allowHttpsUpgrade = !HaConnectionRoutes.hasLearned(config))
     settings.javaScriptEnabled = true
     settings.domStorageEnabled = true
@@ -48,7 +58,7 @@ internal fun createDashboardWebView(
     // Camera cards / live feeds must start without a tap — the default (require user gesture) leaves
     // every stream paused on a touchless panel. (Not media-file playback, which stays out of scope.)
     settings.mediaPlaybackRequiresUserGesture = false
-    setBackgroundColor(DashboardActivity.BG_DARK) // no white flash before first paint
+    setBackgroundColor(if (forcedThemeDark == false) android.graphics.Color.rgb(250, 250, 250) else DashboardActivity.BG_DARK)
     runCatching {
         if (webViewFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
             androidx.webkit.WebViewCompat.addDocumentStartJavaScript(
@@ -68,7 +78,7 @@ internal fun createDashboardWebView(
     // Page zoom to match the HA Companion's default sizing (it scales by device density); pinch
     // stays off (no builtInZoomControls) — the zoom is a deliberate per-panel value (see applyZoom).
     setInitialScale((resources.displayMetrics.density * config.dashboardZoom).toInt())
-    activity.applyDashboardForceDark(this)
+    activity.applyDashboardForceDark(this, forcedThemeDark)
     runCatching {
         if (webViewFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
             androidx.webkit.WebViewCompat.addDocumentStartJavaScript(
@@ -86,8 +96,6 @@ internal fun createDashboardWebView(
     // The EFFECTIVE policy, so Ambient arrives here as the Dark, Light or Follow it currently
     // resolves to and bakes exactly the script that choice always has. Published so the service
     // can tell whether a new ambient verdict still has to reach this WebView.
-    val themeSignature = config.dashboardThemeEffective
-    val forcedThemeDark = DashboardTheme.forcedDark(themeSignature)
     onThemeSignature(themeSignature)
     BuiltinDashboard.setAppliedThemeSignature(activityOwner, themeSignature)
     runCatching {
@@ -177,9 +185,12 @@ internal fun createDashboardWebView(
  *    the CURRENT system uiMode into the force-dark flag (re-applied on every uiMode change below).
  *  - 9-: no system setting exists — the panel's `dark_mode` config (Display card) decides.
  */
-internal fun Context.applyDashboardForceDark(w: WebView) = runCatching {
+internal fun Context.applyDashboardForceDark(
+    w: WebView,
+    forcedDark: Boolean? = DashboardTheme.forcedDark(Config(this).dashboardThemeEffective),
+) = runCatching {
     if (android.os.Build.VERSION.SDK_INT >= 33) return@runCatching
-    val dark = if (android.os.Build.VERSION.SDK_INT >= 29) {
+    val dark = forcedDark ?: if (android.os.Build.VERSION.SDK_INT >= 29) {
         (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
             android.content.res.Configuration.UI_MODE_NIGHT_YES
     } else {
