@@ -61,7 +61,7 @@ class PanelAssistantTransportOwnerTest {
             assertEquals("SHUTTING_DOWN", observations.last())
             harness.owner.replaceDemand(DEMAND.copy(routeEpoch = 1))
             runCurrent()
-            assertEquals(listOf("retired", "STARTING", "SHUTTING_DOWN", "retired", "READY"), observations)
+            assertEquals(listOf("retired", "STARTING", "SHUTTING_DOWN", "READY"), observations)
             second.inbound.close(IOException("lost"))
             runCurrent()
             assertEquals("disconnected", observations.last())
@@ -109,6 +109,31 @@ class PanelAssistantTransportOwnerTest {
             harness.owner.close()
             HaLifecycleRuntime.uninstall(coordinator)
         }
+    }
+
+    @Test fun `restart notice survives a re-chosen route and is retired by another Home Assistant`() = runTest {
+        val shuttingDown = JSONObject().put("phase", "shutting_down").put("reason", "restart")
+            .put("elapsed_ms", 0).put("expected_ms", 60_000)
+        val coordinator = HaLifecycleCoordinator(nowMs = { testScheduler.currentTime })
+        val harness = harness(
+            FakeConnection(Ha.accepting(lifecycle = shuttingDown)),
+            FakeConnection(Ha.accepting()),
+            FakeConnection(Ha.accepting()),
+            onLifecycleNotice = coordinator::onNativeNotice,
+            onLifecycleAuthenticated = coordinator::onNativeAuthenticated,
+            onLifecycleDisconnected = coordinator::onNativeDisconnected,
+            onLifecycleRetired = coordinator::onNativeRetired)
+        try {
+            harness.owner.replaceDemand(DEMAND)
+            runCurrent()
+            assertEquals(HaLifecycleState.SHUTTING_DOWN, coordinator.snapshot().state)
+            harness.owner.replaceDemand(DEMAND.copy(routeEpoch = 1))
+            runCurrent()
+            assertEquals(HaLifecycleState.SHUTTING_DOWN, coordinator.snapshot().state)
+            harness.owner.replaceDemand(DEMAND.copy(credential = OWNER.copy(url = "https://other-ha.example"), routeEpoch = 2))
+            runCurrent()
+            assertEquals(HaLifecycleState.NORMAL, coordinator.snapshot().state)
+        } finally { harness.owner.close() }
     }
 
     @Test fun `legacy hello authentication clears connection loss without synthetic ready notice`() = runTest {
