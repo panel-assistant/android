@@ -454,10 +454,11 @@
     var filterTimer = null;
     function applyFilter() {
       filterTimer = null;
-      var next = filter.value.trim();
+      var next = filter.value.trim().slice(0, 512);
       if (next === cfg.filterText) return;
       var wasFiltering = !!cfg.filterText;
       cfg.filterText = next;
+      cfg.writeConfigView();
       cfg.closeHelp();
       cfg.render();
       if (wasFiltering && !cfg.filterText) cfg.configCardGeometryChanged();

@@ -138,7 +138,7 @@ for (const engine of engines) {
       assert.deepEqual(h.posts, [], 'view changes never send a setting');
     });
 
-    engineTest(`${where}: the filter finds any setting by label, summary or help and stays out of the form and memory`, async (t) => {
+    engineTest(`${where}: the filter finds any setting, survives reload and stays out of settings and card memory`, async (t) => {
       const h = await harness();
       const browser = await engine.type.launch(engine.launch);
       t.after(async () => { await browser.close(); await new Promise((resolve) => h.server.close(resolve)); });
@@ -166,6 +166,10 @@ for (const engine of engines) {
       assert.equal(filtered, false, 'filter text never enters the card memory');
       assert.ok(storedAfter.every((k) => storedBefore.includes(k) || /\.basic$/.test(k)), `no filtered context stored: ${storedAfter}`);
 
+      await p.reload();
+      await p.waitForFunction(() => window.ConfigurePage.schema.length > 0);
+      assert.equal(await p.locator('#cfg-filter').inputValue(), 'no such setting');
+      assert.equal(await p.locator('#cfg-groups .frow').count(), 0);
       await p.locator('#cfg-filter').press('Escape');
       await p.waitForFunction(() => document.querySelectorAll('#cfg-groups .frow').length === 3);
     });

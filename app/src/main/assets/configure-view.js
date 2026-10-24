@@ -24,25 +24,58 @@
   window.configCardSizeGeometryChanged = configCardGeometryChanged;
   window.configCardSizeGeometryInvalid = configCardGeometryInvalid;
 
-  // Tier, Descriptions and each card's advanced reveal are remembered per browser. The filter is not.
+  // The sidebar owns browser storage for its opaque-origin pages.
+  var configViewRelay = document.body && document.body.hasAttribute("data-ui-relay");
+  var configViewEdited = false, configViewReadPending = false;
+  var CONFIG_VIEW_MESSAGE = "panel-assistant-config-view";
+  function applyConfigView(stored) {
+    if (!stored || typeof stored !== "object" || Array.isArray(stored)) return;
+    cfg.advanced = stored.advanced === true;
+    cfg.descriptions = stored.descriptions !== false;
+    cfg.revealedGroups = Object.create(null);
+    if (Array.isArray(stored.revealed)) stored.revealed.forEach(function (group) {
+      if (typeof group === "string") cfg.revealedGroups[group] = true;
+    });
+    cfg.filterText = typeof stored.filter === "string" ? stored.filter.slice(0, 512) : "";
+    var filter = document.getElementById("cfg-filter");
+    if (filter) filter.value = cfg.filterText;
+  }
   function readConfigView() {
+    if (configViewRelay) {
+      configViewReadPending = true;
+      window.parent.postMessage({ type: CONFIG_VIEW_MESSAGE, read: true }, location.origin);
+      return;
+    }
     try {
-      var stored = JSON.parse(window.localStorage.getItem(cfg.CONFIG_VIEW_STORAGE_KEY) || "null");
-      if (!stored || typeof stored !== "object") return;
-      cfg.advanced = stored.advanced === true;
-      cfg.descriptions = stored.descriptions !== false;
-      if (Array.isArray(stored.revealed)) stored.revealed.forEach(function (group) {
-        if (typeof group === "string") cfg.revealedGroups[group] = true;
-      });
+      applyConfigView(JSON.parse(window.localStorage.getItem(cfg.CONFIG_VIEW_STORAGE_KEY) || "null"));
     } catch (_) {}
   }
   function writeConfigView() {
+    configViewEdited = true;
+    var value = { advanced: cfg.advanced, descriptions: cfg.descriptions,
+      revealed: Object.keys(cfg.revealedGroups), filter: cfg.filterText };
+    if (configViewRelay) {
+      window.parent.postMessage({ type: CONFIG_VIEW_MESSAGE, value: value }, location.origin);
+      return;
+    }
     try {
-      window.localStorage.setItem(cfg.CONFIG_VIEW_STORAGE_KEY, JSON.stringify({
-        advanced: cfg.advanced, descriptions: cfg.descriptions, revealed: Object.keys(cfg.revealedGroups)
-      }));
+      window.localStorage.setItem(cfg.CONFIG_VIEW_STORAGE_KEY, JSON.stringify(value));
     } catch (_) {}
   }
+  if (configViewRelay) window.addEventListener("message", function (event) {
+    if (!configViewReadPending || event.source !== window.parent || event.origin !== location.origin ||
+        !event.data || event.data.type !== CONFIG_VIEW_MESSAGE) return;
+    configViewReadPending = false;
+    if (configViewEdited) return;
+    applyConfigView(event.data.value);
+    syncConfigViewUi();
+    cfg.render();
+    if (!cfg.filterText) configCardGeometryChanged();
+  });
+  // Input arrives before the filter's debounce writes; a delayed read must not erase typed text.
+  if (configViewRelay) document.addEventListener("input", function (event) {
+    if (event.target && event.target.id === "cfg-filter") configViewEdited = true;
+  });
   // The view is part of the card-height memory's layout context, so each combination keeps its own
   // remembered heights.
   function syncConfigViewUi() {
