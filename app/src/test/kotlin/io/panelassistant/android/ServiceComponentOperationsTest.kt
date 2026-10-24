@@ -31,7 +31,7 @@ class ServiceComponentOperationsTest {
         val holder = InstallProgress.start("restore")
         assertNotNull(holder)
 
-        val admitted = operations().installComponent("apk", "install", "")
+        val admitted = operations().installComponent("companion", "install", "")
 
         assertFalse(admitted)
         assertTrue(InstallProgress.running)
@@ -39,13 +39,11 @@ class ServiceComponentOperationsTest {
         InstallProgress.finish(holder!!, "done")
     }
 
-    @Test fun anAdmittedInstallHoldsTheLaneUntilItEndsAndThenReportsItsOwnResult() {
-        val admitted = operations().installComponent("apk", "install", "")
-
-        assertTrue(admitted)
-        awaitLaneReleased()
-        assertEquals("apk", InstallProgress.component)
-        assertEquals("unknown component", InstallProgress.message)
+    @Test fun retiredPanelPickerNeverStartsAnOperation() {
+        var started = 0
+        assertFalse(operations().installComponent("paneld", "install", "v1.0") { started++ })
+        assertFalse(InstallProgress.running)
+        assertEquals(0, started)
     }
 
     @Test fun anInstallThatFailsStillReleasesTheLaneWithItsError() {
@@ -59,7 +57,7 @@ class ServiceComponentOperationsTest {
     @Test fun anInstallAdmittedAsTheServiceStopsDoesNotStrandTheLane() {
         scope.cancel()
 
-        val admitted = operations().installComponent("apk", "install", "")
+        val admitted = operations().installComponent("companion", "install", "")
 
         assertTrue(admitted)
         awaitLaneReleased()

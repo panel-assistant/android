@@ -9,7 +9,6 @@ import io.panelassistant.android.util.CompanionInstaller
 import io.panelassistant.android.util.InstallOperationResult
 import io.panelassistant.android.util.InstallPresentation
 import io.panelassistant.android.util.InstallProgress
-import io.panelassistant.android.util.SelfUpdater
 import io.panelassistant.android.util.UpdateChecker
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -165,37 +164,26 @@ internal class ServiceComponentOperations(
         version: String,
         onStarted: (InstallProgress.Ticket) -> Unit = {},
     ): Boolean {
-        val label = when (name) {
-            "paneld" -> "Panel Assistant"; "companion" -> "HA Companion"; else -> name
-        }
+        if (name != "companion") return false
+        val label = "HA Companion"
         val force = action == "reinstall"
         val tag = version.takeIf { it.isNotBlank() }
         return launchOperation(
             component = label,
-            owner = when (name) {
-                "paneld" -> "paneld"
-                "companion" -> "companion"
-                else -> "apk"
-            },
+            owner = "companion",
             logLabel = "install $name",
             operation = {
-                when (name) {
-                    // A specific picked version installs that exact tag; otherwise the channel's newest.
-                    "paneld" -> if (tag != null) SelfUpdater.installVersionResult(context, tag)
-                        else SelfUpdater.checkAndUpdateResult(context, "stable", force = force)
-                    "companion" -> if (tag != null) CompanionInstaller.installVersionResult(
-                        context,
-                        tag,
-                        profile().companionMaxVersion,
-                    )
-                        else CompanionInstaller.installOrUpdateResult(
-                            context,
-                            force = force,
-                            channel = "stable",
-                            maxVersion = profile().companionMaxVersion,
-                        )
-                    else -> InstallOperationResult("unknown component")
-                }
+                // A specific picked version installs that exact tag; otherwise the channel's newest.
+                if (tag != null) CompanionInstaller.installVersionResult(
+                    context,
+                    tag,
+                    profile().companionMaxVersion,
+                ) else CompanionInstaller.installOrUpdateResult(
+                    context,
+                    force = force,
+                    channel = "stable",
+                    maxVersion = profile().companionMaxVersion,
+                )
             },
             after = {
                 // Refresh the available-update list so the banner + Install tab reflect the new state.

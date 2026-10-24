@@ -2,7 +2,6 @@ package io.panelassistant.android.device.profile
 
 import io.panelassistant.android.device.ScreenOff
 import io.panelassistant.android.device.SuForm
-import io.panelassistant.android.provisioning.requiresProvisioningHelper
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -560,7 +559,8 @@ class ProfileYamlSecurityTest {
         val issues = ProfileValidator.validate(document, "1.0.0", bundled = false)
 
         assertFalse(issues.any { it.path == "sensors.proximity_gpio" })
-        assertTrue(dataProfile(document).requiresProvisioningHelper())
+        assertEquals(ProfileHelperAuthorityDemand.REQUIRED,
+            ProfileMetadata.helperAuthorityDemand[document.requires.drivers.single { it.startsWith("sensor.") }])
     }
 
     @Test fun `room climate requires the helper`() {
@@ -569,7 +569,8 @@ class ProfileYamlSecurityTest {
             sensors = ProfileSensors(cht8305 = true),
         )
 
-        assertTrue(dataProfile(document).requiresProvisioningHelper())
+        assertEquals(ProfileHelperAuthorityDemand.REQUIRED,
+            ProfileMetadata.helperAuthorityDemand[document.requires.drivers.single { it.startsWith("sensor.") }])
     }
 
     @Test fun `the core version gate admits a core at or above the profile minimum`() {
@@ -616,4 +617,41 @@ class ProfileYamlSecurityTest {
             trustedBundledContent = false,
         )
     }
+    @Test fun everyCoreDriverHasThePinnedHelperAuthorityDemand() {
+        val expected = mapOf(
+            "access.android-su" to ProfileHelperAuthorityDemand.NONE,
+            "access.toolbox-su" to ProfileHelperAuthorityDemand.NONE,
+            "input.button-backlight" to ProfileHelperAuthorityDemand.REQUIRED,
+            "input.evdev" to ProfileHelperAuthorityDemand.REQUIRED,
+            "led.autodetect" to ProfileHelperAuthorityDemand.SANDBOX_FALLBACK,
+            "led.rk3576-ioctl" to ProfileHelperAuthorityDemand.SANDBOX_FALLBACK,
+            "led.rk3576-ioctl-daemon" to ProfileHelperAuthorityDemand.REQUIRED,
+            "led.sysfs-daemon" to ProfileHelperAuthorityDemand.REQUIRED,
+            "radio.siliconlabs-host" to ProfileHelperAuthorityDemand.NONE,
+            "relay.sysfs" to ProfileHelperAuthorityDemand.NONE,
+            "relay.gpio-button-led" to ProfileHelperAuthorityDemand.NONE,
+            "screen.brightness-zero" to ProfileHelperAuthorityDemand.NONE,
+            "screen.daemon-blpower" to ProfileHelperAuthorityDemand.REQUIRED,
+            "screen.su-blpower" to ProfileHelperAuthorityDemand.SANDBOX_FALLBACK,
+            // Added 2026-08-17: the keyevent route injects through root where the app has it and the
+            // helper daemon otherwise, so the helper is a fallback rather than a requirement.
+            "screen.keyevent" to ProfileHelperAuthorityDemand.SANDBOX_FALLBACK,
+            // Added 2026-10-08: unprivileged Android sleep (WRITE_SETTINGS, device admin); no helper.
+            "screen.screen-timeout" to ProfileHelperAuthorityDemand.NONE,
+            "screen.device-admin" to ProfileHelperAuthorityDemand.NONE,
+            "screen.vendor-rpc" to ProfileHelperAuthorityDemand.NONE,
+            "sensor.android" to ProfileHelperAuthorityDemand.NONE,
+            "sensor.cht8305-daemon" to ProfileHelperAuthorityDemand.REQUIRED,
+            // Added 2026-08-14: the VI530x range route is helper-only — there is no sandbox path to a
+            // misc-device ioctl, so the demand is REQUIRED.
+            "sensor.vi530x-daemon" to ProfileHelperAuthorityDemand.REQUIRED,
+            "sensor.gpio-proximity" to ProfileHelperAuthorityDemand.REQUIRED,
+            "update.webview" to ProfileHelperAuthorityDemand.NONE,
+        )
+
+        assertEquals(ProfileMetadata.drivers.map { it.id }.toSet(), expected.keys)
+        assertEquals(expected, ProfileMetadata.helperAuthorityDemand)
+    }
+
+
 }

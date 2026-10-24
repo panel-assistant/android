@@ -18,6 +18,22 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class InstallationRoutesTest {
+    @Test fun retiredPanelVersionPickerNeverReadsTheCatalogue() {
+        PaneldServerHttpFixture().use { fixture ->
+            testApplication {
+                application { routing {
+                    installationRoutes(fixture.context, fixture.config,
+                        io.panelassistant.android.control.fakeProfile(), fixture.pending,
+                        authorizeSensitive = { _, _, _, _ -> error("No approval") },
+                        versionCatalogue = { _, _ -> error("Retired picker must not read releases") })
+                } }
+                val response = client.get("/install/versions?name=paneld")
+                assertEquals(HttpStatusCode.BadRequest, response.status)
+                assertEquals("bad-component", JSONObject(response.bodyAsText()).getString("status"))
+            }
+        }
+    }
+
     @Test fun versionEndpointExplainsEveryUnavailableChoiceAndPreservesAllowedDownload() {
         PaneldServerHttpFixture().use { fixture ->
             testApplication {
@@ -34,7 +50,7 @@ class InstallationRoutesTest {
                             ) })
                     }
                 }
-                val response = client.get("/install/versions?name=paneld&channel=prerelease")
+                val response = client.get("/install/versions?name=companion&channel=prerelease")
                 assertEquals(HttpStatusCode.OK, response.status)
                 val versions = JSONObject(response.bodyAsText()).getJSONArray("versions")
                 assertEquals(listOf("no_matching_asset", "above_panel_limit"),
@@ -59,8 +75,8 @@ class InstallationRoutesTest {
             testApplication {
                 application { fixture.mount(this) }
                 val versions = client.get("/api/v1/install/versions?name=unknown&channel=")
-                assertEquals(HttpStatusCode.OK, versions.status)
-                assertEquals("""{"channel":"stable","versions":[]}""", versions.bodyAsText())
+                assertEquals(HttpStatusCode.BadRequest, versions.status)
+                assertEquals("""{"status":"bad-component"}""", versions.bodyAsText())
                 val invalidIgnore = client.post("/api/v1/updates/ignore") {
                     header(HttpHeaders.ContentType, "application/x-www-form-urlencoded")
                     setBody("label=app")

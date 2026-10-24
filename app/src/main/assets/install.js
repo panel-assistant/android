@@ -258,8 +258,6 @@
     var versionArgs = { name: name };
     if (channelSelect) versionArgs.channel = chan;
     return api('install.versions', versionArgs).then(function (d) {
-        var paChannel = r.querySelector('.cpa-channel');
-        if (paChannel) paChannel.textContent = d && d.channel === 'prerelease' ? t('install.components.prerelease', 'Prerelease') : (d && d.channel === 'stable' ? t('install.components.stable', 'Stable') : '—');
         var vs = (d && d.versions) || [];
         if (!vs.length) { vsel.textContent = t('install.progress.no_versions', 'no versions found'); verChanged(name); markVersionGeometryValid(); return true; }
         vsel.innerHTML = '';

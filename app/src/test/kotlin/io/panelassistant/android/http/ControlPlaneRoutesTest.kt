@@ -80,11 +80,13 @@ class ControlPlaneRoutesTest {
     fun componentRouteValidatesBeforeAdmissionAndPreservesBusyContract() = testApplication {
         val admitted = mutableListOf<Triple<String, String, String>>()
         var admitting = true
+        var approvals = 0
         application {
             routing {
                 controlPlaneRoutes(
                     dependencies(
-                        installedComponentVersion = { name -> if (name == "paneld") "0.9.3" else null },
+                        authorize = { _, _, _, _ -> approvals++; true },
+                        installedComponentVersion = { name -> if (name == "companion") "0.9.3" else null },
                         installComponent = { name, action, version ->
                             admitted += Triple(name, action, version)
                             admitting
@@ -94,36 +96,39 @@ class ControlPlaneRoutesTest {
             }
         }
 
+        assertJsonPost("name=paneld", HttpStatusCode.BadRequest, """{"status":"bad-component"}""")
+        assertEquals(0, approvals)
+        assertTrue(admitted.isEmpty())
         assertJsonPost("name=unknown", HttpStatusCode.BadRequest, """{"status":"bad-component"}""")
-        assertJsonPost("name=paneld&action=remove", HttpStatusCode.BadRequest, """{"status":"bad-action"}""")
-        assertJsonPost("name=paneld&version=bad%2Ftag", HttpStatusCode.BadRequest, """{"status":"bad-version"}""")
+        assertJsonPost("name=companion&action=remove", HttpStatusCode.BadRequest, """{"status":"bad-action"}""")
+        assertJsonPost("name=companion&version=bad%2Ftag", HttpStatusCode.BadRequest, """{"status":"bad-version"}""")
         assertEquals(emptyList<Triple<String, String, String>>(), admitted)
 
         assertJsonPost(
-            "name=paneld&version=v0.9.2",
+            "name=companion&version=v0.9.2",
             HttpStatusCode.Conflict,
             """{"status":"downgrade-refused"}""",
         )
         assertEquals(emptyList<Triple<String, String, String>>(), admitted)
 
         assertJsonPost(
-            "name=paneld&version=v0.9.2&allow_downgrade=true",
+            "name=companion&version=v0.9.2&allow_downgrade=true",
             HttpStatusCode.OK,
             """{"status":"started"}""",
         )
-        assertEquals(Triple("paneld", "update", "v0.9.2"), admitted.last())
+        assertEquals(Triple("companion", "update", "v0.9.2"), admitted.last())
         admitted.clear()
 
-        assertJsonPost("name=paneld", HttpStatusCode.OK, """{"status":"started"}""")
-        assertEquals(listOf(Triple("paneld", "update", "")), admitted)
+        assertJsonPost("name=companion", HttpStatusCode.OK, """{"status":"started"}""")
+        assertEquals(listOf(Triple("companion", "update", "")), admitted)
 
         admitting = false
         assertJsonPost(
-            "name=companion&action=reinstall&version=v0.9.2-rc2",
+            "name=companion&action=reinstall&version=v0.9.4-rc2",
             HttpStatusCode.OK,
             """{"status":"busy"}""",
         )
-        assertEquals(Triple("companion", "reinstall", "v0.9.2-rc2"), admitted.last())
+        assertEquals(Triple("companion", "reinstall", "v0.9.4-rc2"), admitted.last())
     }
 
     @Test

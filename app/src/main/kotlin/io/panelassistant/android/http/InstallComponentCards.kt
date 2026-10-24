@@ -1,21 +1,17 @@
 package io.panelassistant.android.http
 
-import io.panelassistant.android.appVersion
 import io.panelassistant.android.i18n.Strings as AppStrings
-import io.panelassistant.android.Config
 import io.panelassistant.android.util.CompanionInstaller
 
-/** Managed components: PA chooses the panel channel; Companion retains its request-local picker. */
+/** Companion retains its request-local version picker; Panel Assistant selects the panel app. */
 internal fun componentsCardHtml(
     installer: Boolean,
     strings: AppStrings,
     compPkg: String?,
     compCur: String?,
 ): String {
-    val paneldCur = appVersion()
     val compFull = compPkg == CompanionInstaller.FULL_PKG
 
-    val paneldRow = pickerRow("paneld", "Panel Assistant", paneldCur, installer, strings)
     // A Play-managed FULL Companion must never be touched by ha-paneld — show it read-only.
     val compRow = if (compFull)
         simpleRow("HA Companion", compCur, """<span class="muted">${esc(strings.get("install.components.play_managed"))}</span>""", strings)
@@ -27,14 +23,12 @@ internal fun componentsCardHtml(
         "<h2>${esc(strings.get("install.components.title"))}</h2>"
     }
     return """<div class="card" data-layout-key="managed-components">$title
-$paneldRow
 $compRow
 $installNote
 <p class="note" id="comp-msg"></p></div>"""
 }
 
-/** A version picker hydrated by install.js, with PA's effective panel channel or Companion's channel
- *  selector, release notes, and the install/download control. */
+/** Companion version picker, release notes, and install/download control. */
 private fun pickerRow(
     name: String,
     label: String,
@@ -42,9 +36,9 @@ private fun pickerRow(
     installer: Boolean,
     strings: AppStrings,
 ): String {
-    val channelControl = if (name == "paneld") """<span class="cpa-channel">—</span>""" else
+    val channelControl =
         """<select class="cchan" onchange="loadVersions('$name')"><option value="stable" selected>${esc(strings.get("install.components.stable"))}</option><option value="prerelease">${esc(strings.get("install.components.prerelease"))}</option></select>"""
-    return """<div class="fact comprow" data-name="${esc(name)}" data-installed-version="${esc(if (name == "paneld") Config.VERSION else installed.orEmpty())}">
+    return """<div class="fact comprow" data-name="${esc(name)}" data-installed-version="${esc(installed.orEmpty())}">
 <div class="compname"><b>${esc(label)}</b> <span class="muted">${if (installed != null) """${esc(strings.get("install.shared.installed"))} <span class="cver">${esc(installed)}</span>""" else """<span class="cver">${esc(strings.get("install.shared.not_installed"))}</span>"""}</span></div>
 <div class="comppick">
 <label class="muted">${esc(strings.get("install.components.channel"))} $channelControl</label>

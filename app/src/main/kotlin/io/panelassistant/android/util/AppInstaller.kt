@@ -19,7 +19,6 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Shared privileged APK installer with a **pinned signer + package allowlist**. This is NOT a generic
@@ -62,27 +61,6 @@ object AppInstaller {
     private const val MAX_APK_DOWNLOAD_BYTES = 512L * 1024L * 1024L
     private const val SELF_REPLACE_STATE_FLUSH_MS = 10_000L
 
-    /** Exact, authenticated and database-admitted self APK. Owns [apk] until consumed or closed. */
-    internal class PreparedSelfInstall internal constructor(
-        private val apk: File,
-        private val expectedSha256: String,
-        internal val version: String,
-        internal val boundary: DatabaseCompatibilityApkContract.Boundary,
-    ) : AutoCloseable {
-        private val consumed = AtomicBoolean(false)
-        internal fun consume(): File? = if (consumed.compareAndSet(false, true)) apk else null
-
-        internal fun bytesUnchanged(): Boolean = apk.isFile && sha256(apk) == expectedSha256
-
-        override fun close() {
-            if (consumed.compareAndSet(false, true)) apk.delete()
-        }
-    }
-
-    internal sealed interface SelfInstallPreparation {
-        data class Ready(val prepared: PreparedSelfInstall) : SelfInstallPreparation
-        data class Failed(val outcome: InstallOutcome.Failure) : SelfInstallPreparation
-    }
     fun installedVersion(context: Context, pkg: String): String =
         runCatching { context.packageManager.getPackageInfo(pkg, 0).versionName ?: "" }.getOrElse { "" }
 
@@ -146,122 +124,6 @@ object AppInstaller {
     /** The final dashboard choice is read after the download, immediately before the package mutation. */
     internal fun mayCommitPinnedInstall(beforeInstall: (() -> Boolean)?): Boolean =
         beforeInstall?.let { runCatching { it() }.getOrDefault(false) } ?: true
-
-    /**
-     * Stage one exact self-update candidate and prove its package, signer, database contract and live
-     * database compatibility without mutating configuration, helpers or packages. The returned owned
-     * capability is bound to the candidate digest and may be consumed exactly once by [installPrepared].
-     */
-    internal suspend fun prepareSelfInstall(
-        context: Context,
-        url: String,
-    ): SelfInstallPreparation = withContext(Dispatchers.IO) {
-        if (!GuardDbProcessAdmission.ordinaryMutationsAllowed()) {
-            return@withContext SelfInstallPreparation.Failed(guardDbInstallBlocked("paneld"))
-        }
-        if (panelUpdatePolicy() == null) {
-            return@withContext SelfInstallPreparation.Failed(
-                policyFailure("Panel Assistant must be online with update policy"),
-            )
-        }
-        if (selectInstallRoute(
-                Su.available(), HelperClient.available(), ConfirmedSelfInstaller.available(context),
-            ) == InstallRoute.NONE
-        ) {
-            return@withContext SelfInstallPreparation.Failed(
-                retryable("skipped: no permitted installer", "install-no-permitted-route", "paneld"),
-            )
-        }
-        val size = contentLength(url)
-        if (size > MAX_APK_DOWNLOAD_BYTES) {
-            return@withContext SelfInstallPreparation.Failed(
-                retryable("download too large", "install-download-too-large", "paneld"),
-            )
-        }
-        val limit = downloadCeiling(size, context.cacheDir.usableSpace)
-        if (limit <= 0L) {
-            return@withContext SelfInstallPreparation.Failed(
-                retryable("insufficient storage", "install-insufficient-storage", "paneld"),
-            )
-        }
-        val apk = runCatching { File.createTempFile("hapaneld-prepared-", ".apk", context.cacheDir) }
-            .getOrElse {
-                return@withContext SelfInstallPreparation.Failed(
-                    retryable("download staging failed", "install-staging-failed", "paneld"),
-                )
-            }
-        withStagedFiles { staged ->
-            staged.stage(apk)
-            if (download(url, apk, limit) != DownloadResult.Succeeded) {
-                return@withStagedFiles SelfInstallPreparation.Failed(
-                    retryable("download failed", "install-download-failed", "paneld"),
-                )
-            }
-            verifyApk(context, apk.absolutePath, HA_PANELD)?.let { why ->
-                return@withStagedFiles SelfInstallPreparation.Failed(
-                    rejected("refused ($why)", "paneld"),
-                )
-            }
-            val info = inspect(context, apk.absolutePath)
-            if (info == null) return@withStagedFiles SelfInstallPreparation.Failed(
-                rejected("refused (unreadable candidate APK)", "paneld"),
-            )
-            currentPanelUpdateRefusal(context, info)?.let { why ->
-                return@withStagedFiles SelfInstallPreparation.Failed(policyFailure(why))
-            }
-            var admittedBoundary: DatabaseCompatibilityApkContract.Boundary? = null
-            val refusal = selfReplacementRefusal(info) { boundary ->
-                val decision = compatibilityDecision(context, boundary)
-                compatibilityDecisionRefusal(decision).also { why ->
-                    if (why == null) {
-                        admittedBoundary = boundary
-                    }
-                }
-            }
-            if (refusal != null || admittedBoundary == null) {
-                return@withStagedFiles SelfInstallPreparation.Failed(
-                    rejected(
-                        "refused (${refusal ?: "database compatibility could not be proven"})",
-                        "paneld",
-                    ),
-                )
-            }
-            val prepared = PreparedSelfInstall(
-                apk = apk,
-                expectedSha256 = sha256(apk),
-                version = requireNotNull(info).version,
-                boundary = requireNotNull(admittedBoundary),
-            )
-            staged.commit()
-            SelfInstallPreparation.Ready(prepared)
-        }
-    }
-
-    /** Consume the exact staged capability without resolving, downloading or observing a second APK. */
-    internal suspend fun installPrepared(
-        context: Context,
-        prepared: PreparedSelfInstall,
-    ): InstallOutcome = withContext(Dispatchers.IO) {
-        if (!GuardDbProcessAdmission.ordinaryMutationsAllowed()) {
-            return@withContext guardDbInstallBlocked("paneld")
-        }
-        val apk = prepared.consume()
-            ?: return@withContext rejected("refused (prepared install already consumed)", "paneld")
-        try {
-            if (!prepared.bytesUnchanged()) {
-                return@withContext rejected("refused (prepared APK changed after admission)", "paneld")
-            }
-            installLocalApkAdmitted(
-                context = context,
-                apk = apk,
-                admittedBoundary = prepared.boundary,
-                component = "paneld",
-            )
-        } finally {
-            // The capability is already consumed, so close() cannot own exceptional cleanup now.
-            apk.delete()
-        }
-    }
 
     /** Metadata read from an exact APK file (no install), including its signed database boundary. */
     internal data class ApkInfo(
@@ -434,29 +296,10 @@ object AppInstaller {
         return decideCompatibility(boundary)
     }
 
-    /** Re-authenticate the exact candidate and re-run current database observation at consumption. */
-    internal fun preparedSelfReplacementRefusal(
-        info: ApkInfo?,
-        admittedBoundary: DatabaseCompatibilityApkContract.Boundary,
-        decideCurrentCompatibility: (DatabaseCompatibilityApkContract.Boundary) -> String?,
-    ): String? = selfReplacementRefusal(info) { exactBoundary ->
-        if (exactBoundary != admittedBoundary) {
-            "prepared APK database boundary changed after admission"
-        } else {
-            decideCurrentCompatibility(exactBoundary)
-        }
-    }
-
-    /**
-     * Decide whether a local candidate may reach installer-route selection. An admitted boundary is an
-     * assertion that this exact file is a prepared self replacement, so unreadable or wrong-package
-     * metadata can never silently demote it to the unrestricted non-self upload path. Unprepared files
-     * must still be readable APKs before any privileged installer is selected.
-     */
+    /** Authenticate a local candidate and read current policy/database admission before mutation. */
     internal fun localInstallCandidateRefusal(
         info: ApkInfo?,
         runningPackage: String,
-        admittedBoundary: DatabaseCompatibilityApkContract.Boundary?,
         updatePolicy: PanelAssistantUpdatePolicy? = null,
         currentVersion: String = BuildConfig.VERSION_NAME,
         currentCode: Long = BuildConfig.VERSION_CODE.toLong(),
@@ -470,13 +313,6 @@ object AppInstaller {
             }
             panelUpdateRefusal(updatePolicy, info.nativeProtocolRange, info.version, currentVersion,
                 info.versionCode, currentCode)?.let { return it }
-        }
-        if (admittedBoundary != null) {
-            return preparedSelfReplacementRefusal(
-                info,
-                admittedBoundary,
-                decideCurrentCompatibility,
-            )
         }
         if (info.pkg != runningPackage) return null
         return selfReplacementRefusal(info, decideCurrentCompatibility)
@@ -526,7 +362,7 @@ object AppInstaller {
         context: Context,
         apk: File,
     ): InstallOutcome = if (GuardDbProcessAdmission.ordinaryMutationsAllowed()) {
-        installLocalApkAdmitted(context, apk, admittedBoundary = null, component = "apk")
+        installLocalApkAdmitted(context, apk, component = "apk")
     } else {
         guardDbInstallBlocked("apk")
     }
@@ -534,7 +370,6 @@ object AppInstaller {
     private suspend fun installLocalApkAdmitted(
         context: Context,
         apk: File,
-        admittedBoundary: DatabaseCompatibilityApkContract.Boundary? = null,
         component: String,
         beforeInstall: (() -> Boolean)? = null,
     ): InstallOutcome = withContext(Dispatchers.IO) {
@@ -546,10 +381,9 @@ object AppInstaller {
         val refusal = localInstallCandidateRefusal(
             info = info,
             runningPackage = context.packageName,
-            admittedBoundary = admittedBoundary,
             updatePolicy = panelUpdatePolicy(),
         ) { exactBoundary ->
-            // Database/recovery state can change while the staged capability is held. Re-observe
+            // Database/recovery state can change while an APK is staged. Re-observe
             // before the first self-replacement mutation; matching APK bytes are not current DB proof.
             compatibilityRefusal(context, exactBoundary)
         }

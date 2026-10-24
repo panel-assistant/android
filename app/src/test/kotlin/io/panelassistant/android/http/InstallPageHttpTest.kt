@@ -1,6 +1,5 @@
 package io.panelassistant.android.http
 
-import io.panelassistant.android.BuildConfig
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
@@ -27,8 +26,8 @@ class InstallPageHttpTest {
                     assertEquals(HttpStatusCode.OK, response.status)
                     assertEquals("text/html; charset=UTF-8", response.headers[HttpHeaders.ContentType])
                     val html = response.bodyAsText()
-                    assertTrue(html.contains("<span class=\"cver\">${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})</span>"))
-                    assertTrue(html.contains("data-installed-version=\"${BuildConfig.VERSION_NAME}\""))
+                    assertFalse(html.contains("data-name=\"paneld\""))
+                    assertTrue(html.contains("data-name=\"companion\""))
                     for (card in listOf("managed-components", "apk-install", "uninstall-app", "vendor-packages", "display-sizing", "backup-restore")) {
                         assertTrue(card, html.contains("data-layout-key=\"$card\""))
                     }
@@ -36,7 +35,6 @@ class InstallPageHttpTest {
                     assertEquals(1, Regex("class=\"cchan\"").findAll(html).count())
                     assertEquals(1, Regex("value=\"stable\" selected").findAll(html).count())
                     assertTrue(html.contains("value=\"prerelease\""))
-                    assertEquals(1, Regex("class=\"cpa-channel\"").findAll(html).count())
                     assertFalse(html.contains("System WebView</b>"))
                     assertFalse(html.contains("healWebView("))
                     assertFalse(html.contains("installComp('webview'"))
