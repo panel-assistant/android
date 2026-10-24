@@ -62,7 +62,7 @@
     // Anchor id so dashboard "edit" icons can deep-link straight to this setting.
     // A switch or a lone exposure icon fits beside the label even on a phone.
     var compact = !valueControl || valueControl.classList.contains("toggle");
-    var dependencyDisabled = (f.key === "auto_brightness" || f.key === "auto_brightness_minimum_percent" || f.key === "auto_brightness_maximum_percent" || f.key === "auto_brightness_response_percent") && !cfg.ambientLightSourceReady();
+    var dependencyDisabled = cfg.blockingPrerequisites(f).length > 0;
     return cfg.el("div", {
       class: "frow" + (compact ? " frow-compact" : "") + (isAdvanced ? " adv" : "") + (f.available ? "" : " muted") + (dependencyDisabled ? " dependency-disabled" : ""),
       id: "cfg-" + f.key
@@ -260,6 +260,20 @@
     var shown = 0, total = 0, explained = 0, desiredCards = [];
     var terms = cfg.filterTerms();
     cfg.revealHashTarget();
+    // Basic includes the available prerequisites of its blocked settings, in schema order. Keep this
+    // independent of cards: a prerequisite may live in another group or have prerequisites of its own.
+    var basicKeys = Object.create(null);
+    function includeBasic(field) {
+      if (basicKeys[field.key]) return;
+      basicKeys[field.key] = true;
+      cfg.blockingPrerequisites(field).forEach(function (key) {
+        var prerequisite = cfg.schema.find(function (candidate) { return candidate.key === key && candidate.available; });
+        if (prerequisite && shouldRenderRow(prerequisite)) includeBasic(prerequisite);
+      });
+    }
+    cfg.schema.forEach(function (field) {
+      if (field.available && !cfg.advancedField(field) && shouldRenderRow(field)) includeBasic(field);
+    });
     groups.forEach(function (g) {
       var fields = fieldsForConfigGroup(g);
       if (!fields.length) {
@@ -281,14 +295,14 @@
         return;
       }
       var rows = fields.filter(shouldRenderRow);
-      var basicRows = rows.filter(function (f) { return !cfg.advancedField(f); }).length;
+      var basicRows = rows.filter(function (f) { return basicKeys[f.key]; }).length;
       var advancedRows = rows.length - basicRows;
-      // Basic shows a card's BASIC rows and offers its own advanced rows; a card with no BASIC row is
-      // not shown at all. A filter searches every row whatever the view.
+      // Basic includes blocking prerequisites and offers the remaining advanced rows. A filter searches
+      // every row whatever the view.
       var revealed = !cfg.advanced && !terms.length && basicRows > 0 && cfg.revealedGroups[g] === true;
       var visibleFields = terms.length ? rows.filter(function (f) { return cfg.fieldMatchesFilter(f, terms); })
         : cfg.advanced || revealed ? rows
-        : rows.filter(function (f) { return !cfg.advancedField(f); });
+        : rows.filter(function (f) { return basicKeys[f.key]; });
       total += rows.length;
       if (!visibleFields.length) return;
       shown += visibleFields.length;

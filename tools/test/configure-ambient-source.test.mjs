@@ -221,3 +221,77 @@ for (const [engine, launcher] of [['Chromium', chromium], ['WebKit', webkit]]) {
     await page.waitForFunction(() => /No Home Assistant illuminance sensors found/.test(document.querySelector('.picker-note').textContent), null, { timeout: 15_000 });
   });
 }
+
+for (const [engine, launcher] of [['Chromium', chromium], ['WebKit', webkit]]) {
+  browserTest(`Basic keeps a blocked setting's ambient source beside it and choosing a source enables it in ${engine}`, async (t) => {
+    const posts = [];
+    const settings = { auto_brightness_ha_entity: '', auto_brightness: 'false', dark_mode: 'false' };
+    const harness = await startHarness(async (path, request) => {
+      if (path === '/api/v1/config/schema') return json([
+        { key: 'auto_brightness_ha_entity', label: 'Ambient source', group: 'Display', type: 'STRING', tier: 'ADVANCED', available: true, picker: 'ha_illuminance' },
+        { key: 'auto_brightness', label: 'Auto brightness', group: 'Display', type: 'BOOL', tier: 'BASIC', available: true },
+        { key: 'dark_mode', label: 'Dark mode', group: 'Display', type: 'BOOL', tier: 'ADVANCED', available: true },
+      ]);
+      if (path === '/api/v1/config' || path === '/api/v1/config/values') {
+        if (request.method === 'POST') {
+          const form = Object.fromEntries(new URLSearchParams(await requestBody(request)));
+          posts.push(form);
+          Object.assign(settings, form);
+          return json({ status: 'saved' });
+        }
+        return json({ settings, ha_expose: {}, ha_auth: {} });
+      }
+      if (path === '/api/v1/auto-brightness/sources') return json({ available: true, items: [
+        { entityId: 'sensor.window_lux', friendlyName: 'Window light', currentLux: 42, available: true, unit: 'lx' },
+      ] });
+      if (path === '/api/v1/auto-brightness') return json({ available: true, localSourcePresent: false, sourceAvailable: false });
+      if (path === '/api/v1/auto-brightness/history') return json({ points: [] });
+      if (path === '/api/v1/apps') return json({ apps: [] });
+      return json({});
+    }, configureVisualFixture);
+    const browser = await launcher.launch(engine === 'Chromium' ? { executablePath: chrome, headless: true } : { headless: true });
+    t.after(async () => { await browser.close(); await new Promise((resolve) => harness.server.close(resolve)); });
+    const page = await browser.newPage({ viewport: { width: 480, height: 480 } });
+    page.setDefaultTimeout(3_000);
+    await page.addInitScript(() => localStorage.setItem('ha-paneld.configure.view.v1', '{"advanced":false}'));
+    await page.goto(harness.url);
+    const toggle = page.locator('#cfg-auto_brightness [role="switch"]');
+    await toggle.waitFor();
+    assert.equal(await toggle.getAttribute('aria-disabled'), 'true');
+    assert.deepEqual(await page.locator('[data-config-group="Display"] .frow').evaluateAll((rows) => rows.map((row) => row.id)),
+      ['cfg-auto_brightness_ha_entity', 'cfg-auto_brightness'], 'the prerequisite precedes its blocked basic setting');
+    assert.equal(await page.locator('[data-config-group="Display"] .cfg-more').textContent(), 'Show 1 advanced setting');
+    assert.equal(await page.locator('#cfg-auto_brightness_ha_entity .adv-mark').count(), 1, 'the prerequisite retains its advanced metadata');
+    await toggle.focus();
+    await toggle.press('Enter');
+    assert.deepEqual(posts, [], 'a blocked toggle sends nothing');
+    const input = page.locator('#cfg-auto_brightness_ha_entity input');
+    await input.fill('sensor.unavailable_lux');
+    await input.press('Tab');
+    await page.waitForFunction(() => window.ConfigurePage.values.auto_brightness_ha_entity === 'sensor.unavailable_lux');
+    assert.equal(await toggle.getAttribute('aria-disabled'), 'true');
+    assert.equal(await input.isVisible(), true, 'a configured source without a valid reading remains replaceable');
+    await input.fill('');
+    await input.focus();
+    await page.locator('.ha-entity-option').first().waitFor();
+    await input.press('ArrowDown');
+    await input.press('Enter');
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Tab');
+    await page.waitForFunction(() => document.querySelector('#cfg-auto_brightness [role="switch"]')?.getAttribute('aria-disabled') === 'false');
+    await toggle.click();
+    await page.waitForFunction(() => window.ConfigurePage.values.auto_brightness === 'true');
+    for (let i = 0; i < 50 && posts.length < 3; i++) await page.waitForTimeout(20);
+    assert.deepEqual(posts, [
+      { auto_brightness_ha_entity: 'sensor.unavailable_lux' },
+      { auto_brightness_ha_entity: 'sensor.window_lux' },
+      { auto_brightness: 'true' },
+    ]);
+    assert.equal(await page.locator('#cfg-dark_mode').count(), 0, 'unrelated advanced settings stay hidden');
+    assert.equal(await input.count(), 0, 'a usable source restores the ordinary Basic view');
+    await page.evaluate(() => window.cfgTab(true));
+    assert.equal(await input.isVisible(), true, 'Advanced still offers the source');
+    await page.evaluate(() => window.cfgTab(false));
+    assert.equal(await input.count(), 0);
+  });
+}

@@ -217,13 +217,23 @@
     return { element: picker, cleanup: cleanup };
   }
 
+  // The same unmet dependencies gate controls and keep their prerequisites reachable in Basic.
+  function blockingPrerequisites(f) {
+    if ((f.key === "auto_brightness" || f.key === "auto_brightness_minimum_percent" ||
+        f.key === "auto_brightness_maximum_percent" || f.key === "auto_brightness_response_percent") &&
+        !cfg.ambientLightSourceReady()) return ["auto_brightness_ha_entity"];
+    if (f.key === "auto_sleep" && cfg.autoSleepUsesHa() && cfg.values[f.key] !== "true" &&
+        cfg.autoSleepPrerequisite.eligible !== true) return ["auto_sleep_source", "ha_area"];
+    return [];
+  }
+
   // One input control bound to values[f.key]; each finished change is sent at once (configure.js).
   function control(f) {
     var v = cfg.values[f.key];
     if (f.type === "BOOL") {
-      var sourceBlocked = f.key === "auto_brightness" && !cfg.ambientLightSourceReady();
-      var prerequisiteBlocked = f.key === "auto_sleep" && cfg.autoSleepUsesHa() && v !== "true" && cfg.autoSleepPrerequisite.eligible !== true;
-      var blocked = sourceBlocked || prerequisiteBlocked;
+      var prerequisites = blockingPrerequisites(f);
+      var sourceBlocked = prerequisites.indexOf("auto_brightness_ha_entity") >= 0;
+      var blocked = prerequisites.length > 0;
       var t = cfg.el("div", {
         class: "toggle" + (v === "true" && !sourceBlocked ? " on" : "") + (blocked ? " blocked" : ""),
         role: "switch", tabindex: "0", "aria-label": f.label,
@@ -232,8 +242,7 @@
       if (f.key === "auto_sleep") t.setAttribute("aria-describedby", "auto-sleep-prerequisite-status");
       if (sourceBlocked) t.title = cfg.i18nText("configure.brightness.waiting_valid_reading", "Waiting for a valid ambient light reading.");
       function toggleValue() {
-        if (f.key === "auto_brightness" && !cfg.ambientLightSourceReady()) return;
-        if (f.key === "auto_sleep" && cfg.autoSleepUsesHa() && cfg.values[f.key] !== "true" && cfg.autoSleepPrerequisite.eligible !== true) return;
+        if (blockingPrerequisites(f).length) return;
         v = (cfg.values[f.key] === "true") ? "false" : "true";
         cfg.values[f.key] = v;
         t.classList.toggle("on", v === "true");
@@ -691,7 +700,7 @@
     if (f.maxLength != null) inp.maxLength = f.maxLength;
     if (f.step != null) inp.step = f.step;
     if (f.type === "FLOAT" && f.step == null) inp.step = "any";
-    if ((f.key === "auto_brightness_minimum_percent" || f.key === "auto_brightness_maximum_percent" || f.key === "auto_brightness_response_percent") && !cfg.ambientLightSourceReady()) {
+    if (blockingPrerequisites(f).length) {
       inp.disabled = true;
       inp.title = cfg.i18nText("configure.brightness.select_source_first", "Select an ambient light source first.");
     }
@@ -729,6 +738,7 @@
     return btn;
   }
 
+  cfg.blockingPrerequisites = blockingPrerequisites;
   cfg.control = control;
   cfg.pip = pip;
 })(window.ConfigurePage);
