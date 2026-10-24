@@ -93,9 +93,13 @@ async function rig(t, options = {}) {
     response.end(`<!doctype html><html lang="${projectedLocale}"><head>${i18nBridge(options.noHelper ? {} : projection)}</head><body>${options.html || '<div id="audit-out"></div><div id="bk-msg"></div>'}<script>window.CardColumnAlignment={attach:()=>()=>{}};</script><script src="/install.js"></script></body></html>`);
   });
   await new Promise((done) => server.listen(0, '127.0.0.1', done));
-  const browser = await (options.engine === 'WebKit' ? webkit.launch({ headless: true }) : chromium.launch({ executablePath: chrome, headless: true }));
+  let browser;
+  t.after(async () => {
+    try { await browser?.close(); }
+    finally { server.closeAllConnections?.(); await new Promise((done) => server.close(done)); }
+  });
+  browser = await (options.engine === 'WebKit' ? webkit.launch({ headless: true }) : chromium.launch({ executablePath: chrome, headless: true }));
   const page = await browser.newPage();
-  t.after(async () => { await browser.close(); server.closeAllConnections?.(); await new Promise((done) => server.close(done)); });
   await page.goto(`http://127.0.0.1:${server.address().port}/${options.query || ''}`, { waitUntil: 'domcontentloaded' });
   return { page, presentations, params };
 }
@@ -493,9 +497,13 @@ browserTest('Install power-safety alerts localize repair and acknowledgement sta
       <script src="/power-safety.js"></script></body></html>`);
   });
   await new Promise((done) => server.listen(0, '127.0.0.1', done));
-  const browser = await chromium.launch({ executablePath: chrome, headless: true });
+  let browser;
+  t.after(async () => {
+    try { await browser?.close(); }
+    finally { server.closeAllConnections?.(); await new Promise((done) => server.close(done)); }
+  });
+  browser = await chromium.launch({ executablePath: chrome, headless: true });
   const page = await browser.newPage();
-  t.after(async () => { await browser.close(); server.closeAllConnections?.(); await new Promise((done) => server.close(done)); });
   await page.goto(`http://127.0.0.1:${server.address().port}/`, { waitUntil: 'domcontentloaded' });
   await page.click('button[type="submit"]');
   await page.waitForFunction(() => document.querySelector('.power-safety-acknowledge-result')?.textContent === 'LOC partial');
