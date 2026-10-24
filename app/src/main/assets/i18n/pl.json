@@ -12247,6 +12247,21 @@
    "text": "Nie znaleziono pulpitu",
    "sourceHash": "c947e038fffab8a5ec7abf38c5198354fe76061a2d636673487d485d7172730a",
    "state": "machine-cross-checked"
+  },
+  "install.backup.dynamic.restore_awaiting_approval": {
+   "text": "Oczekiwanie na panel. Jeśli działa w trybie wzmocnionym, zatwierdź to przywracanie na panelu w ciągu 10 minut: Ustawienia, następnie menu, Tryb zabezpieczeń, Przejrzyj zatwierdzenia.",
+   "sourceHash": "b89d61b737afc6f5d7b69f9a56ef3a64f1fdd7185412439d1f702767a2897d7d",
+   "state": "machine-cross-checked"
+  },
+  "install.backup.dynamic.restore_approval_expired": {
+   "text": "Przywracanie nie rozpoczęło się: nie zostało zatwierdzone na panelu na czas. Nic nie zostało zmienione.",
+   "sourceHash": "b725b18d4578a86e00a020b60f1b1f48848b0556995a93058e50c9b48627684e",
+   "state": "machine-cross-checked"
+  },
+  "install.backup.dynamic.restore_approval_denied": {
+   "text": "Przywracanie nie rozpoczęło się: zostało odrzucone na panelu. Nic nie zostało zmienione.",
+   "sourceHash": "ee31ab363037a0183a8e5d8e50408d3a565b31223f8a7ae4913b852e6947fa4e",
+   "state": "machine-cross-checked"
   }
  }
 }

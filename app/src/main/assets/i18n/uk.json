@@ -12247,6 +12247,21 @@
    "text": "Інформаційну панель не знайдено",
    "sourceHash": "c947e038fffab8a5ec7abf38c5198354fe76061a2d636673487d485d7172730a",
    "state": "machine-cross-checked"
+  },
+  "install.backup.dynamic.restore_awaiting_approval": {
+   "text": "Очікування панелі. Якщо вона в посиленому режимі, схваліть це відновлення на панелі протягом 10 хвилин: Налаштування, потім меню, Режим безпеки, Переглянути схвалення.",
+   "sourceHash": "b89d61b737afc6f5d7b69f9a56ef3a64f1fdd7185412439d1f702767a2897d7d",
+   "state": "machine-cross-checked"
+  },
+  "install.backup.dynamic.restore_approval_expired": {
+   "text": "Відновлення не розпочато: його не схвалили на панелі вчасно. Нічого не змінено.",
+   "sourceHash": "b725b18d4578a86e00a020b60f1b1f48848b0556995a93058e50c9b48627684e",
+   "state": "machine-cross-checked"
+  },
+  "install.backup.dynamic.restore_approval_denied": {
+   "text": "Відновлення не розпочато: його відхилили на панелі. Нічого не змінено.",
+   "sourceHash": "ee31ab363037a0183a8e5d8e50408d3a565b31223f8a7ae4913b852e6947fa4e",
+   "state": "machine-cross-checked"
   }
  }
 }

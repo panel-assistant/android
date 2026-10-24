@@ -12247,6 +12247,21 @@
    "text": "Dashboard niet gevonden",
    "sourceHash": "c947e038fffab8a5ec7abf38c5198354fe76061a2d636673487d485d7172730a",
    "state": "machine-cross-checked"
+  },
+  "install.backup.dynamic.restore_awaiting_approval": {
+   "text": "Wachten op het paneel. Staat het in de geharde modus, keur dit herstel dan binnen 10 minuten op het paneel goed: Instellingen, dan het menu, Beveiligingsmodus, Goedkeuringen bekijken.",
+   "sourceHash": "b89d61b737afc6f5d7b69f9a56ef3a64f1fdd7185412439d1f702767a2897d7d",
+   "state": "machine-cross-checked"
+  },
+  "install.backup.dynamic.restore_approval_expired": {
+   "text": "Herstel niet gestart: het is niet op tijd op het paneel goedgekeurd. Er is niets gewijzigd.",
+   "sourceHash": "b725b18d4578a86e00a020b60f1b1f48848b0556995a93058e50c9b48627684e",
+   "state": "machine-cross-checked"
+  },
+  "install.backup.dynamic.restore_approval_denied": {
+   "text": "Herstel niet gestart: het is op het paneel geweigerd. Er is niets gewijzigd.",
+   "sourceHash": "ee31ab363037a0183a8e5d8e50408d3a565b31223f8a7ae4913b852e6947fa4e",
+   "state": "machine-cross-checked"
   }
  }
 }
