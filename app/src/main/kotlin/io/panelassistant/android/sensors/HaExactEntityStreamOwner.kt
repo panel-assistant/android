@@ -623,7 +623,9 @@ internal class HaExactEntityStreamOwner(
                         )
                     }
                 }
-                if (expected.watchRegistry && registryConnectedOnce) publishRegistryChanged(run)
+                // A registry-only connection can be the first usable credential after discovery
+                // failed. Revalidate through the same ingress as a later reconnect.
+                if (expected.watchRegistry && (registryConnectedOnce || expected.presence.isEmpty())) publishRegistryChanged(run)
                 registryConnectedOnce = expected.watchRegistry
                 publishTransportStatus(run, expected, HaExactEntityStreamPhase.SYNCHRONIZING, attempt = attempt)
                 runConnected(run, expected, session, connection) {
@@ -668,7 +670,7 @@ internal class HaExactEntityStreamOwner(
                 )
             } catch (error: HaExactEntitySetupException) {
                 publishTransportStatus(
-                    run, expected, HaExactEntityStreamPhase.AUTH_FAILED,
+                    run, expected, HaExactEntityStreamPhase.STOPPED,
                     safeDetail(error, "Home Assistant stream setup failed"), attempt,
                 )
                 return
@@ -975,7 +977,12 @@ internal class HaExactEntityStreamOwner(
         when {
             session.rejected -> throw HaAuthenticationException("Home Assistant rejected the configured refresh credentials")
             session.baseUrl.isBlank() -> throw HaExactEntitySetupException("Home Assistant URL is not configured")
-            session.accessToken.isNullOrBlank() -> throw HaAuthenticationException("Home Assistant access credentials are unavailable")
+            session.accessToken.isNullOrBlank() -> {
+                if (session.transientDetail != null || session.notAttempted) {
+                    throw IOException("Home Assistant access credentials are temporarily unavailable")
+                }
+                throw HaExactEntitySetupException("Home Assistant access credentials are not configured")
+            }
             session.owner == null -> throw HaExactEntitySetupException("Home Assistant credentials changed during stream setup")
             else -> session
         }

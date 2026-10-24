@@ -605,6 +605,8 @@ internal class HaPresenceSourceManager(
             throw cancelled
         } catch (error: DiscoveryFailure) {
             throw DiscoveryFailure(error.code, error.cause ?: error, area.panelAreaName)
+        } catch (rejected: HaAuthenticationException) {
+            throw rejected
         } catch (error: Exception) {
             throw DiscoveryFailure(historyFailureCode(error), error, area.panelAreaName)
         }
@@ -741,7 +743,9 @@ internal class HaPresenceSourceManager(
         when {
             session.rejected -> throw HaAuthenticationException("Home Assistant rejected the configured refresh credentials")
             session.baseUrl.isBlank() -> throw HaProtocolException("Home Assistant URL is not configured")
-            session.accessToken.isNullOrBlank() -> throw HaAuthenticationException("Home Assistant access token is unavailable")
+            session.accessToken.isNullOrBlank() -> throw DiscoveryFailure(
+                "registry_transport", HaProtocolException("Home Assistant access token is unavailable"),
+            )
             session.owner == null -> throw HaProtocolException("Home Assistant credentials changed during presence setup")
             else -> session
         }
