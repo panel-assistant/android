@@ -106,7 +106,6 @@ internal enum class LiveSettingRequestOutcome {
 
     val legacyAcknowledged: Boolean get() = this == APPLIED || this == DEFERRED
     val pending: Boolean get() = this == DEFERRED || this == FAILED_PENDING
-    val durablyAccepted: Boolean get() = this != REJECTED
 }
 
 /**

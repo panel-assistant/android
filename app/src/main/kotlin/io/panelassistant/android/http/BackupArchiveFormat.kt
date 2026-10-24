@@ -120,21 +120,6 @@ internal data class RestoreConfigPlan(
     val skipped: List<String> = emptyList(),
 )
 
-internal fun entityBackupJson(state: DashboardEntityBackupState): String = buildString {
-    append("{\"instance_key\":").append(Json.str(state.instanceKey))
-    append(",\"instance_origin\":").append(Json.str(state.instanceOrigin))
-    append(",\"instance_uuid\":").append(Json.str(state.instanceUuid))
-    append(",\"dashboard_path\":").append(Json.str(state.dashboardPath))
-    append(",\"filter_ids\":").append(Json.str(state.filterIds))
-    append(",\"filter_enabled\":").append(state.filterEnabled)
-    append(",\"filter_owner\":").append(Json.str(state.filterOwner))
-    append(",\"learning_applied\":").append(state.learningApplied)
-    append(",\"applied_owner\":").append(Json.str(state.appliedOwner))
-    append(",\"overrides\":").append(Json.str(state.overrides))
-    append(",\"override_owner\":").append(Json.str(state.overrideOwner))
-    append('}')
-}
-
 internal fun entityBackupArchiveJson(
     state: DashboardEntityBackupState,
     filterBytes: Long,

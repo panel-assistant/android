@@ -970,8 +970,6 @@ class Config private constructor(
             prefs.getString("log_ship_protocol", null)
                 ?: effectiveDefault(specOf("log_ship_protocol")),
         )
-    /** True only when shipping is enabled AND a sink host is configured. */
-    val logShipActive: Boolean get() = logShipEnabled && logShipHost.isNotBlank()
     fun setLogShipping(enabled: Boolean, host: String, port: Int, protocol: String) {
         // A user who types a scheme or a host:port into the host box means it, so resolve the three
         // fields together rather than storing "udp://collector" as a literal hostname.

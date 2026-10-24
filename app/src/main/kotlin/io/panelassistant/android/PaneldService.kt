@@ -1364,7 +1364,7 @@ class PaneldService : Service() {
             "Light sensor" to sensorRow(sensors.hasLight(), profile.lightTech, sensors.lightDesc()),
             "Proximity" to sensorRow(sensors.hasProximity(), profile.proximityTech, sensors.proximityDesc()),
             // a11y service = software back/recents nav, NOT physical buttons (NSPanel Pro has none).
-            "Nav actions (a11y)" to yesNo(accessibilityEnabled()),
+            "Nav actions (a11y)" to (if (accessibilityEnabled()) "yes" else "no"),
             // Soft navbar mode + whether the overlay can actually be drawn (SYSTEM_ALERT_WINDOW). Test the
             // modes that draw a bar rather than "not Off": Native draws nothing either, so warning about a
             // missing overlay permission there would be a false alarm on every natively-barred panel.
@@ -1406,8 +1406,6 @@ class PaneldService : Service() {
         else -> "brightness"
         }
     }
-
-    private fun yesNo(b: Boolean) = if (b) "yes" else "no"
 
     /** "no", or "yes" with any declared technology + runtime value-type/range appended ("yes · Infrared ·
      *  Binary · near/far (0 / 5 cm)"). */

@@ -1,6 +1,5 @@
 package io.panelassistant.android
 
-import io.panelassistant.android.testsupport.TestSources
 import io.panelassistant.android.storage.StorageAutoVacuumMode
 import io.panelassistant.android.storage.StorageDatabaseFailureKind
 import io.panelassistant.android.storage.StorageHealthObservation
@@ -239,9 +238,4 @@ class StorageHealthRuntimeSurfaceTest {
         schemaVersion = 14,
         quickCheck = StorageQuickCheck.OK,
     )
-
-    // Source-text reason: the state core and command handlers need the Android service to construct.
-    private fun source(name: String): String {
-        return TestSources.appFile("src/main/kotlin/io/panelassistant/android/$name").readText()
-    }
 }

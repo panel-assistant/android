@@ -338,8 +338,6 @@ internal class AutoBrightnessController(
         )
     }
 
-    internal fun historyRows(): List<AmbientHistoryMinute> = history.history()
-
     @Synchronized internal fun chartSnapshot(
         sensitivity: Int = config.autoBrightnessResponsePercent,
         minimumPercent: Int = config.autoBrightnessMinimumPercent,

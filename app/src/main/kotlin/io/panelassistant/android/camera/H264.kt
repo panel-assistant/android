@@ -5,7 +5,6 @@ import java.util.Base64
 /** Annex-B byte-stream helpers: what `MediaCodec` emits and what RTP must never carry. */
 object AnnexB {
     const val NAL_IDR = 5
-    const val NAL_SEI = 6
     const val NAL_SPS = 7
     const val NAL_PPS = 8
     const val NAL_AUD = 9

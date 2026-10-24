@@ -167,7 +167,7 @@ internal class ServiceSystemControls(
                         config().lastNavigate == priorNavigate
                 }, delivered = {
                     config().lastNavigate = home
-                    if (runtimeInstalled()) core.reconcileNavigateState()
+                    if (runtimeInstalled()) core.reconcile("navigate")
                 })
                 if (!system.launchCompanionHomeReturn()) CompanionHomeReturn.clear(returnId)
             }

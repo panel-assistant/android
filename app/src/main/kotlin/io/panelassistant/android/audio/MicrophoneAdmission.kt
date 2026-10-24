@@ -57,11 +57,6 @@ object MicrophoneAdmission {
         isIdle = { source.state.value is MicState.Closed }
     }
 
-    /** Answer [isIdle] from an arbitrary predicate. */
-    fun answerIdleWith(predicate: () -> Boolean) {
-        isIdle = predicate
-    }
-
     /**
      * Hand the WebView opt-in decision to the feature that owns it. Nothing in the build calls this
      * yet; when something does, it must be answering a real capability plus a real setting, never

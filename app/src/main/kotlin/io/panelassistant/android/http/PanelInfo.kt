@@ -226,17 +226,6 @@ object PanelInfo {
     internal fun isPlayStoreInstaller(installerPackage: String?): Boolean =
         installerPackage == "com.android.vending"
 
-    /**
-     * Whether a store owns updating this panel's WebView, asked on its own.
-     *
-     * [webViewStatus] answers the same question, but only as part of a verdict that may escalate to
-     * reading the engine's real version — which loads the provider into this process. A caller that
-     * only needs to know who owns the updates should not pay for that, so this asks the package
-     * manager and stops.
-     */
-    fun webViewPlayManaged(context: Context): Boolean =
-        webViewPackage().packageName?.let { isPlayManaged(context, it) } == true
-
     // Real engine version from the WebView default UA, computed once and cached: the fetch loads the
     // WebView provider into this process and must run on a Looper thread (see [defaultUserAgent]), and
     // the status page reaches it only via the escalation gate above. Scheduled updates read it directly
