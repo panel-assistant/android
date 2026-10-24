@@ -332,6 +332,9 @@ class PaneldService : Service() {
     private lateinit var restartLease: ServiceRestartBarrier.Lease
     private var startupInitialization: Job? = null
     @Volatile private var portalStartupOverlayDismissal: io.panelassistant.android.input.PortalStartupOverlayDismissal? = null
+    internal var startupProfileRegistry: (android.content.Context) -> RuntimeProfileRegistry = { RuntimeProfileRegistry(it) }
+    internal var portalStartupOverlayFactory: (android.content.Context, String) -> io.panelassistant.android.input.PortalStartupOverlayDismissal? =
+        io.panelassistant.android.input.PanelAccessibilityService::preparePortalStartupOverlayDismissal
     private var pendingStart = false
     private lateinit var mainHandler: Handler
     private lateinit var liveSettingAuthority: LiveSettingAuthority
@@ -516,80 +519,86 @@ class PaneldService : Service() {
             return
         }
         restartLease = SERVICE_RESTART_BARRIER.enter()
-        startupInitialization = scope.launch {
-            val preparedConfig = Config(this@PaneldService)
-            preparedConfig.migrateLiveStore() // carry persisted settings across a schema bump before anything reads them
-            // These migrations and generated identities precede every renderer and network owner.
-            preparedConfig.migrateLogShipTcpDefault()
-            preparedConfig.migrateSetupQuestionsForExistingInstall()
-            preparedConfig.ensureDeviceUid()
-            preparedConfig.ensurePanelId()
-            val preparedLiveSettings = LiveSettingAuthority.persistent(
-                this@PaneldService, PanelCommandDispatcher.APPLY_SETTING_KEYS,
-                onLatePending = { key -> scheduleLiveSettingRetries(setOf(key)) },
+        startupInitialization = scope.launch { initializeOnStartupLane() }
+    }
+
+    /** The service IO startup lane, launched once by [onCreate] after the restart lease is entered. */
+    internal suspend fun initializeOnStartupLane() {
+        // On a genuine Portal boot the vendor opens its denied overlay page within seconds of this
+        // process starting, so arm the dismissal first. The profile store and the boot baseline are
+        // independent of the settings migrations and of predecessor teardown below.
+        val preparedProfiles = startupProfileRegistry(this@PaneldService)
+        val resolvedProfile = preparedProfiles.resolveForStartup()
+        if (teardownBoundary.isStopping) return
+        preparePortalStartupOverlayDismissal(prepare = {
+            portalStartupOverlayFactory(this@PaneldService, resolvedProfile.profile.id)
+        })
+        val preparedConfig = Config(this@PaneldService)
+        preparedConfig.migrateLiveStore() // carry persisted settings across a schema bump before anything reads them
+        // These migrations and generated identities precede every renderer and network owner.
+        preparedConfig.migrateLogShipTcpDefault()
+        preparedConfig.migrateSetupQuestionsForExistingInstall()
+        preparedConfig.ensureDeviceUid()
+        preparedConfig.ensurePanelId()
+        val preparedLiveSettings = LiveSettingAuthority.persistent(
+            this@PaneldService, PanelCommandDispatcher.APPLY_SETTING_KEYS,
+            onLatePending = { key -> scheduleLiveSettingRetries(setOf(key)) },
+        )
+        val wifiStore = AndroidWifiOutageStore(this@PaneldService)
+        val preparedEntityLearning = EntityLearningManager(
+            context = this@PaneldService,
+            config = preparedConfig,
+            scope = scope,
+            // mDNS is started by onStartCommand before the learner can synchronize.
+            resolveInstanceUuid = { urls -> runtime.current().mdns.discoverHaInstanceUuid(urls) },
+            onFilterChanged = {
+                if (shouldReloadBuiltinAfterEntityFilterChange(
+                        controls.system.resolveDashboard(config.dashboardPackage),
+                        SystemController.BUILTIN_DASHBOARD,
+                        setupEntityFilterAnswered = config.setupEntityFilterAnswered,
+                        setupEverCompleted = config.setupEverCompleted,
+                    )) {
+                    controls.system.reloadDashboard(
+                        SystemController.BUILTIN_DASHBOARD,
+                        reason = BuiltinDashboard.LEARNING_RELOAD_REASON,
+                    )
+                }
+            },
+        )
+        // These controllers are constructed on main below, but each opens its namespace in
+        // its constructor. Warm the same AppState cache while still on the service IO lane.
+        AppState.preferences(this@PaneldService, "controller-state")
+        AppState.preferences(this@PaneldService, "auto-brightness-runtime")
+        AppState.preferences(this@PaneldService, "auto-sleep-learning")
+        AppState.preferences(this@PaneldService, "startup-recovery")
+        // Settle privileged startup before controllers cache grants or replay saved settings.
+        // An older same-process service must finish teardown before this generation changes them.
+        restartLease.awaitPredecessor()
+        if (teardownBoundary.isStopping) return
+        when (BundledHelperInstaller.ensureCurrent(this@PaneldService)) {
+            BundledHelperInstaller.Result.INSTALLED -> Log.i(TAG, "migrated bundled root helper for this release")
+            BundledHelperInstaller.Result.FAILED ->
+                Log.w(TAG, "root helper migration failed; versioned helper features remain unavailable")
+            BundledHelperInstaller.Result.BLOCKED_ACTIVE ->
+                Log.i(TAG, "retaining current root helper while Guard DB maintenance owns recovery")
+            BundledHelperInstaller.Result.REPROVISION_REQUIRED ->
+                Log.w(TAG, "root helper matches this release but is not canonical; reprovision required")
+            BundledHelperInstaller.Result.ALREADY_CURRENT,
+            BundledHelperInstaller.Result.SKIPPED -> Unit
+        }
+        if (GuardDbProcessAdmission.ordinaryMutationsAllowed() && !teardownBoundary.isStopping) {
+            PanelPermissionRepair.repair(
+                this@PaneldService, voiceAudio.microphonePresence(resolvedProfile.profile).offered,
+                cameraCapabilityReason(resolvedProfile.profile.cameraDeclared, cameraPresence.get()),
             )
-            val preparedProfiles = RuntimeProfileRegistry(this@PaneldService)
-            val resolvedProfile = preparedProfiles.resolveForStartup()
-            val wifiStore = AndroidWifiOutageStore(this@PaneldService)
-            val preparedEntityLearning = EntityLearningManager(
-                context = this@PaneldService,
-                config = preparedConfig,
-                scope = scope,
-                // mDNS is started by onStartCommand before the learner can synchronize.
-                resolveInstanceUuid = { urls -> runtime.current().mdns.discoverHaInstanceUuid(urls) },
-                onFilterChanged = {
-                    if (shouldReloadBuiltinAfterEntityFilterChange(
-                            controls.system.resolveDashboard(config.dashboardPackage),
-                            SystemController.BUILTIN_DASHBOARD,
-                            setupEntityFilterAnswered = config.setupEntityFilterAnswered,
-                            setupEverCompleted = config.setupEverCompleted,
-                        )) {
-                        controls.system.reloadDashboard(
-                            SystemController.BUILTIN_DASHBOARD,
-                            reason = BuiltinDashboard.LEARNING_RELOAD_REASON,
-                        )
-                    }
-                },
-            )
-            // These controllers are constructed on main below, but each opens its namespace in
-            // its constructor. Warm the same AppState cache while still on the service IO lane.
-            AppState.preferences(this@PaneldService, "controller-state")
-            AppState.preferences(this@PaneldService, "auto-brightness-runtime")
-            AppState.preferences(this@PaneldService, "auto-sleep-learning")
-            AppState.preferences(this@PaneldService, "startup-recovery")
-            // Settle privileged startup before controllers cache grants or replay saved settings.
-            // An older same-process service must finish teardown before this generation changes them.
-            restartLease.awaitPredecessor()
-            if (teardownBoundary.isStopping) return@launch
-            preparePortalStartupOverlayDismissal(prepare = {
-                io.panelassistant.android.input.PanelAccessibilityService
-                    .preparePortalStartupOverlayDismissal(this@PaneldService, resolvedProfile.profile.id)
-            })
-            when (BundledHelperInstaller.ensureCurrent(this@PaneldService)) {
-                BundledHelperInstaller.Result.INSTALLED -> Log.i(TAG, "migrated bundled root helper for this release")
-                BundledHelperInstaller.Result.FAILED ->
-                    Log.w(TAG, "root helper migration failed; versioned helper features remain unavailable")
-                BundledHelperInstaller.Result.BLOCKED_ACTIVE ->
-                    Log.i(TAG, "retaining current root helper while Guard DB maintenance owns recovery")
-                BundledHelperInstaller.Result.REPROVISION_REQUIRED ->
-                    Log.w(TAG, "root helper matches this release but is not canonical; reprovision required")
-                BundledHelperInstaller.Result.ALREADY_CURRENT,
-                BundledHelperInstaller.Result.SKIPPED -> Unit
-            }
-            if (GuardDbProcessAdmission.ordinaryMutationsAllowed() && !teardownBoundary.isStopping) {
-                PanelPermissionRepair.repair(
-                    this@PaneldService, voiceAudio.microphonePresence(resolvedProfile.profile).offered,
-                    cameraCapabilityReason(resolvedProfile.profile.cameraDeclared, cameraPresence.get()),
-                )
-            }
-            withContext(Dispatchers.Main.immediate) {
-                if (teardownBoundary.isStopping) return@withContext
-                config = preparedConfig
-                liveSettingAuthority = preparedLiveSettings
-                profileRegistry = preparedProfiles
-                initializeRuntimeAfterDatabase(resolvedProfile, wifiStore, preparedEntityLearning)
-                if (pendingStart) startInitializedRuntime()
-            }
+        }
+        withContext(Dispatchers.Main.immediate) {
+            if (teardownBoundary.isStopping) return@withContext
+            config = preparedConfig
+            liveSettingAuthority = preparedLiveSettings
+            profileRegistry = preparedProfiles
+            initializeRuntimeAfterDatabase(resolvedProfile, wifiStore, preparedEntityLearning)
+            if (pendingStart) startInitializedRuntime()
         }
     }
 
