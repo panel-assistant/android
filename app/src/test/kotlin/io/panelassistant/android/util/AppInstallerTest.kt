@@ -41,7 +41,6 @@ class AppInstallerTest {
         val refusal = AppInstaller.localInstallCandidateRefusal(
             info = selfInfo(),
             runningPackage = AppInstaller.HA_PANELD.pkg,
-            admittedBoundary = null,
         ) { null }
         assertEquals("Panel Assistant must be online with update policy", refusal)
     }
@@ -53,7 +52,7 @@ class AppInstallerTest {
                     policy: PanelAssistantUpdatePolicy? = stable, code: Long = 110) =
             AppInstaller.localInstallCandidateRefusal(
                 selfInfo().copy(version = version, versionCode = code, nativeProtocolRange = range),
-                AppInstaller.HA_PANELD.pkg, null, policy, "1.0.0", 100,
+                AppInstaller.HA_PANELD.pkg, policy, "1.0.0", 100,
             ) { null }
         assertNull(refusal())
         assertNull(refusal("1.1.0-rc1", policy = prerelease))
@@ -72,7 +71,7 @@ class AppInstallerTest {
         fun refusal(version: String, code: Long, installedVersion: String, installedCode: Long) =
             AppInstaller.localInstallCandidateRefusal(
                 selfInfo().copy(version = version, versionCode = code, nativeProtocolRange = 3..3),
-                AppInstaller.HA_PANELD.pkg, null, prerelease, installedVersion, installedCode,
+                AppInstaller.HA_PANELD.pkg, prerelease, installedVersion, installedCode,
             ) { null }
         // The 2026-10-11 fleet: vc1246 named 1.0.0-rc1 refused vc1391 renamed 1.0.0-preview1.
         assertNull(refusal("1.0.0-preview1", 1391, "1.0.0-rc1", 1246))
@@ -164,7 +163,7 @@ class AppInstallerTest {
         assertEquals("primary database is unreadable", refusal)
     }
 
-    @Test fun preparedAdmissionReobservesChangedDatabaseBeforeFirstMutation() {
+    @Test fun localAdmissionReobservesChangedDatabaseBeforeFirstMutation() {
         val events = mutableListOf<String>()
         val initial = AppInstaller.selfReplacementRefusal(selfInfo()) {
             events += "prepare-allow"
@@ -172,7 +171,12 @@ class AppInstallerTest {
         }
         assertNull(initial)
 
-        val final = AppInstaller.preparedSelfReplacementRefusal(selfInfo(), boundary) {
+        val final = AppInstaller.localInstallCandidateRefusal(
+            info = selfInfo().copy(version = "1.1.0", versionCode = 110, nativeProtocolRange = 3..3),
+            runningPackage = AppInstaller.HA_PANELD.pkg,
+            updatePolicy = PanelAssistantUpdatePolicy(1, 3, false),
+            currentVersion = "1.0.0", currentCode = 100,
+        ) {
             events += "install-reobserve-refuse"
             "database compatibility primary unreadable"
         }
@@ -186,64 +190,14 @@ class AppInstallerTest {
         assertEquals(listOf("prepare-allow", "install-reobserve-refuse"), events)
     }
 
-    @Test fun preparedFinalUnreadableOrWrongPackageCannotFallThroughAsNonSelf() {
-        val wrongPackage = AppInstaller.ApkInfo(
-            pkg = "example.not.the.running.package",
-            version = "candidate",
-            signerSha256 = AppInstaller.HA_PANELD.certSha256,
-            databaseCompatibility = DatabaseCompatibilityApkContract.Parsed.Valid(boundary),
-        )
-        var compatibilityConsulted = false
-
-        val unreadable = AppInstaller.localInstallCandidateRefusal(
-            info = null,
-            runningPackage = AppInstaller.HA_PANELD.pkg,
-            admittedBoundary = boundary,
-        ) {
-            compatibilityConsulted = true
-            null
-        }
-        val wrong = AppInstaller.localInstallCandidateRefusal(
-            info = wrongPackage,
-            runningPackage = AppInstaller.HA_PANELD.pkg,
-            admittedBoundary = boundary,
-        ) {
-            compatibilityConsulted = true
-            null
-        }
-
-        assertEquals("unreadable candidate APK", unreadable)
-        assertEquals("candidate is not the running package", wrong)
-        assertFalse("neither invalid identity may reach database admission", compatibilityConsulted)
-    }
-
-    @Test fun preparedCandidateWhoseBoundaryNoLongerMatchesAdmissionIsRefused() {
-        var compatibilityConsulted = false
-        val refusal = AppInstaller.localInstallCandidateRefusal(
-            info = selfInfo().copy(version = "1.1.0", versionCode = 110, nativeProtocolRange = 3..3),
-            runningPackage = AppInstaller.HA_PANELD.pkg,
-            admittedBoundary = boundary.copy(maximumSchema = 15),
-            updatePolicy = PanelAssistantUpdatePolicy(1, 3, false),
-            currentVersion = "1.0.0",
-            currentCode = 100,
-        ) {
-            compatibilityConsulted = true
-            null
-        }
-
-        assertEquals("prepared APK database boundary changed after admission", refusal)
-        assertFalse("a boundary other than the admitted one is never re-decided", compatibilityConsulted)
-    }
-
     @Test fun uploadedOwnPackageMustCarryAndPassItsDatabaseContract() {
-        // The Install-tab upload reaches this gate with no prepared boundary and the running package.
+        // The Install-tab upload reaches this gate with the running package.
         val seen = mutableListOf<DatabaseCompatibilityApkContract.Boundary>()
         fun upload(contract: DatabaseCompatibilityApkContract.Parsed) =
             AppInstaller.localInstallCandidateRefusal(
                 info = selfInfo(contract = contract)
                     .copy(version = "1.1.0", versionCode = 110, nativeProtocolRange = 3..3),
                 runningPackage = AppInstaller.HA_PANELD.pkg,
-                admittedBoundary = null,
                 updatePolicy = PanelAssistantUpdatePolicy(1, 3, false),
                 currentVersion = "1.0.0",
                 currentCode = 100,
@@ -269,7 +223,6 @@ class AppInstallerTest {
         val unreadable = AppInstaller.localInstallCandidateRefusal(
             info = null,
             runningPackage = AppInstaller.HA_PANELD.pkg,
-            admittedBoundary = null,
         ) {
             compatibilityConsulted = true
             null
@@ -282,12 +235,14 @@ class AppInstallerTest {
                 databaseCompatibility = DatabaseCompatibilityApkContract.Parsed.Missing,
             ),
             runningPackage = AppInstaller.HA_PANELD.pkg,
-            admittedBoundary = null,
         ) {
             compatibilityConsulted = true
             null
         }
 
+        assertEquals("candidate is not the running package", AppInstaller.selfReplacementRefusal(
+            selfInfo().copy(pkg = "example.curated.package"),
+        ) { compatibilityConsulted = true; null })
         assertEquals("unreadable candidate APK", unreadable)
         assertNull("a readable non-self upload retains its existing confirmation policy", readableNonSelf)
         assertFalse("non-self packages have no ha-paneld database contract to consult", compatibilityConsulted)
@@ -328,23 +283,6 @@ class AppInstallerTest {
                 ),
             ),
         )
-    }
-
-    @Test fun preparedCapabilityIsBoundToExactBytesAndDeletesWhenDiscarded() {
-        val apk = File.createTempFile("prepared-self-install-", ".apk").apply { writeText("original") }
-        val prepared = AppInstaller.PreparedSelfInstall(
-            apk = apk,
-            expectedSha256 = AppInstaller.sha256(apk),
-            version = "candidate",
-            boundary = boundary,
-        )
-
-        assertTrue(prepared.bytesUnchanged())
-        apk.writeText("changed")
-        assertFalse(prepared.bytesUnchanged())
-        prepared.close()
-        assertFalse(apk.exists())
-        assertNull(prepared.consume())
     }
 
     @Test fun successfulSelfInstallKeepsStateQuiescedWhileFailedInstallReopensIt() {

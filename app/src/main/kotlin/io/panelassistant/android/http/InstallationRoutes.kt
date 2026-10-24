@@ -14,7 +14,6 @@ import io.panelassistant.android.util.InstallPresentation
 import io.panelassistant.android.util.InstallProgress
 import io.panelassistant.android.util.Json
 import io.panelassistant.android.util.ReleaseCatalog
-import io.panelassistant.android.util.SelfUpdater
 import io.panelassistant.android.util.UpdateChecker
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
@@ -35,7 +34,6 @@ internal fun Route.installationRoutes(
     authorizeSensitive: suspend (OpCall, SensitiveOperation, String, String) -> Boolean,
     versionCatalogue: (String, String) -> List<ReleaseCatalog.Version> = { name, channel ->
         when (name) {
-            "paneld" -> SelfUpdater.versions(channel)
             "companion" -> CompanionInstaller.versions(channel, maxVersion = profile.companionMaxVersion)
             else -> emptyList()
         }
@@ -51,29 +49,23 @@ internal fun Route.installationRoutes(
             call.respondText("""{"ok":false}""", ContentType.Application.Json, HttpStatusCode.BadRequest)
         else { config.ignoreUpdate(label, version); call.respondText("""{"ok":true}""", ContentType.Application.Json) }
     }
-    // Recent installable versions for a component's picker (name ∈ {paneld,companion};
+    // Recent installable versions for a component's picker (name = companion;
     // channel ∈ {stable,prerelease}). Up to 10 choices plus one unavailable explanation on capped panels.
     get("/install/versions") {
         val name = call.request.queryParameters["name"]?.trim().orEmpty()
-        val requestedChannel = call.request.queryParameters["channel"]?.trim()?.ifEmpty { "stable" } ?: "stable"
-        val channel = if (name == "paneld") {
-            if (AppInstaller.panelUpdatePolicy()?.prerelease == true) "prerelease" else "stable"
-        } else requestedChannel
+        if (name != "companion") return@get call.respondText(
+            """{"status":"bad-component"}""", ContentType.Application.Json, HttpStatusCode.BadRequest,
+        )
+        val channel = call.request.queryParameters["channel"]?.trim()?.ifEmpty { "stable" } ?: "stable"
         val vers = withContext(Dispatchers.IO) { versionCatalogue(name, channel) }
-        val installedVersion = when (name) {
-            "paneld" -> Config.VERSION
-            "companion" -> CompanionInstaller.installedPkg(appContext)?.let {
-                AppInstaller.installedVersion(appContext, it)
-            }
-            else -> null
+        val installedVersion = CompanionInstaller.installedPkg(appContext)?.let {
+            AppInstaller.installedVersion(appContext, it)
         }
-        val responseChannel = if (name == "paneld") AppInstaller.panelUpdatePolicy()?.let {
-            Json.str(if (it.prerelease) "prerelease" else "stable")
-        } ?: "null" else Json.str(channel)
+        val responseChannel = Json.str(channel)
         val arr = vers.joinToString(",") { v ->
-            val candidate = if (name == "companion") UpdateChecker.stripVariant(v.version) else v.version
+            val candidate = UpdateChecker.stripVariant(v.version)
             val installed = installedVersion?.let {
-                if (name == "companion") UpdateChecker.stripVariant(it) else it
+                UpdateChecker.stripVariant(it)
             }
             val comparison = installed?.let { UpdateChecker.compareVersions(candidate, it) }
             val (action, presentation) = when {

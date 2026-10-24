@@ -226,6 +226,7 @@ internal class PaneldServerHttpFixture(
         dashboardIssues: io.panelassistant.android.persistence.DashboardIssueCustody = EmptyDashboardIssues,
         exportState: (() -> List<io.panelassistant.android.persistence.ConfigVault.StateRow>)? = null,
         captureCompanion: () -> CapturedCompanion = { error("Companion explicitly excluded") },
+        profileAdmin: io.panelassistant.android.device.profile.ProfileAdmin? = null,
         effectiveValue: (io.panelassistant.android.config.SettingSpec, Map<String, String>) -> String = { spec, _ -> spec.default },
     ) = PanelBackupBuilder(
         appContext = context,
@@ -233,7 +234,7 @@ internal class PaneldServerHttpFixture(
         cacheDir = directory,
         configLiveValues = { emptyMap() },
         effectiveValue = effectiveValue,
-        profileAdmin = null,
+        profileAdmin = profileAdmin,
         captureCompanion = captureCompanion,
         wakeWords = wakeWords,
         calibrations = calibrations,

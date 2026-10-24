@@ -118,23 +118,23 @@ class ReleaseCatalogTest {
         assertTrue(versions.drop(1).all { it.installable })
     }
 
-    @Test fun aReleaseWithoutThisAppsApkHasNoCompatibleDownload() {
+    @Test fun aReleaseWithoutTheSelectedAssetHasNoCompatibleDownload() {
         val legacy = org.json.JSONObject("""{"tag_name":"v0.9.7","assets":[{"name":"ha-paneld-v0.9.7.apk","browser_download_url":"legacy"}]}""")
         val noAsset = org.json.JSONObject("""{"tag_name":"v0.9.9","assets":[]}""")
-        val parsed = listOf(legacy, noAsset).map { ReleaseCatalog.raw(it, SelfUpdater::isOwnAsset) }
+        val parsed = listOf(legacy, noAsset).map { ReleaseCatalog.raw(it, { it == "selected.apk" }) }
         val versions = ReleaseCatalog.select(parsed, "stable", 10, strip)
         assertEquals(listOf("no_matching_asset", "no_matching_asset"), versions.map { it.unavailableReason })
         assertTrue(versions.all { !it.installable && it.apkUrl == null })
     }
 
-    @Test fun aReleaseAsPublishedSince0910OffersItsApkBin() {
+    @Test fun aReleaseOffersOnlyTheSelectedAsset() {
         val release = org.json.JSONObject(
             """{"tag_name":"v1.0.0","assets":[""" +
-                """{"name":"panel-assistant-v1.0.0-manual-setup-required.apk.bin.idsig","browser_download_url":"idsig"},""" +
-                """{"name":"panel-assistant-v1.0.0-manual-setup-required.apk.bin.sha256","browser_download_url":"sha"},""" +
-                """{"name":"panel-assistant-v1.0.0-manual-setup-required.apk.bin","browser_download_url":"apk"}]}""",
+                """{"name":"selected.apk.idsig","browser_download_url":"idsig"},""" +
+                """{"name":"selected.apk.sha256","browser_download_url":"sha"},""" +
+                """{"name":"selected.apk","browser_download_url":"apk"}]}""",
         )
-        val versions = ReleaseCatalog.select(listOf(ReleaseCatalog.raw(release, SelfUpdater::isOwnAsset)), "stable", 10, strip)
+        val versions = ReleaseCatalog.select(listOf(ReleaseCatalog.raw(release, { it == "selected.apk" })), "stable", 10, strip)
         assertEquals("apk", versions.single().apkUrl)
         assertTrue(versions.single().installable)
     }

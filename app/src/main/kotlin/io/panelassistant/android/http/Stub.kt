@@ -30,7 +30,6 @@ import io.panelassistant.android.ManageBlobs
 import io.panelassistant.android.ManageDoor
 import io.panelassistant.android.util.BoundedStreams
 import io.panelassistant.android.util.ByteLimitExceeded
-import io.panelassistant.android.util.SelfUpdater
 import io.panelassistant.android.util.isLoopbackPeer
 import java.security.SecureRandom
 import java.util.UUID
@@ -87,7 +86,7 @@ internal object StubEndpoints {
         "/api/v1/sensortrace", "/api/v1/ui/layout",
     )
 
-    val GONE_BODY: String = JSONObject().put("error", "gone").put("docs", SelfUpdater.RELEASES_URL).toString()
+    val GONE_BODY: String = JSONObject().put("error", "gone").put("docs", "https://github.com/panel-assistant/android/releases").toString()
 
     /** Whether the stub serves [method] [path]. HEAD reads as GET. */
     fun admits(method: HttpMethod, path: String): Boolean {
