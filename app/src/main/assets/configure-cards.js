@@ -30,6 +30,16 @@
   function startHaOAuth() {
     if (!cfg.haOauthButton || !validHaUrlForOAuth()) return;
     var target = String(cfg.values.ha_url || "").trim().replace(/\/+$/, "");
+    // Reserve the tab during the click: the relay's asynchronous answer has no user activation.
+    // The sign-in tab never needs access to Configure or its Home Assistant parent.
+    var signInWindow = null;
+    try {
+      if (!cfg.EMBEDDED) signInWindow = window.open("", "_blank");
+      if (signInWindow) signInWindow.opener = null;
+    } catch (_) {
+      if (signInWindow) signInWindow.close();
+      signInWindow = null;
+    }
     // Choosing browser sign-in supersedes a manually typed token immediately. This also prevents a
     // private-window completion, which cannot signal the ordinary browser context, from being overwritten
     // by that stale form value on a later unrelated save.
@@ -66,7 +76,9 @@
       openLink.href = authorizationUrl;
       cfg.haOauthLinks.hidden = false;
       setHaOauthStatus(cfg.i18nText("configure.oauth.link_ready", "Sign-in link ready. Open it normally or copy it into a private window."), false);
+      if (signInWindow && !signInWindow.closed) signInWindow.location.replace(authorizationUrl);
     }).catch(function (error) {
+      if (signInWindow && !signInWindow.closed) signInWindow.close();
       setHaOauthStatus(error && error.localizedMessage
         ? error.localizedMessage
         : cfg.i18nText("configure.oauth.start_failed", "Could not start sign-in."), false);
@@ -100,7 +112,20 @@
     setHaOauthStatus(haConnectionStatusText(), cfg.haUserStatus.phase === "connected");
   }
 
+  var haUserStatusWatch = null;
   function loadHaUserStatus() {
+    // An opaque sidebar cannot hear the LAN callback's BroadcastChannel. Follow the panel's
+    // existing setup family instead; configured/oauth flags alone cannot identify a user switch.
+    if (cfg.EMBEDDED) {
+      if (!haUserStatusWatch) haUserStatusWatch = window.PaneldTransport.subscribe("setup", function (body, state) {
+        var status = state === "known" && body && body["ha.oauth.status"];
+        if (!status) status = { phase: cfg.haAuth.configured ? "unavailable" : "not_configured" };
+        cfg.haUserStatus = status;
+        renderHaConnectionStatus();
+        if (state === "known") cfg.reloadSchemaForHaLanguage();
+      });
+      return;
+    }
     var request = ++cfg.haUserStatusRequest;
     if (!cfg.haAuth.configured) {
       cfg.haUserStatus = { phase: "not_configured" };

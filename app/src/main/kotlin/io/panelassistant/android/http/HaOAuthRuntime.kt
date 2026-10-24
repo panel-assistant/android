@@ -12,6 +12,9 @@ import io.panelassistant.android.i18n.Strings as AppStrings
 import io.panelassistant.android.i18n.CatalogueLoader
 import io.panelassistant.android.sensors.HaCurrentUserClient
 import io.panelassistant.android.util.HaLink
+import io.panelassistant.android.util.LocalAdminEndpoint
+import io.panelassistant.android.util.localIpv4
+import io.panelassistant.android.util.localIpv6
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -35,6 +38,9 @@ internal class HaOAuthRuntime(
         HaOAuthRouteDependencies(
             panelPort = config.httpPort,
             start = { haUrl, panelOrigin -> startHaOAuth(haUrl, panelOrigin) },
+            relayedPanelOrigin = {
+                LocalAdminEndpoint.externalUrl(localIpv4(), localIpv6(), config.httpPort)?.removeSuffix("/")
+            },
             startWithContext = { haUrl, panelOrigin, context ->
                 startHaOAuth(haUrl, panelOrigin, context)
             },

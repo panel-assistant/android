@@ -2,10 +2,15 @@ package io.panelassistant.android.http
 
 import com.sun.net.httpserver.HttpServer
 import io.ktor.client.request.get
+import io.ktor.client.request.header
+import io.ktor.client.request.forms.submitForm
 import io.ktor.client.statement.bodyAsBytes
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.HttpHeaders
+import io.ktor.http.Parameters
+import io.ktor.http.Url
 import io.ktor.server.request.receiveStream
 import io.ktor.server.routing.route
 import io.ktor.server.testing.testApplication
@@ -146,6 +151,69 @@ internal class SidebarRelayTest : io.panelassistant.android.testsupport.PanelRun
     private fun manage(id: String, op: String, args: JSONObject = JSONObject(), relayed: Boolean = true) =
         JSONObject().put("kind", "manage").put("command_id", id).put("op", op).put("args", args)
             .apply { if (relayed) put("origin", JSONObject().put("user", USER).put("connection", "relay-1")) }
+
+    @Test fun aRelayedBrowserSignInUsesThePanelsOwnAddressAndKeepsCallbackOwnership() {
+        PaneldServerHttpFixture().use { fixture ->
+            val panelOrigin = requireNotNull(io.panelassistant.android.util.LocalAdminEndpoint.externalUrl(
+                io.panelassistant.android.util.localIpv4(), io.panelassistant.android.util.localIpv6(), fixture.config.httpPort,
+            )).removeSuffix("/")
+            val exchanges = CopyOnWriteArrayList<String>()
+            PaneldServer::class.java.getDeclaredField("haOAuth").apply { isAccessible = true }.set(fixture.server, HaOAuthRuntime(
+                fixture.config,
+                // Source-text reason: exercise the callback's packaged translations through the runtime catalogue reader.
+                { io.panelassistant.android.i18n.CatalogueLoader { name -> java.io.File("src/main/assets", name).readText() } },
+                { _, code, client ->
+                    exchanges += "$code|$client"
+                    io.panelassistant.android.util.HaLink.AuthorizationCodeExchange.Rejected
+                },
+                AutoBrightnessHttpApi.UNAVAILABLE,
+                { _, _, _ -> error("Rejected exchange must not commit") },
+                { error("Rejected exchange must not evaluate setup") },
+            ))
+            testApplication {
+                application { fixture.mount(this) }
+                startApplication()
+                val dispatcher = rig(manageTable = fixture.manageTable)
+                try {
+                    Session({ dispatcher.commands }).use { session ->
+                        fun start(id: String): Url {
+                            session.deliver(manage(id, "ha.oauth.start", JSONObject()
+                                .put("ha_url", "http://ha.example:8123")
+                                .put("return_surface", "configure").put("ui_locale", "en")
+                                .put("Host", "attacker.example:8888").put("panel_origin", "http://attacker.example:8888")))
+                            val answer = session.answer(id)
+                            assertEquals(answer.toString(), "applied", answer.getString("outcome"))
+                            return Url(answer.getJSONObject("result").getString("authorization_url"))
+                        }
+                        val superseded = start("oauth-old")
+                        val current = start("oauth-current")
+                        assertEquals("$panelOrigin/", current.parameters["client_id"])
+                        assertEquals("$panelOrigin$HA_OAUTH_CALLBACK_PATH", current.parameters["redirect_uri"])
+                        val panelHost = panelOrigin.removePrefix("http://")
+                        suspend fun callback(url: Url, host: String = panelHost) = client.get(
+                            "$HA_OAUTH_CALLBACK_PATH?state=${url.parameters["state"]}&code=fixture-code",
+                        ) { header(HttpHeaders.Host, host) }
+                        assertTrue(callback(superseded).bodyAsText().contains("expired or was already used"))
+                        assertTrue(callback(current, "wrong-panel.local:8888").bodyAsText().contains("different panel address"))
+                        assertTrue(callback(current).bodyAsText().contains("expired or was already used"))
+                        assertTrue(exchanges.isEmpty())
+                        val usable = start("oauth-usable")
+                        assertTrue(callback(usable).bodyAsText().contains("did not accept this sign-in"))
+                        assertTrue(callback(usable).bodyAsText().contains("expired or was already used"))
+                        assertEquals(listOf("fixture-code|$panelOrigin/"), exchanges.toList())
+                        val direct = client.submitForm("/api/v1/ha/oauth/start", Parameters.build {
+                            append("ha_url", "http://ha.example:8123")
+                        }) { header(HttpHeaders.Host, "direct-panel.local:9999") }
+                        assertEquals("http://direct-panel.local:9999/", Url(JSONObject(direct.bodyAsText()).getString("authorization_url")).parameters["client_id"])
+                        val invalidHost = client.submitForm("/api/v1/ha/oauth/start", Parameters.build {
+                            append("ha_url", "http://ha.example:8123")
+                        }) { header(HttpHeaders.Host, "user@attacker.example:8888") }
+                        assertTrue(invalidHost.status.value in 400..499)
+                    }
+                } finally { dispatcher.close() }
+            }
+        }
+    }
 
     @Test fun aRelayedCommandRunsAsItsUserWhileTheSameEventWithoutAnOriginIsRefused() {
         PaneldServerHttpFixture().use { fixture ->
