@@ -14,6 +14,7 @@ internal enum class SensitiveOperation(val label: String) {
     PACKAGE_UNINSTALL("Uninstall app"),
     PROFILE_ACTIVATE("Activate hardware profile"),
     DEVTOOLS_ENABLE("Expose WebView developer tools"),
+    WAKE_WORD_IMPORT("Import a wake-word model"),
     REMOTE_MEDIA("Play a remote media URL"),
     PACKAGE_TAME("Change vendor package state"),
     HOME_ROLE_HAND_BACK("Hand the home screen back"),

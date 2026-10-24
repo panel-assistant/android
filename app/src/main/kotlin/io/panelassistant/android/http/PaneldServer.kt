@@ -537,6 +537,7 @@ class PaneldServer internal constructor(
                         voiceTest = voiceTest,
                         wakeWords = wakeWords,
                         onWakeWordsChanged = onWakeWordsChanged,
+                        authorize = ::authorizeSensitive,
                     )
                     // LAN ha-paneld panels for the header panel switcher — a cheap, non-blocking snapshot of
                     // the live mDNS roster (a background listener keeps it converged + fresh; see browsePeers).

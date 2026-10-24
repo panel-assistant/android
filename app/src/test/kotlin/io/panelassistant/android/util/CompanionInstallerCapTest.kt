@@ -8,6 +8,21 @@ import org.junit.Test
 
 /** Pure version-cap decision for the Companion auto-updater (see CompanionInstaller.exceedsCap). */
 class CompanionInstallerCapTest {
+    @Test fun releaseNotesAreConfinedToGithubWithoutLosingTheInstallTarget() {
+        val allowed = "https://github.com/home-assistant/android/releases/tag/2026.6.5"
+        for (notes in listOf("javascript:x", "http://github.com/x", "https://example.org/x",
+            "https://github.com.evil.example/x", "https://github.com@evil.example/x", "/relative", "https://[", allowed)) {
+            val release = org.json.JSONObject().put("tag_name", "2026.6.5").put("html_url", notes)
+                .put("assets", org.json.JSONArray().put(org.json.JSONObject()
+                    .put("name", "app-minimal-release.apk").put("browser_download_url", "https://github.com/home-assistant/android/releases/download/2026.6.5/app.apk")))
+            val versions = ReleaseCatalog.select(listOf(ReleaseCatalog.raw(release) { it == "app-minimal-release.apk" }), "stable", 1) { it }
+            val target = CompanionInstaller.chooseTarget(versions, null)!!
+            assertEquals("2026.6.5", target.version)
+            assertTrue(target.apkUrl.endsWith("app.apk"))
+            assertEquals("notes $notes", if (notes == allowed) allowed else "", target.releaseUrl)
+        }
+    }
+
     @Test fun noCapNeverExceeds() {
         assertFalse(CompanionInstaller.exceedsCap("2026.6.5", null))
         assertFalse(CompanionInstaller.exceedsCap("9999.1.0", null))

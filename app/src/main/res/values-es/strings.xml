@@ -44,6 +44,7 @@
     <string name="approval_op_apk_fetch">Descargar un APK desde un enlace</string>
     <string name="approval_op_backup_export">Exportar la copia de seguridad del panel</string>
     <string name="approval_op_secret_export">Exportar la configuración con secretos</string>
+    <string name="approval_op_wake_word_import">Importar un modelo de palabra de activación</string>
     <string name="approval_op_config_import">Importar la configuración del panel</string>
     <string name="approval_op_backup_restore">Restaurar la copia de seguridad del panel</string>
     <string name="approval_op_package_uninstall">Desinstalar la aplicación</string>

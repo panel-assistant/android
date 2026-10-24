@@ -42,6 +42,7 @@
     <string name="approval_op_apk_fetch">Pobierz APK z linku</string>
     <string name="approval_op_backup_export">Eksportuj kopię zapasową panelu</string>
     <string name="approval_op_secret_export">Eksportuj ustawienia wraz z danymi poufnymi</string>
+    <string name="approval_op_wake_word_import">Importuj model słowa wybudzającego</string>
     <string name="approval_op_config_import">Importuj ustawienia panelu</string>
     <string name="approval_op_backup_restore">Przywróć kopię zapasową panelu</string>
     <string name="approval_op_package_uninstall">Odinstaluj aplikację</string>

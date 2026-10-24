@@ -674,7 +674,8 @@ private val NETWORK_ADB_TCP_INVENTORIES = listOf("/proc/net/tcp", "/proc/net/tcp
 internal const val NETWORK_ADB_INITIAL_SETTLE_MS = 1_000L
 internal const val NETWORK_ADB_SAMPLE_INTERVAL_MS = 500L
 internal const val NETWORK_ADB_REQUIRED_STABLE_MS = 2_000L
-internal const val NETWORK_ADB_SETTLE_DEADLINE_MS = 6_000L
+// Five complete property/socket observations can take about eight seconds on vendor panels.
+internal const val NETWORK_ADB_SETTLE_DEADLINE_MS = 10_000L
 private const val MIN_SETTLED_INACTIVE_SAMPLES = 5
 
 internal const val SERVICE_ADB_TCP_PORT_PROPERTY = "service.adb.tcp.port"

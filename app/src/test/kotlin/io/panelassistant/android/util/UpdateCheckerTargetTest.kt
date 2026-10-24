@@ -17,6 +17,11 @@ class UpdateCheckerTargetTest {
         newestVersion = "2026.9.1",
     )
 
+    @Test fun absentReleaseNotesSurviveTargetPersistence() {
+        val target = companion.copy(releaseUrl = "")
+        assertEquals(target, UpdateChecker.decodeTarget(UpdateChecker.encodeTarget(target)))
+    }
+
     @Test fun aTargetIsNeverReusedUnderAnotherChannelOrCap() {
         assertEquals(companion, UpdateChecker.samePolicy(companion, "stable", "2026.5.4"))
         assertNull(UpdateChecker.samePolicy(companion, "prerelease", "2026.5.4"))

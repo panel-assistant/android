@@ -16,6 +16,7 @@ import io.panelassistant.android.metrics.RamRingSink
 import io.panelassistant.android.metrics.FeatureCostOperation
 import io.panelassistant.android.metrics.FeatureCostOutcome
 import io.panelassistant.android.metrics.FeatureCosts
+import io.panelassistant.android.util.Json
 import io.panelassistant.android.util.AndroidInput
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -497,18 +498,18 @@ object PerfReader {
             resolvedNames.forEach { (pid, name) -> nameCache[pid] = name }
             val attributionPkg = RendererResolver.attributionOf(identity.target, identity.ownPackage)
             fun processName(pid: Int): String {
-                var name = trimProcName((nameCache[pid] ?: comm[pid] ?: pid.toString()).replace("\\", "").replace("\"", ""))
+                var name = trimProcName(nameCache[pid] ?: comm[pid] ?: pid.toString())
                 if (pid == myPid) name = if (attributionPkg == name) "built-in dashboard (Panel Assistant)" else "$name (this app)"
                 return name
             }
             val cpuRows = cpuRanked.map { (pid, delta) ->
                 val pct = Math.round(delta * 1000.0 / dTotal) / 10.0
-                """{"name":"${processName(pid)}","cpu":$pct}"""
+                """{"name":${Json.str(processName(pid))},"cpu":$pct}"""
             }.toMutableList()
             probePct?.let { cpuRows += """{"name":"sampling probes (su/dumpsys)","cpu":$it,"self":true}""" }
             val pageBytes = pageSizeBytes()
             val ramRows = ramRanked.map { (pid, pages) ->
-                """{"name":"${processName(pid)}","ramMb":${rssMb(pages, pageBytes)}}"""
+                """{"name":${Json.str(processName(pid))},"ramMb":${rssMb(pages, pageBytes)}}"""
             }
             synchronized(lock) {
                 if (cpuRows.isNotEmpty()) topJson = cpuRows.joinToString(",", "[", "]")

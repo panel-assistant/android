@@ -42,6 +42,7 @@
     <string name="approval_op_apk_fetch">Een APK downloaden via een link</string>
     <string name="approval_op_backup_export">Back-up van het paneel exporteren</string>
     <string name="approval_op_secret_export">Instellingen met vertrouwelijke gegevens exporteren</string>
+    <string name="approval_op_wake_word_import">Een model voor een activeringswoord importeren</string>
     <string name="approval_op_config_import">Paneelinstellingen importeren</string>
     <string name="approval_op_backup_restore">Back-up van het paneel herstellen</string>
     <string name="approval_op_package_uninstall">App verwijderen</string>

@@ -51,6 +51,8 @@ data class MicroWakeWordModelConfig(
             val languages = root.optJSONArray("trained_languages")?.let { array ->
                 List(array.length()) { array.getString(it) }
             } ?: emptyList()
+            val arena = micro.optInt("tensor_arena_size", 0)
+            require(arena in 0..1048576) { "wake word manifest $id has an invalid tensor_arena_size (maximum 1 MiB)" }
             return MicroWakeWordModelConfig(
                 id = id,
                 wakeWord = root.optString("wake_word").ifEmpty { id },
@@ -62,7 +64,7 @@ data class MicroWakeWordModelConfig(
                 probabilityCutoff = cutoff.toFloat(),
                 featureStepSizeMs = step,
                 slidingWindowSize = window,
-                tensorArenaSize = micro.optInt("tensor_arena_size", 0),
+                tensorArenaSize = arena,
             )
         }
     }

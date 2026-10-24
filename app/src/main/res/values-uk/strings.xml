@@ -42,6 +42,7 @@
     <string name="approval_op_apk_fetch">Завантажити APK з посилання</string>
     <string name="approval_op_backup_export">Експортувати резервну копію панелі</string>
     <string name="approval_op_secret_export">Експортувати налаштування разом із секретними даними</string>
+    <string name="approval_op_wake_word_import">Імпортувати модель слова активації</string>
     <string name="approval_op_config_import">Імпортувати налаштування панелі</string>
     <string name="approval_op_backup_restore">Відновити резервну копію панелі</string>
     <string name="approval_op_package_uninstall">Видалити застосунок</string>

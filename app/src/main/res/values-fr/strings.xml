@@ -44,6 +44,7 @@
     <string name="approval_op_apk_fetch">Télécharger un APK depuis un lien</string>
     <string name="approval_op_backup_export">Exporter la sauvegarde du panneau</string>
     <string name="approval_op_secret_export">Exporter les paramètres avec les secrets</string>
+    <string name="approval_op_wake_word_import">Importer un modèle de mot de réveil</string>
     <string name="approval_op_config_import">Importer les paramètres du panneau</string>
     <string name="approval_op_backup_restore">Restaurer la sauvegarde du panneau</string>
     <string name="approval_op_package_uninstall">Désinstaller l’application</string>

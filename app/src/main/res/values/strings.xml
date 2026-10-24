@@ -46,6 +46,7 @@
     <string name="approval_op_apk_fetch">Download an APK from a link</string>
     <string name="approval_op_backup_export">Export panel backup</string>
     <string name="approval_op_secret_export">Export settings with secrets</string>
+    <string name="approval_op_wake_word_import">Import a wake-word model</string>
     <string name="approval_op_config_import">Import panel settings</string>
     <string name="approval_op_backup_restore">Restore panel backup</string>
     <string name="approval_op_package_uninstall">Uninstall app</string>

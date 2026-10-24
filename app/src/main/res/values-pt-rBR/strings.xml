@@ -42,6 +42,7 @@
     <string name="approval_op_apk_fetch">Baixar um APK por um link</string>
     <string name="approval_op_backup_export">Exportar backup do painel</string>
     <string name="approval_op_secret_export">Exportar configurações com segredos</string>
+    <string name="approval_op_wake_word_import">Importar um modelo de palavra de ativação</string>
     <string name="approval_op_config_import">Importar configurações do painel</string>
     <string name="approval_op_backup_restore">Restaurar backup do painel</string>
     <string name="approval_op_package_uninstall">Desinstalar aplicativo</string>

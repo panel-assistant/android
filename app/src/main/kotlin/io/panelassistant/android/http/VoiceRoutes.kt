@@ -2,6 +2,7 @@ package io.panelassistant.android.http
 
 import io.panelassistant.android.util.ByteLimitExceeded
 import io.panelassistant.android.util.Json
+import io.panelassistant.android.security.SensitiveOperation
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
@@ -24,6 +25,7 @@ internal fun Route.voiceRoutes(
     voiceTest: io.panelassistant.android.assist.VoiceTestTrigger,
     wakeWords: io.panelassistant.android.assist.wakeword.WakeWordCatalog?,
     onWakeWordsChanged: () -> Unit,
+    authorize: suspend (OpCall, SensitiveOperation, String, String) -> Boolean,
 ) {
     // Home Assistant Assist pipelines for the Configure voice_pipelines picker, through the
     // injected directory rather than talking to Home Assistant here.
@@ -97,10 +99,12 @@ internal fun Route.voiceRoutes(
             call.respondText("{\"error\":\"timeout\"}", ContentType.Application.Json, HttpStatusCode.RequestTimeout)
             return@post
         }
-        val (status, body) = withContext(Dispatchers.IO) {
-            wakeWordImportResponse(catalog, received.toByteArray(), onWakeWordsChanged)
-        }
-        call.respondText(body, ContentType.Application.Json, status)
+        val result = withContext(Dispatchers.IO) {
+            wakeWordImportResponse(catalog, received.toByteArray(), onWakeWordsChanged) { payload, summary ->
+                authorize(call, SensitiveOperation.WAKE_WORD_IMPORT, payload, summary)
+            }
+        } ?: return@post
+        call.respondText(result.second, ContentType.Application.Json, result.first)
     }
     }
 }

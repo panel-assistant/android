@@ -29,11 +29,12 @@ internal fun wakeWordsResponse(
  * offers with `{"download":"<id>"}`. [changed] runs after a model is installed, so the listener and Home
  * Assistant see it.
  */
-internal fun wakeWordImportResponse(
+internal suspend fun wakeWordImportResponse(
     catalog: io.panelassistant.android.assist.wakeword.WakeWordCatalog,
     body: ByteArray,
     changed: () -> Unit,
-): Pair<HttpStatusCode, String> {
+    authorize: suspend (String, String) -> Boolean,
+): Pair<HttpStatusCode, String>? {
     val request = runCatching { org.json.JSONObject(body.toString(Charsets.UTF_8)) }.getOrNull()
     val download = request?.opt("download") as? String
     if (download != null) return wakeWordInstalled(catalog.download(download), changed)
@@ -43,6 +44,8 @@ internal fun wakeWordImportResponse(
     if (name == null || manifest == null || model == null) {
         return HttpStatusCode.BadRequest to "{\"error\":\"expected name, manifest and a base64 model\"}"
     }
+    val digest = sha256Hex(model)
+    if (!authorize(sha256Hex(body) + ":" + digest, "Import wake word $name (model SHA-256 $digest)")) return null
     return wakeWordInstalled(catalog.import(name, manifest.toByteArray(Charsets.UTF_8), model), changed)
 }
 

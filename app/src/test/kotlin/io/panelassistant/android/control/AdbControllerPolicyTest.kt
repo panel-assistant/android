@@ -583,6 +583,94 @@ class AdbControllerPolicyTest {
         )
     }
 
+    @Test fun `Hardened admission accommodates measured inactive observation cost`() {
+        val directory = scratchDirectory("network-adb-measured-proof").toFile()
+        try {
+            val marker = NetworkAdbDisableTransitionMarker(directory.resolve("network-adb-disable.v1"))
+            var owned = true
+            var committed = false
+            var now = 0L
+            var samples = 0
+            // Four captured Electron observations; the fifth repeats the slowest observation.
+            val costs = longArrayOf(1_036L, 920L, 919L, 1_013L, 1_036L)
+            val result = completeHardenedNetworkAdbAdmission(
+                disableRequired = true,
+                finishDisable = {
+                    completeNetworkAdbDisableTransition(
+                        owned = { owned },
+                        disablePending = marker::isPending,
+                        armDisable = marker::arm,
+                        teardown = { assertTrue(marker.isPending()); true },
+                        inactiveReadback = {
+                            proveSettledNetworkAdbInactive(
+                                sample = { now += costs.getOrElse(samples++) { 1_036L }; false },
+                                monotonicMs = { now },
+                                waitMs = { delay -> now += delay; true },
+                            )
+                        },
+                        clearOwnership = { owned = false; true },
+                        clearDisable = marker::clear,
+                    )
+                },
+                proveInactive = { error("disable supplies the settled proof") },
+                activeReadback = { error("completed disable needs no diagnostic sample") },
+                ownershipEnabled = { owned },
+                disableAbsentDurably = marker::isAbsentDurably,
+                commitHardened = {
+                    assertFalse(owned)
+                    assertTrue(marker.isAbsentDurably())
+                    committed = true
+                    true
+                },
+            )
+            assertEquals(HardenedNetworkAdbAdmission.APPLIED, result)
+            assertEquals(5, samples)
+            assertFalse(owned)
+            assertTrue(marker.isAbsentDurably())
+            assertTrue(committed)
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test fun `slow inactive observations still retain pending recovery on deadline expiry`() {
+        val directory = scratchDirectory("network-adb-expired-proof").toFile()
+        try {
+            val marker = NetworkAdbDisableTransitionMarker(directory.resolve("network-adb-disable.v1"))
+            var owned = true
+            var now = 0L
+            assertEquals(HardenedNetworkAdbAdmission.DISABLE_FAILED, completeHardenedNetworkAdbAdmission(
+                disableRequired = true,
+                finishDisable = {
+                    completeNetworkAdbDisableTransition(
+                        owned = { owned },
+                        disablePending = marker::isPending,
+                        armDisable = marker::arm,
+                        teardown = { true },
+                        inactiveReadback = {
+                            proveSettledNetworkAdbInactive(
+                                sample = { now += 2_000L; false },
+                                monotonicMs = { now },
+                                waitMs = { delay -> now += delay; true },
+                            )
+                        },
+                        clearOwnership = { owned = false; true },
+                        clearDisable = marker::clear,
+                    )
+                },
+                proveInactive = { error("owned disable must supply proof") },
+                activeReadback = { error("owned failure retains recovery") },
+                ownershipEnabled = { owned },
+                disableAbsentDurably = marker::isAbsentDurably,
+                commitHardened = { error("expired proof must not change mode") },
+            ))
+            assertTrue(owned)
+            assertTrue(marker.isPending())
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
     @Test fun `Hardened commit cut leaves safe state and retries from fresh inactive proof`() {
         var owned = false
         var marker = false

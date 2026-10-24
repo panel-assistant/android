@@ -8,6 +8,7 @@
     "config/export": true,
     "config/import": true,
     "restore": true,
+    "voice/wake-words": true,
     "action": true
   });
 

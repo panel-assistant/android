@@ -42,6 +42,7 @@
     <string name="approval_op_apk_fetch">Stáhnout soubor „APK“ z odkazu</string>
     <string name="approval_op_backup_export">Exportovat zálohu panelu</string>
     <string name="approval_op_secret_export">Exportovat nastavení s tajnými údaji</string>
+    <string name="approval_op_wake_word_import">Importovat model aktivačního slova</string>
     <string name="approval_op_config_import">Importovat nastavení panelu</string>
     <string name="approval_op_backup_restore">Obnovit zálohu panelu</string>
     <string name="approval_op_package_uninstall">Odinstalovat aplikaci</string>

@@ -104,6 +104,7 @@ internal fun Context.localizedLabel(operation: SensitiveOperation): String = get
         SensitiveOperation.APK_FETCH -> R.string.approval_op_apk_fetch
         SensitiveOperation.BACKUP_EXPORT -> R.string.approval_op_backup_export
         SensitiveOperation.CONFIG_SECRET_EXPORT -> R.string.approval_op_secret_export
+        SensitiveOperation.WAKE_WORD_IMPORT -> R.string.approval_op_wake_word_import
         SensitiveOperation.CONFIG_IMPORT -> R.string.approval_op_config_import
         SensitiveOperation.BACKUP_RESTORE -> R.string.approval_op_backup_restore
         SensitiveOperation.PACKAGE_UNINSTALL -> R.string.approval_op_package_uninstall

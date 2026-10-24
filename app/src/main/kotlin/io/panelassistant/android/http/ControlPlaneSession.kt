@@ -49,8 +49,8 @@ internal object ControlPlaneSessionOps {
     /**
      * Fetch the model the blob names, which must match its size and SHA-256, and install it as the
      * Configure import does, except that a model the owner imported here under the same id is kept
-     * ([io.panelassistant.android.assist.wakeword.WakeWordCatalog.importShared]). No approval: the
-     * model changes only what the panel can listen for, never what it runs, and the engine checks it.
+     * ([io.panelassistant.android.assist.wakeword.WakeWordCatalog.importShared]). Models are untrusted
+     * native input; this authenticated Home Assistant distribution path keeps its existing exemption.
      */
     private suspend fun importWakeWord(routes: ControlPlaneRouteDependencies, args: JSONObject, blobs: PanelAssistantBlobs): ControlPlaneAnswer {
         val catalog = routes.wakeWords()

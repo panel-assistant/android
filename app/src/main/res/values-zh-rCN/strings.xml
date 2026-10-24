@@ -44,6 +44,7 @@
     <string name="approval_op_apk_fetch">从链接下载 APK</string>
     <string name="approval_op_backup_export">导出面板备份</string>
     <string name="approval_op_secret_export">导出包含机密信息的设置</string>
+    <string name="approval_op_wake_word_import">导入唤醒词模型</string>
     <string name="approval_op_config_import">导入面板设置</string>
     <string name="approval_op_backup_restore">恢复面板备份</string>
     <string name="approval_op_package_uninstall">卸载应用</string>

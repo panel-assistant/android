@@ -13,6 +13,7 @@ class WakeWordCatalogTest {
     val folder = TemporaryFolder()
 
     private var engineAccepts = true
+    private var acceptedArenas = mutableListOf<Int>()
 
     private fun catalog(dir: File = folder.root) = WakeWordCatalog(
         bundled = object : WakeWordCatalog.BundledModels {
@@ -21,7 +22,7 @@ class WakeWordCatalogTest {
             override fun model(file: String) = byteArrayOf(1)
         },
         importDir = dir,
-        accepts = { _, _ -> engineAccepts },
+        accepts = { _, config -> acceptedArenas += config.tensorArenaSize; engineAccepts },
     )
 
     @Test fun `an imported model is listed after the bundled ones, under the id its name gives`() {
@@ -104,6 +105,29 @@ class WakeWordCatalogTest {
         assertEquals("Porch v2", catalog().available().single { it.id == "porch" }.wakeWord)
         assertArrayEquals(byteArrayOf(4), File(folder.root, "porch/porch.tflite").readBytes())
         assertEquals(listOf("porch"), folder.root.list()!!.toList())
+    }
+
+    @Test fun `oversized and negative arenas are refused before native acceptance and preserve the held model`() {
+        val catalog = catalog()
+        val original = manifest("Porch", "porch.tflite")
+        catalog.import("porch", original.toByteArray(), byteArrayOf(1))
+        acceptedArenas.clear()
+        for (arena in listOf(Int.MAX_VALUE, 1048577, -1)) {
+            val result = catalog.import("porch", original.replace("26080", arena.toString()).toByteArray(), byteArrayOf(2))
+            assertTrue("arena $arena: $result", result is WakeWordCatalog.ImportResult.Refused)
+            assertTrue("native acceptance must not see arena $arena", acceptedArenas.isEmpty())
+            assertArrayEquals(byteArrayOf(1), File(folder.root, "porch/porch.tflite").readBytes())
+        }
+    }
+
+    @Test fun `zero omitted and one MiB arenas remain importable`() {
+        val catalog = catalog()
+        for ((id, arena) in listOf("zero" to "0", "maximum" to "1048576", "default" to null)) {
+            var json = manifest("Porch", "porch.tflite")
+            json = if (arena == null) json.replace(",\"tensor_arena_size\":26080", "") else json.replace("26080", arena)
+            assertTrue(catalog.import(id, json.toByteArray(), byteArrayOf(1)) is WakeWordCatalog.ImportResult.Imported)
+        }
+        assertEquals(listOf(0, 1048576, 0), acceptedArenas)
     }
 
     private fun manifest(phrase: String, model: String) = """

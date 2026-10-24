@@ -163,7 +163,7 @@ object UpdateChecker {
             fun stringField(key: String): String? = json.opt(key).takeIf { it is String } as String?
             val version = stringField("version")?.takeIf { compareVersions(it, it) != null } ?: return null
             val tag = stringField("tag")?.takeIf(ReleaseCatalog::validTag) ?: return null
-            val releaseUrl = stringField("release_url")?.takeIf { it.startsWith("https://") } ?: return null
+            val releaseUrl = stringField("release_url")?.takeIf { it.isEmpty() || it.startsWith("https://") } ?: return null
             val channel = stringField("channel")?.takeIf { it == "stable" || it == "prerelease" } ?: return null
             ResolvedTarget(
                 version = version,

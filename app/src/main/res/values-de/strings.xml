@@ -44,6 +44,7 @@
     <string name="approval_op_apk_fetch">APK über einen Link herunterladen</string>
     <string name="approval_op_backup_export">Panel-Sicherung exportieren</string>
     <string name="approval_op_secret_export">Einstellungen mit Geheimnissen exportieren</string>
+    <string name="approval_op_wake_word_import">Aktivierungswort-Modell importieren</string>
     <string name="approval_op_config_import">Panel-Einstellungen importieren</string>
     <string name="approval_op_backup_restore">Panel-Sicherung wiederherstellen</string>
     <string name="approval_op_package_uninstall">App deinstallieren</string>

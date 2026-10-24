@@ -81,6 +81,7 @@ internal val RELAYED_ADMINISTRATOR_EXEMPT: Set<SensitiveOperation> = setOf(
     SensitiveOperation.REMOTE_MEDIA,
     SensitiveOperation.PACKAGE_TAME,
     SensitiveOperation.DASHBOARD_RELOAD,
+    SensitiveOperation.WAKE_WORD_IMPORT,
 )
 
 /** Whether [origin] is a Home Assistant administrator relayed by Panel Assistant and [operation] is exempt for them,

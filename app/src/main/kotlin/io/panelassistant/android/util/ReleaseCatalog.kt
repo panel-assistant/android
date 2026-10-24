@@ -184,7 +184,12 @@ object ReleaseCatalog {
     internal fun raw(release: JSONObject, apkMatch: (String) -> Boolean): Raw = Raw(
         release.getString("tag_name"),
         release.optBoolean("prerelease", false),
-        release.optString("html_url", ""),
+        release.optString("html_url", "").takeIf { value ->
+            runCatching {
+                val uri = java.net.URI(value)
+                uri.scheme.equals("https", ignoreCase = true) && uri.host.equals("github.com", ignoreCase = true)
+            }.getOrDefault(false)
+        }.orEmpty(),
         assetUrl(release, apkMatch),
     )
 

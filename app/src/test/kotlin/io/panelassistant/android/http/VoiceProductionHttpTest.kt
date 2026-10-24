@@ -17,6 +17,11 @@ import io.ktor.server.routing.route
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
 import org.json.JSONObject
+import io.ktor.server.application.ApplicationCallPipeline
+import io.ktor.server.plugins.mutableOriginConnectionPoint
+import io.panelassistant.android.Config
+import io.panelassistant.android.security.LocalApprovalBroker
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -54,6 +59,7 @@ class VoiceProductionHttpTest {
                         voiceTest = VoiceTestTrigger { triggered++; triggerResult },
                         wakeWords = catalog,
                         onWakeWordsChanged = { changed++ },
+                        authorize = { _, _, _, _ -> true },
                     )
                 }
             }
@@ -248,6 +254,63 @@ class VoiceProductionHttpTest {
         assertEquals(HttpStatusCode.PayloadTooLarge, oversized.status)
         assertEquals("""{"error":"too-large"}""", oversized.bodyAsText())
         assertEquals(0, changed)
+    }
+
+    @Test fun `hardened LAN model imports wait for exact one shot approval before native acceptance`() {
+        val catalog = catalog(downloads = true)
+        PaneldServerHttpFixture(wakeWords = catalog).use { fixture ->
+            fixture.useVoice(hasMicrophone = true)
+            fixture.config.setSecurityMode(Config.SecurityMode.HARDENED)
+            try {
+                LocalApprovalBroker.instance.clear()
+                testApplication {
+                    application {
+                        intercept(ApplicationCallPipeline.Setup) {
+                            context.mutableOriginConnectionPoint.remoteAddress = "192.168.50.20"
+                        }
+                        fixture.mount(this)
+                    }
+                    suspend fun upload(body: String = importBody()) = client.post("/api/v1/voice/wake-words") { setBody(body) }
+                    val pending = upload()
+                    assertEquals(HttpStatusCode.Accepted, pending.status)
+                    val challenge = JSONObject(pending.bodyAsText())
+                    assertEquals("approval-required", challenge.getString("error"))
+                    assertEquals(listOf("okay_nabu"), catalog.available().map { it.id })
+                    assertTrue(LocalApprovalBroker.instance.approve(challenge.getString("approval_id")))
+                    val differentManifest = JSONObject(importBody()).put("manifest", manifest("Changed", "porch.tflite")).toString()
+                    assertEquals(HttpStatusCode.Accepted, upload(differentManifest).status)
+                    assertEquals(listOf("okay_nabu"), catalog.available().map { it.id })
+                    assertEquals(HttpStatusCode.OK, upload().status)
+                    assertEquals(listOf("okay_nabu", "porch"), catalog.available().map { it.id })
+                    assertEquals(HttpStatusCode.Accepted, upload().status)
+                    // Digest-pinned catalogue downloads keep the established exemption.
+                    val download = client.post("/api/v1/voice/wake-words") { setBody("""{"download":"hey_donut"}""") }
+                    assertEquals(HttpStatusCode.OK, download.status)
+                }
+            } finally { LocalApprovalBroker.instance.clear() }
+        }
+    }
+
+    @Test fun `administrator sidebar import keeps its hardened mode exemption`() {
+        val catalog = catalog()
+        PaneldServerHttpFixture(wakeWords = catalog).use { fixture ->
+            fixture.useVoice(hasMicrophone = true)
+            fixture.config.setSecurityMode(Config.SecurityMode.HARDENED)
+            try {
+                LocalApprovalBroker.instance.clear()
+                testApplication {
+                    application { fixture.mount(this) }
+                    startApplication()
+                    val reply = kotlinx.coroutines.CompletableDeferred<io.panelassistant.android.ManageReply>()
+                    fixture.door.manage("admin-import", "voice.wake_words.set", JSONObject(importBody()),
+                        io.panelassistant.android.CommandOrigin.user("0123456789abcdef0123456789abcdef"),
+                        null, { error("administrator import must not ask for approval") }, { reply.complete(it) })
+                    val result = kotlinx.coroutines.withTimeout(5000) { reply.await() }
+                    assertEquals("applied", result.outcome)
+                    assertEquals(listOf("okay_nabu", "porch"), catalog.available().map { it.id })
+                }
+            } finally { LocalApprovalBroker.instance.clear() }
+        }
     }
 
     private val donutManifest = manifest("Hey Donut", "hey_donut.tflite", author = "nyc-esq").toByteArray()

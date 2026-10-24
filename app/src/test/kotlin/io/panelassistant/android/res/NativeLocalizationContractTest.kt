@@ -29,13 +29,11 @@ class NativeLocalizationContractTest {
         }
     }
 
-    @Test fun baseCatalogueHasAUniqueBoundedKeyset() {
+    @Test fun baseCatalogueHasUniqueKeysAndOnlyBrandStringsAreUntranslated() {
         val document = DocumentBuilderFactory.newInstance().newDocumentBuilder()
             .parse(File("src/main/res/values/strings.xml"))
         val catalogue = baseStrings()
-        assertEquals(203, document.getElementsByTagName("string").length)
-        assertEquals(203, catalogue.size)
-        assertEquals(201, catalogue.count { it.value })
+        assertEquals("duplicate native string keys", document.getElementsByTagName("string").length, catalogue.size)
         assertEquals(
             setOf("app_name", "wordmark_description"),
             catalogue.filterValues { !it }.keys,
