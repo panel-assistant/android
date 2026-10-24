@@ -390,7 +390,7 @@ function installCardMemoryFixture(compact) {
     [data-layout-key="managed-components"]{height:${compact ? '100' : '220'}px}</style>${i18nBridge()}</head><body>
     <div id="install-cards" data-card-size-page="install" data-card-size-epoch="1" data-card-size-restore="1">
       <div class="card" data-layout-key="managed-components"><div class="comprow" data-name="companion"><span class="cver">2026.9.0</span>
-        <select class="cchan"><option value="stable">Stable</option></select><div class="cvsel choice-list">loading…</div>
+        <select class="cchan"><option value="stable">Stable</option></select><select class="cvsel"><option>loading…</option></select>
         <a class="cnotes"></a><button class="cinstall" data-root="1"></button><a class="cdl"></a></div><p id="comp-msg"></p></div>
       <div class="card" id="radiocard" data-layout-key="radio-firmware" style="display:none"><span id="radio-status"></span><span id="radio-health"></span></div>
     </div><script src="/assets/card-size-memory.js"></script>

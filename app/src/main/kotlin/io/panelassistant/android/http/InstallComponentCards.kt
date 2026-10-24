@@ -42,10 +42,11 @@ private fun pickerRow(
 <div class="compname"><b>${esc(label)}</b> <span class="muted">${if (installed != null) """${esc(strings.get("install.shared.installed"))} <span class="cver">${esc(installed)}</span>""" else """<span class="cver">${esc(strings.get("install.shared.not_installed"))}</span>"""}</span></div>
 <div class="comppick">
 <label class="muted">${esc(strings.get("install.components.channel"))} $channelControl</label>
-<fieldset class="version-choices"><legend>${esc(strings.get("install.shared.version"))}</legend><div class="cvsel choice-list" onchange="verChanged('$name')">${esc(strings.get("install.shared.loading"))}</div></fieldset>
+<label class="muted">${esc(strings.get("install.shared.version"))} <select class="cvsel" onchange="verChanged('$name')"><option value="">${esc(strings.get("install.shared.loading"))}</option></select></label>
 <a class="gh gh-inline cnotes" target="_blank" rel="noopener" title="${esc(strings.get("install.components.release_notes"))}" aria-label="${esc(strings.get("install.components.release_notes"))}" style="visibility:hidden"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="$GH_ICON"/></svg></a>
 ${if (installer) """<button class="pbtn cinstall"${hardenedApprovalA11yAttrs(strings = strings)} onclick="installSel('$name',this)" data-root="1" disabled>${esc(strings.get("install.components.install"))}</button>"""
         else """<a class="pbtn cdl" style="display:none" target="_blank" rel="noopener" title="${esc(strings.get("install.components.download_apk_help"))}">⬇ ${esc(strings.get("install.components.download_apk"))}</a>"""}
+<span class="muted cvreason" hidden></span>
 </div></div>"""
 }
 

@@ -193,18 +193,8 @@ canvas{width:100%;display:block;background:var(--chart-bg);border:1px solid var(
 .comppick{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .comppick label{flex-direction:row;align-items:center;gap:5px;color:var(--icon);margin:0}
 .comppick select{font-size:.85rem;padding:4px 7px;border-radius:7px;border:1px solid var(--border-strong);background:var(--input-bg);color:var(--text);max-width:190px}
-/* component:begin */
-/* Native radio choices keep full release labels and compatibility reasons readable. */
-.choice-list{min-width:0;max-width:100%;max-height:240px;overflow-y:auto}
-.choice-list label{display:block;position:relative;margin:6px 0;color:var(--text)}
-.choice-list input[type=radio]{position:absolute;left:12px;top:14px;width:auto;min-width:0;margin:0;accent-color:var(--primary)}
-.choice-list span{display:block;padding:10px 12px 10px 38px;border:1px solid var(--border-strong);border-radius:8px;background:var(--input-bg);white-space:normal;word-wrap:break-word;overflow-wrap:break-word}
-.choice-list input:checked+span{border-color:var(--primary)}
-.choice-list input:focus+span{outline:2px solid var(--primary);outline-offset:-2px}
-.choice-list input:disabled+span{color:var(--disabled-fg)}
-/* component:end */
-.version-choices{box-sizing:border-box;border:0;padding:0;margin:0;width:100%;min-width:0;font-size:.85rem}
-.version-choices legend{padding:0;color:var(--icon)}
+/* The full reason a release cannot be installed, on its own line under the short menu label. */
+.cvreason{flex-basis:100%;font-size:.85rem}
 .cnotes{text-decoration:none;padding:0 3px}
 /* Live-polled tables (updated every 2s): values WRAP to show full content — touch panels can't hover for
    the title= tooltip, so truncation hid data on the exact devices this runs on. Stability now comes from
