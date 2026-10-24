@@ -684,7 +684,10 @@
       }).then(function (b) {
         var a = document.createElement('a'), url = URL.createObjectURL(b);
         var switcher = document.getElementById('pswitch'), panelName = switcher && switcher.dataset && switcher.dataset.selfName;
-        a.href = url; a.download = (panelName || document.title.split('·')[0] || 'panel').trim() + '-backup.' + (pw ? 'hpb' : 'zip');
+        // A UTC timestamp keeps a repeat download from sharing a name, so a browser never appends its own
+        // suffix after the extension (Safari saved '.hpb-2', which the restore picker refuses).
+        var stamp = new Date().toISOString().replace(/[-:.]/g, '');
+        a.href = url; a.download = (panelName || document.title.split('·')[0] || 'panel').trim() + '-backup-' + stamp + '.' + (pw ? 'hpb' : 'zip');
         document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
         bkMsg(pw ? t('install.backup.dynamic.downloaded_encrypted', 'Backup downloaded (encrypted) — keep the passphrase.') : t('install.backup.dynamic.downloaded_plain', 'Backup downloaded (unencrypted ZIP).')); btn.disabled = false;
       }).catch(function (e) {
