@@ -17,6 +17,36 @@ import org.junit.Test
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class HaExactEntityStreamOwnerTest {
+    @Test fun `token resolution without a verdict reconnects without forcing or latching authentication`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        for (notAttempted in listOf(false, true)) {
+            var available = false
+            val forces = mutableListOf<Boolean>()
+            val observer = RecordingObserver()
+            val transport = FakeTransport(FakeConnection())
+            val owner = owner(dispatcher, transport, observer, HaApiSessionProvider { force ->
+                forces += force
+                if (available) HaApiSession("https://ha.example", "token", owner = OWNER)
+                else HaApiSession("https://ha.example", null,
+                    transientDetail = if (notAttempted) null else "token refresh timed out", notAttempted = notAttempted)
+            }, reconnectBaseMs = 10, reconnectMaxMs = 10)
+
+            owner.replaceAmbientSource(ENTITY_A)
+            runCurrent()
+            repeat(3) { advanceTimeBy(10L); runCurrent() }
+            assertEquals(HaExactEntityStreamPhase.RECONNECTING, observer.statuses.last().phase)
+            assertFalse(observer.statuses.any { it.phase == HaExactEntityStreamPhase.AUTH_FAILED })
+            assertEquals(listOf(false, false, false, false), forces)
+
+            available = true
+            advanceTimeBy(10L)
+            runCurrent()
+            assertEquals(HaExactEntityStreamPhase.LIVE, observer.statuses.last().phase)
+            assertEquals(1, transport.subscribeCount)
+            owner.close()
+        }
+    }
+
     @Test fun `registry-only demand owns a socket and delivers registry changes outside demand mutation`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val connection = FakeConnection()
@@ -33,11 +63,11 @@ class HaExactEntityStreamOwnerTest {
         owner.replacePresenceDemand(emptySet(), watchRegistry = true)
         runCurrent()
         assertEquals(listOf(true), transport.registryWatches)
-        assertEquals(0, changes)
+        assertEquals(1, changes)
 
         connection.messages.send(HaExactSocketMessage.RegistryChanged)
         runCurrent()
-        assertEquals(1, changes)
+        assertEquals(2, changes)
 
         owner.replacePresenceDemand(emptySet(), watchRegistry = false)
         runCurrent()
@@ -69,7 +99,7 @@ class HaExactEntityStreamOwnerTest {
         runCurrent()
 
         assertEquals(2, transport.subscribeCount)
-        assertEquals(1, changes)
+        assertEquals(2, changes)
         owner.close()
     }
 
@@ -481,7 +511,7 @@ class HaExactEntityStreamOwnerTest {
 
         owner.replaceAmbientSource(ENTITY_A)
         runCurrent()
-        assertEquals(HaExactEntityStreamPhase.AUTH_FAILED, observer.statuses.last().phase)
+        assertEquals(HaExactEntityStreamPhase.STOPPED, observer.statuses.last().phase)
         assertTrue(observer.statuses.last().detail.contains("credentials changed"))
 
         advanceTimeBy(24L * 60L * 60_000L)
@@ -515,7 +545,7 @@ class HaExactEntityStreamOwnerTest {
         runCurrent()
 
         assertEquals(listOf(false, true), forces)
-        assertEquals(HaExactEntityStreamPhase.AUTH_FAILED, observer.statuses.last().phase)
+        assertEquals(HaExactEntityStreamPhase.STOPPED, observer.statuses.last().phase)
         assertTrue(observer.statuses.last().detail.contains("credentials changed"))
         assertEquals(1, transport.subscribeCount)
         owner.close()

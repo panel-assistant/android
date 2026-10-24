@@ -37,6 +37,89 @@ import kotlin.concurrent.thread
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class HaPresenceSourceManagerTest {
+    @Test fun `an unavailable token is not a rejected prerequisite`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        for (unavailable in listOf(
+            HaApiSession("https://ha.example", null, transientDetail = "token refresh timed out"),
+            HaApiSession("https://ha.example", null, notAttempted = true),
+            HaApiSession("https://ha.example", null),
+        )) {
+            val forces = mutableListOf<Boolean>()
+            val provider = HaApiSessionProvider { force -> forces += force; unavailable }
+            val owner = exactOwner(dispatcher, FakeExactTransport(), provider)
+            val manager = HaPresenceSourceManager(
+                this, provider, FakePresenceTransport(), owner, { true }, dispatcher, ::epochMillis,
+                panelAssistantEntryId = { PA_ENTRY },
+            )
+
+            assertEquals(HaPanelAreaPrerequisitePhase.UNAVAILABLE, manager.prerequisite().phase)
+            assertEquals(listOf(false), forces)
+            manager.close()
+            owner.close()
+        }
+    }
+
+    @Test fun `first registry connection recovers discovery after token resolution was unavailable`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        for (streamAlsoFails in listOf(false, true)) {
+            var available = false
+            var resolutions = 0
+            val provider = HaApiSessionProvider {
+                resolutions++
+                if (available || !streamAlsoFails && resolutions > 1)
+                    HaApiSession("https://ha.example", "token", owner = OWNER)
+                else HaApiSession("https://ha.example", null, transientDetail = "token refresh timed out")
+            }
+            val exact = FakeExactTransport(FakeExactConnection(), FakeExactConnection())
+            val owner = exactOwner(dispatcher, exact, provider)
+            val aggregates = mutableListOf<HaPresenceAggregate>()
+            val manager = HaPresenceSourceManager(
+                this, provider, FakePresenceTransport(), owner, aggregates::add, dispatcher, ::epochMillis,
+                panelAssistantEntryId = { PA_ENTRY },
+            )
+
+            manager.configure(request())
+            runCurrent()
+            assertEquals(HaPresencePhase.DISCOVERY_FAILED, aggregates.last().phase)
+            assertEquals("registry_transport", aggregates.last().detail)
+            assertFalse(aggregates.any { it.phase == HaPresencePhase.AUTH_FAILED })
+
+            available = true
+            advanceTimeBy(62_001L)
+            runCurrent()
+            assertEquals(HaPresencePhase.LIVE, aggregates.last().phase)
+            assertEquals(setOf(ENTITY), aggregates.last().selectedEntityIds)
+            manager.close()
+            owner.close()
+        }
+    }
+
+    @Test fun `history rejection refreshes once and remains an authentication failure if refused again`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        for (failures in listOf(1, Int.MAX_VALUE)) {
+            val forces = mutableListOf<Boolean>()
+            val provider = HaApiSessionProvider { force ->
+                forces += force
+                HaApiSession("https://ha.example", "token", owner = OWNER)
+            }
+            val discovery = FakePresenceTransport().apply { historyAuthFailures = failures }
+            val owner = exactOwner(dispatcher, FakeExactTransport(FakeExactConnection()), provider)
+            val aggregates = mutableListOf<HaPresenceAggregate>()
+            val manager = HaPresenceSourceManager(
+                this, provider, discovery, owner, aggregates::add, dispatcher, ::epochMillis,
+                panelAssistantEntryId = { PA_ENTRY },
+            )
+
+            manager.configure(request())
+            runCurrent()
+            assertEquals(listOf(false, true), forces.take(2))
+            assertEquals(2, discovery.registryCount)
+            assertEquals(if (failures == 1) HaPresencePhase.LIVE else HaPresencePhase.AUTH_FAILED, aggregates.last().phase)
+            manager.close()
+            owner.close()
+        }
+    }
+
     @Test fun `prerequisite retries a rejected session provider once`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val forces = mutableListOf<Boolean>()
@@ -689,7 +772,7 @@ class HaPresenceSourceManagerTest {
         owner.close()
     }
 
-    @Test fun `failed discovery is one shot until explicit refresh`() = runTest {
+    @Test fun `failed discovery retries on first registry connection then waits for another trigger`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val discovery = FakePresenceTransport().apply { registryFailure = true }
         val aggregates = mutableListOf<HaPresenceAggregate>()
@@ -703,12 +786,12 @@ class HaPresenceSourceManagerTest {
         assertEquals("registry_transport", aggregates.last().detail)
         advanceTimeBy(24L * 60L * 60_000L)
         runCurrent()
-        assertEquals(1, discovery.registryCount)
+        assertEquals(2, discovery.registryCount)
 
         discovery.registryFailure = false
         manager.refresh()
         runCurrent()
-        assertEquals(2, discovery.registryCount)
+        assertEquals(3, discovery.registryCount)
         assertEquals(HaPresencePhase.LIVE, aggregates.last().phase)
         manager.close()
         owner.close()
@@ -1006,6 +1089,7 @@ class HaPresenceSourceManagerTest {
         var includeSupportingActivity = false
         var malformedEntityRegistry = false
         var historyTransportFailure = false
+        var historyAuthFailures = 0
         var emptyHistory = false
         var malformedHistory = false
         var oversizedHistory = false
@@ -1069,6 +1153,7 @@ class HaPresenceSourceManagerTest {
             startEpochMs: Long,
             endEpochMs: Long,
         ) = JSONArray().apply {
+            if (historyAuthFailures-- > 0) throw HaAuthenticationException("history token rejected")
             historyEntitySets += entityIds.toSet()
             historyRequests += Triple(entityIds.toSet(), startEpochMs, endEpochMs)
             if (historyTransportFailure) error("history unavailable")
