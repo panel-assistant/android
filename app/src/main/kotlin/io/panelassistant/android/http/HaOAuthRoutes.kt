@@ -40,6 +40,8 @@ internal sealed class HaOAuthCompletion {
 internal data class HaOAuthRouteDependencies(
     val panelPort: Int,
     val start: (haUrl: String, panelOrigin: String) -> HaOAuthStart,
+    /** The panel's own LAN origin for an administrator's relayed start, which has no HTTP Host. */
+    val relayedPanelOrigin: () -> String? = { null },
     /** Optional context-aware start used by localized callers. Keeping the legacy start preserves the
      * on-panel and Configure paths until their server wiring supplies trusted request context. */
     val startWithContext: ((haUrl: String, panelOrigin: String, context: HaOAuthStartContext) -> HaOAuthStart)? = null,
@@ -103,7 +105,9 @@ internal fun Route.haOAuthRoutes(dependencies: HaOAuthRouteDependencies) {
                     )
                     return@post
                 }
-                val panelOrigin = panelHttpOrigin(call.request.headers[HttpHeaders.Host], dependencies.panelPort)
+                val host = call.request.headers[HttpHeaders.Host]
+                val panelOrigin = if (host == null && call.origin.isUser) dependencies.relayedPanelOrigin()
+                    else panelHttpOrigin(host, dependencies.panelPort)
                 if (panelOrigin == null) {
                     call.respondText(
                         """{"ok":false,"error":"invalid-panel-origin","message":"Open Configure using this panel's normal IP or .local address."}""",
