@@ -15,6 +15,12 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import io.panelassistant.android.panelassistant.PanelAssistantVoiceStreamPeer
+import org.objectweb.asm.ClassReader
+import org.objectweb.asm.ClassVisitor
+import org.objectweb.asm.ClassWriter
+import org.objectweb.asm.MethodVisitor
+import org.objectweb.asm.Opcodes
 
 /**
  * The voice player as a session runs it, with the native library and the speaker replaced: the test plays
@@ -25,6 +31,81 @@ class VoiceStreamPlayerTest {
     @get:Rule val temp = TemporaryFolder()
 
     private val serverId = "s".repeat(43)
+
+    @Test fun aStopAtWriterStartSilencesItsPcmAndTheNextStreamStillPlays() {
+        val library = Library()
+        val speakers = Speakers()
+        val player = scheduledPlayer(library, speakers)
+        var boundaryCalls = 0
+        var muteReturned = false
+        VoiceWriterStartSchedule.action = {
+            boundaryCalls++
+            if (boundaryCalls == 1) {
+                val stop = kotlin.concurrent.thread { player.mute(); muteReturned = true }
+                stop.join(5_000)
+                check(!stop.isAlive) { "Stop must finish before writer.start" }
+            }
+        }
+        try {
+            player.open(PanelAssistantVoiceStreamGrant(serverId, ByteArray(32))) { _, _ -> }
+            library.stream(listOf(chunk(1)))
+            assertEquals(1, boundaryCalls)
+            assertTrue("Stop returned before the writer started", muteReturned)
+            assertTrue("Stopped stream emits no nonzero PCM", speakers.opened.all { s -> s.written().all { it == 0.toByte() } })
+            player.unmute()
+            library.stream(listOf(chunk(2)))
+            speakers.awaitReleased(1)
+            speakers.only().heardExactly(chunk(2))
+        } finally {
+            VoiceWriterStartSchedule.action = null
+            player.close()
+            assertTrue(library.destroyedLatch.await(10, TimeUnit.SECONDS))
+        }
+    }
+
+    private fun scheduledPlayer(library: Library, speakers: Speakers): PanelAssistantVoiceStreamPeer {
+        val root = VoiceStreamPlayer::class.java.name
+        val parent = javaClass.classLoader
+        val loader = object : ClassLoader(parent) {
+            override fun loadClass(name: String, resolve: Boolean): Class<*> {
+                if (name != root && !name.startsWith("$root$")) return super.loadClass(name, resolve)
+                synchronized(this) {
+                    val type = findLoadedClass(name) ?: run {
+                        val bytes = requireNotNull(parent.getResourceAsStream(name.replace('.', '/') + ".class")).use { it.readBytes() }
+                        val reader = ClassReader(bytes)
+                        val writer = ClassWriter(reader, ClassWriter.COMPUTE_MAXS)
+                        var anchors = 0
+                        reader.accept(object : ClassVisitor(Opcodes.ASM9, writer) {
+                            override fun visitMethod(access: Int, method: String, descriptor: String, signature: String?, exceptions: Array<out String>?): MethodVisitor {
+                                val original = super.visitMethod(access, method, descriptor, signature, exceptions)
+                                if (method != "runSession") return original
+                                return object : MethodVisitor(Opcodes.ASM9, original) {
+                                    override fun visitMethodInsn(opcode: Int, owner: String, methodName: String, desc: String, isInterface: Boolean) {
+                                        if (owner.endsWith("VoiceStreamPlayer\$StreamWriter") && methodName == "start") {
+                                            anchors++
+                                            super.visitMethodInsn(Opcodes.INVOKESTATIC, "io/panelassistant/android/media/VoiceWriterStartSchedule", "atStart", "()V", false)
+                                        }
+                                        super.visitMethodInsn(opcode, owner, methodName, desc, isInterface)
+                                    }
+                                }
+                            }
+                        }, 0)
+                        // Scheduling only: execute the compiled production caller and writers, changing
+                        // no product instruction or assertion. Existing API fakes cannot pause here.
+                        if (name == root) check(anchors == 1) { "writer.start schedule anchor changed" }
+                        val code = writer.toByteArray()
+                        defineClass(name, code, 0, code.size)
+                    }
+                    if (resolve) resolveClass(type)
+                    return type
+                }
+            }
+        }
+        return loader.loadClass(root).getConstructor(
+            java.io.File::class.java, kotlin.jvm.functions.Function0::class.java, String::class.java,
+            SendspinApi::class.java, kotlin.jvm.functions.Function2::class.java, java.lang.Long.TYPE,
+        ).newInstance(temp.newFolder(), { "Panel" }, "test", library, speakers.factory, 2_000L) as PanelAssistantVoiceStreamPeer
+    }
 
     /** The library: events and PCM the test queues, and every call the player makes. */
     private class Library : SendspinApi {
@@ -526,4 +607,10 @@ class VoiceStreamPlayerTest {
         const val RATE = 8_000
         const val FRAME_BYTES = 2
     }
+}
+
+/** Test-only scheduler called by the copied production bytecode, immediately before writer.start. */
+object VoiceWriterStartSchedule {
+    @Volatile var action: (() -> Unit)? = null
+    @JvmStatic fun atStart() { action?.invoke() }
 }

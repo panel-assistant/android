@@ -622,7 +622,7 @@
           { "name": "expected_cfg", "in": "query", "schema": { "type": "string", "pattern": "^[a-f0-9]{8}$" }, "description": "config hash returned by dry_run; mismatch rejects a stale preview" }
         ],
         "requestBody": { "content": { "application/json": { "schema": { "type": "object", "description": "a bundle from /api/v1/config/export" } } } },
-        "responses": { "200": { "description": "{status, applied, skipped, warnings, errors} or dry-run {expected_cfg,changes,…}" }, "202": { "$ref": "#/components/responses/ApprovalRequired" }, "400": { "description": "bad bundle or expected_cfg" }, "409": { "description": "stale-preview, or network ADB cannot be enabled while Hardened mode is active" }, "422": { "description": "rejected (strict validation or no usable keys)" } } }
+        "responses": { "200": { "description": "{status, applied, pending, skipped, warnings, errors} or dry-run {expected_cfg,changes,…}. applied names completed settings; pending names accepted live work awaiting completion, including when a later setting refuses. A response with pending work has status partial; read current settings to determine its later outcome." }, "202": { "$ref": "#/components/responses/ApprovalRequired" }, "400": { "description": "bad bundle or expected_cfg" }, "409": { "description": "stale-preview, or network ADB cannot be enabled while Hardened mode is active" }, "422": { "description": "rejected (strict validation or no usable keys)" } } }
     },
     "/api/v1/restore": {
       "post": { "summary": "Preview or asynchronously restore a complete panel backup", "tags": ["config"],
@@ -637,7 +637,7 @@
     "/api/v1/config/revisions/{id}/restore": {
       "post": { "summary": "Roll back to a stored revision (itself recorded, so restores are undoable)", "tags": ["config"],
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
-        "responses": { "200": { "description": "{status:restored,…}" }, "202": { "$ref": "#/components/responses/ApprovalRequired" }, "404": { "description": "not-found" }, "409": { "description": "network ADB cannot be enabled while Hardened mode is active" } } }
+        "responses": { "200": { "description": "{status:restored|partial, applied, pending, skipped, warnings, errors}; applied names completed settings and pending names accepted live work awaiting completion." }, "202": { "$ref": "#/components/responses/ApprovalRequired" }, "404": { "description": "not-found" }, "409": { "description": "network ADB cannot be enabled while Hardened mode is active" } } }
     },
     "/api/v1/ui/layout": {
       "get": { "summary": "Per-panel dashboard layout blob (customisable-layout groundwork)", "tags": ["config"], "responses": { "200": { "description": "{layout}" } } },

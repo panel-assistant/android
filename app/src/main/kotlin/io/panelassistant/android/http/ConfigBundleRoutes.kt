@@ -199,11 +199,11 @@ internal class ConfigBundleRoutes(
             // phase and prior acknowledged live values; do not claim they were rolled back.
             call.respondText(
                 importJson(
-                    if (refused.appliedKeys.isEmpty()) "error" else "partial",
-                    refused.appliedKeys, skipped, warn, errors + requireNotNull(refused.message),
+                    if (refused.appliedKeys.isEmpty() && refused.pendingKeys.isEmpty()) "error" else "partial",
+                    refused.appliedKeys, skipped, warn, errors + requireNotNull(refused.message), refused.pendingKeys,
                 ),
                 ContentType.Application.Json,
-                if (refused.appliedKeys.isEmpty()) HttpStatusCode.InternalServerError else HttpStatusCode.OK,
+                if (refused.appliedKeys.isEmpty() && refused.pendingKeys.isEmpty()) HttpStatusCode.InternalServerError else HttpStatusCode.OK,
             )
             return
         }
@@ -233,10 +233,10 @@ internal class ConfigBundleRoutes(
                 )
                 return
             }
-            ApplyAcceptedResult.Applied -> Unit
+            is ApplyAcceptedResult.Applied -> Unit
         }
-        val status = if (errors.isEmpty() && unavailable.isEmpty()) "applied" else "partial"
-        call.respondText(importJson(status, accepted.keys.toList(), skipped, warn, errors), ContentType.Application.Json)
+        val status = if (errors.isEmpty() && unavailable.isEmpty() && applyResult.pendingKeys.isEmpty()) "applied" else "partial"
+        call.respondText(importJson(status, applyResult.appliedKeys, skipped, warn, errors, applyResult.pendingKeys), ContentType.Application.Json)
     }
 
     /** List on-panel revisions (newest first) as `[{id, exported_at, keys}]`. */
@@ -294,14 +294,14 @@ internal class ConfigBundleRoutes(
             transaction.applyAccepted(accepted, entityState = entityState)
         } catch (refused: ConfigLiveApplyRefused) {
             call.respondText(
-                importJson(if (refused.appliedKeys.isEmpty()) "error" else "partial",
-                    refused.appliedKeys, skipped, warnings, listOf(requireNotNull(refused.message))),
+                importJson(if (refused.appliedKeys.isEmpty() && refused.pendingKeys.isEmpty()) "error" else "partial",
+                    refused.appliedKeys, skipped, warnings, listOf(requireNotNull(refused.message)), refused.pendingKeys),
                 ContentType.Application.Json,
-                if (refused.appliedKeys.isEmpty()) HttpStatusCode.InternalServerError else HttpStatusCode.OK,
+                if (refused.appliedKeys.isEmpty() && refused.pendingKeys.isEmpty()) HttpStatusCode.InternalServerError else HttpStatusCode.OK,
             )
             return
         }
-        if (applied != ApplyAcceptedResult.Applied) {
+        if (applied !is ApplyAcceptedResult.Applied) {
             call.respondText(
                 importJson(
                     if (applied is ApplyAcceptedResult.CompatibilityRefused) "database-compatibility-refused" else "error",
@@ -318,7 +318,7 @@ internal class ConfigBundleRoutes(
             )
             return
         }
-        call.respondText(importJson(if (skipped.isEmpty()) "restored" else "partial", accepted.keys.toList(), skipped, warnings, emptyList()), ContentType.Application.Json)
+        call.respondText(importJson(if (skipped.isEmpty() && applied.pendingKeys.isEmpty()) "restored" else "partial", applied.appliedKeys, skipped, warnings, emptyList(), applied.pendingKeys), ContentType.Application.Json)
     }
 
     private fun revisionEntityState(values: Map<String, String>): DashboardEntityBackupState? {
@@ -334,8 +334,8 @@ internal class ConfigBundleRoutes(
         return runCatching { planEntityBackup(obj) }.getOrNull()
     }
 
-    private fun importJson(status: String, applied: List<String>, skipped: List<String>, warnings: List<String>, errors: List<String>): String =
-        "{\"status\":\"$status\",\"applied\":${jarr(applied)},\"skipped\":${jarr(skipped)},\"warnings\":${jarr(warnings)},\"errors\":${jarr(errors)}}"
+    private fun importJson(status: String, applied: List<String>, skipped: List<String>, warnings: List<String>, errors: List<String>, pending: List<String> = emptyList()): String =
+        "{\"status\":\"$status\",\"applied\":${jarr(applied)},\"pending\":${jarr(pending)},\"skipped\":${jarr(skipped)},\"warnings\":${jarr(warnings)},\"errors\":${jarr(errors)}}"
 
     private fun configConcurrencyHash(values: Map<String, String>): String =
         io.panelassistant.android.config.ConfigHash.of(configConcurrencyValues(values))

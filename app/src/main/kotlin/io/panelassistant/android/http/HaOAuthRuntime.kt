@@ -128,7 +128,7 @@ internal class HaOAuthRuntime(
             ApplyAcceptedResult.Stale -> return HaOAuthCompletion.Stale
             ApplyAcceptedResult.CommitFailed,
             is ApplyAcceptedResult.CompatibilityRefused -> return HaOAuthCompletion.CommitFailed
-            ApplyAcceptedResult.Applied -> Unit
+            is ApplyAcceptedResult.Applied -> Unit
         }
         val ambientWarning = runCatching {
             config.autoBrightnessHaEntity.takeIf(String::isNotBlank)?.let { entityId ->

@@ -799,6 +799,7 @@
                 controlled.textContent = t('install.backup.dynamic.import_summary', 'Import {status} · applied {applied}, skipped {skipped}', { status: closedToken(CONFIG_IMPORT_STATUS, res.status), applied: String((res.applied || []).length), skipped: String((res.skipped || []).length) });
                 out.appendChild(controlled);
                 var evidenceParts = [];
+                if ((res.pending || []).length) evidenceParts.push('pending:\n  ' + res.pending.join('\n  '));
                 if ((res.warnings || []).length) evidenceParts.push('warnings:\n  ' + res.warnings.join('\n  '));
                 if ((res.errors || []).length) evidenceParts.push('errors:\n  ' + res.errors.join('\n  '));
                 if (evidenceParts.length) { out.appendChild(document.createTextNode('\n')); var evidence = document.createElement('span'); evidence.className = 'install-raw-evidence'; evidence.setAttribute('lang', 'en'); evidence.textContent = evidenceParts.join('\n'); out.appendChild(evidence); }

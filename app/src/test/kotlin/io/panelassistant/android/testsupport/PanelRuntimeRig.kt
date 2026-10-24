@@ -161,6 +161,7 @@ internal abstract class PanelRuntimeRig {
     }
 
     protected fun rig(
+        sharedConfig: Config? = null,
         hasTemperature: Boolean = true,
         buttonKeys: io.panelassistant.android.device.PanelButtonKeys = io.panelassistant.android.device.PanelButtonKeys.UNKNOWN,
         hasHumidity: Boolean = true,
@@ -253,7 +254,7 @@ internal abstract class PanelRuntimeRig {
         val tmp = scratchDirectory("panel-runtime-rig").toFile()
         val prefs = MemoryPreferences(commitsSucceed)
         val context = FakeContext(tmp, prefs)
-        val config = newConfig(prefs, context.contentResolver)
+        val config = sharedConfig ?: newConfig(prefs, context.contentResolver)
         config.setRaw(requireNotNull(SettingsRegistry.spec("manufacturer")), "Golden Manufacturing")
         config.setRaw(requireNotNull(SettingsRegistry.spec("model")), "Golden Panel")
         config.setAutoSleep(true)

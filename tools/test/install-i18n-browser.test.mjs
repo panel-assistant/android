@@ -600,3 +600,22 @@ for (const engine of ['Chromium', 'WebKit']) browserTest(`Release radio labels w
   await page.waitForFunction(() => document.querySelector('#comp-msg').textContent.includes('Another install'));
   assert.equal(new URLSearchParams(posted).get('version'), 'v1');
 });
+
+browserTest('Import shows queued work as pending alongside the acknowledged applied count', async (t) => {
+  const { page } = await rig(t, {
+    route(_request, response, url) {
+      if (url.pathname !== '/api/v1/config/import') return false;
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify(url.searchParams.get('dry_run') === '1'
+        ? { changes: [{ key: 'kiosk_lock', from: 'false', to: 'true' }], expected_cfg: 'preview' }
+        : { status: 'partial', applied: ['friendly_name'], pending: ['kiosk_lock'], skipped: [], warnings: [], errors: [] }));
+      return true;
+    },
+    html: '<div id="cfg-import-result"></div><input id="cfg-import" type="file" onchange="configImport(this)">',
+  });
+  page.on('dialog', (dialog) => dialog.accept());
+  await page.locator('#cfg-import').setInputFiles({ name: 'config.json', mimeType: 'application/json', buffer: Buffer.from('{}') });
+  await page.waitForFunction(() => document.querySelector('#cfg-import-result [lang="en"]'));
+  assert.match(await page.locator('#cfg-import-result').textContent(), /applied 1, skipped 0/);
+  assert.equal(await page.locator('#cfg-import-result [lang="en"]').textContent(), 'pending:\n  kiosk_lock');
+});

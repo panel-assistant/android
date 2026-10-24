@@ -4,6 +4,15 @@ import io.panelassistant.android.config.Capabilities
 import io.panelassistant.android.config.SettingsRegistry
 import io.panelassistant.android.HaAuthSnapshot
 import io.panelassistant.android.LiveSettingRequestOutcome
+import io.panelassistant.android.OwnerChoicesPlan
+import io.panelassistant.android.device.profile.DeviceFacts
+import io.panelassistant.android.device.profile.ProfileAdmin
+import io.panelassistant.android.device.profile.ProfileBackupDecodeResult
+import io.panelassistant.android.device.profile.ProfileMutation
+import io.panelassistant.android.device.profile.ProfilePreferences
+import io.panelassistant.android.device.profile.ProfileYaml
+import io.panelassistant.android.device.profile.RuntimeProfileRegistry
+import io.panelassistant.android.device.profile.testProfileDocument
 import io.panelassistant.android.haAuthSnapshot
 import io.panelassistant.android.setHaClientId
 import io.panelassistant.android.setHaConnection
@@ -24,6 +33,87 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AcceptedRestoreTransactionTest {
+    @Test fun retainedOwnerChoiceMakesAStaleCatalogRestorePartialAfterRealConfigRollback() = runBlocking {
+        for (stale in listOf(false, true)) for (withState in listOf(false, true)) {
+            withRouteConfig { config, persistence, _, _ ->
+              PaneldServerHttpFixture().use { fixture ->
+                config.setRaw(requireNotNull(SettingsRegistry.spec("friendly_name")), "Restore contract panel")
+                assertTrue(config.applyBatch { config.setPanelId("before") })
+                val zoomBefore = config.getRaw(requireNotNull(SettingsRegistry.spec("dashboard_zoom")))
+                val preferences = object : ProfilePreferences {
+                    val data = mutableMapOf<String, Any?>()
+                    override fun getString(key: String, default: String) = data[key] as? String ?: default
+                    override fun getLong(key: String, default: Long) = data[key] as? Long ?: default
+                    override fun put(vararg values: Pair<String, Any?>): Boolean {
+                        values.forEach { (key, value) -> data[key] = value }
+                        return true
+                    }
+                }
+                val generic = ProfileYaml.serialize(testProfileDocument(id = "generic", fallback = true))
+                val registry = RuntimeProfileRegistry(
+                    fixture.directory, preferences, { mapOf("generic.yaml" to generic) },
+                    DeviceFacts("test-panel", "test-device", "fw-1"), "1.0.0", { 1000L },
+                )
+                val payload = registry.exportBackup()
+                val plan = registry.planBackupRestore(payload)
+                assertTrue(plan.valid)
+                var imported = false
+                val executor = restoreExecutor(
+                    fixture, capabilities = { Capabilities(networkAdb = true) }, persist = { true },
+                    onReconfigure = {
+                        if (stale && !imported) {
+                            // This production callback runs after the final plan and durable config
+                            // commit, before ancillary state and the profile catalog CAS.
+                            assertEquals("restored", config.panelId)
+                            val raw = ProfileYaml.serialize(testProfileDocument(id = "community.concurrent"))
+                            val preview = registry.preview(raw)
+                            assertTrue(preview.compatible)
+                            assertTrue(registry.importProfile(raw, requireNotNull(preview.previewToken)) is ProfileMutation.Success)
+                            imported = true
+                        }
+                    },
+                    profileAdmin = registry, config = config,
+                )
+                val ticket = requireNotNull(InstallProgress.start("restore"))
+                try {
+                    runBlocking { executor.execute(
+                        RestoreConfigPlan(mapOf("panel_id" to "restored", "dashboard_zoom" to "120"), emptyList(), emptyList()),
+                        null, ProfileBackupDecodeResult(payload, emptyList()), plan, null, emptyList(), false,
+                        emptyList(), null, ticket,
+                        ownerChoices = OwnerChoicesPlan(if (withState) mapOf("ui_dashboard_layout" to "retained-layout") else emptyMap()),
+                    )
+                    }
+                    val body = JSONObject(InstallProgress.json())
+                    val result = body.getJSONObject("result")
+                    assertEquals(stale, imported)
+                    assertEquals(body.toString(), if (stale) "before" else "restored", config.panelId)
+                    // initialize opens a fresh SQLite connection; these are durable rows, not
+                    // the accepting Config owner's cached preferences.
+                    val durable = persistence.initialize()
+                    assertEquals(if (stale) "before" else "restored", durable["panel_id"])
+                    assertEquals(if (stale) zoomBefore else "120", durable["dashboard_zoom"].toString())
+                    if (withState) {
+                        assertEquals("retained-layout", durable["ui_dashboard_layout"])
+                        assertEquals("succeeded", result.getJSONObject("state").getString("status"))
+                        assertEquals(1, result.getJSONObject("state").getInt("items"))
+                    } else assertFalse(result.has("state"))
+                    if (stale) {
+                        assertTrue(registry.status().catalogRevision != plan.expectedCatalogRevision)
+                        assertEquals("failed", result.getJSONObject("profiles").getString("status"))
+                        assertEquals("rolled_back", result.getJSONObject("config").getString("status"))
+                    }
+                    assertEquals(if (!stale) "succeeded" else if (withState) "partial" else "failed", result.getString("status"))
+                    if (stale && withState) {
+                        assertEquals("restore-partial", body.getJSONObject("presentation").getString("code"))
+                    }
+                } finally {
+                    InstallProgress.finish(ticket, "test cleanup")
+                }
+              }
+            }
+        }
+    }
+
     @Test fun rendererFailureRollsBackToExecutionTimeValuesUsingTheAdmittedTicket() = runBlocking {
         checkRendererFailure(supersede = false)
     }
@@ -104,8 +194,9 @@ class AcceptedRestoreTransactionTest {
         onReconfigure: () -> Unit,
         onLiveRead: () -> Unit = {},
         onTransactionRead: () -> Unit = {},
+        profileAdmin: ProfileAdmin? = null,
+        config: io.panelassistant.android.Config = fixture.config,
     ): RestoreExecutor {
-        val config = fixture.config
         val values = ConfigValueProjection(
             config = config,
             configLiveValues = { onLiveRead(); emptyMap() },
@@ -152,10 +243,10 @@ class AcceptedRestoreTransactionTest {
                 )
             },
             restoreCompanion = { error("No Companion payload") },
-            profileAdmin = null,
-            onProfileRestart = { error("No profile payload") },
-            onProfileRestartAbort = { error("No profile payload") },
-            onDurableStateRestored = { error("No state payload") },
+            profileAdmin = profileAdmin,
+            onProfileRestart = { true },
+            onProfileRestartAbort = { true },
+            onDurableStateRestored = {},
             onWakeWordsChanged = { error("No wake word payload") },
         )
     }

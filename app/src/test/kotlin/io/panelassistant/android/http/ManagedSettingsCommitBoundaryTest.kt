@@ -47,7 +47,7 @@ class ManagedSettingsCommitBoundaryTest {
                     mapOf("voice_wake_words" to """["hey_jarvis"]"""),
                     admit = { sessionOpen.get() },
                     validate = { it },
-                    commit = { accepted, admit -> transaction.applyAccepted(accepted, admit = admit) == ApplyAcceptedResult.Applied },
+                    commit = { accepted, admit -> transaction.applyAccepted(accepted, admit = admit) is ApplyAcceptedResult.Applied },
                 )
             }
             Thread.sleep(200)
@@ -85,7 +85,7 @@ class ManagedSettingsCommitBoundaryTest {
                     (normalizeConfigPostParameters(raw, caps) as? ConfigPostParameters.Ok)
                         ?.values?.let { ok -> ok.names().associateWith { ok[it].orEmpty() } }
                 },
-                commit = { accepted, admit -> transaction.applyAccepted(accepted, admit = admit) == ApplyAcceptedResult.Applied },
+                commit = { accepted, admit -> transaction.applyAccepted(accepted, admit = admit) is ApplyAcceptedResult.Applied },
             )
             assertNull(code)
             assertEquals(listOf("voice_enabled" to "true"), applied)
@@ -106,7 +106,7 @@ class ManagedSettingsCommitBoundaryTest {
                     (normalizeConfigPostParameters(raw, io.panelassistant.android.config.Capabilities()) as? ConfigPostParameters.Ok)
                         ?.values?.let { ok -> ok.names().associateWith { ok[it].orEmpty() } }
                 },
-                commit = { accepted, admit -> transaction.applyAccepted(accepted, admit = admit) == ApplyAcceptedResult.Applied },
+                commit = { accepted, admit -> transaction.applyAccepted(accepted, admit = admit) is ApplyAcceptedResult.Applied },
             )
             assertNull(code)
             assertEquals("Garden room", fixture.config.chosenFriendlyName)

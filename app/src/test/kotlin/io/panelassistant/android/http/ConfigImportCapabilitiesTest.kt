@@ -20,7 +20,76 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /** Complete HTTP import, production kiosk admission and durable Config readback. */
-class ConfigImportCapabilitiesTest {
+internal class ConfigImportCapabilitiesTest : io.panelassistant.android.testsupport.PanelRuntimeRig() {
+    @Test fun aLaterRefusalKeepsEarlierPendingWorkOutOfTheAppliedReceipt() = withRealConfigFixture { config, fixture ->
+        capabilities(fixture, Capabilities(appCanSu = true, networkAdb = true))
+        val called = mutableListOf<String>()
+        field(fixture.server, "applySetting", { key: String, _: String ->
+            called += key
+            if (key == "home_dashboard") LiveSettingRequestOutcome.DEFERRED else LiveSettingRequestOutcome.REJECTED
+        })
+        testApplication {
+            application { fixture.mount(this) }
+            val response = client.post("/api/v1/config/import") {
+                setBody(ConfigBundle.fromValues(mapOf(
+                    "friendly_name" to "Imported", "home_dashboard" to "lovelace/pending", "kiosk_lock" to "true",
+                )).serialize())
+            }
+            assertEquals(HttpStatusCode.OK, response.status)
+            val receipt = JSONObject(response.bodyAsText())
+            assertEquals(listOf("home_dashboard", "kiosk_lock"), called)
+            assertEquals(listOf("friendly_name"), strings(receipt, "applied"))
+            assertEquals(listOf("home_dashboard"), strings(receipt, "pending"))
+            assertEquals("partial", receipt.getString("status"))
+            assertTrue(strings(receipt, "errors").single().contains("kiosk_lock"))
+            assertEquals("Imported", config.friendlyName)
+        }
+    }
+
+    @Test fun importAndRevisionReportQueuedKioskWorkBeforeItsSuccessfulOrRefusedCompletion() {
+        for (revision in listOf(false, true)) for (success in listOf(false, true)) {
+            withRealConfigFixture { config, fixture ->
+                assertTrue(config.commitKioskLock(false))
+                var actuations = 0
+                val runtime = rig(sharedConfig = config, kioskApply = { actuations++; success })
+                runtime.sysfs.blockNextWrite("$RELAY_BASE/relay1")
+                val worker = kotlin.concurrent.thread { submitNative(runtime, "relay1", "ON") }
+                try {
+                    assertTrue(runtime.sysfs.blockEntered.await(10, java.util.concurrent.TimeUnit.SECONDS))
+                    field(fixture.server, "applySetting", { key: String, value: String ->
+                        check(key == "kiosk_lock")
+                        io.panelassistant.android.requestKioskSetting(config, { runtime.commands }, value) { false }
+                    })
+                    capabilities(fixture, Capabilities(appCanSu = true, networkAdb = true))
+                    val bundle = ConfigBundle.fromValues(mapOf("friendly_name" to "Imported", "kiosk_lock" to "true"))
+                    val path = if (revision) {
+                        val revisions = readField(fixture.server, "revisions") as RevisionStore
+                        "/api/v1/config/revisions/${revisions.snapshot(bundle)}/restore"
+                    } else "/api/v1/config/import"
+                    testApplication {
+                        application { fixture.mount(this) }
+                        val response = client.post(path) { setBody(bundle.serialize()) }
+                        assertEquals(HttpStatusCode.OK, response.status)
+                        val receipt = JSONObject(response.bodyAsText())
+                        assertFalse(config.kioskLock, "The real worker has not applied the queued lock")
+                        assertEquals(0, actuations)
+                        assertEquals("Imported", config.friendlyName)
+                        assertEquals(listOf("friendly_name"), strings(receipt, "applied"))
+                        assertEquals(listOf("kiosk_lock"), strings(receipt, "pending"))
+                        assertEquals("partial", receipt.getString("status"))
+                    }
+                } finally {
+                    runtime.sysfs.blockRelease.countDown()
+                    worker.join(20_000)
+                    barrier(runtime, "kiosk_lock")
+                    runtime.close()
+                }
+                assertEquals(1, actuations)
+                assertEquals(success, config.kioskLock)
+            }
+        }
+    }
+
     @Test fun previewAndImportSkipUnsupportedKioskOnButRetainSupportedSettings() {
         for ((eligible, directSu) in listOf(false to false, true to false, false to true, true to true)) {
             withRealConfigFixture { config, fixture ->

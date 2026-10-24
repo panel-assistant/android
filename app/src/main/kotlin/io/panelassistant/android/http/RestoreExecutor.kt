@@ -230,6 +230,7 @@ internal class RestoreExecutor(
                 else InstallProgress.ComponentResult(InstallProgress.Outcome.ROLLBACK_FAILED)
             } else null
             val partial = companionResult?.ok == true ||
+                (stateComponent()?.items ?: 0) > 0 ||
                 companionResult?.component?.status == InstallProgress.Outcome.PARTIAL ||
                 profileResult?.outcome == ProfileBackupRestoreOutcome.SUCCEEDED ||
                 profileResult?.outcome == ProfileBackupRestoreOutcome.PARTIAL ||
