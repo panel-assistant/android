@@ -2,6 +2,7 @@ package io.panelassistant.android.panelassistant
 
 import android.util.Log
 import io.panelassistant.android.HaAuthOwner
+import io.panelassistant.android.haOriginChanges
 import io.panelassistant.android.sensors.HaApiSessionProvider
 import io.panelassistant.android.sensors.HaAuthenticationException
 import kotlinx.coroutines.CancellationException
@@ -235,9 +236,15 @@ internal class PanelAssistantTransportOwner(
             if (next == demand && (next == null || job?.isActive == true)) return
             job?.cancel()
             job = null
+            // A session replaced for the same Home Assistant (a re-chosen route, a new app version) keeps
+            // its restart notice: the successor's hello reports the current phase. Only another Home
+            // Assistant, or none, retires it.
+            val previous = demand
+            val sameHomeAssistant = previous != null && next != null &&
+                !haOriginChanges(previous.credential.url, next.credential.url)
             demand = next
             run = generation.incrementAndGet()
-            onLifecycleRetired()
+            if (!sameHomeAssistant) onLifecycleRetired()
             // Replacement cancels this session immediately, even while its socket teardown keeps the
             // next generation behind the run mutex. No retired hello may authorize an update meanwhile.
             status = PanelAssistantTransportStatus(
