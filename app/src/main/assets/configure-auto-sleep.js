@@ -149,7 +149,8 @@
     }
     var toggle = document.querySelector("#cfg-auto_sleep [role=switch]");
     if (!toggle) return;
-    var blocked = autoSleepUsesHa() && cfg.values.auto_sleep !== "true" && cfg.autoSleepPrerequisite.eligible !== true;
+    var blocked = cfg.blockingPrerequisites({ key: "auto_sleep" }).length > 0;
+    toggle.closest(".frow").classList.toggle("dependency-disabled", blocked);
     toggle.classList.toggle("blocked", blocked);
     toggle.setAttribute("aria-disabled", blocked ? "true" : "false");
     toggle.setAttribute("tabindex", "0");

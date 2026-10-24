@@ -56,6 +56,7 @@ browserTest('Auto-sleep requires an assigned Area before OFF can be switched ON'
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
   await page.getByText('Home Assistant Area: Studio').waitFor();
   assert.equal(await toggle.getAttribute('aria-disabled'), 'false');
+  assert.equal(await page.locator('#cfg-auto_sleep').evaluate((row) => getComputedStyle(row).opacity), '1', 'an eligible setting no longer looks disabled');
   await toggle.click();
   assert.equal(await toggle.getAttribute('aria-checked'), 'true');
   assert.ok(prerequisiteCalls >= 2);
