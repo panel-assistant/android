@@ -37,7 +37,7 @@ async function harness() {
       return send(await readFile(join(root, path.slice(1)), 'utf8'), 'application/javascript');
     if (path === '/info.css') return send(await readFile(join(root, 'info.css'), 'utf8'), 'text/css');
     if (path === '/api/v1/config/schema') return send(JSON.stringify([{
-      key: 'dashboard_network_warning', type: 'BOOL', group: 'Display', tier: 'BASIC', available: true,
+      key: 'dashboard_network_warning', type: 'BOOL', group: 'System', tier: 'BASIC', available: true,
       label: wording('settings.dashboard_network_warning.label'),
       help: wording('settings.dashboard_network_warning.help'),
       summary: wording('settings.dashboard_network_warning.summary'), default: 'true',

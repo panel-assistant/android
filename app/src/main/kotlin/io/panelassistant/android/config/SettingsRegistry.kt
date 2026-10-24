@@ -450,7 +450,7 @@ object SettingsRegistry {
             },
         ),
         SettingSpec(
-            key = "dashboard_network_warning", type = SettingType.BOOL, group = "Display",
+            key = "dashboard_network_warning", type = SettingType.BOOL, group = "System",
             renderer = RendererApply.LIVE,
             tier = Tier.ADVANCED, summary = "Warn on the dashboard when the network drops.",
             label = "Show network warning on dashboard", default = "true", scope = Scope.DEVICE,

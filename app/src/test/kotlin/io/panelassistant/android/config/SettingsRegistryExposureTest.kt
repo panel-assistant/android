@@ -52,7 +52,7 @@ class SettingsRegistryExposureTest {
 
     @Test fun dashboardNetworkWarningIsVisibleOnlyOnThePanel() {
         val spec = SettingsRegistry.spec("dashboard_network_warning")!!
-        assertEquals("Display", spec.group)
+        assertEquals("System", spec.group)
         assertEquals("true", spec.default)
         assertEquals(Scope.DEVICE, spec.scope)
         assertEquals(spec, SettingsRegistry.schemaVisibleSpecs().first { it.key == spec.key })

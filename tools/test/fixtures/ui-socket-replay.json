@@ -565,7 +565,7 @@
     {
      "key": "dashboard_network_warning",
      "type": "BOOL",
-     "group": "Display",
+     "group": "System",
      "labelKey": "settings.dashboard_network_warning.label",
      "helpKey": "settings.dashboard_network_warning.help",
      "label": "Show network warning on dashboard",
