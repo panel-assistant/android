@@ -687,9 +687,6 @@ internal class PanelStateCore(
         dispatchStateWork { reconcile(MEDIA_CHANNEL) }
     }
 
-    /** Report the service-owned return after the Companion accepted its panel-home deep link. */
-    fun reconcileNavigateState() = reconcile("navigate")
-
     /** Re-evaluate both update channels: catalog refreshes, install start and finish, package changes. */
     fun publishSoftwareUpdates() {
         dispatchStateWork(::reconcileSoftwareUpdatesNow)

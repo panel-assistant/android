@@ -134,7 +134,6 @@ internal class RemoteDebugSecurityAuthorityStore(
         const val PUBLICATION_FILE = ".remote-debug-security-authority.v1.publish"
         const val MAX_RECORD_BYTES = 512L
         const val MODE_0600 = 0x180
-        const val MODE_0777 = 0x1ff
     }
 }
 

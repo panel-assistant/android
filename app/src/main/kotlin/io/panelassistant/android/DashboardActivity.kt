@@ -2316,7 +2316,6 @@ class DashboardActivity : AppCompatActivity() {
         /** Camera trial: the CAMERA runtime-permission request raised when the camera
          *  setting turns on. Distinct from any other request code — this activity had none before. */
         private const val REQUEST_CAMERA_PERMISSION = 4801
-        private const val ADMISSION_COUNTDOWN_TICK_MS = 1_000L  // repaint cadence of the visible retry countdown
         internal const val BG_DARK = PanelTokens.Overlay.DASHBOARD_DARK
         private const val LIGHT_REFRESH_SPINNER_MS = 800L       // bus navigate is instant; brief spinner ack
         private const val HARD_REFRESH_WINDOW_MS = 6_000L       // second pull inside this = full hard reload

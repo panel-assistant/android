@@ -88,9 +88,7 @@ object PerfReader {
 
     // Page-view gate. Instrumentation is the tool, not a tax: it must not be the panel's biggest CPU
     // consumer 24/7. So sampling runs only while the info page has been fetched within [ACTIVE_MS];
-    // otherwise the loop just compares a timestamp and sleeps. [enabled] is always true (the old master
-    // switch was removed — the page-view gate is the sole cost control).
-    @Volatile var enabled = true
+    // otherwise the loop just compares a timestamp and sleeps. The page-view gate is the sole cost control.
     @Volatile private var lastAccessAt = 0L
     private val lifecycleLock = Any()
     @Volatile private var generation = 0L
@@ -158,7 +156,7 @@ object PerfReader {
             var rootProbed = false
             while (isActive && isCurrent(runGeneration)) {
                 val now = elapsedRealtime()
-                if (enabled && withinActiveWindow(now, lastAccessAt)) {
+                if (withinActiveWindow(now, lastAccessAt)) {
                     if (!rootProbed) {
                         val available = runCatching(rootAvailable).getOrDefault(false)
                         ifCurrent(runGeneration) { rootOk = available } ?: return@launch
@@ -240,7 +238,7 @@ object PerfReader {
         val identity = rendererIdentity
         val builtin = identity.target is RendererTarget.Builtin
         val sampled = synchronized(lock) {
-            """{"enabled":$enabled,$latestFields,"top":$topJson,"topRam":$topRamJson,"render":$renderJson,"builtin":${builtinJson(builtin)},"network":${networkJson()},"entityFilter":${EntityFilterTelemetry.json()},"hist":{"cpu":${histInts(CPU_KEY)},"ram":${histInts(RAM_KEY)},"gpu":${histInts(GPU_KEY)}}}"""
+            """{"enabled":true,$latestFields,"top":$topJson,"topRam":$topRamJson,"render":$renderJson,"builtin":${builtinJson(builtin)},"network":${networkJson()},"entityFilter":${EntityFilterTelemetry.json()},"hist":{"cpu":${histInts(CPU_KEY)},"ram":${histInts(RAM_KEY)},"gpu":${histInts(GPU_KEY)}}}"""
         }
         // Dashboard diagnostics allocate JSON. Keep the projection outside the sampler lock so
         // diagnostics readers cannot delay history publication on low-end panels. Feature costs are

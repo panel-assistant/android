@@ -844,9 +844,6 @@ private class UdpSyslogLogSink(
         address = resolved
     }
 
-    /** The address datagrams are actually going to, so the status line can name it. */
-    fun resolvedAddress(): InetAddress? = address
-
     override fun send(lines: List<CapturedLogLine>) {
         val destination = address ?: throw IOException("udp sink used before connect")
         for (line in lines) {

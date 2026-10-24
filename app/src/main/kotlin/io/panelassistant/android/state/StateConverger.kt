@@ -128,12 +128,9 @@ class StateConverger {
         /** Protocol §7 channel identity: a lowercase letter, then up to 47 lowercase letters, digits or underscores. */
         val CHANNEL_ID = Regex("^[a-z][a-z0-9_]{0,47}$")
         private val ALWAYS_ADMIT: () -> Boolean = { true }
-        private val pumpThread = java.util.concurrent.atomic.AtomicReference<Thread>()
         private val PUMP = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
-            Thread(r, "state-convergence").apply { isDaemon = true; pumpThread.set(this) }
+            Thread(r, "state-convergence").apply { isDaemon = true }
         }
-
-        internal fun onPumpThread(): Boolean = Thread.currentThread() === pumpThread.get()
 
         /** Serialize local UI/hardware notifications on one convergence thread. */
         internal fun dispatch(task: () -> Unit) = PUMP.execute(task)
