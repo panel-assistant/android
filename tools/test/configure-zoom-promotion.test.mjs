@@ -40,6 +40,7 @@ function schema(promoted) {
   });
   const rest = [
     field('dashboard_fullscreen', 'Fullscreen'),
+    field('dashboard_idle_return_min', 'Idle return to home (min)', { type: 'INT', min: 0, max: 1440, step: 1 }),
     field('dashboard_theme', 'Theme', { type: 'ENUM', options: ['auto'] }),
     field('camera_kbps', 'Bitrate (kbps)', { type: 'INT', min: 250, max: 8000, step: 250 }),
     field('camera_exposure', 'Exposure', { type: 'FLOAT', min: -2, max: 2, step: 0.5 }),
@@ -53,7 +54,7 @@ const saved = () => ({ status: 200, body: JSON.stringify({ ok: true, status: 'sa
 // The fake panel keeps what it accepts, and its config read and `config` family answer report it.
 async function harness(promoted, onPost = saved) {
   const posts = [];
-  const settings = { dashboard_zoom: 100, dashboard_package: 'builtin', camera_kbps: 2000, camera_exposure: 0, ui_language: 'auto' };
+  const settings = { dashboard_zoom: 100, dashboard_idle_return_min: 0, dashboard_package: 'builtin', camera_kbps: 2000, camera_exposure: 0, ui_language: 'auto' };
   let documents = 0;
   const server = createServer(async (request, response) => {
     const path = new URL(request.url, 'http://panel.test').pathname;
@@ -219,6 +220,17 @@ for (const engine of engines) {
     await until('the rounded value sent', () => h.posts.length === 1);
     assert.deepEqual(h.posts, [{ dashboard_zoom: '97' }]);
     assert.equal(await rowMessage(p, 'dashboard_zoom').count(), 0);
+    for (const [input, expected] of [[2.4, '2'], [2.5, '3'], [2.6, '3']]) {
+      // Reset to force a save even when successive inputs round to the same value.
+      await commit(p, 'dashboard_idle_return_min', 0);
+      await until('idle return reset', async () => (await p.locator('#cfg-dashboard_idle_return_min input').inputValue()) === '0');
+      const before = h.posts.length;
+      await commit(p, 'dashboard_idle_return_min', input);
+      await until('rounded idle return sent', () => h.posts.length > before);
+      assert.deepEqual(h.posts.at(-1), { dashboard_idle_return_min: expected });
+      assert.equal(await p.locator('#cfg-dashboard_idle_return_min input').inputValue(), expected);
+      assert.equal(await rowMessage(p, 'dashboard_idle_return_min').count(), 0);
+    }
   });
 
   for (const refusal of [

@@ -46,6 +46,7 @@ import io.panelassistant.android.util.submit
 import java.util.WeakHashMap
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.math.roundToInt
 
 /**
  * Who a command came from (protocol section 20.2). [approvalKey] is the approval principal: `panel_assistant`,
@@ -1206,7 +1207,15 @@ internal fun dispatchLiveSetting(
     handlers: LiveSettingHandlers,
 ) {
     fun on() = value.expect<CommandValue.Switch>(key).on
-    fun percent() = value.expect<CommandValue.Quantity>(key).value.toInt()
+    fun integer(): Int {
+        val number = value.expect<CommandValue.Quantity>(key).value
+        val spec = requireNotNull(SettingsRegistry.spec(key))
+        require(spec.type == SettingType.INT && number.isFinite()) { "$key requires a finite integer setting" }
+        // Match Configure's whole-number rounding, then use the setting's ordinary validation.
+        val validated = SettingValue.validate(spec, number.roundToInt().toString())
+        require(validated is Validation.Ok) { (validated as Validation.Bad).reason }
+        return validated.normalized.toInt()
+    }
     fun text() = value.expect<CommandValue.Text>(key).text
     fun option() = value.expect<CommandValue.Option>(key).option
     when (LiveSettingEffectOwner.requireFor(key)) {
@@ -1222,16 +1231,16 @@ internal fun dispatchLiveSetting(
         LiveSettingEffectOwner.VOICE -> handlers.handleVoiceEnabled(on())
         LiveSettingEffectOwner.NETWORK_ADB -> handlers.handleNetAdb(on())
         LiveSettingEffectOwner.ZIGBEE -> handlers.handleZigbee(on())
-        LiveSettingEffectOwner.AUTO_BRIGHTNESS_MINIMUM -> handlers.handleAutoBrightnessMinimum(percent())
-        LiveSettingEffectOwner.AUTO_BRIGHTNESS_MAXIMUM -> handlers.handleAutoBrightnessMaximum(percent())
-        LiveSettingEffectOwner.AUTO_BRIGHTNESS_RESPONSE -> handlers.handleAutoBrightnessSensitivity(percent())
+        LiveSettingEffectOwner.AUTO_BRIGHTNESS_MINIMUM -> handlers.handleAutoBrightnessMinimum(integer())
+        LiveSettingEffectOwner.AUTO_BRIGHTNESS_MAXIMUM -> handlers.handleAutoBrightnessMaximum(integer())
+        LiveSettingEffectOwner.AUTO_BRIGHTNESS_RESPONSE -> handlers.handleAutoBrightnessSensitivity(integer())
         LiveSettingEffectOwner.AUTO_BRIGHTNESS_HA_ENTITY -> handlers.handleAutoBrightnessHaEntity(text())
         LiveSettingEffectOwner.CPU_GOVERNOR -> handlers.handleCpuGov(option())
         LiveSettingEffectOwner.NAVBAR -> handlers.handleNavbar(option())
         LiveSettingEffectOwner.HOME_DASHBOARD -> handlers.handleHomeDashboard(text(), previousValue)
         LiveSettingEffectOwner.HA_AREA_PUBLISH_ONLY -> handlers.handleHaAreaPublishOnly()
         LiveSettingEffectOwner.DASHBOARD_THEME -> handlers.handleDashboardTheme(option())
-        LiveSettingEffectOwner.IDLE_RETURN -> handlers.handleIdleReturn(percent())
+        LiveSettingEffectOwner.IDLE_RETURN -> handlers.handleIdleReturn(integer())
     }
 }
 

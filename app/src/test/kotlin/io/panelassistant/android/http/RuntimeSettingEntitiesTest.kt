@@ -105,6 +105,52 @@ internal class RuntimeSettingEntitiesTest : PanelRuntimeRig() {
         session.value("dashboard_idle_return", 15)
     }
 
+    @Test fun fractionalIdleReturnCommandsAgreeWithConfigureCanonicalSaves() {
+        val rig = started()
+        val session = Session(rig)
+        val spec = requireNotNull(SettingsRegistry.spec("dashboard_idle_return_min"))
+        val authority = LiveSettingAuthority(setOf(spec.key))
+        val server = routeServer(rig.config) { key, normalized ->
+            authority.applyOrQueueOutcome(key, normalized, rig.config.getRaw(spec)) { appliedKey, value, before ->
+                rig.commands.applySetting(appliedKey, value, before)
+            }
+        }
+        val native = mutableListOf<String>()
+        val configure = mutableListOf<String>()
+        testApplication {
+            application {
+                routing { route("/api/v1") { with(server) { installDirectConfigPostRoute { Capabilities() } } } }
+            }
+            // The packaged Configure control sends these canonical strings after its change event.
+            // The paired browser test exercises that normalization for the same three inputs.
+            for ((input, rounded) in listOf("2.4" to "2", "2.5" to "3", "2.6" to "3")) {
+                assertEquals(PanelAssistantCommandResult.Applied, submitNative(rig, "dashboard_idle_return", input))
+                val stored = rig.config.getRaw(spec)
+                assertEquals(stored.toInt(), rig.config.dashboardIdleReturnMin)
+                session.value("dashboard_idle_return", stored.toInt())
+                native += stored
+
+                val response = client.submitForm("/api/v1/config", Parameters.build { append(spec.key, rounded) }) {
+                    accept(ContentType.Application.Json)
+                }
+                assertEquals(response.bodyAsText(), HttpStatusCode.OK, response.status)
+                assertEquals(rounded, rig.config.getRaw(spec))
+                session.value("dashboard_idle_return", rounded.toInt())
+                configure += rig.config.getRaw(spec)
+            }
+            // Raw HTTP stays strict: normalization belongs to the typed caller, not integer storage.
+            val refused = client.submitForm("/api/v1/config", Parameters.build { append(spec.key, "2.5") }) {
+                accept(ContentType.Application.Json)
+            }
+            assertEquals(HttpStatusCode.BadRequest, refused.status)
+            assertTrue(refused.bodyAsText().contains("expected an integer"))
+            assertEquals("3", rig.config.getRaw(spec))
+        }
+        println("idle-return native stored/reported=$native Configure stored/reported=$configure")
+        assertEquals(listOf("2", "3", "3"), configure)
+        assertEquals(configure, native)
+    }
+
     @Test fun aChangeOnTheSettingsPageReachesPanelAssistantWithoutWaitingForAPass() {
         val rig = started()
         val session = Session(rig)
