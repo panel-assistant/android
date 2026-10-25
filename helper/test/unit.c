@@ -1021,6 +1021,31 @@ static void test_sysctl_execution_results(void) {
     close(stream_sv[1]);
     CHECK(access(stream_stage, F_OK) != 0, "INSTALLSTREAM removes root staging after success\n");
 
+    // Provider upgrades preserve Android's downgrade rejection. Exercise dispatch and exact argv,
+    // including the completed upload, so a missing handler cannot pass by submitting nothing.
+    sysexec_stub_reset();
+    socketpair(AF_UNIX, SOCK_STREAM, 0, stream_sv);
+    stream = (stream_dispatch_job){ .fd = stream_sv[0], .line = "INSTALLSTREAMUPGRADE 5" };
+    pthread_create(&stream_thread, NULL, stream_dispatch_worker, &stream);
+    read_reply_line(stream_sv[1], out, sizeof out);
+    int upgrade_ready = strcmp(out, "READY\n") == 0;
+    CHECK(upgrade_ready, "INSTALLSTREAMUPGRADE acknowledges before payload (got '%s')\n", out);
+    if (upgrade_ready) {
+        CHECK(write_all_fd(stream_sv[1], payload, sizeof payload) == 0,
+              "INSTALLSTREAMUPGRADE client writes full payload\n");
+        shutdown(stream_sv[1], SHUT_WR);
+        read_reply_line(stream_sv[1], out, sizeof out);
+        CHECK(strcmp(out, "OK\n") == 0, "INSTALLSTREAMUPGRADE reports package-manager success (got '%s')\n", out);
+    }
+    pthread_join(stream_thread, NULL);
+    close(stream_sv[1]);
+    const char *const upgrade_argv[] = { "pm", "install", "-r", stream_stage, NULL };
+    CHECK(sysexec_stub_count_argv("/system/bin/pm", upgrade_argv, 1) == 1,
+          "INSTALLSTREAMUPGRADE submits exactly one ordinary replacement without downgrade override\n");
+    CHECK(sysexec_stub_count_argv_calls() == 1,
+          "INSTALLSTREAMUPGRADE never retries another installer or removes the provider\n");
+    CHECK(access(stream_stage, F_OK) != 0, "INSTALLSTREAMUPGRADE removes root staging after success\n");
+
     // Package-manager failure is a terminal ERR and still removes the completed root staging file.
     sysexec_stub_reset();
     sysexec_stub_fail_run("pm install", 1);

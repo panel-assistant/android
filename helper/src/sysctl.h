@@ -24,6 +24,7 @@ void cmd_enable(conn_ctx *ctx, const char *args);     // ENABLE <pkg>      pm en
 void cmd_overlay(conn_ctx *ctx, const char *args);    // OVERLAY <pkg> deny|allow  SYSTEM_ALERT_WINDOW
 void cmd_install(conn_ctx *ctx, const char *args);    // INSTALL <apk-path> legacy verb; always fails closed
 void cmd_installstream(conn_ctx *ctx, const char *args); // INSTALLSTREAM <bytes> two-phase socket upload + install
+void cmd_installstreamupgrade(conn_ctx *ctx, const char *args); // INSTALLSTREAMUPGRADE <bytes> ordinary replacement; never downgrade
 void cmd_installgc(conn_ctx *ctx, const char *args);  // INSTALLGC <apk-path> legacy cleanup acknowledgement
 // GRANT accepts ONLY the app's own package id, so the app can repair its own grants without a root
 // shell and nothing else gains a privileged package surface.

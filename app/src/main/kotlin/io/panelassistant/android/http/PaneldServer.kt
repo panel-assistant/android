@@ -173,6 +173,7 @@ class PaneldServer internal constructor(
     private val profileReport: () -> PassiveProfileReport? = { null },
     private val profileProbe: (String) -> PassiveProfileReport? = { null },
     private val onProfileRestart: () -> Boolean = { false },
+    private val onWebViewRebind: () -> Boolean = { false },
     /**
      * Durable panel state was replaced underneath the running process. Live owners of that state
      * must re-read it before they write again, or a restore is silently overwritten by whatever
@@ -328,6 +329,17 @@ class PaneldServer internal constructor(
         },
         { setupState.setupNeedsUser() },
     )
+    private val webViewUpdate by lazy {
+        io.panelassistant.android.util.WebViewUpdate(
+            scope,
+            { profile.recommendedWebView?.let { spec ->
+                io.panelassistant.android.device.profile.ProfileArtifacts.webViews.entries.firstOrNull { it.value == spec }?.key?.let { it to spec }
+            } },
+            io.panelassistant.android.util.AndroidWebViewUpdateIo(appContext, profile),
+            requestRebind = { onWebViewRebind() },
+        )
+    }
+
     private val setupState = SetupState(
         config, system, entityLearning, profile, appContext, haOAuth::pendingCount,
         { lastHaDiscovery }, { pageHealth.webViewOnce },
@@ -477,6 +489,7 @@ class PaneldServer internal constructor(
                         )
                     } ?: unavailableProfileRoutes()
                     healthRoute(config, appContext.packageName, ::buildToken, ::renderConfigConcurrencyHash) { panelAssistantTransport?.restartHealthToken().orEmpty() }
+                    webViewRoutes(webViewUpdate, ::authorizeSensitive)
                     configReadRoutes(
                         config = config,
                         values = ::configValues,
@@ -683,6 +696,7 @@ class PaneldServer internal constructor(
                 homeUiProofJson(proof.state, proof.reason, proof.evidence)
             }) else null,
             english = catalogueLoader.strings(AppLocale.ENGLISH),
+            webView = { webViewUpdate.observe().toString() },
         )
     }
 
@@ -825,6 +839,23 @@ class PaneldServer internal constructor(
      * Null for a name this build does not serve.
      */
     internal suspend fun managementRequest(op: String, args: JSONObject, onPending: () -> Unit, auth: HaApiSessionProvider): PanelAssistantManageReply? {
+        if (op == "webview.observe") return PanelAssistantManageReply(
+            PanelAssistantTransportProtocol.OUTCOME_APPLIED, null, withContext(Dispatchers.IO) { webViewUpdate.observe() },
+        )
+        if (op == "webview.install") {
+            val requestId = args.opt("request_id") as? String
+            val hash = args.opt("artifact_sha256") as? String
+            val refusal = authorizeSessionRequest(
+                config.hardenedSecurityEnabled, io.panelassistant.android.security.SensitiveOperation.APK_INSTALL,
+                "$op\u0000${requestId.orEmpty()}\u0000${hash.orEmpty()}", "Update System WebView", LocalApprovalBroker.instance, onPending,
+            )
+            if (refusal != null) return PanelAssistantManageReply(PanelAssistantTransportProtocol.OUTCOME_REFUSED, refusal, null)
+            val answer = withContext(Dispatchers.IO) { webViewUpdate.install(requestId, hash) }
+            return PanelAssistantManageReply(
+                if (answer.status < 400) PanelAssistantTransportProtocol.OUTCOME_APPLIED else PanelAssistantTransportProtocol.OUTCOME_REFUSED,
+                if (answer.status < 400) null else answer.body.optString("reason"), answer.body,
+            )
+        }
         if (op == MANAGE_STATUS) {
             val body = withContext(Dispatchers.IO) { statusJson(storageHealth(), homeProofRequested = args.optBoolean("home_proof")) }
             return PanelAssistantManageReply(PanelAssistantTransportProtocol.OUTCOME_APPLIED, null, JSONObject(body))

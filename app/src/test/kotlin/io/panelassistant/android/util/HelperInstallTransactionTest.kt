@@ -16,6 +16,23 @@ import java.io.File
 class HelperInstallTransactionTest {
     @get:Rule val temporary = TemporaryFolder()
 
+    @Test fun strictUpgradeUsesOnlyTheUpgradeStreamVerb() {
+        val source = apk("upgrade.apk", byteArrayOf(1, 2, 3))
+        val daemon = LongDaemon(DaemonLongResult.Reply("OK"), DaemonStreamResult.Reply("OK"))
+        assertEquals(InstallOutcome.Succeeded, HelperInstallTransaction(daemon).install(source, temporary.newFolder(), strictUpgrade = true))
+        assertEquals("INSTALLSTREAMUPGRADE 3", daemon.streamCalls.single().first)
+        assertTrue(daemon.calls.isEmpty())
+    }
+
+    @Test fun strictUpgradeNeverFallsBackToDowngradeCapableLegacyHelper() {
+        val source = apk("old-helper.apk", byteArrayOf(1, 2, 3))
+        val daemon = LongDaemon(DaemonLongResult.Reply("OK"), DaemonStreamResult.Unsupported)
+        assertTrue(HelperInstallTransaction(daemon).install(source, temporary.newFolder(), strictUpgrade = true) is InstallOutcome.Rejected)
+        assertEquals("INSTALLSTREAMUPGRADE 3", daemon.streamCalls.single().first)
+        assertTrue(daemon.calls.isEmpty())
+        assertFalse(source.exists())
+    }
+
     private class LongDaemon(
         var result: DaemonLongResult,
         var streamResult: DaemonStreamResult = DaemonStreamResult.Unsupported,

@@ -134,9 +134,8 @@ object SetupJourney {
         /**
          * The system WebView is too old to render a current Home Assistant frontend.
          *
-         * Checked as part of choosing a renderer because it decides whether the chosen one can work at all,
-         * and it must be raised BEFORE the Home Assistant URL and sign-in: a user who signs in first and
-         * discovers this afterwards has done the whole journey for a panel that was never going to render.
+         * An advisory throughout setup: native pairing and configuration do not require the dashboard
+         * to render. Render evidence remains unknown until the frontend actually connects.
          */
         val webViewTooOld: Boolean = false,
         /**
@@ -215,15 +214,13 @@ object SetupJourney {
 
     private fun rendererStep(inputs: Inputs): Step = when (val choice = inputs.renderer) {
         is RendererChoice.Builtin ->
-            // An engine below the frontend's floor renders blank or broken however well everything else is
-            // configured, so this is a blocked renderer rather than a warning carried to the end. Raised only
-            // for the built-in renderer: it shares the system WebView, but another app's internals are not
-            // ours to declare broken. The copy says switching renderers will not help, because they share it.
+            // Engine compatibility is advisory: native pairing and configuration can finish before
+            // Home Assistant offers a provider repair. It is not evidence of a working dashboard.
             if (inputs.webViewTooOld) {
                 Step(
                     Stage.RENDERER,
-                    Status.BLOCKED,
-                    blocking = true,
+                    Status.UNKNOWN,
+                    blocking = false,
                     detail = "webview_too_old",
                 )
             } else {
@@ -318,8 +315,8 @@ object SetupJourney {
     }
 
     /**
-     * Whether a dashboard is actually on screen — the only definition of done that matters, since every
-     * earlier stage can be satisfied while the panel still shows nothing useful.
+     * Whether a dashboard is actually on screen. An old built-in engine keeps this evidence unknown
+     * without blocking configuration and native pairing; its compatibility warning remains visible.
      *
      * For a foreign renderer this is genuinely not observable: foregrounding needs privilege and only
      * proves the app is running, its stored configuration proves configuration, and a screenshot needs a
@@ -341,6 +338,9 @@ object SetupJourney {
         val stale = inputs.proof.fingerprint.isNotBlank() &&
             inputs.currentFingerprint.isNotBlank() &&
             inputs.proof.fingerprint != inputs.currentFingerprint
+        if (inputs.renderer is RendererChoice.Builtin && inputs.webViewTooOld && (!inputs.proof.certain || stale)) {
+            return Step(Stage.RENDER_PROOF, Status.UNKNOWN, blocking = false, detail = "webview_too_old")
+        }
         if (stale) {
             // The panel rendered, but not against this configuration. Re-arm rather than coast on it. The
             // built-in renderer reloads and re-signals by itself, so that is a wait; a foreign renderer

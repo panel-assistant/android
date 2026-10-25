@@ -906,6 +906,7 @@ class PaneldService : Service() {
             profileReport = passiveProfileProbe::report,
             profileProbe = { passiveProfileProbe.report() },
             onProfileRestart = { profileRestart.request() },
+            onWebViewRebind = { webViewRebindRestart.request() },
             onDurableStateRestored = {
                 wifiOutageTracker.adoptRestoredRecord()
                 sensors.reloadProximityCalibration()

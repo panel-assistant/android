@@ -2,6 +2,10 @@
 
 ## v1.0.0-rc2
 
+### New
+
+- Panel Assistant can install a compatible, verified WebView during setup or through an owner-started Repair. An old browser engine is advisory during setup, so pairing can finish before a retry. Updates never downgrade or replace a Play-managed provider.
+
 ### Changed
 
 - UI layout checks use pinned browser images and split the test suite to reduce CI time.
