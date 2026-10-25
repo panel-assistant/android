@@ -773,21 +773,39 @@ class ConfigTransactionTest {
         assertEquals(false, prefs.values["dashboard_native_kiosk"])
     }
 
-    @Test fun anUpgradedPanelKeepsTheNativeKioskItWasShowing() {
-        // Schema 4 shipped the setting on by default; a store from before it never hid the navigation.
-        for ((schema, showing) in listOf(3 to false, 4 to true, 15 to true)) {
-            val prefs = fakePreferences(initial = mapOf("config_schema" to schema, "panel_id" to "existing-panel"))
-            val config = Config(prefs.instance)
+    @Test fun everyUpgradedPanelShowsHomeAssistantNavigationOnce() {
+        for (schema in listOf(1, 3, 4, 15, 16)) {
+            for (stored in listOf<Boolean?>(null, false, true)) {
+                val initial = mutableMapOf<String, Any>("config_schema" to schema, "panel_id" to "existing-panel")
+                if (stored != null) initial["dashboard_native_kiosk"] = stored
+                val prefs = fakePreferences(initial = initial)
 
-            assertTrue("migration from schema $schema", config.migrateLiveStore())
-            assertEquals("schema $schema", showing, config.dashboardNativeKiosk)
-            val committed = prefs.values.toMap()
-            assertTrue(Config(prefs.instance).migrateLiveStore())
-            assertEquals("a second startup must be a no-op", committed, prefs.values)
+                assertTrue("migration from schema $schema, stored $stored", Config(prefs.instance).migrateLiveStore())
+                assertFalse("schema $schema, stored $stored", Config(prefs.instance).dashboardNativeKiosk)
+                assertEquals("the reset is an explicit choice", false, prefs.values["dashboard_native_kiosk"])
+                assertEquals("existing-panel", Config(prefs.instance).panelId)
+            }
         }
-        val chosen = fakePreferences(initial = mapOf("config_schema" to 15, "dashboard_native_kiosk" to false))
-        assertTrue(Config(chosen.instance).migrateLiveStore())
-        assertFalse("an owner's explicit choice survives", Config(chosen.instance).dashboardNativeKiosk)
+    }
+
+    @Test fun navigationHiddenAfterTheResetSurvivesLaterUpdates() {
+        val prefs = fakePreferences(initial = mapOf("config_schema" to 16, "dashboard_native_kiosk" to true))
+        val config = Config(prefs.instance)
+        assertTrue(config.migrateLiveStore())
+        assertFalse("the update first restores navigation", config.dashboardNativeKiosk)
+        config.setRaw(requireNotNull(SettingsRegistry.spec("dashboard_native_kiosk")), "true")
+        // A later build sees this schema marker, so it must keep the new explicit choice.
+        assertEquals(17, prefs.values["config_schema"])
+        assertTrue(Config(prefs.instance).migrateLiveStore())
+        assertTrue(Config(prefs.instance).dashboardNativeKiosk)
+    }
+
+    @Test fun postResetSchemaKeepsAnOwnersHiddenNavigationChoice() {
+        for (schema in listOf(17, 18)) {
+            val prefs = fakePreferences(initial = mapOf("config_schema" to schema, "dashboard_native_kiosk" to true))
+            assertTrue(Config(prefs.instance).migrateLiveStore())
+            assertTrue("schema $schema keeps the later choice", Config(prefs.instance).dashboardNativeKiosk)
+        }
     }
 
     @Test fun autoSleepDefaultsOffAndPersistsBeforeRuntimeRefresh() {

@@ -8,6 +8,8 @@
 
 ### Changed
 
+- Home Assistant's sidebar and menu button are visible again by default on every panel, including existing panels. You can hide them again in Configure.
+
 - UI layout checks use pinned browser images and split the test suite to reduce CI time.
 
 ## v1.0.0-rc1

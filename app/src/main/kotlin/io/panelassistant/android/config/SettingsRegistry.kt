@@ -76,7 +76,7 @@ object SettingsRegistry {
     }
 
     /** Bump whenever the persisted shape changes; drives bundle migration. */
-    const val SCHEMA = 16
+    const val SCHEMA = 17
     const val MAX_PANEL_ID_CHARS = 63
     const val DEFAULT_SILENCE_BOOT_CHIME = true
     const val DEFAULT_ADDRESS_FAMILY = "Automatic"
@@ -191,8 +191,6 @@ object SettingsRegistry {
      */
     const val FIRST_SCHEMA_WITH_SENSITIVITY = 2
 
-    /** v0.9.6-rc1 added `dashboard_native_kiosk` on by default at schema 4; schema 16 turns it off for new panels. */
-    const val FIRST_SCHEMA_WITH_NATIVE_KIOSK = 4
     const val NATIVE_KIOSK_KEY = "dashboard_native_kiosk"
     private const val MAX_PANEL_ID_INPUT_CHARS = 255
     private val HA_ILLUMINANCE_ENTITY = Regex("^sensor\\.[a-z0-9_]+$")
