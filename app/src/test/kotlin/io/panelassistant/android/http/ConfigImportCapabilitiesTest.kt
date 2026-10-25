@@ -2,6 +2,10 @@ package io.panelassistant.android.http
 
 import io.panelassistant.android.Config
 import io.panelassistant.android.kioskSetting
+import io.panelassistant.android.requestKioskSetting
+import io.panelassistant.android.util.InstallProgress
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.TimeUnit
 import io.panelassistant.android.LiveSettingAuthority
 import io.panelassistant.android.LiveSettingApplyResult
 import io.panelassistant.android.LiveSettingRequestOutcome
@@ -89,6 +93,165 @@ internal class ConfigImportCapabilitiesTest : io.panelassistant.android.testsupp
             }
         }
     }
+
+    @Test fun fullBackupRestoreReportsQueuedKioskBeforeLateSuccessOrRefusal() {
+        for (success in listOf(false, true)) {
+            withRealConfigFixture { config, fixture ->
+                assertTrue(config.commitKioskLock(false))
+                var actuations = 0
+                val runtime = rig(sharedConfig = config, kioskApply = { actuations++; success })
+                runtime.sysfs.blockNextWrite("$RELAY_BASE/relay1")
+                val worker = CompletableFuture.supplyAsync { submitNative(runtime, "relay1", "ON") }
+                val persistence = readField(config.prefs, "persistence") as JdbcStatePersistence
+                var receipt = ""
+                try {
+                    assertTrue(runtime.sysfs.blockEntered.await(10, TimeUnit.SECONDS))
+                    field(fixture.server, "applySetting", { key: String, value: String ->
+                        check(key == "kiosk_lock")
+                        requestKioskSetting(config, { runtime.commands }, value) { false }
+                    })
+                    capabilities(fixture, Capabilities(appCanSu = true, networkAdb = true))
+                    testApplication {
+                        application { fixture.mount(this) }
+                        val response = client.post("/api/v1/restore") {
+                            setBody(backup("\"friendly_name\":\"Restored\",\"kiosk_lock\":\"true\""))
+                        }
+                        assertEquals(HttpStatusCode.OK, response.status)
+                        assertEquals("started", JSONObject(response.bodyAsText()).getString("status"))
+                        assertTrue(awaitCondition { !InstallProgress.running })
+                        receipt = InstallProgress.json()
+                        val status = JSONObject(receipt)
+                        val result = status.getJSONObject("result")
+                        assertEquals("Restored", config.friendlyName)
+                        assertEquals("Restored", persistence.initialize()["friendly_name"])
+                        assertEquals(false, persistence.initialize()["kiosk_lock"])
+                        assertFalse(config.kioskLock, "The real worker is still held")
+                        assertEquals(0, actuations)
+                        assertEquals("partial", result.getString("status"))
+                        assertEquals("partial", result.getJSONObject("config").getString("status"))
+                        assertEquals(1, result.getJSONObject("config").getInt("items"))
+                        assertTrue(result.getJSONObject("config").optString("detail").contains("pending: kiosk_lock"))
+                        assertEquals("restore-partial", status.getJSONObject("presentation").getString("code"))
+                    }
+                } finally {
+                    runtime.sysfs.blockRelease.countDown()
+                    try {
+                        worker.get(20, TimeUnit.SECONDS)
+                        barrier(runtime, "kiosk_lock")
+                    } finally { runtime.close() }
+                }
+                assertEquals(1, actuations)
+                assertEquals(success, config.kioskLock)
+                assertEquals(success, persistence.initialize()["kiosk_lock"])
+                assertEquals(receipt, InstallProgress.json(), "Late work does not rewrite the initial receipt")
+            }
+        }
+    }
+
+    @Test fun fullBackupRestoreCountsAnAcknowledgedKioskAsCompleted() = withRealConfigFixture { config, fixture ->
+        assertTrue(config.commitKioskLock(false))
+        val persistence = readField(config.prefs, "persistence") as JdbcStatePersistence
+        var actuations = 0
+        val runtime = rig(sharedConfig = config, kioskApply = { actuations++; true })
+        try {
+            field(fixture.server, "applySetting", { key: String, value: String ->
+                check(key == "kiosk_lock")
+                requestKioskSetting(config, { runtime.commands }, value) { false }
+            })
+            capabilities(fixture, Capabilities(appCanSu = true, networkAdb = true))
+            testApplication {
+                application { fixture.mount(this) }
+                val response = client.post("/api/v1/restore") {
+                    setBody(backup("\"friendly_name\":\"Restored\",\"kiosk_lock\":\"true\""))
+                }
+                assertEquals(HttpStatusCode.OK, response.status)
+                assertEquals("started", JSONObject(response.bodyAsText()).getString("status"))
+                assertTrue(awaitCondition { !InstallProgress.running })
+                val status = JSONObject(InstallProgress.json())
+                val result = status.getJSONObject("result")
+                assertEquals("Restored", config.friendlyName)
+                assertTrue(config.kioskLock)
+                assertEquals("Restored", persistence.initialize()["friendly_name"])
+                assertEquals(true, persistence.initialize()["kiosk_lock"])
+                assertEquals(1, actuations)
+                assertEquals("succeeded", result.getString("status"))
+                assertEquals("succeeded", result.getJSONObject("config").getString("status"))
+                assertEquals(2, result.getJSONObject("config").getInt("items"))
+                assertEquals("restore-completed", status.getJSONObject("presentation").getString("code"))
+            }
+        } finally { runtime.close() }
+    }
+
+    @Test fun fullBackupRestoreKeepsPendingWorkAcrossLaterFailuresAndRollback() {
+        for (failure in listOf("refused", "throw", "reconfigure")) withRealConfigFixture { config, fixture ->
+            val refuseLive = failure != "reconfigure"
+            assertTrue(config.commitKioskLock(false))
+            assertTrue(config.commitRaw(requireNotNull(SettingsRegistry.spec("touch_sound")), "false"))
+            val before = config.friendlyName
+            val called = mutableListOf<String>()
+            val persistence = readField(config.prefs, "persistence") as JdbcStatePersistence
+            var actuations = 0
+            val runtime = rig(sharedConfig = config, kioskApply = { actuations++; true })
+            runtime.sysfs.blockNextWrite("$RELAY_BASE/relay1")
+            val worker = CompletableFuture.supplyAsync { submitNative(runtime, "relay1", "ON") }
+            try {
+                assertTrue(runtime.sysfs.blockEntered.await(10, TimeUnit.SECONDS))
+                field(fixture.server, "applySetting", { key: String, value: String ->
+                    called += key
+                    when {
+                        key == "kiosk_lock" -> requestKioskSetting(config, { runtime.commands }, value) { false }
+                        refuseLive && key == "touch_sound" && value == "true" -> {
+                            if (failure == "throw") error("later live handler threw")
+                            LiveSettingRequestOutcome.REJECTED
+                        }
+                        else -> LiveSettingRequestOutcome.APPLIED
+                    }
+                })
+                var reconfigurations = 0
+                field(fixture.server, "onReconfigure", { _: Set<String> ->
+                    if (!refuseLive && reconfigurations++ == 0) error("reconfigure refused after live dispatch")
+                })
+                capabilities(fixture, Capabilities(appCanSu = true, networkAdb = true))
+                testApplication {
+                    application { fixture.mount(this) }
+                    val response = client.post("/api/v1/restore") {
+                        val laterLive = if (refuseLive) ",\"touch_sound\":\"true\"" else ""
+                        setBody(backup("\"friendly_name\":\"Restored\",\"kiosk_lock\":\"true\"$laterLive"))
+                    }
+                    assertEquals(HttpStatusCode.OK, response.status)
+                    assertEquals("started", JSONObject(response.bodyAsText()).getString("status"))
+                    assertTrue(awaitCondition { !InstallProgress.running })
+                    val status = JSONObject(InstallProgress.json())
+                    val result = status.getJSONObject("result")
+                    assertEquals(if (refuseLive) listOf("kiosk_lock", "touch_sound") else listOf("kiosk_lock"),
+                        called.take(if (refuseLive) 2 else 1), "Force pending before the later failure")
+                    assertEquals(before, config.friendlyName, "The admitted restore still rolls configuration back")
+                    assertFalse(config.kioskLock)
+                    assertEquals(0, actuations)
+                    assertEquals(before, persistence.initialize()["friendly_name"])
+                    assertEquals(false, persistence.initialize()["kiosk_lock"])
+                    assertEquals("rolled_back", result.getJSONObject("rollback").getString("status"))
+                    assertEquals("rolled_back", result.getJSONObject("config").getString("status"))
+                    assertEquals(1, result.getJSONObject("config").getInt("items"))
+                    assertTrue(result.getJSONObject("config").optString("detail").contains("pending: kiosk_lock"))
+                    assertEquals("partial", result.getString("status"))
+                    assertEquals("restore-partial", status.getJSONObject("presentation").getString("code"))
+                }
+            } finally {
+                runtime.sysfs.blockRelease.countDown()
+                try {
+                    worker.get(20, TimeUnit.SECONDS)
+                    barrier(runtime, "kiosk_lock")
+                } finally { runtime.close() }
+            }
+            assertFalse(config.kioskLock, "The existing rollback OFF wins after the worker drains")
+            assertEquals(false, persistence.initialize()["kiosk_lock"])
+            assertEquals(1, actuations, "The queued rollback OFF replaces the older kiosk work")
+        }
+    }
+
+    private fun backup(values: String) =
+        """{"kind":"ha-paneld-backup","schema":${SettingsRegistry.SCHEMA},"config":{$values}}"""
 
     @Test fun previewAndImportSkipUnsupportedKioskOnButRetainSupportedSettings() {
         for ((eligible, directSu) in listOf(false to false, true to false, false to true, true to true)) {

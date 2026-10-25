@@ -111,7 +111,7 @@ internal class AcceptedConfigTransaction(
         expectedHaOAuthEpoch: Long? = null,
         entityState: DashboardEntityBackupState? = null,
         existingOperationTicket: InstallProgress.Ticket? = null,
-        onDurableRevision: (String) -> Unit = {},
+        onDurableRevision: (String, ApplyAcceptedResult.Applied) -> Unit = { _, _ -> },
         afterCommitBeforeRenderer: (RendererConfigEffects, String) -> Unit = { _, _ -> },
         afterApply: () -> Unit = {},
         /** Checked once every lock is held, immediately before the commit: false makes the whole call [ApplyAcceptedResult.Stale]. */
@@ -215,25 +215,29 @@ internal class AcceptedConfigTransaction(
                 it !in liveKeys && it != "dashboard_entity_learning"
             }
             val pendingKeys = ArrayList<String>()
+            fun receipt() = ApplyAcceptedResult.Applied(appliedKeys.toList(), pendingKeys.toList())
+            fun publishDurableRevision() = onDurableRevision(
+                io.panelassistant.android.config.ConfigHash.of(values.revisionValues()), receipt(),
+            )
             runCatching {
                 // The base transaction deliberately excludes live keys. Publish every actually durable
                 // generation to rollback ownership, then converge all live values before any external
                 // Companion/profile work can fail.
-                onDurableRevision(io.panelassistant.android.config.ConfigHash.of(values.revisionValues()))
+                publishDurableRevision()
                 val previousHome = phase.previous.values["home_dashboard"].orEmpty()
                 phase.live.firstOrNull { it.first == "home_dashboard" }?.let { (_, value) ->
                     val applied = applySetting("home_dashboard", value)
-                    onDurableRevision(io.panelassistant.android.config.ConfigHash.of(values.revisionValues()))
-                    if (!applied.legacyAcknowledged) throw ConfigLiveApplyRefused("home_dashboard", appliedKeys.toList(), pendingKeys.toList())
                     if (applied == LiveSettingRequestOutcome.APPLIED) appliedKeys += "home_dashboard"
-                    else pendingKeys += "home_dashboard"
+                    else if (applied.legacyAcknowledged) pendingKeys += "home_dashboard"
+                    publishDurableRevision()
+                    if (!applied.legacyAcknowledged) throw ConfigLiveApplyRefused("home_dashboard", appliedKeys.toList(), pendingKeys.toList())
                 }
                 for ((k, v) in phase.live) if (k != "home_dashboard") {
                     val applied = applySetting(k, v)
-                    onDurableRevision(io.panelassistant.android.config.ConfigHash.of(values.revisionValues()))
-                    if (!applied.legacyAcknowledged) throw ConfigLiveApplyRefused(k, appliedKeys.toList(), pendingKeys.toList())
                     if (applied == LiveSettingRequestOutcome.APPLIED) appliedKeys += k
-                    else pendingKeys += k
+                    else if (applied.legacyAcknowledged) pendingKeys += k
+                    publishDurableRevision()
+                    if (!applied.legacyAcknowledged) throw ConfigLiveApplyRefused(k, appliedKeys.toList(), pendingKeys.toList())
                 }
                 val homeChanged = normalizeDashboardEntityPath(config.homeDashboard) !=
                     normalizeDashboardEntityPath(previousHome)
@@ -245,8 +249,8 @@ internal class AcceptedConfigTransaction(
                     if (enabled != config.dashboardEntityLearningEnabled && !setEntityLearningEnabled(enabled)) {
                         error("entity-learning transition failed")
                     }
-                    onDurableRevision(io.panelassistant.android.config.ConfigHash.of(values.revisionValues()))
                     appliedKeys += "dashboard_entity_learning"
+                    publishDurableRevision()
                 }
                 // Ordinary values and acknowledged live work are now durable; queued live work
                 // remains pending in the receipt. This same fence remains exact if either the
@@ -261,7 +265,7 @@ internal class AcceptedConfigTransaction(
             onReconfigure(accepted.keys)
             rendererFailure?.let { throw it }
             afterApply()
-            ApplyAcceptedResult.Applied(appliedKeys.toList(), pendingKeys.toList())
+            receipt()
         }
         result
         } finally {
@@ -365,9 +369,7 @@ internal class AcceptedConfigTransaction(
                     entityState = entityState,
                     existingOperationTicket = existingOperationTicket,
                     onDurableRevision = onDurableRevision,
-                    afterCommitBeforeRenderer = { effects, appliedHash ->
-                        afterCommitBeforeRenderer(effects, accepted.size, appliedHash)
-                    },
+                    afterCommitBeforeRenderer = afterCommitBeforeRenderer,
                     afterApply = afterApply,
                 )
                 check(result is ApplyAcceptedResult.Applied) {
@@ -375,7 +377,7 @@ internal class AcceptedConfigTransaction(
                         "configuration refused: ${result.message}"
                     } else "configuration commit failed"
                 }
-                accepted.size
+                result
             },
             rollbackConfig = { before, entityState, expectedRevision, ticket ->
                 transaction().applyAccepted(

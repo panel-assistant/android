@@ -27,10 +27,10 @@ internal fun interface RestoreConfigCommit {
         entityState: DashboardEntityBackupState?,
         expectedRevision: String,
         existingOperationTicket: InstallProgress.Ticket,
-        onDurableRevision: (String) -> Unit,
-        afterCommitBeforeRenderer: (RendererConfigEffects, Int, String) -> Unit,
+        onDurableRevision: (String, ApplyAcceptedResult.Applied) -> Unit,
+        afterCommitBeforeRenderer: (RendererConfigEffects, String) -> Unit,
         afterApply: () -> Unit,
-    ): Int
+    ): ApplyAcceptedResult.Applied
 }
 
 internal class RestoreExecutor(
@@ -82,7 +82,13 @@ internal class RestoreExecutor(
             revisionValues(before, beforeEntityState),
         )
         var configCommitted = false
-        var configItems = 0
+        var configReceipt = ApplyAcceptedResult.Applied(emptyList(), emptyList())
+        fun configDetail() = buildList {
+            if (configReceipt.pendingKeys.isNotEmpty()) {
+                add("pending: " + configReceipt.pendingKeys.joinToString(", "))
+            }
+            addAll(admittedPlan.warnings)
+        }.joinToString("; ")
         var restoredStateRows = 0
         var restoredCalibrations = 0
         val admittedStateCount = restorableState.size + ownerChoices.values.size + restorableIssues.size
@@ -124,17 +130,17 @@ internal class RestoreExecutor(
         if (wakeWordOutcome?.restored?.isNotEmpty() == true) runCatching { onWakeWordsChanged() }
         val wakeWordComponent = wakeWordOutcome?.let(::wakeWordRestoreComponent)
         val operation = runCatching {
-            configItems = commitConfig.apply(
+            configReceipt = commitConfig.apply(
                 admittedPlan.values,
                 entityState,
                 beforeRevisionHash,
                 existingOperationTicket = progress,
-                onDurableRevision = { appliedHash ->
+                onDurableRevision = { appliedHash, receipt ->
                     configCommitted = true
                     appliedRevisionHash = appliedHash
+                    configReceipt = receipt
                 },
-                afterCommitBeforeRenderer = { effects, acceptedCount, appliedHash ->
-                    configItems = acceptedCount
+                afterCommitBeforeRenderer = { effects, appliedHash ->
                     appliedRevisionHash = appliedHash
                     companionResult = companionPlan?.let(restoreCompanion)
                     if (companionResult?.ok == false) throw CompanionApplyFailed()
@@ -182,6 +188,8 @@ internal class RestoreExecutor(
                 // An archive that marked itself incomplete restored everything it held, and still
                 // must not report the plain success of one that held the panel's state.
                 message = when {
+                    configReceipt.pendingKeys.isNotEmpty() ->
+                        "Restore partially completed; live settings pending"
                     stateComponent()?.status == InstallProgress.Outcome.PARTIAL || policySkipIsPartial ->
                         "Restore partially completed; some panel state was not restored"
                     admittedPlan.skipped.isNotEmpty() -> "Restore partially completed; unavailable settings: " +
@@ -192,14 +200,14 @@ internal class RestoreExecutor(
                     else -> "Restore completed"
                 } + wakeWordRestoreNote(wakeWordOutcome),
                 structured = InstallProgress.OperationResult(
-                    status = if (admittedPlan.skipped.isNotEmpty() || policySkipIsPartial ||
+                    status = if (configReceipt.pendingKeys.isNotEmpty() || admittedPlan.skipped.isNotEmpty() || policySkipIsPartial ||
                         stateComponent()?.status == InstallProgress.Outcome.PARTIAL) InstallProgress.Outcome.PARTIAL
                         else restoreOverallStatus(wakeWordOutcome),
-                    config = if (admittedPlan.skipped.isEmpty()) succeededComponent(configItems)
+                    config = if (admittedPlan.skipped.isEmpty() && configReceipt.pendingKeys.isEmpty()) succeededComponent(configReceipt.appliedKeys.size)
                         else InstallProgress.ComponentResult(
                             InstallProgress.Outcome.PARTIAL,
-                            configItems,
-                            detail = admittedPlan.warnings.joinToString("; "),
+                            configReceipt.appliedKeys.size,
+                            detail = configDetail(),
                         ),
                     profiles = profileComponent(profileResult),
                     companion = companionResult?.component
@@ -208,7 +216,7 @@ internal class RestoreExecutor(
                     state = stateComponent(),
                 ),
                 presentation = when {
-                    admittedPlan.skipped.isNotEmpty() ||
+                    configReceipt.pendingKeys.isNotEmpty() || admittedPlan.skipped.isNotEmpty() ||
                         policySkipIsPartial || stateComponent()?.status == InstallProgress.Outcome.PARTIAL ||
                         restoreOverallStatus(wakeWordOutcome) != InstallProgress.Outcome.SUCCEEDED ->
                         InstallPresentation("restore-partial")
@@ -232,7 +240,7 @@ internal class RestoreExecutor(
                 if (restored) InstallProgress.ComponentResult(InstallProgress.Outcome.ROLLED_BACK)
                 else InstallProgress.ComponentResult(InstallProgress.Outcome.ROLLBACK_FAILED)
             } else null
-            val partial = companionResult?.ok == true ||
+            val partial = configReceipt.pendingKeys.isNotEmpty() || companionResult?.ok == true ||
                 (wakeWordComponent?.items ?: 0) > 0 ||
                 (stateComponent()?.items ?: 0) > 0 ||
                 companionResult?.component?.status == InstallProgress.Outcome.PARTIAL ||
@@ -245,10 +253,10 @@ internal class RestoreExecutor(
                     status = if (partial) InstallProgress.Outcome.PARTIAL else InstallProgress.Outcome.FAILED,
                     config = when {
                         rollback?.status == InstallProgress.Outcome.ROLLED_BACK ->
-                            InstallProgress.ComponentResult(InstallProgress.Outcome.ROLLED_BACK, configItems)
+                            InstallProgress.ComponentResult(InstallProgress.Outcome.ROLLED_BACK, configReceipt.appliedKeys.size, detail = configDetail())
                         rollback?.status == InstallProgress.Outcome.ROLLBACK_FAILED ->
-                            InstallProgress.ComponentResult(InstallProgress.Outcome.ROLLBACK_FAILED, configItems)
-                        configCommitted -> InstallProgress.ComponentResult(InstallProgress.Outcome.PARTIAL, configItems)
+                            InstallProgress.ComponentResult(InstallProgress.Outcome.ROLLBACK_FAILED, configReceipt.appliedKeys.size, detail = configDetail())
+                        configCommitted -> InstallProgress.ComponentResult(InstallProgress.Outcome.PARTIAL, configReceipt.appliedKeys.size, detail = configDetail())
                         else -> InstallProgress.ComponentResult(InstallProgress.Outcome.FAILED, 0)
                     },
                     profiles = profileRestartRejection?.let {

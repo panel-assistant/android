@@ -34,10 +34,10 @@ class RestoreExecutorTest {
             val executor = executor(
                 fixture,
                 applyState = { attempts++; 0 },
-                commit = RestoreConfigCommit { _, _, _, _, publish, _, afterApply ->
-                    publish("durable")
+                commit = RestoreConfigCommit { values, _, _, _, publish, _, afterApply ->
+                    publish("durable", applied(values))
                     afterApply()
-                    1
+                    applied(values)
                 },
                 rollback = { _, _, _, _ -> error("state loss must not undo committed configuration") },
             )
@@ -69,10 +69,10 @@ class RestoreExecutorTest {
                         assertEquals(listOf("porch"), catalog.available().map { it.id })
                         notified = true
                     },
-                    commit = RestoreConfigCommit { _, _, _, _, publish, _, _ ->
+                    commit = RestoreConfigCommit { values, _, _, _, publish, _, _ ->
                         assertTrue(notified)
                         assertEquals(listOf("porch"), catalog.available().map { it.id })
-                        publish("durable")
+                        publish("durable", applied(values))
                         error("configuration failed after rearming")
                     },
                     rollback = { _, _, _, _ -> rolledBack = true; true },
@@ -102,10 +102,10 @@ class RestoreExecutorTest {
             try {
                 val executor = executor(
                     fixture,
-                    commit = RestoreConfigCommit { _, _, _, _, publish, _, _ ->
+                    commit = RestoreConfigCommit { values, _, _, _, publish, _, _ ->
                         committed = true
-                        publish("durable")
-                        1
+                        publish("durable", applied(values))
+                        applied(values)
                     },
                     rollback = { _, _, _, _ -> error("partial import does not roll back configuration") },
                 )
@@ -138,10 +138,10 @@ class RestoreExecutorTest {
                     val executor = executor(
                         fixture,
                         currentValues = { before },
-                        commit = RestoreConfigCommit { _, _, _, receivedTicket, publish, _, _ ->
+                        commit = RestoreConfigCommit { values, _, _, receivedTicket, publish, _, _ ->
                             assertSame(ticket, receivedTicket)
-                            publish("first-durable-revision")
-                            publish("latest-durable-revision")
+                            publish("first-durable-revision", applied(values))
+                            publish("latest-durable-revision", applied(values))
                             error("failure after live settings were persisted")
                         },
                         rollback = { values, _, expected, receivedTicket ->
@@ -183,9 +183,9 @@ class RestoreExecutorTest {
                     commit = RestoreConfigCommit { values, _, _, receivedTicket, publish, _, afterApply ->
                         assertSame(ticket, receivedTicket)
                         committed = true
-                        publish("committed")
+                        publish("committed", applied(values))
                         afterApply()
-                        values.size
+                        applied(values)
                     },
                     rollback = { _, _, _, _ -> error("successful restore must not roll back") },
                 )
@@ -220,8 +220,8 @@ class RestoreExecutorTest {
                     fixture, capabilities = { caps },
                     commit = RestoreConfigCommit { values, _, _, _, publish, _, _ ->
                         applied = values
-                        publish("durable")
-                        values.size
+                        publish("durable", applied(values))
+                        applied(values)
                     },
                     rollback = { _, _, _, _ -> error("known skips do not roll back supported values") },
                 ).execute(
@@ -250,8 +250,8 @@ class RestoreExecutorTest {
                     fixture,
                     capabilities = { Capabilities(networkAdb = false) },
                     currentValues = { mapOf("panel_id" to "before", "network_adb" to "false") },
-                    commit = RestoreConfigCommit { _, _, _, _, publish, _, _ ->
-                        publish("durable")
+                    commit = RestoreConfigCommit { values, _, _, _, publish, _, _ ->
+                        publish("durable", applied(values))
                         error("supported setting failed")
                     },
                     rollback = { values, _, _, _ -> rollbackValues = values; true },
@@ -281,7 +281,7 @@ class RestoreExecutorTest {
                     currentValues = { mapOf("panel_id" to "before", "network_adb" to "false") },
                     commit = RestoreConfigCommit { values, _, _, _, publish, _, _ ->
                         assertEquals("true", values["network_adb"])
-                        publish("durable")
+                        publish("durable", applied(values))
                         caps = Capabilities(networkAdb = false)
                         error("network ADB apply failed after privilege was lost")
                     },
@@ -311,9 +311,9 @@ class RestoreExecutorTest {
                 executor(
                     fixture,
                     commit = RestoreConfigCommit { values, _, _, _, publish, afterCommitBeforeRenderer, _ ->
-                        publish("durable")
-                        afterCommitBeforeRenderer(RendererConfigEffects(false, false, false, null), values.size, "durable")
-                        values.size
+                        publish("durable", applied(values))
+                        afterCommitBeforeRenderer(RendererConfigEffects(false, false, false, null), "durable")
+                        applied(values)
                     },
                     rollback = { _, _, _, _ -> rolledBack = true; true },
                     restoreCompanion = {
@@ -360,9 +360,9 @@ class RestoreExecutorTest {
                 executor(
                     fixture,
                     commit = RestoreConfigCommit { values, _, _, _, publish, _, afterApply ->
-                        publish("durable")
+                        publish("durable", applied(values))
                         afterApply()
-                        values.size
+                        applied(values)
                     },
                     rollback = { _, _, _, _ -> rolledBack = true; true },
                     profileAdmin = admin,
@@ -382,6 +382,9 @@ class RestoreExecutorTest {
             }
         }
     }
+
+    private fun applied(values: Map<String, String>) =
+        ApplyAcceptedResult.Applied(values.keys.toList(), emptyList())
 
     private fun executor(
         fixture: PaneldServerHttpFixture,
