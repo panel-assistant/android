@@ -119,10 +119,11 @@ internal class PageShell(
 <script src="assets/i18n.js"></script>
 <script src="assets/transport.js"></script>
 <script>/* Over the stub's socket a download link names its operation (data-op): fetch it through the page transport, as in the sidebar relay.
-A link marked data-relay-only (a stub path such as diag) keeps its plain link on the socket page. A modified click keeps the plain link; a new tab opens before the request, as a click must open it, and the file keeps the panel's name. */
+A link marked data-relay-only (a stub path such as diag) keeps its plain link on the socket page. A modified click keeps the plain link; a new tab opens before the request, as a click must open it, and the file keeps the panel's name.
+In the sidebar the page is an opaque sandboxed frame that cannot detach a new tab's opener, so there the file is saved instead. */
 document.addEventListener('click',function(e){var a=e.target&&e.target.closest&&e.target.closest('a[data-op]');
 if(!a||e.defaultPrevented||e.button||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey||!(document.body.hasAttribute('data-ui-relay')||(document.body.hasAttribute('data-ui-socket')&&!a.hasAttribute('data-relay-only')))||!window.PaneldTransport)return;e.preventDefault();
-var w=a.target==='_blank'?window.open('','_blank'):null;if(w)w.opener=null;
+var w=a.target==='_blank'&&!document.body.hasAttribute('data-ui-relay')?window.open('','_blank'):null;if(w)w.opener=null;
 PaneldTransport.request(a.getAttribute('data-op'),{}).then(function(r){if(r.outcome!=='applied')throw new Error(r.code||r.outcome);
 var b=typeof Blob!=='undefined'&&r.result instanceof Blob?r.result:new Blob([typeof r.result==='string'?r.result:JSON.stringify(r.result,null,2)],{type:typeof r.result==='string'?'text/plain':'application/json'});
 var named=((r.headers&&r.headers['content-disposition'])||'').match(/filename="?([^";]+)"?/);
