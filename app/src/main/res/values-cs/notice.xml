@@ -11,7 +11,7 @@
     <string name="notice_hero_version_check">Kontrola verze</string>
     <string name="notice_hero_finding_dashboards">Hledání ovládacích panelů</string>
     <string name="notice_hero_upgrade_ha">Aktualizovat HA</string>
-    <string name="notice_hero_ancient_webview">Prastarý Webview</string>
+    <string name="notice_hero_ancient_webview">Prastarý WebView</string>
     <string name="notice_hero_filter_failed">Filtr selhal</string>
     <string name="notice_hero_filter_refused">Filtr odmítnut</string>
     <string name="notice_hero_reading">Čtení</string>

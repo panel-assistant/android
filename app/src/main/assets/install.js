@@ -27,7 +27,7 @@
   var RESTORE_OUTCOME = Object.freeze({"succeeded":"install.restore_outcome.succeeded","partial":"install.restore_outcome.partial","failed":"install.restore_outcome.failed","skipped":"install.restore_outcome.skipped","rolled_back":"install.restore_outcome.rolled_back","rollback_failed":"install.restore_outcome.rollback_failed"});
   var RADIO_STATE = Object.freeze({"off":"install.radio_state.off","starting":"install.radio_state.starting","healthy":"install.radio_state.healthy","degraded_unjoined":"install.radio_state.degraded_unjoined","degraded_high_cpu":"install.radio_state.degraded_high_cpu","runaway":"install.radio_state.runaway","contained":"install.radio_state.contained","containment_failed":"install.radio_state.containment_failed","unknown":"install.radio_state.unknown"});
   var CONFIG_IMPORT_STATUS = Object.freeze({"too-large":"install.config_import_status.too_large","timeout":"install.config_import_status.timeout","bad-bundle":"install.config_import_status.bad_bundle","wrong-kind-or-schema":"install.config_import_status.wrong_kind_or_schema","bad-expected-cfg":"install.config_import_status.bad_expected_cfg","rejected":"install.config_import_status.rejected","dry_run":"install.config_import_status.dry_run","no-op":"install.config_import_status.no_op","stale-preview":"install.config_import_status.stale_preview","error":"install.config_import_status.error","database-compatibility-refused":"install.config_import_status.database_compatibility_refused","applied":"install.config_import_status.applied","partial":"install.config_import_status.partial","restored":"install.config_import_status.restored"});
-  var COMPONENT_LABEL = Object.freeze({paneld:'Panel Assistant',companion:'HA Companion',webview:'System WebView',apk:'APK'});
+  var COMPONENT_LABEL = Object.freeze({paneld:'Panel Assistant',companion:'Home Assistant Companion',webview:'System WebView',apk:'APK'});
   var POWER_PRESENTATION_STATE = Object.freeze({'status-power-at-risk':'at_risk','status-power-caution':'caution','status-power-unknown':'unknown'});
   function closedToken(table, value) {
     var raw = String(value == null ? '' : value), key = table[raw];
@@ -376,10 +376,10 @@
   // internal_url, then force-stop + relaunch the Companion.
   window.repairCompUrl = function (btn) {
     btn.disabled = true; var s = document.getElementById('cu-fix');
-    if (s) s.textContent = t('install.progress.companion_repairing', 'Repairing + relaunching the Companion…');
+    if (s) s.textContent = t('install.progress.companion_repairing', 'Repairing + relaunching Home Assistant Companion…');
     approved('companion.repair_url', {}, function (text) { if (s) s.textContent = text; }).then(function (d) {
       if (d.status === 'busy') { if (s) s.textContent = t('install.progress.operation_busy', 'Another operation is running — try again shortly.'); btn.disabled = false; return; }
-      if (s) setPresented(s, d.presentation, t('install.progress.companion_repair_started', 'Repair started — the Companion will relaunch; refresh this page in a few seconds to confirm.'));
+      if (s) setPresented(s, d.presentation, t('install.progress.companion_repair_started', 'Repair started — Home Assistant Companion will relaunch; refresh this page in a few seconds to confirm.'));
     }).catch(function (error) { if (s) s.textContent = requestFailure(error, t('install.progress.companion_repair_failed', 'Failed to start — check root.')); btn.disabled = false; });
   };
 
@@ -778,7 +778,7 @@
         var comp = d.companion_files ? pluralText('install.backup.preview_files.one', 'install.backup.preview_files.other', d.companion_files, '{package} ({count} file)', '{package} ({count} files)', { package: d.companion_pkg, count: String(d.companion_files) }) : t('install.backup.dynamic.preview_none', 'none');
         prev.innerHTML = '<table class="dt"><tr><th>' + esc(t('install.backup.dynamic.preview_panel', 'Panel')) + '</th><td>' + esc(d.panel_id) + '</td></tr>' +
           '<tr><th>' + esc(t('install.backup.dynamic.preview_config_keys', 'Config keys')) + '</th><td>' + esc(d.config_keys) + '</td></tr>' +
-          '<tr><th>' + esc(t('install.backup.dynamic.preview_companion', 'Companion login')) + '</th><td>' + esc(comp) + '</td></tr></table>' +
+          '<tr><th>' + esc(t('install.backup.dynamic.preview_companion', 'Home Assistant Companion login')) + '</th><td>' + esc(comp) + '</td></tr></table>' +
           // Only when the bundle marked itself incomplete. A healthy backup says nothing here, so the
           // warning cannot become background furniture the owner stops reading.
           (d.state_unavailable ? '<p class="note">⚠ ' + esc(t('install.backup.dynamic.preview_state_unavailable', 'This backup carries no panel state: the panel it came from could not read its own database. Restoring it will not bring panel state back.')) + '</p>' : '') +
@@ -793,7 +793,7 @@
 
   window.restoreConfirm = function (btn) {
     if (!rsFile) return;
-    if (!confirm(t('install.backup.dynamic.restore_confirm', 'Restore overwrites this panel\'s config and Companion login. Continue?'))) return;
+    if (!confirm(t('install.backup.dynamic.restore_confirm', 'Restore overwrites this panel\'s config and Home Assistant Companion login. Continue?'))) return;
     var pw = (document.getElementById('rs-pw') || {}).value || '';
     btn.disabled = true; bkMsg(t('install.backup.dynamic.restoring', 'Restoring…'));
     approved('restore', { passphrase: pw, blob: rsFile }, bkMsg).then(function (d) {

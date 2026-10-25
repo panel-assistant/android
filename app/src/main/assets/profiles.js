@@ -574,7 +574,7 @@
     if (!root) return;
     root.textContent = "";
     if (!issues || !issues.length) {
-      var empty = document.createElement("div"); empty.className = "profile-empty"; empty.textContent = t("profiles.catalog.healthy", "Catalog and active runtime are healthy."); root.appendChild(empty); return;
+      var empty = document.createElement("div"); empty.className = "profile-empty"; empty.textContent = t("profiles.catalog.healthy", "Catalogue and active runtime are healthy."); root.appendChild(empty); return;
     }
     issues.forEach(function (issue) {
       var rawSeverity = string(issue.severity || "error");
@@ -586,7 +586,7 @@
         error: function () { return t("profiles.severity.error", "error"); },
       };
       var loc = document.createElement("span"); loc.className = "profile-issue-loc"; loc.textContent = issue.path ? string(issue.path) : closedText(rawSeverity, severityLabels);
-      var compatibility = string(issue.message || t("profiles.catalog.issue_default", "Profile catalog issue"));
+      var compatibility = string(issue.message || t("profiles.catalog.issue_default", "Profile catalogue issue"));
       var message = document.createElement("span"); message.textContent = presentedText(issue, compatibility);
       row.appendChild(loc); row.appendChild(message); root.appendChild(row);
     });
@@ -780,7 +780,7 @@
       model.preview = null;
       var issue = error.body && error.body.issues && error.body.issues[0];
       var reason = issue ? presentedText(issue, issue.message || issue.code) : presentedError(error);
-      if (error.status === "not_commandable") setStatus(presentedError(error, t("profiles.error.stale_preview", "This preview or catalog revision is stale. Validate again before saving.")), "error");
+      if (error.status === "not_commandable") setStatus(presentedError(error, t("profiles.error.stale_preview", "This preview or catalogue revision is stale. Validate again before saving.")), "error");
       else setStatus(t("profiles.error.save_failed", "Save failed: {error} Resolve the issue, then Validate again.", { error: reason }), "error");
     }).finally(function () { model.loading = false; updateActions(); });
   }
@@ -899,7 +899,7 @@
           var issue = error.body && error.body.issues && error.body.issues[0];
           var reason = issue ? presentedText(issue, issue.message || issue.code) : presentedError(error);
           setStatus(error.status === "not_commandable"
-            ? presentedError(error, t("profiles.error.activation_catalog_changed", "The profile catalog changed in another tab. Reload and confirm again."))
+            ? presentedError(error, t("profiles.error.activation_catalog_changed", "The profile catalogue changed in another tab. Reload and confirm again."))
             : t("profiles.error.activation_failed", "Activation failed: {error}", { error: reason }), "error");
         }
       }).finally(function () { model.loading = false; updateActions(); });
@@ -934,7 +934,7 @@
       postJson("profiles.delete", { id: summary.ref.id, revision: summary.ref.revision, expected_catalog_revision: model.catalogRevision, confirm: true }).then(function (result) {
         var compatibility = string(result.message || t("profiles.status.deleted", "Profile deleted."));
         setStatus(presentedText(result, compatibility), "ok"); return loadCatalog();
-      }).catch(function (error) { setStatus(error.status === "not_commandable" ? presentedError(error, t("profiles.error.delete_catalog_changed", "The catalog changed; reload before deleting.")) : t("profiles.error.delete_failed", "Delete failed: {error}", { error: presentedError(error) }), "error"); })
+      }).catch(function (error) { setStatus(error.status === "not_commandable" ? presentedError(error, t("profiles.error.delete_catalog_changed", "The catalogue changed; reload before deleting.")) : t("profiles.error.delete_failed", "Delete failed: {error}", { error: presentedError(error) }), "error"); })
         .finally(function () { model.loading = false; updateActions(); });
     }, t("profiles.action.delete_revision", "Delete revision"));
   }

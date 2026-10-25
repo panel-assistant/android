@@ -353,7 +353,7 @@ object SettingsRegistry {
         SettingSpec(
             key = "auto_sleep", type = SettingType.BOOL, group = "Behaviour",
             tier = Tier.BASIC, summary = "Turn the screen off when nobody is around or after inactivity.",
-            label = "Auto sleep", default = "false", scope = Scope.DEVICE,
+            label = "Auto-sleep", default = "false", scope = Scope.DEVICE,
             liveApply = true,
             help = "Switch the screen off after the selected presence mode’s learned delay or the chosen touch inactivity delay. Manual screen control remains separate.",
             ha = haEntity("switch", "auto_sleep") {
@@ -884,19 +884,19 @@ object SettingsRegistry {
             label = "Ship logs", default = "false", scope = Scope.DEVICE,
             // "its own logcat" was ambiguous: the Logs tab offers App and System sources, so it read
             // as though both were shipped. Only ha-paneld's own process log leaves the panel.
-            help = "Forward Panel Assistant's own process log — not the full system log — to a central sink " +
+            help = "Forward Panel Assistant's own process log — not the full system log — to a central log collector " +
                 "(LAN-only, tokens and passwords redacted).",
         ),
         SettingSpec(
             key = "log_ship_system_enabled", type = SettingType.BOOL, group = "Logging",
             tier = Tier.ADVANCED, summary = "Also send Android system logs to the collector.",
             label = "Ship system logs", default = "false", scope = Scope.DEVICE,
-            help = "Forward Android system logs to the same sink when Ship logs is on.\n\n- Off by default.\n- Requires TCP or HTTP, and root or the installed helper.\n- Entries are redacted; high-volume output may be dropped.",
+            help = "Forward Android system logs to the same collector when Ship logs is on.\n\n- Off by default.\n- Requires TCP or HTTP, and root or the installed helper.\n- Entries are redacted; high-volume output may be dropped.",
         ),
         SettingSpec(
             key = "log_ship_host", type = SettingType.STRING, group = "Logging",
             tier = Tier.ADVANCED, summary = "Log collector address. Blank turns shipping off.",
-            label = "Sink host", default = "", scope = Scope.DEVICE,
+            label = "Log collector host", default = "", scope = Scope.DEVICE,
             maxChars = 253,
             help = "Log-collector host; blank keeps shipping inert. A scheme or :port here is honoured " +
                 "(udp://collector, collector:1514).",
@@ -904,16 +904,16 @@ object SettingsRegistry {
         SettingSpec(
             key = "log_ship_port", type = SettingType.INT, group = "Logging",
             tier = Tier.ADVANCED, summary = "Log collector port.",
-            label = "Sink port", default = "514", min = 1.0, max = 65535.0, scope = Scope.DEVICE,
+            label = "Log collector port", default = "514", min = 1.0, max = 65535.0, scope = Scope.DEVICE,
         ),
         SettingSpec(
             key = "log_ship_protocol", type = SettingType.ENUM, group = "Logging",
-            tier = Tier.ADVANCED, summary = "Transport to the collector. TCP reports a refused sink.",
+            tier = Tier.ADVANCED, summary = "Transport to the collector. TCP reports a refused collector.",
             label = "Protocol", default = LogShipEndpoint.DEFAULT_PROTOCOL,
             options = LogShipEndpoint.PROTOCOLS,
             aliases = LogShipEndpoint.ALIASES,
             scope = Scope.DEVICE,
-            help = "TCP is the default because it reports a sink that is refusing or unreachable; UDP " +
+            help = "TCP is the default because it reports a collector that is refusing or unreachable; UDP " +
                 "cannot, so a wrong setting there fails silently. Port 514 serves both.",
         ),
 
@@ -972,7 +972,7 @@ object SettingsRegistry {
             key = "proximity_level", type = SettingType.INT, group = "Sensors",
             tier = Tier.BASIC, summary = "Learned proximity level, 0 to 100 percent.",
             label = "Proximity level", default = "",
-            help = "Normalized learned proximity level from 0 to 100 percent; binary sources report 0 or 100.",
+            help = "Normalised learned proximity level from 0 to 100 percent; binary sources report 0 or 100.",
             haExposedByDefault = true,
             availableWhen = { it.hasLearnedProximity },
             ha = haEntity("sensor", "proximity_level", readOnly = true, periodicRefresh = true) {

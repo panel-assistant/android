@@ -149,9 +149,9 @@
       "text": "Verifica dell’Area Home Assistant del pannello…"
     },
     "configure.auto_sleep.assign_area_first": {
-      "sourceHash": "342775e1e3b7adb8d31beda3b9f7a3dbb61d6b0d579c090aaa1e10d744ccb47a",
-      "state": "machine-cross-checked",
-      "text": "Assegna il pannello a un’Area Home Assistant prima di abilitare la sospensione automatica."
+      "text": "Assegna il pannello a un’Area Home Assistant prima di abilitare la sospensione automatica.",
+      "sourceHash": "610c5f9bffbe12983d739eff3c963983aca70d2d1393444bb98b3263efe95b74",
+      "state": "machine-cross-checked"
     },
     "configure.auto_sleep.assigned": {
       "sourceHash": "8191888dd97cae12497400274f0ceaa806cc83e10a2a9ecd94e996fd15d38cc8",
@@ -369,8 +369,8 @@
       "text": "La connessione al pannello è cambiata. Riconnessione alla cronologia attività…"
     },
     "configure.auto_sleep.panel_setup_help": {
-      "text": "Usa il rilevamento di presenza calibrato di questo pannello. Configura prima la prossimità; la sospensione automatica si interrompe se il sensore non è disponibile.",
-      "sourceHash": "ea85622f28796597982364529b4fd1ad3fdff8f7e2b5419a7f06105b99aed523",
+      "text": "Usa il rilevamento di presenza calibrato di questo pannello. Configura prima la prossimità; la sospensione automatica va in pausa se il sensore non è disponibile.",
+      "sourceHash": "cdb0778f8a3ee174e25f92b9caf13755073d1df3c8d9c280503eb2555871fed2",
       "state": "machine-cross-checked"
     },
     "configure.auto_sleep.phase": {
@@ -384,9 +384,9 @@
       "text": "Motivo: {reason}"
     },
     "configure.auto_sleep.reconnect_first": {
-      "sourceHash": "ae2afccde997f6236408650fdb5a6a6d8d29ac1950b16ffcf2626be94e819353",
-      "state": "machine-cross-checked",
-      "text": "Riconnetti Home Assistant prima di abilitare la sospensione automatica."
+      "text": "Riconnetti Home Assistant prima di abilitare la sospensione automatica.",
+      "sourceHash": "8b7da6d6dd3641cc5649d6e1a1c9221f143d1b763a9960a2b17be67c73146ff2",
+      "state": "machine-cross-checked"
     },
     "configure.auto_sleep.response_unreadable": {
       "sourceHash": "8029f2a27f8fc34805040e8f609dfd1bf119a57c6d21226b722fe2e80b47c306",
@@ -909,9 +909,9 @@
       "state": "machine-cross-checked"
     },
     "configure.display.recommend_prefix": {
-      "sourceHash": "4d979ffba01fc73a7ac81c32b38e5cbf5e4cfe0baaaa103108e6182da71c9442",
-      "state": "machine-cross-checked",
-      "text": " Si consiglia di usare "
+      "text": " Si consiglia di usare ",
+      "sourceHash": "bb4092e4aa49fd4b03f535cf50837666df1548c5c1e9956fc0623e809fb24c93",
+      "state": "machine-cross-checked"
     },
     "configure.display.recommend_suffix": {
       "sourceHash": "3a3a94c4d8734ac0bf929af4a08ad3d85c0b698f2a890af8bf131f585a080a68",
@@ -919,9 +919,9 @@
       "text": " per risultati migliori"
     },
     "configure.display.sizing": {
-      "sourceHash": "fe67dda7f8deb07ddda67fa64e03fa32e44e164b089056bd990b1a8a5014cfa3",
-      "state": "machine-cross-checked",
-      "text": "Dimensioni schermo"
+      "text": "Dimensioni dello schermo",
+      "sourceHash": "75aebbbcd5f71341cc126ea916a97a7a1ece8578d4c559f53039d4228fec6d57",
+      "state": "machine-cross-checked"
     },
     "configure.duration.hours_minutes": {
       "sourceHash": "cf8484035b7fa8c13811a16b0f926ad7f56b4161501e105431231873eae43156",
@@ -1494,13 +1494,13 @@
       "state": "machine-cross-checked"
     },
     "configure.proximity.message.normalized_learning": {
-      "text": "La presenza è normalizzata per HA. Qualche altro gesto completo abiliterà la riattivazione con gesto.",
-      "sourceHash": "cd5edcc884a4c9c5bbcd0832097bf37d0afd916b21fe33f450b3d6ffb1675deb",
+      "text": "La presenza è normalizzata per Home Assistant. Qualche altro gesto completo abiliterà la riattivazione con gesto.",
+      "sourceHash": "470e97d0e474502a3c78dcfb1f36bd3cede88fbff61f9899318578c280de3cb4",
       "state": "machine-cross-checked"
     },
     "configure.proximity.message.normalized_ready": {
-      "text": "La prossimità è normalizzata per HA e la riattivazione richiede un gesto deliberato completo.",
-      "sourceHash": "da8688f783adb9300e349cf7aa949f3829d9ff32182355af4e1a951dd245d148",
+      "text": "La prossimità è normalizzata per Home Assistant e la riattivazione richiede un gesto deliberato completo.",
+      "sourceHash": "94a80a00c1a8148b468b8ff46ceb445bc941b0ce3e8ff77b862edd9740064e12",
       "state": "machine-cross-checked"
     },
     "configure.proximity.message.safety_reset_failed": {
@@ -1509,8 +1509,8 @@
       "state": "machine-cross-checked"
     },
     "configure.proximity.message.signal_changed_paused": {
-      "text": "Il segnale è cambiato. Le segnalazioni HA e la riattivazione con gesto sono in pausa mentre viene appreso un nuovo intervallo sicuro.",
-      "sourceHash": "bf8faf8c9e9301d0148a23658617f21884b3d0cdf98a4ce0fc47ae963b4e219c",
+      "text": "Il segnale è cambiato. Le segnalazioni a Home Assistant e la riattivazione con gesto sono in pausa mentre viene appreso un nuovo intervallo sicuro.",
+      "sourceHash": "640ef548d9152bca5c18d4c3321aef87170832e4aa156270fa4dccca4b7db38d",
       "state": "machine-cross-checked"
     },
     "configure.proximity.message.signal_changed_restart": {
@@ -2034,8 +2034,8 @@
       "state": "machine-cross-checked"
     },
     "configure.voice.download_help": {
-      "text": "Modelli addestrati e pubblicati da altri. Prima di scaricarlo, controlla chi lo ha creato e la sua licenza.",
-      "sourceHash": "03db31eb796091dba4fdc509ff632c3440e44a171431312abc903f0966ce0bc7",
+      "text": "Modelli addestrati e pubblicati da altri. Prima di scaricarli, controlla chi li ha creati e le loro licenze.",
+      "sourceHash": "befe3100a7df4079f6806ae60599068dbcde6083cbb2dbf5221df08e344a3bad",
       "state": "machine-cross-checked"
     },
     "configure.voice.download_license": {
@@ -2149,9 +2149,9 @@
       "text": "Richiesta di associazione non riuscita ({error})."
     },
     "configure.zigbee.join_help": {
-      "sourceHash": "6e78f0923185718229d870e8a3f1d3a6b798dee7922fd42154f6b3406cc60ad1",
-      "state": "machine-cross-checked",
-      "text": "Abilita l’associazione sul coordinatore, poi richiedi la modalità ripetitore."
+      "text": "Abilita «Permit join» (consenti associazione) sul coordinatore, poi richiedi la modalità ripetitore.",
+      "sourceHash": "3c5005b77e7466ed5d60d40027610ad401951078ed1dc0169e545616b2cf8aff",
+      "state": "machine-cross-checked"
     },
     "configure.zigbee.join_network": {
       "sourceHash": "ebbf14574beb960f63afdacf11d337ac5ec3da4907880b3fafb798ff20235066",
@@ -2164,9 +2164,9 @@
       "text": "È stata inviata di recente una richiesta di associazione."
     },
     "configure.zigbee.request_help": {
-      "sourceHash": "8a1e10df95b4b9e4c7dc40fdb9e5df22d6f4c9ac48eff1713280893102de88c7",
-      "state": "machine-cross-checked",
-      "text": "Richiedi la modalità ripetitore mentre il coordinatore accetta associazioni."
+      "text": "Richiedi la modalità ripetitore mentre «Permit join» (consenti associazione) è attivo sul coordinatore.",
+      "sourceHash": "ff660bbee951908084b49e841c47bf864d534de936b34aa44eff748cdaf2d6b2",
+      "state": "machine-cross-checked"
     },
     "configure.zigbee.request_join": {
       "sourceHash": "d92dd6e9ae2daa457a2a9db8d42aa03fe2d722761b0c2936a65bda785bdc9e76",
@@ -2354,9 +2354,9 @@
       "text": "questa build ha aperto un nuovo archivio di stato perché il suo schema è meno recente; alcune impostazioni potrebbero essere state reimpostate. Il database precedente resta sul pannello per il ripristino."
     },
     "dashboard.banner.schema_rollback.or_restore": {
-      "sourceHash": "c4ae614553a2b22db8a4953db19a3b0d4cc99abc6914d1162d7cef90af4befc7",
-      "state": "machine-cross-checked",
-      "text": "oppure ripristina un backup nella"
+      "text": "Oppure ripristina un backup usando",
+      "sourceHash": "2b2290df7a635839bac57df93c4ed886c38b5b7da37ee0e6b672d4c9f7be80e1",
+      "state": "machine-cross-checked"
     },
     "dashboard.banner.schema_rollback.title": {
       "sourceHash": "c6b434eb6d5f96ee9185ae968a89e7a1039ba9b2aad65bde00e6555a02b7fc78",
@@ -3424,24 +3424,24 @@
       "text": "Nome descrittivo"
     },
     "dashboard.fact.ha_companion": {
-      "sourceHash": "4ba71aa7515c52cb40ea08235d8d48a96cde7c51ab3475d8327ca6a984a8b62f",
-      "state": "machine-cross-checked",
-      "text": "HA Companion"
+      "text": "Home Assistant Companion",
+      "sourceHash": "d4794875e93209cc00ea616d7a117c0217182920d3cc3193c886a164f337ba31",
+      "state": "machine-cross-checked"
     },
     "dashboard.fact.ha_lifecycle": {
-      "sourceHash": "49e67338e36425bd16f3dd557c9f814fbf6a8398b6aee904473891029642fcfa",
-      "state": "machine-cross-checked",
-      "text": "Ciclo di vita HA"
+      "text": "Ciclo di vita di Home Assistant",
+      "sourceHash": "2f41981401a365dbd678c59e6f4a8249aa13a0c494dd0bb7344e30327fba9473",
+      "state": "machine-cross-checked"
     },
     "dashboard.fact.ha_network_path": {
-      "sourceHash": "3c86761b01aa8d00f6f4c44d82ffc8de5230e998c6a223e86cee9e724b628c06",
-      "state": "machine-cross-checked",
-      "text": "Percorso di rete HA"
+      "text": "Percorso di rete di Home Assistant",
+      "sourceHash": "28b8ff6f94f309358872dabb5fa4137a6f9a0e8e1e77d36b7a05a6efa1042e87",
+      "state": "machine-cross-checked"
     },
     "dashboard.fact.ha_renderer": {
-      "sourceHash": "c9f13e2fb6406ed3eab20ce8206c7f55ecdc59f78b71f318f98e5239f4d5849f",
-      "state": "machine-cross-checked",
-      "text": "Renderer HA"
+      "text": "Renderer di Home Assistant",
+      "sourceHash": "39f6d0d3090bb74551343981acafd80f85488d3f2241a731e3aff18343fc415e",
+      "state": "machine-cross-checked"
     },
     "dashboard.fact.http_port": {
       "sourceHash": "dab12d2ccc22d28d77d15011eb0be2e1dc726358bdec5aa7f8515ddad29e2bc3",
@@ -3799,9 +3799,9 @@
       "text": "Nessuna sorgente di prossimità"
     },
     "dashboard.proximity.ready": {
-      "sourceHash": "d1ae4383e215c98ae7a375b970ec44769975efe65f08e79ad8df42b8276c9a02",
-      "state": "machine-cross-checked",
-      "text": "Pronto · {mode} · normalizzato 0–100"
+      "text": "Pronto · {mode} · normalizzato 0–100",
+      "sourceHash": "66bac97ad4e184973e0a8a287875250f360521ffaf081481dd274af6ee5794af",
+      "state": "machine-cross-checked"
     },
     "dashboard.proximity.waiting_first_reading": {
       "sourceHash": "4349215e0cbf815aa0d54ea8d5e716471830b4e205a8a611e69a39fb64db31f9",
@@ -4454,9 +4454,9 @@
       "text": "nessun sensore su questo pannello"
     },
     "dashboard.sensors.normalized": {
-      "sourceHash": "fcc968a8f322f062884c3275d6993ae75d8ebfc3a770c7ff62dc3fd922259cd0",
-      "state": "machine-cross-checked",
-      "text": "· {percent}% normalizzato · {phase}"
+      "text": "· {percent}% normalizzato · {phase}",
+      "sourceHash": "7448068b47fced7f5147c37a0e05837b050df2281fbd636cb835dd9f5d9d46bd",
+      "state": "machine-cross-checked"
     },
     "dashboard.sensors.note": {
       "sourceHash": "1f6f4f6027a437487039e5c3332f9644a9bd582a3212f1acb1a5c689f20f55b1",
@@ -5264,9 +5264,9 @@
       "text": "Modifica suggerita:"
     },
     "entities.issue.template-selector.reason": {
-      "sourceHash": "4755146e2a3c04202182895b6c776c7b2d778450321e67b1e08ab63a58b6e8a7",
-      "state": "machine-cross-checked",
-      "text": "Panel Assistant non valuta i modelli, quindi non può stabilire quali entità restituisca questo filtro. Le entità che il modello si limita a leggere sono gestite da Home Assistant e distribuite al di fuori di questo filtro; è quindi corretto che siano assenti qui e non richiedono alcun intervento."
+      "text": "Panel Assistant non valuta i modelli, quindi non può stabilire quali entità restituisca questo filtro. Le entità che il modello si limita a leggere sono gestite da Home Assistant e distribuite al di fuori di questo filtro; è quindi corretto che siano assenti qui e non richiedono alcun intervento.",
+      "sourceHash": "aee273a3e5ec886d87dcdecb5d64263abaccb84ad259db773a9dfcfdf4c75254",
+      "state": "machine-cross-checked"
     },
     "entities.issue.template-selector.recommendation": {
       "sourceHash": "2698ccb1ebcabb0e1a92b42b0bf165eba907a2cef2922162d496b0786bfa0b5c",
@@ -5509,8 +5509,8 @@
       "text": "Avvio della scansione non riuscito."
     },
     "entities.scan.starting": {
-      "text": "Scansione del catalogo HA e della plancia; la sottoscrizione attiva cambia solo se i criteri abilitati individuano un insieme diverso.",
-      "sourceHash": "b9d9942984c51d0d893c364fb1e4233d89f172b7edcb4ac83280d055e079cf5d",
+      "text": "Scansione del catalogo delle entità di Home Assistant e della plancia; la sottoscrizione attiva cambia solo se i criteri abilitati individuano un insieme diverso.",
+      "sourceHash": "0ab493cdacacf82df6354a03cf5d142eae1f726a52aa8bd6a624ab4ce3a4cec6",
       "state": "machine-cross-checked"
     },
     "entities.scan.status_unavailable": {
@@ -6104,14 +6104,14 @@
       "text": "Controllo di integrità"
     },
     "install.backup.companion.helper_required": {
-      "sourceHash": "85b4160dad92a2df9525c996031cf0e71ed3f731359463b55e6189927d77977c",
-      "state": "machine-cross-checked",
-      "text": "Il backup dell’accesso di HA Companion richiede la versione corrente dell’helper Panel Assistant. Aggiorna o esegui nuovamente il provisioning di questo pannello con root per abilitarlo."
+      "text": "Il backup dell’accesso di Home Assistant Companion richiede la versione corrente dell’helper Panel Assistant. Aggiorna o esegui nuovamente il provisioning di questo pannello con root per abilitarlo.",
+      "sourceHash": "7bbade58530582487566566efe8452df12852554b0c6e57269253b9e119c1416",
+      "state": "machine-cross-checked"
     },
     "install.backup.companion.include_login": {
-      "sourceHash": "68a40664db6b16ee69214a3af245fb6e43dca89c26430278b7d88047bb5e1ff9",
-      "state": "machine-cross-checked",
-      "text": "Includi l’accesso di HA Companion"
+      "text": "Includi l’accesso di Home Assistant Companion",
+      "sourceHash": "80cdd425c53ed182ee00322c6c00ec352b456131019758e77ed61b60307b9c4f",
+      "state": "machine-cross-checked"
     },
     "install.backup.config_bundle.description": {
       "sourceHash": "35f454e577b5b356501fa24c7f754d8f5cdd8400c1ab232b4c77431548c645b1",
@@ -6139,14 +6139,14 @@
       "text": "Pacchetto di configurazione"
     },
     "install.backup.description.config_only": {
-      "sourceHash": "207a767ba27bc28c2683b818d4eb867435fa2c20f2c6e699a65ee9232ba71aa6",
-      "state": "machine-cross-checked",
-      "text": "Un pacchetto con la configurazione Panel Assistant di questo pannello. I backup contengono credenziali e, per impostazione predefinita, sono crittografati con la tua passphrase; se la perdi, non può essere recuperata."
+      "text": "Un pacchetto con la configurazione Panel Assistant di questo pannello. I backup contengono credenziali e, per impostazione predefinita, sono crittografati con la tua passphrase; se la perdi, non può essere recuperata.",
+      "sourceHash": "69ccd495bbd0b44b88ff270205cafeba138c82d4d8140ca9772af1779bd66ad5",
+      "state": "machine-cross-checked"
     },
     "install.backup.description.with_companion": {
-      "sourceHash": "b88b35b77dcf3f735c462a265bae8493c5b5bdbed8ff59e4a4f3d5b8a36f726d",
-      "state": "machine-cross-checked",
-      "text": "Un pacchetto con la configurazione Panel Assistant di questo pannello e l’accesso di HA Companion. I backup contengono credenziali e, per impostazione predefinita, sono crittografati con la tua passphrase; se la perdi, non può essere recuperata."
+      "text": "Un pacchetto con la configurazione Panel Assistant di questo pannello e l’accesso di Home Assistant Companion. I backup contengono credenziali e, per impostazione predefinita, sono crittografati con la tua passphrase; se la perdi, non può essere recuperata.",
+      "sourceHash": "1b4a7f02efea0e8183a49e1983518bc12c6333a46f47b4cf0cdbe582614d4daa",
+      "state": "machine-cross-checked"
     },
     "install.backup.download": {
       "sourceHash": "669211280b637c0855891124d3ac8c013d2de7d2a128402cf3a17ab0e6d7bd91",
@@ -6249,9 +6249,9 @@
       "text": "Inserisci una passphrase oppure conferma esplicitamente lo ZIP in chiaro non crittografato."
     },
     "install.backup.dynamic.preview_companion": {
-      "sourceHash": "a3fc55b59be7ed4d1208fe616ca1405b7326170db3d881d724f9c8c52e583327",
-      "state": "machine-cross-checked",
-      "text": "Accesso a Companion"
+      "text": "Accesso a Home Assistant Companion",
+      "sourceHash": "3c5bfd860c785c9cde6ccfca04223612bd27129ad1a73d40fa15346c01415d60",
+      "state": "machine-cross-checked"
     },
     "install.backup.dynamic.preview_config_keys": {
       "sourceHash": "361f87bb7c897517e80d6140d0e91e9a57893b3366d7a94533f63ba019293a8f",
@@ -6284,9 +6284,9 @@
       "text": "richiesta non riuscita"
     },
     "install.backup.dynamic.restore_confirm": {
-      "sourceHash": "45131b43ed2624f4dac0513d95c29edae28819f5ac6f090403b48ee5befa8927",
-      "state": "machine-cross-checked",
-      "text": "Il ripristino sovrascrive la configurazione e l’accesso a Companion di questo pannello. Continuare?"
+      "text": "Il ripristino sovrascrive la configurazione e l’accesso a Home Assistant Companion di questo pannello. Continuare?",
+      "sourceHash": "32087960356ef1d2c9018eaa9b545af85eeb57391006937a001b622259587b55",
+      "state": "machine-cross-checked"
     },
     "install.backup.dynamic.restore_now": {
       "sourceHash": "983de6dbc369f41533a600215dd40dee2eaf2504071f7a7e9653650213ee4aa4",
@@ -6349,9 +6349,9 @@
       "text": "sovrascrive la configurazione di questo pannello; prima dell’applicazione vedrai un’anteprima del contenuto del pacchetto."
     },
     "install.backup.restore.description.with_companion": {
-      "sourceHash": "1dce4528d79e5fdae184cdef165a48dc161d5db5c0a3ec153bb70ac51e9df771",
-      "state": "machine-cross-checked",
-      "text": "sovrascrive la configurazione del pannello e riscrive l’accesso di HA Companion (arrestandola forzatamente); prima dell’applicazione vedrai un’anteprima del contenuto del pacchetto."
+      "text": "sovrascrive la configurazione del pannello e riscrive l’accesso di Home Assistant Companion (arrestandola forzatamente); prima dell’applicazione vedrai un’anteprima del contenuto del pacchetto.",
+      "sourceHash": "d57478b5b49f20ad34c70ad93e5db324a46c1ac558299ea2762ab4b7d9b74975",
+      "state": "machine-cross-checked"
     },
     "install.backup.restore.passphrase_placeholder": {
       "sourceHash": "241fdd0f0504918a81533d29614db8b5f7b92ffc5c19808ac11fdc94e37df064",
@@ -6374,29 +6374,29 @@
       "text": "Pacchetti del produttore"
     },
     "install.companion.error.helper_busy": {
-      "sourceHash": "bd72fd8b3124959c616cb91ed361f86344f27fdf37bc90faf023768f701dac29",
-      "state": "machine-cross-checked",
-      "text": "L’helper di Companion è occupato"
+      "text": "Helper di Home Assistant Companion occupato",
+      "sourceHash": "adca81cf589f7bb3e5e2aeeecb6c19532d3d7e6af993c90a0ded421149f3fbef",
+      "state": "machine-cross-checked"
     },
     "install.companion.error.helper_unavailable": {
-      "sourceHash": "7ff8ce015e30889d9cc37648e0f3cf6e03b100156bed873f69993b5339e18cca",
-      "state": "machine-cross-checked",
-      "text": "L’helper di Companion non è disponibile"
+      "text": "L’helper di Home Assistant Companion non è disponibile",
+      "sourceHash": "91c572b84e2e5f12f23152ddd4e4e399b6d8cb5ea58449f7254e5096f0b05192",
+      "state": "machine-cross-checked"
     },
     "install.companion.error.marker_failed": {
-      "sourceHash": "bcf33daf2b195cd0bf26848ff1e14f60bc1cd537f618bd3eaa1e09d924d4b855",
-      "state": "machine-cross-checked",
-      "text": "Impossibile salvare il marcatore di sicurezza dell’operazione Companion"
+      "text": "Impossibile salvare il marcatore di sicurezza dell’operazione di Home Assistant Companion",
+      "sourceHash": "f65b8b9d86d0c4b38165568e1757d591e3195c8bd37731b4bcaf6461d891a9f0",
+      "state": "machine-cross-checked"
     },
     "install.companion.urls_repaired.one": {
-      "sourceHash": "ab1dad8519985db12bf5a67459819495c00a3fc6d14958d1454977458327e3c3",
-      "state": "machine-cross-checked",
-      "text": "riparato {count} server — URL interno impostato sull’URL esterno; Companion riavviata"
+      "text": "riparato {count} server — URL interno impostato sull’URL esterno; Home Assistant Companion riavviata",
+      "sourceHash": "2e0bb1dd0e69e1022aa67cf1bfbb97102454607c03b2f95b8d5a3d82c846e29a",
+      "state": "machine-cross-checked"
     },
     "install.companion.urls_repaired.other": {
-      "sourceHash": "f0c7a86e0f56af0cd82b7ffdd47cbb1e27911edb1baa1328a9871a394ca35353",
-      "state": "machine-cross-checked",
-      "text": "riparati {count} server — URL interno impostato sull’URL esterno; Companion riavviata"
+      "text": "riparati {count} server — URL interno impostato sull’URL esterno; Home Assistant Companion riavviata",
+      "sourceHash": "1c1dddc8e2952fdcd5bf4e55fb24974c77d7db64cc12946a835b2975db6d6662",
+      "state": "machine-cross-checked"
     },
     "install.component_status.bad_action": {
       "sourceHash": "04852b17ebf0a245cab7804ced1f31f6934a67a857db347e3db44c13c9bac1ed",
@@ -6574,8 +6574,8 @@
       "text": "predefinito 1.0"
     },
     "install.display.description": {
-      "text": "Sperimentale / R&S: i valori corretti non sono ancora definitivi; sperimenta liberamente. Adatta le dimensioni di una plancia HA a quelle di un browser desktop. La densità ridimensiona l’intero layout (dpi inferiori = più contenuti visibili); le dimensioni del testo ridimensionano il testo di WebView. Il firmware del pannello spesso fornisce valori non adatti allo schermo fisico. Le modifiche vengono applicate immediatamente, persistono dopo il riavvio e richiedono un accesso privilegiato supportato al pannello.",
-      "sourceHash": "1eb292dfc02940bac236c1e68132d3a14997fb03b39eba6a834066faa93eb703",
+      "text": "Sperimentale / R&S: i valori corretti non sono ancora definitivi; sperimenta liberamente. Adatta le dimensioni di una plancia di Home Assistant a quelle di un browser desktop. La densità ridimensiona l’intero layout (dpi inferiori = più contenuti visibili); le dimensioni del testo ridimensionano il testo di WebView. Il firmware del pannello spesso fornisce valori non adatti allo schermo fisico. Le modifiche vengono applicate immediatamente, persistono dopo il riavvio e richiedono un accesso privilegiato supportato al pannello.",
+      "sourceHash": "5e97348c3ea77a0f8b232346421555ca377c5c4fc7b4f5dd286e938d87462a9b",
       "state": "machine-cross-checked"
     },
     "install.display.firmware_default": {
@@ -6679,9 +6679,9 @@
       "text": "backup annullato"
     },
     "install.presentation.backup_companion_too_large": {
-      "sourceHash": "1101a9bdfc4798f20675bddb2bde0326be3a47b3035848445781a030277a641c",
-      "state": "machine-cross-checked",
-      "text": "Il backup di Companion è troppo grande"
+      "text": "Il backup di Home Assistant Companion è troppo grande",
+      "sourceHash": "39e579ff3fd5d203d3e1ecd4b5b5d85aad3fd6d79ed419a3b0af680f4d07cde1",
+      "state": "machine-cross-checked"
     },
     "install.presentation.backup_import_partial_selection_unchanged": {
       "sourceHash": "8c2d8345bac7bca850fcd9063cdbffe13692632792b6e6b666e1a12f12cbee8f",
@@ -6704,19 +6704,19 @@
       "state": "machine-cross-checked"
     },
     "install.presentation.backup_restore_rejected_before_mutation": {
-      "sourceHash": "b80876accead761400633dffbe6c55e0dbe94e01678dabf741467ad8b18c7f3d",
-      "state": "machine-cross-checked",
-      "text": "Il ripristino del catalogo dei profili è stato rifiutato prima di apportare modifiche."
+      "text": "Il ripristino del catalogo dei profili è stato rifiutato prima di apportare modifiche.",
+      "sourceHash": "8670a9b6aa9eee833d74bbaee10c6e9d63c84c020896cb864305ed8b54356908",
+      "state": "machine-cross-checked"
     },
     "install.presentation.backup_restored_selection_staged": {
-      "sourceHash": "71d179990d3bdbab24c8dc55c8ab5a9cd6af24ed3707703477c00ea94c59c9f7",
-      "state": "machine-cross-checked",
-      "text": "Catalogo dei profili ripristinato; selezione predisposta per un riavvio subordinato a una verifica di funzionamento."
+      "text": "Catalogo dei profili ripristinato; selezione predisposta per un riavvio subordinato a una verifica di funzionamento.",
+      "sourceHash": "aa91880b368b255aac60bb9778680a5b198e091df54e473a6f0bb3235a54f881",
+      "state": "machine-cross-checked"
     },
     "install.presentation.backup_restored_selection_unchanged": {
-      "sourceHash": "785d68796453312b3f246617dd55d45a7cafb201ade8aa0eb89657a2b5b4a270",
-      "state": "machine-cross-checked",
-      "text": "Catalogo dei profili ripristinato; la selezione è invariata."
+      "text": "Catalogo dei profili ripristinato; la selezione è invariata.",
+      "sourceHash": "d94b476fd2b42af19cab1b6767bcf3eac56b7ce69971d5728ba9e67d3ff86d6c",
+      "state": "machine-cross-checked"
     },
     "install.presentation.backup_selection_restore_failed": {
       "sourceHash": "da5f008eb582e2ffe71c82bd960c0b56ddae151f9cdc697f7a864798f4390c15",
@@ -6729,14 +6729,14 @@
       "text": "Impossibile rimuovere i dati temporanei sensibili del backup. Controlla la memoria del pannello e riprova; nessun backup è stato scaricato."
     },
     "install.presentation.companion_helper_busy": {
-      "sourceHash": "bd72fd8b3124959c616cb91ed361f86344f27fdf37bc90faf023768f701dac29",
-      "state": "machine-cross-checked",
-      "text": "L’helper di Companion è occupato"
+      "text": "Helper di Home Assistant Companion occupato",
+      "sourceHash": "adca81cf589f7bb3e5e2aeeecb6c19532d3d7e6af993c90a0ded421149f3fbef",
+      "state": "machine-cross-checked"
     },
     "install.presentation.companion_helper_unavailable": {
-      "sourceHash": "7ff8ce015e30889d9cc37648e0f3cf6e03b100156bed873f69993b5339e18cca",
-      "state": "machine-cross-checked",
-      "text": "L’helper di Companion non è disponibile"
+      "text": "L’helper di Home Assistant Companion non è disponibile",
+      "sourceHash": "91c572b84e2e5f12f23152ddd4e4e399b6d8cb5ea58449f7254e5096f0b05192",
+      "state": "machine-cross-checked"
     },
     "install.presentation.companion_indeterminate": {
       "sourceHash": "9b1e2f162c2e00bd2b1f0b1152ea24aa7973fc62cb928e00ede3060041fc364d",
@@ -6744,9 +6744,9 @@
       "text": "lo stato finale del ripristino è indeterminato"
     },
     "install.presentation.companion_marker_failed": {
-      "sourceHash": "bcf33daf2b195cd0bf26848ff1e14f60bc1cd537f618bd3eaa1e09d924d4b855",
-      "state": "machine-cross-checked",
-      "text": "Impossibile salvare il marcatore di sicurezza dell’operazione Companion"
+      "text": "Impossibile salvare il marcatore di sicurezza dell’operazione di Home Assistant Companion",
+      "sourceHash": "f65b8b9d86d0c4b38165568e1757d591e3195c8bd37731b4bcaf6461d891a9f0",
+      "state": "machine-cross-checked"
     },
     "install.presentation.companion_owner_restored": {
       "sourceHash": "dd290669fb84a7635003840fd45c717b4690214efdca0cd936c089ee4bb43167",
@@ -6754,14 +6754,14 @@
       "text": "proprietario/contesto ripristinato"
     },
     "install.presentation.companion_payload_invalid": {
-      "sourceHash": "e921cb252399b43f1034764e7813cd35f2021189756bb024424571971c4795ee",
-      "state": "machine-cross-checked",
-      "text": "Convalida del payload di Companion non riuscita"
+      "text": "Convalida del payload di Home Assistant Companion non riuscita",
+      "sourceHash": "5dc63600065c38ef8541c36a6ad8392eb4063025a55be38bc9f6e4736aa20a8a",
+      "state": "machine-cross-checked"
     },
     "install.presentation.companion_prior_files_retained": {
-      "sourceHash": "6b6e401a8b46b3e9556a57b4cbe9914906f00c1b53282c1c5aa0819ef3c38b08",
-      "state": "machine-cross-checked",
-      "text": "ripristino non riuscito; file precedenti di Companion conservati"
+      "text": "ripristino non riuscito; file precedenti di Home Assistant Companion conservati",
+      "sourceHash": "ace3751794a5c116b4ae694245ff68523ff2bf85b2e4dc643f4ff560a0690a52",
+      "state": "machine-cross-checked"
     },
     "install.presentation.companion_rejected_before_commit": {
       "sourceHash": "d5a6ebcb9867def3e5afd89d8d608f6690e7e298c6c89490a1f5139e9ec93d7e",
@@ -6769,19 +6769,19 @@
       "text": "ripristino rifiutato prima del commit"
     },
     "install.presentation.companion_relaunch_unconfirmed": {
-      "sourceHash": "bb4c8ff5ebb62321b03ea41dbf1aa8b94324e3b5738861fc414a2605c4db3665",
-      "state": "machine-cross-checked",
-      "text": "file ripristinati, ma il riavvio di Companion non è stato confermato"
+      "text": "file ripristinati, ma il riavvio di Home Assistant Companion non è stato confermato",
+      "sourceHash": "6afc2cc5c94d884743679a623d63d3793457d5e2b3658bcf4437985894f746c2",
+      "state": "machine-cross-checked"
     },
     "install.presentation.companion_rollback_failed": {
-      "sourceHash": "186bdcdc3b12e49ed3dfee4d0de307d39e938bb6956fe4c994be65d273082b56",
-      "state": "machine-cross-checked",
-      "text": "ripristino e rollback non riusciti; lo stato di Companion potrebbe essere parziale"
+      "text": "ripristino e rollback non riusciti; lo stato di Home Assistant Companion potrebbe essere parziale",
+      "sourceHash": "1691aab20f060881152314a2d7d877008ea224b33ca2c4fd491816493982619e",
+      "state": "machine-cross-checked"
     },
     "install.presentation.companion_unsupported_package": {
-      "sourceHash": "f37ecf7b506b23384678259f098be2cf28acdcaf24d6309331b8c892657b2152",
-      "state": "machine-cross-checked",
-      "text": "Il pacchetto Companion non è un pacchetto installato supportato"
+      "text": "Il pacchetto Home Assistant Companion non è un pacchetto installato supportato",
+      "sourceHash": "694829453e4d803a7de90e7a57066f8182d07c0c6c4413de8b92c1292e6f0fbc",
+      "state": "machine-cross-checked"
     },
     "install.presentation.component_not_present": {
       "sourceHash": "4a6080efcc757a04f1d2d851d48ddd1495ed3587fb4b18fc2ff167660393cab2",
@@ -6944,9 +6944,9 @@
       "text": "{package} disinstallato"
     },
     "install.presentation.profile_catalog_restore_unavailable": {
-      "sourceHash": "2539623e45bed0f96a08c068a4e9c2788015eb68c8c746e303ad2d7adc580c62",
-      "state": "machine-cross-checked",
-      "text": "Il ripristino del catalogo dei profili non è disponibile."
+      "text": "Il ripristino del catalogo dei profili non è disponibile.",
+      "sourceHash": "281ccaff65a716c71a7375fd8aa2fb7e3f9cc1ff3b81f1e0c325987bc23a5d96",
+      "state": "machine-cross-checked"
     },
     "install.presentation.restore_app_state_invalid": {
       "sourceHash": "ebe236ea5430ffd9de73f7ff34091f03da5ab8502f86ff15c5a8ef97b82d1b1f",
@@ -6964,14 +6964,14 @@
       "text": "metadati dell’archivio di backup non validi"
     },
     "install.presentation.restore_companion_helper_required": {
-      "sourceHash": "059d2f9018d81fa44f7358fa5978fae6adc6ea999eee6658be8e0cfab1aaf23f",
-      "state": "machine-cross-checked",
-      "text": "Il ripristino di Companion richiede l’helper Panel Assistant corrente"
+      "text": "Il ripristino di Home Assistant Companion richiede l’helper Panel Assistant corrente",
+      "sourceHash": "932c4287bebca40b7cae8f9ecf2b5db268265d60232ddbcb7fae7f630924f6ed",
+      "state": "machine-cross-checked"
     },
     "install.presentation.restore_companion_section_invalid": {
-      "sourceHash": "92ffed6f90cd1201a409dab6021ac415ef2910d8d9760e68e9c27597483b472a",
-      "state": "machine-cross-checked",
-      "text": "Sezione di ripristino di Companion non valida"
+      "text": "Sezione di ripristino di Home Assistant Companion non valida",
+      "sourceHash": "e87d282d31818ce18e8c874d5c30eec690cf5ca7ac3a5469dd7a42667a49eaf2",
+      "state": "machine-cross-checked"
     },
     "install.presentation.restore_completed": {
       "sourceHash": "d054b6105189ae7b6f3f87b3a6ce564bc8c3d3c2ebe6a441b23c46f071ce4030",
@@ -7049,19 +7049,19 @@
       "text": "voce dell’archivio dei profili non valida"
     },
     "install.presentation.restore_profile_catalog_invalid": {
-      "sourceHash": "2479d8b3ef477da64a34f23ab4ede579ca5528d651738b2380681a0542ae7d83",
-      "state": "machine-cross-checked",
-      "text": "catalogo dei profili non valido"
+      "text": "catalogo dei profili non valido",
+      "sourceHash": "0ca72a657b69b22015cbf34e1b0fc409d5989f7a9cc4c729563d0d4aed7880ba",
+      "state": "machine-cross-checked"
     },
     "install.presentation.restore_profile_catalog_not_restorable": {
-      "sourceHash": "f272d4d8cc71526b31360136440db1e9bbe7628fb0290d9e96e536920bbc8bbe",
-      "state": "machine-cross-checked",
-      "text": "il catalogo dei profili non può essere ripristinato"
+      "text": "il catalogo dei profili non può essere ripristinato",
+      "sourceHash": "06cd72961b4ab2d80e91e651292dd9dcd8ce77b9831201d4d18cf09e2595b9d7",
+      "state": "machine-cross-checked"
     },
     "install.presentation.restore_profile_restore_unavailable": {
-      "sourceHash": "f33793bc261a630ee064e9732add72ea1615005739d81224186cf9307d633c9f",
-      "state": "machine-cross-checked",
-      "text": "il ripristino del catalogo dei profili non è disponibile"
+      "text": "il ripristino del catalogo dei profili non è disponibile",
+      "sourceHash": "0f27fddeaa5f28c4b5edcdf0cd89ab5839b42eb8eeb1f5d6d354930eb6966da1",
+      "state": "machine-cross-checked"
     },
     "install.presentation.restore_profiles_object_invalid": {
       "sourceHash": "d78738aebcd5ea1dfc4defcd4d0993450538457477490c07f5b2bad23b8ffe5f",
@@ -7084,8 +7084,8 @@
       "text": "oggetto state non valido"
     },
     "install.presentation.status_builtin_renderer_retries_stopped": {
-      "text": "⛔ Il renderer integrato ha smesso di riprovare dopo ripetuti errori di WebView. Aggiorna o ripara System WebView, quindi usa Ricarica plancia dalla barra di navigazione del pannello o dalla scheda Dashboard.",
-      "sourceHash": "1b5418807f2f485ae2f516c802d5e0801c94630d573966d230b92d877e08417e",
+      "text": "⛔ Il renderer integrato ha smesso di riprovare dopo ripetuti errori di WebView. Aggiorna o ripara System WebView, quindi usa Ricarica plancia dalla barra di navigazione del pannello o Ricarica dalla scheda Dashboard.",
+      "sourceHash": "c98ec8f9289f157190bd1a2f45f6dbcfde337bff8b1aa141061225645c01ec4b",
       "state": "machine-cross-checked"
     },
     "install.presentation.status_companion_probe_failed": {
@@ -7094,8 +7094,8 @@
       "text": "⚠ Impossibile controllare le impostazioni di Home Assistant Companion; Panel Assistant manterrà l’ultimo risultato noto e riproverà automaticamente."
     },
     "install.presentation.status_external_renderer_crash_loop": {
-      "text": "⛔ L’app della plancia continua ad arrestarsi in modo anomalo — il watchdog ha smesso di riavviarla per evitare una sequenza continua di riavvii. Reinstalla o esegui il downgrade dell’app della plancia/Companion oppure riavvia il pannello.",
-      "sourceHash": "42858bae496ba84d6e265afb20e07fe3adedbe091111df9daa5cc5537be88c5a",
+      "text": "⛔ L’app della plancia continua ad arrestarsi in modo anomalo — il watchdog ha smesso di riavviarla per evitare una sequenza continua di riavvii. Reinstalla o esegui il downgrade dell’app della plancia o di Home Assistant Companion oppure riavvia il pannello.",
+      "sourceHash": "dad7c93f5ccae7c6ef04af3da6af9e1d1cd257622e5040e2c6d8ee579d06aa9f",
       "state": "machine-cross-checked"
     },
     "install.presentation.status_no_renderer": {
@@ -7229,14 +7229,14 @@
       "text": "Avvio non riuscito — controlla l’accesso root."
     },
     "install.progress.companion_repair_started": {
-      "sourceHash": "6db6488f412ce5c7b5e9353b5f34fddec5274099e864d9a9736bdde78024903c",
-      "state": "machine-cross-checked",
-      "text": "Riparazione avviata — Companion verrà riavviata; aggiorna questa pagina tra qualche secondo per verificare."
+      "text": "Riparazione avviata — Home Assistant Companion verrà riavviata; aggiorna questa pagina tra qualche secondo per verificare.",
+      "sourceHash": "4276c988935676d019df70392456fdc509504aeec1ce065aff7c24fdfa85f09c",
+      "state": "machine-cross-checked"
     },
     "install.progress.companion_repairing": {
-      "sourceHash": "e271aaa4deb6e2242b996ff77fa63b136152af72d0a26aad09e400ad3f977b53",
-      "state": "machine-cross-checked",
-      "text": "Riparazione e riavvio di Companion…"
+      "text": "Riparazione e riavvio di Home Assistant Companion…",
+      "sourceHash": "a3685b30f8a336f5ddf1b4d1d993b52e76fc67925c031fd862457aad4cd182ec",
+      "state": "machine-cross-checked"
     },
     "install.progress.could_not_start": {
       "sourceHash": "18e2e48d4bb00852505658c6a8a0d721c59cb8beb133864c6b32c1be6177d54b",
@@ -7699,9 +7699,9 @@
       "text": "Disinstalla un’app"
     },
     "install.warning.no_renderer.install_companion": {
-      "sourceHash": "0117aa1b31dd5f775fd4a3a105fbed38418eb5f679289dfc65c49ca56fa99084",
-      "state": "machine-cross-checked",
-      "text": "Installa HA Companion"
+      "text": "Installa Home Assistant Companion",
+      "sourceHash": "8c893a0ceac2a392b3d771558af608e386ee0d7497a8c97854e3eab5c2122386",
+      "state": "machine-cross-checked"
     },
     "install.warning.no_renderer.progress": {
       "sourceHash": "e44a9bcadf0eb8b464b5dcb387834d5eade7ed452fc4ce9b161eb4e41ca6ee6a",
@@ -8034,14 +8034,14 @@
       "text": "Approva questa richiesta sul pannello, quindi riprova."
     },
     "profiles.catalog.healthy": {
-      "sourceHash": "c37b62f14e325aa02d6f8b3761a4cc2c21f066f946e4b3a9f1b300a6e0e6eafc",
-      "state": "machine-cross-checked",
-      "text": "Il catalogo e il runtime attivo sono integri."
+      "text": "Il catalogo e il runtime attivo sono integri.",
+      "sourceHash": "01becbcb689d770fce647edf0518638c3ee23b6a54417becbb6f7802c8b1cbe9",
+      "state": "machine-cross-checked"
     },
     "profiles.catalog.issue_default": {
-      "sourceHash": "a9201c818ae19bfabfef129c251584ec3ee61176b33a8ddad1e9b9a7fcaa59f2",
-      "state": "machine-cross-checked",
-      "text": "Problema del catalogo dei profili"
+      "text": "Problema del catalogo dei profili",
+      "sourceHash": "734fcf7e059f41e5a93779b2b26234d3161ad7a175cae36b526702f584a53031",
+      "state": "machine-cross-checked"
     },
     "profiles.catalog.option.bundled": {
       "sourceHash": "974d26d6979cf8f927f7bfedc571a6762397de407c9a0644a05d570accdea6da",
@@ -8254,9 +8254,9 @@
       "text": "Profilo non salvato"
     },
     "profiles.error.activation_catalog_changed": {
-      "sourceHash": "0716bcb535cf64b7517b71031ec1f8f8215f117f32d17aa9d6c88cd15d646e95",
-      "state": "machine-cross-checked",
-      "text": "Il catalogo dei profili è stato modificato in un'altra scheda. Ricarica e conferma di nuovo."
+      "text": "Il catalogo dei profili è stato modificato in un'altra scheda. Ricarica e conferma di nuovo.",
+      "sourceHash": "215620db13fa4503cad47cf1e43ea580030eb7b320873482e52b1423f322ca2e",
+      "state": "machine-cross-checked"
     },
     "profiles.error.activation_failed": {
       "sourceHash": "5a21d4f81c0f4e6d08025ce49dafc5d5eb287eac47c088a21b113dfe30a50e9d",
@@ -8284,9 +8284,9 @@
       "text": "Impossibile creare un modello: {error}"
     },
     "profiles.error.delete_catalog_changed": {
-      "sourceHash": "cfee6dc954ee34e78c4d4dfbe7ed6f2bb368181c4d2acc7b41a0ad92ab9bbf9d",
-      "state": "machine-cross-checked",
-      "text": "Il catalogo è stato modificato; ricaricalo prima di eliminare."
+      "text": "Il catalogo è stato modificato; ricarica prima di eliminare.",
+      "sourceHash": "5c16174eb50324cbbe042a44d250dcdcbed02ba58eae07415fa5013f32aeaabb",
+      "state": "machine-cross-checked"
     },
     "profiles.error.delete_failed": {
       "sourceHash": "04bd5a33edf887482af19bada696d6d470991b8a900b867f64faba49192bc16e",
@@ -8329,9 +8329,9 @@
       "text": "Salvataggio non riuscito: {error} Risolvi il problema, quindi convalida di nuovo."
     },
     "profiles.error.stale_preview": {
-      "sourceHash": "02b3cad9f516301a115486d9012f28059a0598771d521459b584c3571a458f02",
-      "state": "machine-cross-checked",
-      "text": "Questa anteprima o revisione del catalogo è obsoleta. Convalida di nuovo prima di salvare."
+      "text": "Questa anteprima o revisione del catalogo è obsoleta. Convalida di nuovo prima di salvare.",
+      "sourceHash": "01e03bc614ced0be8311938c2df34431fa0c0f59d08f0acfad63747ade90c848",
+      "state": "machine-cross-checked"
     },
     "profiles.error.too_large": {
       "sourceHash": "caf4d79b67e7f7cbb849043b1a307e8ae3e1a4c27a8629faa607e2af67276419",
@@ -8439,9 +8439,9 @@
       "text": "Manca il profilo generico integrato di riserva."
     },
     "profiles.issue.capability-driver-required": {
-      "sourceHash": "3ff0a52ca2217daa24abe939e76b9ff53b3cad8e4f26ffa806024a89951f4b75",
-      "state": "machine-cross-checked",
-      "text": "La funzionalità richiede il driver del core '{value}'."
+      "text": "La funzionalità richiede il driver di Panel Assistant '{value}'.",
+      "sourceHash": "7cb28b600d6dfe6aef80d9caa2b6efd191de307fe9dac31ae8282edd2314a7f9",
+      "state": "machine-cross-checked"
     },
     "profiles.issue.catalog-fallback-invalid-emergency-used": {
       "sourceHash": "7956b121f11112bebb98fee152debc5f1ad804cb336313b30034782411bd1a37",
@@ -8449,9 +8449,9 @@
       "text": "Il profilo generico integrato di riserva manca o non è valido; verrà usato il profilo di emergenza privo di funzionalità."
     },
     "profiles.issue.core-version-required": {
-      "sourceHash": "ca646b289d70a5952071f7c7bfd1352720f6f5f3c065d925e6d9343877724eb4",
-      "state": "machine-cross-checked",
-      "text": "Richiede Panel Assistant {required} o versione successiva; questo core è {current}."
+      "text": "Richiede Panel Assistant {required} o versione successiva; la versione installata è {current}.",
+      "sourceHash": "4f623f0418a10493475dd65a15e59034788881fa9644cb8874092359f3a14bd4",
+      "state": "machine-cross-checked"
     },
     "profiles.issue.cpu-cluster-count-limit": {
       "sourceHash": "76e67d73c6c2e084b74aad1aa83d3e85e003aa44b44d471f399c488063132b16",
@@ -8609,9 +8609,9 @@
       "text": "Revisione importata ignorata: quota complessiva di byte superata."
     },
     "profiles.issue.imported-catalog-count-quota": {
-      "sourceHash": "c61ee4ce322c0425fcf4f9fc88726227ec9b2a7e5f2e77491c28798299b11365",
-      "state": "machine-cross-checked",
-      "text": "Revisione importata ignorata: quota del numero di elementi del catalogo superata."
+      "text": "Revisione importata ignorata: quota del numero di elementi del catalogo superata.",
+      "sourceHash": "536d670d0640dc96e81d50c05dd5bfb15f1e99af48d784d45ff09443bfb2bb2d",
+      "state": "machine-cross-checked"
     },
     "profiles.issue.imported-document-id-mismatch": {
       "sourceHash": "1e601c4ec30da79526a540ba571d8711c1c7b713b1e31bb3a11af6a54c0a13d8",
@@ -8659,9 +8659,9 @@
       "state": "machine-cross-checked"
     },
     "profiles.issue.license-expression-invalid": {
-      "sourceHash": "aafed991ae300ed702ee5fe2dcbb9549e51135fd8a44745b17d761e11e27478b",
-      "state": "machine-cross-checked",
-      "text": "È richiesta un'espressione di licenza in stile SPDX entro i limiti consentiti."
+      "text": "È richiesta un'espressione di licenza in stile SPDX entro i limiti consentiti.",
+      "sourceHash": "2aa0f28fd0cdc35cb5a2c92695710add75ed95a2a05fa9f79f0dd9180aa707d5",
+      "state": "machine-cross-checked"
     },
     "profiles.issue.limitations-bounds": {
       "text": "Usa al massimo 32 voci non vuote di non più di 500 caratteri ciascuna.",
@@ -8744,9 +8744,9 @@
       "text": "Il valore PPI fisico deve essere compreso tra 50 e 1000."
     },
     "profiles.issue.pinned-revision-incompatible": {
-      "sourceHash": "0410f495d48a580480d26a8778ccb36869804742bfbf4811a9ed28138a5e8f93",
-      "state": "machine-cross-checked",
-      "text": "La revisione fissata non è compatibile con questo core."
+      "text": "La revisione fissata non è compatibile con questa versione di Panel Assistant.",
+      "sourceHash": "bb52f2e8bf84bf520a002c4efe81a9bf030acd780afa05df75887e8c7300d439",
+      "state": "machine-cross-checked"
     },
     "profiles.issue.pinned-revision-missing": {
       "sourceHash": "1756c919586b8a1c906460f9e59129e2646995c1d8f553fe5e81f7f617882976",
@@ -8869,29 +8869,29 @@
       "text": "Non deve contenere caratteri di formato Unicode."
     },
     "profiles.issue.unknown-core-driver": {
-      "sourceHash": "1042e5e95b0698609f7977c22305ffe39a6056ec3bc16e684870f88ff2a7fd12",
-      "state": "machine-cross-checked",
-      "text": "Driver del core '{value}' sconosciuto."
+      "text": "Driver di Panel Assistant '{value}' sconosciuto.",
+      "sourceHash": "2283bce36a21c443895fc68573e64966a9e42d697950b7e512de4b55bb57af3a",
+      "state": "machine-cross-checked"
     },
     "profiles.issue.unknown-core-recipe": {
-      "sourceHash": "6532c70c4c95f0652f13a6f11489585aab37dbfff72a3f00f66583783116b309",
-      "state": "machine-cross-checked",
-      "text": "Ricetta gestita dal core '{value}' sconosciuta."
+      "text": "Ricetta di Panel Assistant '{value}' sconosciuta.",
+      "sourceHash": "4b08d1f5f3b6b991813fc1b4c0d06b036f3cd417be447cbb99232405122788fb",
+      "state": "machine-cross-checked"
     },
     "profiles.issue.unknown-core-strategy": {
-      "sourceHash": "98e4f9a758e61cdac9a2fab4aa0c0a67128541abcda250390e2a099a236ba391",
-      "state": "machine-cross-checked",
-      "text": "Strategia del core sconosciuta."
+      "text": "Strategia di Panel Assistant sconosciuta.",
+      "sourceHash": "a12a7556d800e18119cdd2aa530ca512a9c00bdcbb0e17f8e7d21d4c5fe205fb",
+      "state": "machine-cross-checked"
     },
     "profiles.issue.unknown-core-strategy-value": {
-      "sourceHash": "5c27683a05fe3646ecbecd345f8acbd8726c6ea32dd2554d7ee81b7d326d4a63",
-      "state": "machine-cross-checked",
-      "text": "Strategia del core '{value}' sconosciuta."
+      "text": "Strategia di Panel Assistant '{value}' sconosciuta.",
+      "sourceHash": "0df679dee85911f6109aaecaf0b679eb3422b199bb8244ea322cd4d8caea8d7b",
+      "state": "machine-cross-checked"
     },
     "profiles.issue.unknown-core-transfer": {
-      "sourceHash": "2832e210726cd7645445f526c1ff62970c8aee6026347dcb155cc327ce3b521c",
-      "state": "machine-cross-checked",
-      "text": "Trasferimento del core '{value}' sconosciuto."
+      "text": "Trasferimento di Panel Assistant '{value}' sconosciuto.",
+      "sourceHash": "e4a1382e0e69c7a88620925541c3a63e0f2b4862decf182e24cb99b72eb00cb7",
+      "state": "machine-cross-checked"
     },
     "profiles.issue.unknown-field": {
       "sourceHash": "3840899c04d884ec5c1ce68ae92936057e0c7a2f0cf311b3dbef2e71e50512b0",
@@ -8924,9 +8924,9 @@
       "text": "Valore '{value}' sconosciuto."
     },
     "profiles.issue.unknown-webview-artifact": {
-      "sourceHash": "1a67a91f0321c4116b700359d695c791bdca0d48886e05f1ef2a1d21bf08972b",
-      "state": "machine-cross-checked",
-      "text": "Artefatto WebView gestito dal core '{value}' sconosciuto."
+      "text": "Artefatto WebView di Panel Assistant '{value}' sconosciuto.",
+      "sourceHash": "a9fefe0d992d3b490e11eef351f18ea0575ebaf6b801107cf7107ee40fedd429",
+      "state": "machine-cross-checked"
     },
     "profiles.issue.unsupported-privileged-path": {
       "sourceHash": "c21981ce1dbdc3efe069b1a9dad326646bca62e09cf9c41294eb29a160ee0213",
@@ -9264,13 +9264,13 @@
       "text": "Le revisioni dei profili integrati non possono essere eliminate."
     },
     "profiles.result.catalog-reservation-failed": {
-      "sourceHash": "1a574d2b2c6fb9e2b3aa648016eedbcf010a439bed51db9dc8fc977b5bcdf90e",
-      "state": "machine-cross-checked",
-      "text": "Impossibile riservare la modifica del catalogo."
+      "text": "Impossibile riservare la modifica del catalogo.",
+      "sourceHash": "db45cdf32735e04738d8cfd8e193c6d16c3d6cf742ebc57daf92555beed466e8",
+      "state": "machine-cross-checked"
     },
     "profiles.result.catalog-stale": {
       "text": "Il catalogo è cambiato; ricarica e riprova con la revisione corrente.",
-      "sourceHash": "014eafc6e3523ed2ff1319e0f26b1c01ffdab9c5b9f8d5805a3ca4149dd47735",
+      "sourceHash": "a832c1cc64d5e6f373e0e93154556c65bb9d120fd14af1de85034ef7fa43b549",
       "state": "machine-cross-checked"
     },
     "profiles.result.destructive-operation-in-progress": {
@@ -9279,9 +9279,9 @@
       "text": "È in corso un'operazione distruttiva di installazione o ripristino. Riprova ad attivare il profilo al termine."
     },
     "profiles.result.expected-catalog-revision-required": {
-      "sourceHash": "7b57c99561e73bfeae4aa840536258d2cdb5cca949c5804775e943919fc1fa70",
-      "state": "machine-cross-checked",
-      "text": "È richiesta la revisione prevista del catalogo."
+      "text": "È richiesta la revisione prevista del catalogo.",
+      "sourceHash": "51c1f785e27676032c9918a581875f4cb3d22da8104332877ee13a169625dd68",
+      "state": "machine-cross-checked"
     },
     "profiles.result.explicit-confirmation-required": {
       "sourceHash": "d08001ebe74461eb2338e4faacb6a014bb4b1e36a96bf707a6a6eac3be03b309",
@@ -9289,14 +9289,14 @@
       "text": "È richiesta una conferma esplicita."
     },
     "profiles.result.imported-catalog-byte-limit": {
-      "sourceHash": "4ac04cbc786ea73fcd99faa6c3bd6d7dae9dd889493d72cb974a839b078adeaf",
-      "state": "machine-cross-checked",
-      "text": "Il catalogo importato è limitato a {max} byte."
+      "text": "Il catalogo importato è limitato a {max} byte.",
+      "sourceHash": "72749c411c9d97de939d861140c22477c61c587b07e876a729409c47f4470d2d",
+      "state": "machine-cross-checked"
     },
     "profiles.result.imported-catalog-revision-limit": {
-      "sourceHash": "ba805ad78da9cec2dd911c6424cc55aa7235931e8907f05d76ae820f85080815",
-      "state": "machine-cross-checked",
-      "text": "Il catalogo importato è limitato a {max} revisioni."
+      "text": "Il catalogo importato è limitato a {max} revisioni.",
+      "sourceHash": "304a71ec1589837e4ad054bb49cb5ac0f3aae57be1f9f39c8d3d9de56c8a2c17",
+      "state": "machine-cross-checked"
     },
     "profiles.result.imported-profile-revision-limit": {
       "sourceHash": "975f879cf8db399d5c59cca2d79d6842805b578f5c5e08beb8d9d3ef3709488a",
@@ -9544,9 +9544,9 @@
       "text": "Artefatto APK gestito dal core e radice di attendibilità del firmatario."
     },
     "profiles.section.catalog_runtime": {
-      "sourceHash": "f6935b911b686f274dca1971e421494b5b95001dfb521d625a35aeb099c39d60",
-      "state": "machine-cross-checked",
-      "text": "Catalogo e runtime"
+      "text": "Catalogo e runtime",
+      "sourceHash": "cb65e28766c293f25a76ab76a6b556c1c6356dba4718933c360fbe0df85c27c3",
+      "state": "machine-cross-checked"
     },
     "profiles.section.compared_active": {
       "sourceHash": "3454e4507ae7650b4ae943ee8365b0ea21ba62faf54217b8a35c071c469d8ace",
@@ -9939,8 +9939,8 @@
       "state": "machine-cross-checked"
     },
     "runtime.renderer_recovery.builtin": {
-      "text": "Il renderer integrato ha smesso di riprovare dopo ripetuti errori di WebView. Aggiorna o ripara System WebView, quindi usa Ricarica dashboard dalla barra di navigazione del pannello o dalla scheda Dashboard.",
-      "sourceHash": "20f93e06aeff7310a8f77b8fa3242cd484ebedb2b1a6242e5aaba65209c4b428",
+      "text": "Il renderer integrato ha smesso di riprovare dopo ripetuti errori di WebView. Aggiorna o ripara System WebView, quindi usa Ricarica plancia dalla barra di navigazione del pannello o Ricarica dalla scheda Dashboard.",
+      "sourceHash": "bc476654610027a8b8e863e827c6e4ff9fa487c2fbb40c4f8f7e1bdd0de24197",
       "state": "machine-cross-checked"
     },
     "runtime.renderer_recovery.external": {
@@ -10064,9 +10064,9 @@
       "state": "machine-cross-checked"
     },
     "settings.auto_sleep.label": {
-      "sourceHash": "69d958fb4d9465ad4a08bcec58dc47971fceba6a8631352203aa884ebd413428",
-      "state": "machine-cross-checked",
-      "text": "Sospensione automatica"
+      "text": "Sospensione automatica",
+      "sourceHash": "ffa395b8fc89398516172e390d9e37039d65a7421abeeafd6d7c1931dbaaa084",
+      "state": "machine-cross-checked"
     },
     "settings.auto_sleep.summary": {
       "text": "Spegni lo schermo quando non c’è nessuno o dopo un periodo di inattività.",
@@ -10634,9 +10634,9 @@
       "state": "machine-cross-checked"
     },
     "settings.log_ship_enabled.help": {
-      "sourceHash": "60f6ff8dadcfcb8713602f18ca7137aea30c907013baa2fc0900376a8ac1b9df",
-      "state": "machine-cross-checked",
-      "text": "Inoltra il log del processo di Panel Assistant, non l'intero log di sistema, a un collettore centrale (LAN-only, con token e password oscurati)."
+      "text": "Inoltra il log del processo di Panel Assistant, non l'intero log di sistema, a un collettore centrale (LAN-only, con token e password oscurati).",
+      "sourceHash": "8df33e7d8c2821dd9e70fd2ac3723c8be878bce9105bdd332732f4f6bea21421",
+      "state": "machine-cross-checked"
     },
     "settings.log_ship_enabled.label": {
       "sourceHash": "ee4fd7d2333c7de7c8d74fd95cfb065c2be72bd2e52dc3b58cf06c0e1d3d3634",
@@ -10654,9 +10654,9 @@
       "text": "Host del collettore di log; se vuoto, l'invio resta inattivo. Uno schema o una :port indicati qui vengono rispettati (udp://collector, collector:1514)."
     },
     "settings.log_ship_host.label": {
-      "sourceHash": "039db9e5488a4a6ca3e58775a250f2d2183ac1156d5721fdd37c520a605c6bb3",
-      "state": "machine-cross-checked",
-      "text": "Host di destinazione"
+      "text": "Host del collettore di log",
+      "sourceHash": "a5ac18cf8b00d13179cc0e076721d00782af377366831a3a6a0a9d39237f973c",
+      "state": "machine-cross-checked"
     },
     "settings.log_ship_host.summary": {
       "text": "Indirizzo del collettore di log. Se vuoto, l'invio è disattivato.",
@@ -10664,9 +10664,9 @@
       "state": "machine-cross-checked"
     },
     "settings.log_ship_port.label": {
-      "sourceHash": "7bc8673ba2ab424916e4f1189b75faf4b4c9af8ef0d731852c09e6a660e77cd3",
-      "state": "machine-cross-checked",
-      "text": "Porta di destinazione"
+      "text": "Porta del collettore di log",
+      "sourceHash": "5746057fdae096de43671f56d408c9ca3f8ef27531f2f5b11b2deb8dc3b3cd82",
+      "state": "machine-cross-checked"
     },
     "settings.log_ship_port.summary": {
       "text": "Porta del collettore di log.",
@@ -10674,9 +10674,9 @@
       "state": "machine-cross-checked"
     },
     "settings.log_ship_protocol.help": {
-      "sourceHash": "8721aa729601cd5bf1612b97a578b3a1ef385564447d250f440e162c7dbf2bfb",
-      "state": "machine-cross-checked",
-      "text": "TCP è l'impostazione predefinita perché segnala se una destinazione rifiuta la connessione o è irraggiungibile; UDP non può farlo, quindi un'impostazione errata non produce alcun avviso. La porta 514 supporta entrambi."
+      "text": "TCP è l’impostazione predefinita perché segnala se un collettore rifiuta la connessione o è irraggiungibile; UDP non può farlo, quindi un’impostazione errata di questo protocollo fa fallire l’invio senza avvisi. La porta 514 supporta entrambi.",
+      "sourceHash": "da7a0fd613d1904e5f6c2e7502bf4f1949584eb8f4326de2e56ee51d49397b1a",
+      "state": "machine-cross-checked"
     },
     "settings.log_ship_protocol.label": {
       "sourceHash": "cf0883343f4abef779b777c35764f86c9f1f4324e8b5490840245d02ad2f7c6f",
@@ -10684,13 +10684,13 @@
       "text": "Protocollo"
     },
     "settings.log_ship_protocol.summary": {
-      "text": "Trasporto al collettore. TCP segnala se la destinazione rifiuta.",
-      "sourceHash": "db01cfc12070a7e72e1bee1187e7e24fa38984e742a19b523dc6bb2a3ca6cbc3",
+      "text": "Trasporto al collettore. TCP segnala se il collettore rifiuta la connessione.",
+      "sourceHash": "5bec87aa9a018b8b5b0da91108c8a767503882098e12e591d58363b9025d7eee",
       "state": "machine-cross-checked"
     },
     "settings.log_ship_system_enabled.help": {
-      "text": "Inoltra i log di sistema Android allo stesso collettore se Invia log è attivo.\n\n- Predefinito: disattivato.\n- Richiede TCP o HTTP e root o l'helper installato.\n- Voci oscurate; sotto carico può scartarne.",
-      "sourceHash": "bfc7f5d141f83c2cf7f2c168f8e492af3f7fe3b50efff70a0435d15bb0524fa2",
+      "text": "Inoltra i log di sistema Android allo stesso collettore se Invia log è attivo.\n\n- Predefinito: disattivato.\n- Richiede TCP o HTTP, oltre a root o all'helper installato.\n- Voci oscurate; l'output ad alto volume può essere scartato.",
+      "sourceHash": "51072217eb6ba0f7ad594b0903524921774b8437d14b20c5c12894c59d3bef42",
       "state": "machine-cross-checked"
     },
     "settings.log_ship_system_enabled.label": {
@@ -10814,9 +10814,9 @@
       "state": "machine-cross-checked"
     },
     "settings.proximity_level.help": {
-      "sourceHash": "b3f0f1e997f952599577ed72fe6a1cdd3b1f9be8ffe6104d131cc52226d1a02e",
-      "state": "machine-cross-checked",
-      "text": "Livello di prossimità appreso e normalizzato da 0 a 100 per cento; le sorgenti binarie riportano 0 o 100."
+      "text": "Livello di prossimità appreso e normalizzato da 0 a 100 per cento; le sorgenti binarie riportano 0 o 100.",
+      "sourceHash": "e89a648b5a1b61df211b569f9b863bd34794be76dcb30cf3a146e5e9e1b2a4a6",
+      "state": "machine-cross-checked"
     },
     "settings.proximity_level.label": {
       "sourceHash": "2e718ad3caebfe4bab8ffb0d2946b9fddd9c1e4e10dbc58057102e5ddc61f645",
@@ -11094,14 +11094,14 @@
       "text": "La posizione del pannello. Home Assistant usa le aree per creare automaticamente le plance."
     },
     "setup.area.label": {
-      "sourceHash": "4e7a4dcffefda5ae807e8f0bd8f42e71f78354cdd1ad7f9ce2eb3530c5d0d12e",
-      "state": "machine-cross-checked",
-      "text": "Imposta l’area HA del pannello"
+      "text": "Imposta l’Area Home Assistant del pannello",
+      "sourceHash": "ef635d42d225f07e8c46e025d1b2d6c0f51452563b5ae156732bc0d6aae20b74",
+      "state": "machine-cross-checked"
     },
     "setup.area.locked_note": {
-      "sourceHash": "010860028168077f6b7e67b81e55c6c980c27d1012f3bd4426c56af0110c5700",
-      "state": "machine-cross-checked",
-      "text": "Il pannello è già registrato in Home Assistant, quindi la sua area può essere modificata solo lì da un amministratore HA; il pannello seguirà l’impostazione scelta."
+      "text": "Il pannello è già registrato in Home Assistant, quindi la sua area può essere modificata solo lì da un amministratore di Home Assistant; il pannello seguirà l’impostazione scelta.",
+      "sourceHash": "0ca51d50aa061131b3b9333a8fb0bc98c01e466de1552278705acff628c83094",
+      "state": "machine-cross-checked"
     },
     "setup.area.non_admin_help": {
       "sourceHash": "a1a82f6c7a40fc0939b547dd53868e25454b5b5ced02fc1ccfbe97283d33f168",
@@ -11269,8 +11269,8 @@
       "state": "machine-cross-checked"
     },
     "setup.dashboard.title": {
-      "text": "Seleziona la plancia HA per questo pannello",
-      "sourceHash": "6ce8c026eddc7e15e707af0a65d3f2873d4e78e98cec7b4c8a0c7630a27139e1",
+      "text": "Seleziona la plancia di Home Assistant per questo pannello",
+      "sourceHash": "e61e0db34b747d76f4783c4d930491c7e1ebd6939cd24e3d08a209f1db596996",
       "state": "machine-cross-checked"
     },
     "setup.discovery.found": {
@@ -11629,9 +11629,9 @@
       "text": "È solo l’etichetta in Home Assistant. Puoi cambiarla in qualsiasi momento senza problemi."
     },
     "setup.identity.friendly_name.label": {
-      "sourceHash": "073ec5dba8e66ce812d7f817ecc72af2330d9ab22e99d5429d794de3cf5ba4ea",
-      "state": "machine-cross-checked",
-      "text": "Nome descrittivo"
+      "text": "Nome descrittivo",
+      "sourceHash": "d25d7b3edd1c0e6896d2e5754a0a21bb11c3614972d11cc421bb194442e0394d",
+      "state": "machine-cross-checked"
     },
     "setup.identity.lead": {
       "sourceHash": "acc139244fe4230509a2b21f2ad451c65787d637f60920f7d98f76afe9c14c2d",
@@ -11664,8 +11664,8 @@
       "text": "Dai un nome al pannello"
     },
     "setup.progress.dashboard": {
-      "text": "Plancia HA",
-      "sourceHash": "f4e60256299043246476ebc93bb0a35f178a41494faee700dcfcd2a94e211011",
+      "text": "Plancia",
+      "sourceHash": "67b696468610b879ed7f224dbf6b0861f27e39d20454cb9d7af1ec52d3e5eeaa",
       "state": "machine-cross-checked"
     },
     "setup.progress.name": {
@@ -11674,9 +11674,9 @@
       "text": "Nome"
     },
     "setup.progress.optimize": {
-      "sourceHash": "aa5f530acb509a3547fc2a5cc3f1c92da93af2f5b466417527e59d0f50f00c7b",
-      "state": "machine-cross-checked",
-      "text": "Ottimizzazione"
+      "text": "Ottimizzazione",
+      "sourceHash": "9b8cb6ed2be8416f2ee7b43931a7f464e7d6877f1a17678e967d9f17709473fa",
+      "state": "machine-cross-checked"
     },
     "setup.progress.server": {
       "sourceHash": "aef7de28d52977f1b5cd0fecfdc151717610adf41e0aa33b4d9f7522a43337ef",
@@ -11684,9 +11684,9 @@
       "text": "Server"
     },
     "setup.progress.sign_in": {
-      "sourceHash": "5ee3862fa2ccf451111bf31ad62398c5f18893b1732631180dbe331b72401f04",
-      "state": "machine-cross-checked",
-      "text": "Accesso HA"
+      "text": "Accesso",
+      "sourceHash": "5bbbe53187ad8e90dc01a1d67c29c2a4ea0b359267e9a6c8765ecc3c2a814cfb",
+      "state": "machine-cross-checked"
     },
     "setup.proof.dashboard_help": {
       "sourceHash": "099b789842ad17573a047cbd3d877adbf7b84a8d123e9af4507a25dcff19cbff",

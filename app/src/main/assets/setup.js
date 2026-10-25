@@ -140,8 +140,8 @@
     // Dot 1 covers the renderer choice AND the HA server address; dot 3 is which HA dashboard shows.
     var labels = [
       i18nText("setup.progress.name", "Name"), i18nText("setup.progress.server", "Server"),
-      i18nText("setup.progress.sign_in", "HA sign-in"), i18nText("setup.progress.dashboard", "HA dash"),
-      i18nText("setup.progress.optimize", "Optimize")
+      i18nText("setup.progress.sign_in", "Sign-in"), i18nText("setup.progress.dashboard", "Dashboard"),
+      i18nText("setup.progress.optimize", "Optimise")
     ];
     var currentIdx = journey.complete ? labels.length : (DOT_OF_STAGE[journey.next] !== undefined ? DOT_OF_STAGE[journey.next] : labels.length);
     var anyInFlight = (journey.steps || []).some(function (s) {
@@ -294,7 +294,7 @@
           }),
         preview,
         el("p", { class: "wiz-consequence", text: i18nText("setup.identity.panel_id.consequence", "You can change this later, but it renames every one of those entities, so anything already pointing at them (automations, dashboards, scripts) would need updating too. Most people set it once, here.") }),
-        field("friendly_name", i18nText("setup.identity.friendly_name.label", "Friendly Name"), i18nText("setup.identity.friendly_name.help", "Just the label in Home Assistant. Safe to change any time."),
+        field("friendly_name", i18nText("setup.identity.friendly_name.label", "Friendly name"), i18nText("setup.identity.friendly_name.help", "Just the label in Home Assistant. Safe to change any time."),
           { value: typed.friendly_name !== undefined ? typed.friendly_name : (journey.panel && journey.panel.name || "") }),
         primary(i18nText("setup.action.save_continue", "Save and continue"), saveIdentity),
       ]),
@@ -576,7 +576,7 @@
       primary(i18nText("setup.dashboard.action.use", "Use this dashboard"), function (e) { answerHomeDashboard(e.target); }),
       el("p", { class: "muted", id: "wiz-err", role: "alert" }),
     ];
-    show([card(i18nText("setup.dashboard.title", "Select the HA dashboard for this panel"), null, body)], "home_dashboard");
+    show([card(i18nText("setup.dashboard.title", "Select the Home Assistant dashboard for this panel"), null, body)], "home_dashboard");
     loadHomeDashboardCatalog();
   }
 
@@ -614,7 +614,7 @@
     }
     var localOverrideNote = overrideNote(chosenArea);
     var editable = hdArea.admin || !current;
-    host.appendChild(el("b", { class: "hd-area-label", text: i18nText("setup.area.label", "Set the HA Area that your panel is in") }));
+    host.appendChild(el("b", { class: "hd-area-label", text: i18nText("setup.area.label", "Set the Home Assistant Area that your panel is in") }));
     if (!editable) {
       // A DISABLED select, not bare text: it must read as "a control you don't have permission for",
       // not as missing UI (hardware-review note). Same control either way; only the permission differs.
@@ -622,7 +622,7 @@
       locked.appendChild(el("option", { value: savedArea, text: savedArea }));
       locked.disabled = true;
       host.appendChild(locked);
-      host.appendChild(el("small", { class: "hd-area-note", text: overrideNote(savedArea) || i18nText("setup.area.locked_note", "This panel is already registered in Home Assistant, so its area can only be changed there by an HA admin user — this panel will follow whatever is set.") }));
+      host.appendChild(el("small", { class: "hd-area-note", text: overrideNote(savedArea) || i18nText("setup.area.locked_note", "This panel is already registered in Home Assistant, so its area can only be changed there by a Home Assistant admin user — this panel will follow whatever is set.") }));
       return;
     }
     var areaNote = el("small", { class: "hd-area-note", text: localOverrideNote });
