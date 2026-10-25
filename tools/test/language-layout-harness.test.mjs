@@ -181,12 +181,23 @@ test('breakpoint views are selected', () => {
   for (const name of ['profiles-519', 'profiles-520', 'profiles-856', 'profiles-857', 'profiles-1049', 'profiles-1050', 'api-320']) assert.ok(views.includes(name), name);
 });
 
-test('the CI matrix shards exactly the gate pages and browsers', async () => {
+test('the CI layout jobs cover exactly the gate pages and browsers', async () => {
   const { readFile } = await import('node:fs/promises');
   const workflow = await readFile(new URL('../../.github/workflows/ui-layout.yml', import.meta.url), 'utf8');
-  const list = (name) => workflow.match(new RegExp(`\\n\\s+${name}: \\[([^\\]]+)\\]`))[1].split(',').map((item) => item.trim()).sort();
-  assert.deepEqual(list('page'), PAGES.map((page) => page.name).sort());
-  assert.deepEqual(list('browser'), [...BROWSERS].sort());
+  const pages = workflow.match(/\n\s+LAYOUT_PAGE_LIST: ([^\n]+)/)[1].trim().split(/\s+/).sort();
+  const browsers = workflow.match(/\n\s+browser: \[([^\]]+)\]/)[1].split(',').map((item) => item.trim()).sort();
+  assert.deepEqual(pages, PAGES.map((page) => page.name).sort());
+  assert.deepEqual(browsers, [...BROWSERS].sort());
+});
+
+test('every CI browser job runs the Playwright image of the pinned playwright-core', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const workflow = await readFile(new URL('../../.github/workflows/ui-layout.yml', import.meta.url), 'utf8');
+  const { devDependencies, dependencies } = JSON.parse(await readFile(new URL('./package.json', import.meta.url), 'utf8'));
+  const version = { ...dependencies, ...devDependencies }['playwright-core'];
+  const images = [...workflow.matchAll(/\n\s+image: (\S+)/g)].map((match) => match[1]);
+  assert.equal(images.length, 2, 'the suite and layout jobs each name the image');
+  for (const image of images) assert.match(image, new RegExp(`^mcr\\.microsoft\\.com/playwright:v${version.replaceAll('.', '\\.')}-noble@sha256:[0-9a-f]{64}$`));
 });
 
 test('card growth blocks only beyond the locale scale; every card over 20% is reported', () => {
