@@ -32,13 +32,13 @@ object EntityLearningRuntime {
     fun probeDashboardChange(): Boolean = current?.probeDashboardChange("dashboard-hold") ?: false
 
     /** Live bring-up milestones for the panel's hold screen — real signals, never a bare spinner. */
-    data class BootstrapMilestone(val stage: Int, val count: Int?)
+    data class BootstrapMilestone(val stage: Int, val count: Int?, val expectedTotal: Int? = null)
 
     fun bootstrapMilestoneState(): BootstrapMilestone? {
         val manager = current ?: return null
         val scanned = manager.scanProgress()
-        if (scanned != null) return BootstrapMilestone(1, scanned)
-        val catalog = manager.catalogCount() ?: return BootstrapMilestone(1, null)
+        if (scanned != null) return BootstrapMilestone(1, scanned, manager.scanExpectedTotal())
+        val catalog = manager.completedScanCount() ?: manager.catalogCount() ?: return BootstrapMilestone(1, null)
         return BootstrapMilestone(2, catalog)
     }
 

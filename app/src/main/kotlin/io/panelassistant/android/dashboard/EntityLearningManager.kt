@@ -75,6 +75,7 @@ class EntityLearningManager(
     private val config: Config,
     private val scope: CoroutineScope,
     private val resolveInstanceUuid: suspend (candidateUrls: Collection<String>) -> String? = { null },
+    private val expectedEntityTotal: () -> Int? = { null },
     private val onFilterChanged: () -> Unit,
 ) {
     private val store = EntityCatalogStore(context.applicationContext)
@@ -114,10 +115,20 @@ class EntityLearningManager(
     // Live catalog-scan progress, for the setup wizard's entity-filter question. Deliberately not persisted
     // and not part of the catalog snapshot: it is a fact about a scan in flight, worthless a second later.
     @Volatile private var scanCounting = false
-    @Volatile private var scanCountedRows = 0
+    @Volatile private var scanCountedRows = -1
+    @Volatile private var scanGeneration = 0L
 
     /** Entities counted so far by a scan in flight, or null when no scan is running. */
-    fun scanProgress(): Int? = if (scanCounting) scanCountedRows else null
+    fun scanProgress(): Int? = if (scanCounting && scanGeneration == effectGeneration.get()) scanCountedRows else null
+
+    /** Read the live session each time: a first hello may arrive after this scan started. */
+    fun scanExpectedTotal(): Int? = runCatching { expectedEntityTotal() }.getOrNull()?.takeIf { it > 0 }
+        ?: catalogCount()
+
+    /** Actual rows from the completed state response, excluding older catalogue entries retained for recovery. */
+    fun completedScanCount(): Int? = runCatching {
+        scanCountedRows.takeIf { it >= 0 && !scanCounting && scanGeneration == effectGeneration.get() }
+    }.getOrNull()
 
     /**
      * Entities Home Assistant reported in the last completed scan, or null before there has been one.
@@ -1608,6 +1619,7 @@ class EntityLearningManager(
 
     private suspend fun fetchStates(base: String, token: String, route: HaConnectionRoute): List<EntityCatalogStore.StateRow> =
         runInterruptible(Dispatchers.IO) {
+            val generation = effectGeneration.get()
             requireCurrentHaRoute(config, base, token, route)
             val cost = FeatureCosts.registry.span(FeatureCostOperation.ENTITY_STATES_FETCH_PARSE)
             val c = (URL(base.trimEnd('/') + "/api/states").openConnection() as HttpURLConnection).apply {
@@ -1627,12 +1639,14 @@ class EntityLearningManager(
                     if (c.contentLengthLong > limits.maxBytes) throw ByteLimitExceeded(limits.maxBytes)
                     val counted = CountingInputStream(body)
                     scanCountedRows = 0
+                    scanGeneration = generation
                     scanCounting = true
                     readHaStates(counted, limits, onProgress = { scanCountedRows = it }).also {
                         cost.work(units = it.size.toLong(), bytes = counted.bytesRead)
                     }
                 }
             } catch (failure: Throwable) {
+                scanCountedRows = -1
                 cost.outcome(failure.featureCostOutcome())
                 throw failure
             } finally {

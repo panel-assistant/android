@@ -52,7 +52,7 @@ internal fun entityHoldRows(
             // Deterministic milestones, not a spinner: nobody trusts the circle (hardware review), and the
             // count updates with the live scan on every bootstrap poll tick.
             val views = EntityLearningViews(
-                notice.hero(""), notice.line(""), notice.track(ENTITY_STEPS.map(context::getString), 1),
+                notice.hero(""), notice.line(""), notice.track(ENTITY_STEPS.map(context::getString), 1_000),
                 notice.footer(text(R.string.entity_scan_preparing_detail)),
             )
             listOf(

@@ -35,6 +35,8 @@ internal data class PanelAssistantSession(
      * value is treated as absent, so the panel falls back to proving the entry through the entity registry.
      */
     val entryId: String? = null,
+    /** Approximate visible-state total; older integrations omit this advisory field. */
+    val expectedEntityCount: Int? = null,
 ) {
     /** The session token is a bearer for this session's requests; keep it out of logs. */
     override fun toString(): String =
@@ -437,7 +439,8 @@ internal object PanelAssistantTransportProtocol {
                 lifecycleNotice(result.optJSONObject("lifecycle")),
                 updatePolicy(result, protocol),
                 voiceStream,
-                (result.opt("entry_id") as? String)?.takeIf(ENTRY_ID::matches)),
+                (result.opt("entry_id") as? String)?.takeIf(ENTRY_ID::matches),
+                (result.opt("expected_entity_count") as? Int)?.takeIf { it > 0 }),
         )
     }
 

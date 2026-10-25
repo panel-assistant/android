@@ -41,6 +41,20 @@ import java.util.concurrent.atomic.AtomicInteger
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class PanelAssistantTransportOwnerTest {
 
+    @Test fun `entity estimate follows the accepted current account and disappears immediately on replacement`() = runTest {
+        val connection = FakeConnection(Ha.accepting(expectedEntityCount = 2_500))
+        val harness = harness(connection)
+        try {
+            assertNull(harness.owner.expectedEntityCount(OWNER))
+            harness.owner.replaceDemand(DEMAND)
+            runCurrent()
+            assertEquals(2_500, harness.owner.expectedEntityCount(OWNER))
+            assertNull(harness.owner.expectedEntityCount(OWNER.copy(refreshToken = "other-account")))
+            harness.owner.replaceDemand(DEMAND.copy(credential = OWNER.copy(refreshToken = "other-account")))
+            assertNull(harness.owner.expectedEntityCount(OWNER))
+        } finally { harness.owner.close() }
+    }
+
     @Test fun `native notices replay hello then live phases and fence retired generation teardown`() = runTest {
         fun notice(phase: String) = JSONObject().put("phase", phase).put("reason", "restart")
             .put("elapsed_ms", 0).put("expected_ms", JSONObject.NULL)
@@ -1817,6 +1831,7 @@ class PanelAssistantTransportOwnerTest {
             commandResultError: String? = null,
             voiceStream: JSONObject? = null,
             lifecycle: JSONObject? = null,
+            expectedEntityCount: Int? = null,
             updatePolicy: PanelAssistantUpdatePolicy? = null,
             /** Leave the `full_end` request unanswered; the test injects [reportAcknowledged] itself. */
             holdFullEnd: Boolean = false,
@@ -1837,6 +1852,7 @@ class PanelAssistantTransportOwnerTest {
                                 .put("channels", JSONObject().put("accepted", 0).put("unknown", JSONArray()))
                                 .apply { if (voiceStream != null) put("voice_stream_session", voiceStream) }
                                 .apply { if (lifecycle != null) put("lifecycle", lifecycle) }
+                                .apply { if (expectedEntityCount != null) put("expected_entity_count", expectedEntityCount) }
                                 .apply {
                                     if (updatePolicy != null) put("update_policy", JSONObject()
                                         .put("protocolMin", updatePolicy.protocolMin)

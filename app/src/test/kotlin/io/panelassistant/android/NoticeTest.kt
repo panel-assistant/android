@@ -254,6 +254,24 @@ class NoticeTest {
         assertEquals(EntityLearningNotice(1_284, R.string.notice_line_building_filter, 1), entityLearningNotice(2, 1_284))
     }
 
+    @Test
+    fun entityReadingUsesTheEstimateAndNeverCompletesTheBarBeforeTheScan() {
+        val reading = entityLearningNotice(1, 1_234, 2_000)
+        assertEquals(R.string.notice_line_reading_entities_total, reading.line)
+        assertEquals(2_000, reading.expectedTotal)
+        assertEquals(listOf(617, 0, 0), reading.fills)
+        assertEquals(listOf(990, 0, 0), entityLearningNotice(1, 2_400, 2_000).fills)
+        assertEquals(listOf(990, 0, 0), entityLearningNotice(1, Int.MAX_VALUE, 1).fills)
+        val complete = entityLearningNotice(2, 2_400, 2_000)
+        assertEquals(2_400, complete.count)
+        assertNull(complete.expectedTotal)
+        assertEquals(listOf(1_000, 0, 0), complete.fills)
+        for (absent in listOf(null, 0, -1)) {
+            assertEquals(EntityLearningNotice(1_234, R.string.notice_line_reading_entities, 0),
+                entityLearningNotice(1, 1_234, absent))
+        }
+    }
+
     // --- standing screen -------------------------------------------------------------------------
 
     @Test

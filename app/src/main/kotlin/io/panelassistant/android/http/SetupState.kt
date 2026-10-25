@@ -322,7 +322,8 @@ internal class SetupState(
             // reading→building→applying→optimising from these instead of going silent post-answer.
             "\"learning\":{\"applied\":${config.dashboardEntityLearningApplied}," +
             "\"scanned\":${entityLearning.scanProgress() ?: -1}," +
-            "\"catalog\":${entityLearning.catalogCount() ?: -1}}}"
+            "\"expected_total\":${entityLearning.scanExpectedTotal() ?: -1}," +
+            "\"catalog\":${entityLearning.completedScanCount() ?: entityLearning.catalogCount() ?: -1}}}"
         // `home_dashboard` carries only the current value and the answered bit — the dashboard LIST and the
         // account default stay on GET /api/v1/config/home-dashboards, which does a live HA round-trip and
         // must never ride along on this poll (SetupStateEndpointContractTest pins the expense rule).

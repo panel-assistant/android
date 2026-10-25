@@ -54,9 +54,9 @@ function requestBody(request) {
   });
 }
 
-function fixture(translations, locale, withHelper) {
+function fixture(translations, locale, withHelper, withStyles) {
   const strings = withHelper ? translations : {};
-  return `<!doctype html><html lang="${locale}"><head><meta charset="utf-8">${i18nBridge({ locale, strings })}</head><body>
+  return `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">${withStyles ? '<link rel="stylesheet" href="/info.css">' : ''}${i18nBridge({ locale, strings })}</head><body>
     <ol id="wiz-dots"></ol><main id="wiz-step"></main>
     <a class="wiz-escape" href="/configure">escape</a>
     <script src="/setup.js"></script>
@@ -68,19 +68,22 @@ async function startHarness({
   translations = {},
   locale = 'zh-Hans',
   withHelper = true,
+  withStyles = false,
   route,
   dashboards = { queried: true, items: [], default: { explicit: false, path: '' } },
   area = { queried: false, areas: [], device: { found: false }, admin: false, requested: '' },
   discovery = {},
 }) {
   const source = await readFile(setupAsset, 'utf8');
+  const styles = withStyles ? await readFile(new URL('../../app/src/main/assets/info.css', import.meta.url), 'utf8') : '';
   const state = { current: initialJourney, requests: [] };
   const server = createServer(async (request, response) => {
     const url = new URL(request.url, 'http://panel.test');
     state.requests.push({ method: request.method, path: url.pathname, search: url.search, body: request.method === 'POST' ? await requestBody(request) : '' });
     let result;
-    if (url.pathname === '/') result = { body: fixture(translations, locale, withHelper), headers: { 'content-type': 'text/html; charset=utf-8' } };
+    if (url.pathname === '/') result = { body: fixture(translations, locale, withHelper, withStyles), headers: { 'content-type': 'text/html; charset=utf-8' } };
     else if (url.pathname === '/setup.js') result = { body: source, headers: { 'content-type': 'application/javascript; charset=utf-8' } };
+    else if (url.pathname === '/info.css') result = { body: styles, headers: { 'content-type': 'text/css; charset=utf-8' } };
     else if (url.pathname === '/api/v1/setup') result = json(state.current);
     else if (url.pathname === '/api/v1/config/discovery') result = json(discovery);
     else if (url.pathname === '/api/v1/config/home-dashboards') result = json(dashboards);
@@ -106,6 +109,69 @@ async function openRig(t, options, path = '/', browserType = chromium) {
   await page.goto(harness.url + path, { waitUntil: 'domcontentloaded', timeout: 5_000 });
   await page.locator('#wiz-step .card').waitFor();
   return { ...harness, browser, page };
+}
+
+for (const [engine, browserType] of [['Chromium', chromium], ['WebKit', webkit]]) {
+  const run = existsSync(browserType === chromium ? chrome : browserType.executablePath()) ? test : test.skip;
+  run(`Setup entity progress fits every locale at narrow and large text sizes in ${engine}`, async (t) => {
+    for (const locale of ['en', 'cs', 'de', 'es', 'fr', 'it', 'nl', 'pl', 'pt-BR', 'uk', 'zh-Hans']) {
+      const catalogue = JSON.parse(await readFile(new URL(`../../app/src/main/assets/i18n/${locale}.json`, import.meta.url), 'utf8'));
+      const rig = await openRig(t, {
+        initialJourney: journey('render_proof', {
+          statuses: { render_proof: { status: 'in_flight' } },
+          entity_filter: { relevant: true, enabled: true, learning: { scanned: 2147483647, expected_total: 2000000000 } },
+        }),
+        locale, withStyles: true,
+        translations: Object.fromEntries(Object.entries(catalogue.strings).map(([key, record]) => [key, record.text])),
+      }, '/', browserType);
+      for (const width of [320, 480, 1280]) {
+        await rig.page.setViewportSize({ width, height: 900 });
+        for (const fontSize of [16, 32]) {
+          await rig.page.evaluate((size) => { document.documentElement.style.fontSize = `${size}px`; }, fontSize);
+          assert.equal(await rig.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `${engine} ${locale} ${width}px ${fontSize}px`);
+          const bounds = await rig.page.locator('.wiz-milestones progress').boundingBox();
+          assert.ok(bounds && bounds.width > 0 && bounds.x >= 0 && bounds.x + bounds.width <= width, `${engine} ${locale} bar fits`);
+          assert.ok((await rig.page.locator('.wiz-milestone').first().textContent()).includes(new Intl.NumberFormat(locale).format(2000000000)));
+        }
+      }
+    }
+  });
+}
+
+for (const [engine, browserType] of [['Chromium', chromium], ['WebKit', webkit]]) {
+  const run = existsSync(browserType === chromium ? chrome : browserType.executablePath()) ? test : test.skip;
+  run(`Setup entity reading reports an approximate total and clamps its bar in ${engine}`, async (t) => {
+    const reading = (learning) => journey('render_proof', {
+      statuses: { render_proof: { status: 'in_flight' } },
+      entity_filter: { relevant: true, enabled: true, learning },
+    });
+    const rig = await openRig(t, {
+      initialJourney: reading({ scanned: 1234, expected_total: 2000, applied: false }),
+      withHelper: false, locale: 'en',
+    }, '/', browserType);
+    assert.equal(await rig.page.locator('.wiz-milestone').first().textContent(),
+      '● Reading your entities — 1,234 of about 2,000');
+    const bar = rig.page.locator('.wiz-milestones progress');
+    assert.equal(await bar.evaluate((el) => el.position), 1234 / 2000);
+    assert.ok(await bar.getAttribute('aria-label'));
+
+    await reloadJourney(rig, reading({ scanned: 2400, expected_total: 2000, applied: false }), '/?lang=en');
+    assert.equal(await rig.page.locator('.wiz-milestone').first().textContent(),
+      '● Reading your entities — 2,400 of about 2,000');
+    assert.equal(await bar.evaluate((el) => el.position), 0.99);
+
+    // The completed count replaces the estimate, including when the catalogue retained older rows.
+    await reloadJourney(rig, reading({ scanned: -1, catalog: 2400, expected_total: 2000, applied: false }), '/?lang=en');
+    assert.equal(await rig.page.locator('.wiz-milestone').first().textContent(), '✓ Entities read (2,400)');
+    assert.equal(await bar.count(), 0);
+
+    // Old senders and malformed estimates keep the existing open count.
+    for (const expected of [undefined, 0, -1, '2000']) {
+      await reloadJourney(rig, reading({ scanned: 1234, expected_total: expected, applied: false }), '/?lang=en');
+      assert.equal(await rig.page.locator('.wiz-milestone').first().textContent(), '● Reading your entities — 1,234 so far');
+      assert.equal(await bar.count(), 0);
+    }
+  });
 }
 
 for (const [engine, browserType] of [['Chromium', chromium], ['WebKit', webkit]]) {

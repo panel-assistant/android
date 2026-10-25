@@ -19,6 +19,7 @@
     <string name="notice_line_ha_compatibility">Home Assistant-Kompatibilität</string>
     <string name="notice_line_ha_dashboard">das Home Assistant-Dashboard</string>
     <string name="notice_line_reading_entities">Deine Entitäten werden gelesen</string>
+    <string name="notice_line_reading_entities_total">Deine Entitäten werden gelesen — %1$s von etwa %2$s</string>
     <string name="notice_line_building_filter">Gefilterte Menge wird erstellt</string>
     <string name="notice_line_entities_need_decision">Entitäten brauchen eine Entscheidung, bevor sich das Dashboard öffnet</string>
     <string name="notice_line_sign_in_needed">Nichts kann laden, bis das Panel eine Home Assistant-Anmeldung hat.</string>

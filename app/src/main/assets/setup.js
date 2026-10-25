@@ -470,8 +470,10 @@
     var l = ef.learning || {};
     if (!ef.enabled) return null;
     var steps = [];
+    var expected = typeof l.expected_total === "number" && Number.isInteger(l.expected_total) && l.expected_total > 0 ? l.expected_total : null;
     if (l.scanned >= 0) {
-      steps.push(i18nText(pluralCategory(l.scanned) === "one" ? "setup.proof.milestone.reading.one" : "setup.proof.milestone.reading.other", "● Reading your entities — {count} so far", { count: localizedNumber(l.scanned) }));
+      steps.push(expected ? i18nText("setup.proof.milestone.reading_total", "● Reading your entities — {count} of about {total}", { count: localizedNumber(l.scanned), total: localizedNumber(expected) }) :
+        i18nText(pluralCategory(l.scanned) === "one" ? "setup.proof.milestone.reading.one" : "setup.proof.milestone.reading.other", "● Reading your entities — {count} so far", { count: localizedNumber(l.scanned) }));
       steps.push(i18nText("setup.proof.milestone.build_pending", "○ Build the filtered set"));
       steps.push(i18nText("setup.proof.milestone.apply_pending", "○ Apply it — the dashboard will reload"));
     } else if (!l.applied) {
@@ -483,9 +485,13 @@
       steps.push(i18nText("setup.proof.milestone.applied", "✓ Filtered set applied"));
       steps.push(i18nText("setup.proof.milestone.loading", "● Loading the dashboard — it may reload once or twice more as the panel fine-tunes"));
     }
-    return el("div", { class: "wiz-milestones" }, steps.map(function (s) {
+    var rows = steps.map(function (s) {
       return el("p", { class: "wiz-milestone", text: s });
-    }));
+    });
+    if (l.scanned >= 0 && expected) {
+      rows.splice(1, 0, el("progress", { max: "1", value: String(Math.min(0.99, Math.max(0, l.scanned / expected))), "aria-label": steps[0] }));
+    }
+    return el("div", { class: "wiz-milestones" }, rows);
   }
 
   function proofCard() {

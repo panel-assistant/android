@@ -19,6 +19,7 @@
     <string name="notice_line_ha_compatibility">Compatibilidade com o Home Assistant</string>
     <string name="notice_line_ha_dashboard">o dashboard do Home Assistant</string>
     <string name="notice_line_reading_entities">Lendo suas entidades</string>
+    <string name="notice_line_reading_entities_total">Lendo suas entidades — %1$s de cerca de %2$s</string>
     <string name="notice_line_building_filter">Montando o conjunto filtrado</string>
     <string name="notice_line_entities_need_decision">entidades precisam de uma decisão antes que o dashboard abra</string>
     <string name="notice_line_sign_in_needed">Nada pode carregar até que o painel tenha um login do Home Assistant.</string>

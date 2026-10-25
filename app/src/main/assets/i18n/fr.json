@@ -11743,6 +11743,11 @@
       "sourceHash": "0011d951542a81e43c8ad7173cf89c470caa42b2bbded3b697decd6b5c6cc856",
       "state": "machine-cross-checked"
     },
+    "setup.proof.milestone.reading_total": {
+      "text": "● Lecture de vos entités — {count} sur environ {total}",
+      "sourceHash": "783e8b04c9be336b35f2eb2082f74d458d813ce080b3ab1f2a78ba6defbf35d7",
+      "state": "machine-cross-checked"
+    },
     "setup.proof.slow_prompt": {
       "text": "Cela prend trop de temps ?",
       "sourceHash": "d83ea75e407a427c6cf32c47ffc4ab85b190f5ee7465e32c162e684924d71209",

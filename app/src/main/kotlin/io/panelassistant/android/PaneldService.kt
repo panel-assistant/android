@@ -552,6 +552,11 @@ class PaneldService : Service() {
             scope = scope,
             // mDNS is started by onStartCommand before the learner can synchronize.
             resolveInstanceUuid = { urls -> runtime.current().mdns.discoverHaInstanceUuid(urls) },
+            expectedEntityTotal = {
+                if (::haLinks.isInitialized) {
+                    haLinks.panelAssistantTransport.expectedEntityCount(config.haAuthSnapshot().stableOwner())
+                } else null
+            },
             onFilterChanged = {
                 if (shouldReloadBuiltinAfterEntityFilterChange(
                         controls.system.resolveDashboard(config.dashboardPackage),

@@ -19,6 +19,7 @@
     <string name="notice_line_ha_compatibility">Сумісність із Home Assistant</string>
     <string name="notice_line_ha_dashboard">інформаційна панель Home Assistant</string>
     <string name="notice_line_reading_entities">Читання ваших сутностей</string>
+    <string name="notice_line_reading_entities_total">Читання ваших сутностей — %1$s із приблизно %2$s</string>
     <string name="notice_line_building_filter">Формування відфільтрованого набору</string>
     <string name="notice_line_entities_need_decision">сутностей чекають рішення, перш ніж відкриється інформаційна панель</string>
     <string name="notice_line_sign_in_needed">Нічого не завантажиться, доки в панелі немає входу в Home Assistant.</string>

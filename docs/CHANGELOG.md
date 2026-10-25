@@ -17,6 +17,7 @@ Pairs with Panel Assistant 1.0.0-rc1, the Home Assistant integration.
 
 ### New
 
+- **Entity reading shows its progress.** Setup and the panel's hold screen show an approximate entity total and a progress bar when Panel Assistant supplies the count or the panel has a previous scan. The final count replaces the estimate when reading finishes.
 - **Meta Portal support.** The panel app now recognises the Meta Portal 10-inch (2nd gen), with its camera, microphone, light sensor and native screen density, and other Portal models through a family profile. On a Portal the screen sleeps through Android's screen timeout, the panel launcher opens instead of Meta's clock, the hardware microphone privacy switch is followed, and the panel app stays the home screen even where Meta's firmware keeps showing Android's Home chooser.
 - **Screenshots and display sizing on panels without root.** On Android 11 or later, a panel without root, such as the Shelly Wall Display X2i, now shows its live screenshot in Panel Assistant, and a tap on it reaches the panel and comes back with a fresh picture. Text size and display density can be set from the Install page on the same panels, where the firmware allows it. None of this uses ADB.
 - **See the voice conversation on screen.** After the wake word, a card at the foot of the dashboard shows whether the panel is listening, thinking or replying, quotes what it heard, writes out the reply as it arrives and ticks off Heard, Understood and Answered. If something fails, the card says what went wrong in plain words.

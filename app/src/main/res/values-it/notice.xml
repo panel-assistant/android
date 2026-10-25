@@ -19,6 +19,7 @@
     <string name="notice_line_ha_compatibility">Compatibilità con Home Assistant</string>
     <string name="notice_line_ha_dashboard">la plancia di Home Assistant</string>
     <string name="notice_line_reading_entities">Lettura delle tue entità</string>
+    <string name="notice_line_reading_entities_total">Lettura delle tue entità — %1$s su circa %2$s</string>
     <string name="notice_line_building_filter">Creazione dell’insieme filtrato</string>
     <string name="notice_line_entities_need_decision">entità richiedono una decisione prima che si apra la plancia</string>
     <string name="notice_line_sign_in_needed">Nulla può caricarsi finché il pannello non ha un accesso a Home Assistant.</string>

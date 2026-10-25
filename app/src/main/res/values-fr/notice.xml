@@ -19,6 +19,7 @@
     <string name="notice_line_ha_compatibility">Compatibilité avec Home Assistant</string>
     <string name="notice_line_ha_dashboard">le tableau de bord Home Assistant</string>
     <string name="notice_line_reading_entities">Lecture de vos entités</string>
+    <string name="notice_line_reading_entities_total">Lecture de vos entités — %1$s sur environ %2$s</string>
     <string name="notice_line_building_filter">Création de l’ensemble filtré</string>
     <string name="notice_line_entities_need_decision">entités attendent une décision avant l’ouverture du tableau de bord</string>
     <string name="notice_line_sign_in_needed">Rien ne peut se charger tant que le panneau n’a pas de connexion à Home Assistant.</string>

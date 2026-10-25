@@ -19,6 +19,7 @@
     <string name="notice_line_ha_compatibility">Compatibiliteit met Home Assistant</string>
     <string name="notice_line_ha_dashboard">het Home Assistant-dashboard</string>
     <string name="notice_line_reading_entities">Je entiteiten lezen</string>
+    <string name="notice_line_reading_entities_total">Je entiteiten lezen — %1$s van ongeveer %2$s</string>
     <string name="notice_line_building_filter">De gefilterde set opbouwen</string>
     <string name="notice_line_entities_need_decision">entiteiten wachten op een beslissing voordat het dashboard opent</string>
     <string name="notice_line_sign_in_needed">Er kan niets laden totdat het paneel een Home Assistant-login heeft.</string>

@@ -19,6 +19,7 @@
     <string name="notice_line_ha_compatibility">Home Assistant 兼容性</string>
     <string name="notice_line_ha_dashboard">Home Assistant 仪表盘</string>
     <string name="notice_line_reading_entities">正在读取您的实体</string>
+    <string name="notice_line_reading_entities_total">正在读取您的实体——已读取 %1$s 个，预计约 %2$s 个</string>
     <string name="notice_line_building_filter">正在构建筛选集</string>
     <string name="notice_line_entities_need_decision">个实体需要先做决定，仪表盘才能打开</string>
     <string name="notice_line_sign_in_needed">面板登录 Home Assistant 之前，什么都无法加载。</string>

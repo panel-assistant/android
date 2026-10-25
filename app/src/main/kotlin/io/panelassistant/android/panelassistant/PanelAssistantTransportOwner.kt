@@ -257,6 +257,13 @@ internal class PanelAssistantTransportOwner(
         if (next == null) publish(run, PanelAssistantTransportStatus())
     }
 
+    /** Advisory count belongs only to the currently configured Home Assistant account. */
+    fun expectedEntityCount(owner: HaAuthOwner): Int? = synchronized(lock) {
+        status.session?.expectedEntityCount.takeIf {
+            demand?.credential == owner && status.phase == PanelAssistantTransportPhase.CONNECTED
+        }
+    }
+
     /** End any pending wait now; used when the default network becomes available. */
     fun nudge() {
         nudges.trySend(Unit)

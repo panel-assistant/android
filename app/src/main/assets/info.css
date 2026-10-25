@@ -648,7 +648,8 @@ body.hdr-hide-logo .hdr .logo,body.hdr-hide-logo .hdr .sep{display:none}
 /* The area confirmation that shares the wizard's dashboard page. */
 /* Deterministic bring-up milestones (proof card): real signals, no spinner. */
 .wiz-milestones{margin:12px 0 0;border-left:3px solid var(--divider);padding-left:12px}
-.wiz-milestone{margin:4px 0;color:var(--dim);font-size:.88rem;line-height:1.5}
+.wiz-milestone{margin:4px 0;color:var(--dim);font-size:.88rem;line-height:1.5;overflow-wrap:anywhere}
+.wiz-milestones progress{display:block;width:100%;max-width:100%;accent-color:var(--primary)}
 .hd-area-label{display:block;margin:16px 0 5px;font-size:.92rem}
 .hd-area-note{display:block;color:var(--dim);margin-top:5px;line-height:1.45}
 /* Sign-in routes: the recommended one first and visually primary, both honest about the account. */

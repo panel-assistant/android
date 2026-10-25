@@ -481,11 +481,14 @@ internal class DashboardEntityGate(
 
     /** Show the first scan's milestone: the count read so far as the hero, the step on the track. */
     private fun paintEntityLearning(milestone: EntityLearningRuntime.BootstrapMilestone?) {
-        val learning = entityLearningNotice(milestone?.stage, milestone?.count)
-        entityBootstrapMilestoneView?.text = learning.count?.let { java.text.NumberFormat.getIntegerInstance().format(it) }
+        val learning = entityLearningNotice(milestone?.stage, milestone?.count, milestone?.expectedTotal)
+        val numbers = java.text.NumberFormat.getIntegerInstance()
+        entityBootstrapMilestoneView?.text = learning.count?.let(numbers::format)
             ?: activity.getString(R.string.notice_hero_reading)
-        entityLearningLine?.setText(learning.line)
-        entityLearningTrack?.show(learning.step, List(3) { i -> if (i < learning.step) 1 else 0 })
+        entityLearningLine?.text = learning.expectedTotal?.let {
+            activity.getString(learning.line, numbers.format(learning.count), numbers.format(it))
+        } ?: activity.getString(learning.line)
+        entityLearningTrack?.show(learning.step, learning.fills)
     }
 
     private fun localizedEntityFilterHoldDetail(hold: EntityFilterNativeHold): String = when (hold.error) {

@@ -11,6 +11,17 @@ import org.junit.Test
 
 class PanelAssistantTransportProtocolTest {
 
+    @Test fun `entity count estimate is optional and malformed advisory data never rejects hello`() {
+        fun session(value: Any?) = (PanelAssistantTransportProtocol.helloOutcome(
+            accepted().apply { if (value != null) getJSONObject("result").put("expected_entity_count", value) }, 1L,
+        ) as PanelAssistantHelloOutcome.Accepted).session
+        assertNull(session(null).expectedEntityCount)
+        assertEquals(2_500, session(2_500).expectedEntityCount)
+        for (value in listOf(JSONObject.NULL, 0, -1, 2.5, "2500", true, Long.MAX_VALUE)) {
+            assertNull("malformed advisory count $value", session(value).expectedEntityCount)
+        }
+    }
+
     @Test fun `optional hello and subscription lifecycle notices share strict additive validation`() {
         fun notice(phase: String = "starting", reason: String = "core_update") = JSONObject()
             .put("phase", phase).put("reason", reason).put("elapsed_ms", 1200L).put("expected_ms", 45000L)

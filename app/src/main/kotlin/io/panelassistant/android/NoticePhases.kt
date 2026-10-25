@@ -97,10 +97,22 @@ internal fun entityHoldKind(
 }
 
 /** The first scan's progress: the count read so far (the hero), the line, and the step on the track. */
-internal data class EntityLearningNotice(val count: Int?, @androidx.annotation.StringRes val line: Int, val step: Int)
+internal data class EntityLearningNotice(
+    val count: Int?,
+    @androidx.annotation.StringRes val line: Int,
+    val step: Int,
+    val expectedTotal: Int? = null,
+) {
+    val fills: List<Int> get() = listOf(
+        if (step > 0) 1_000 else expectedTotal?.let { ((count ?: 0).coerceAtLeast(0).toLong() * 1_000 / it).coerceAtMost(990).toInt() } ?: 0,
+        0, 0,
+    )
+}
 
-internal fun entityLearningNotice(stage: Int?, count: Int?): EntityLearningNotice =
-    if (stage == null || stage <= 1) EntityLearningNotice(count, R.string.notice_line_reading_entities, 0)
+internal fun entityLearningNotice(stage: Int?, count: Int?, expectedTotal: Int? = null): EntityLearningNotice =
+    if (stage == null || stage <= 1) expectedTotal?.takeIf { it > 0 && count != null }?.let {
+        EntityLearningNotice(count, R.string.notice_line_reading_entities_total, 0, it)
+    } ?: EntityLearningNotice(count, R.string.notice_line_reading_entities, 0)
     else EntityLearningNotice(count, R.string.notice_line_building_filter, 1)
 
 /** The standing screen's bold line and its hint for one setup stage. The identity hint takes the config button's label. */

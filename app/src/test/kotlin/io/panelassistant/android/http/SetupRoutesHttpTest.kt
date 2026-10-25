@@ -36,6 +36,42 @@ import org.junit.Test
 import sun.misc.Unsafe
 
 class SetupRoutesHttpTest {
+    @Test fun `setup reports a session estimate arriving during the scan and its actual completed total`() = withSetup { fixture ->
+        val learning = PaneldServer::class.java.getDeclaredField("entityLearning").run {
+            isAccessible = true
+            get(fixture.server) as EntityLearningManager
+        }
+        // Keep the fixture runnable on the prior app so this endpoint test proves the missing behavior.
+        fun field(name: String, value: Any) = EntityLearningManager::class.java.declaredFields
+            .firstOrNull { it.name == name }?.run {
+                isAccessible = true
+                set(learning, value)
+            }
+        var expected: Int? = null
+        field("expectedEntityTotal", { expected })
+        val generation = java.util.concurrent.atomic.AtomicLong(0)
+        field("effectGeneration", generation)
+        field("scanCounting", true)
+        field("scanCountedRows", 1_234)
+        testApplication {
+            application { fixture.mount(this) }
+            suspend fun state() = JSONObject(client.get("/api/v1/setup").bodyAsText())
+                .getJSONObject("entity_filter").getJSONObject("learning")
+            assertEquals(-1, state().optInt("expected_total", -1))
+            expected = 2_000
+            assertEquals(2_000, state().optInt("expected_total", -1))
+            field("scanCountedRows", 2_100)
+            assertEquals("the measured count may exceed its approximate estimate", 2_100, state().getInt("scanned"))
+            field("scanCounting", false)
+            assertEquals(2_100, state().getInt("catalog"))
+            assertEquals(-1, state().getInt("scanned"))
+            field("scanCountedRows", 0)
+            assertEquals("an empty completed response is an actual zero", 0, state().getInt("catalog"))
+            generation.incrementAndGet()
+            assertEquals("a completed count belongs to its original target", -1, state().getInt("catalog"))
+        }
+    }
+
     @Test fun `a configured builtin panel waiting for render proof needs no setup input`() = withSetup { fixture ->
         fixture.config.setDashboardPackage(SystemController.BUILTIN_DASHBOARD)
         fixture.config.setHaConnection("http://ha.example", "fixture-token")

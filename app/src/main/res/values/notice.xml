@@ -26,6 +26,7 @@
     <string name="notice_line_ha_compatibility">Home Assistant compatibility</string>
     <string name="notice_line_ha_dashboard">the Home Assistant dashboard</string>
     <string name="notice_line_reading_entities">Reading your entities</string>
+    <string name="notice_line_reading_entities_total">Reading your entities — %1$s of about %2$s</string>
     <string name="notice_line_building_filter">Building the filtered set</string>
     <string name="notice_line_entities_need_decision">entities need a decision before the dashboard opens</string>
     <string name="notice_line_sign_in_needed">Nothing can load until the panel has a Home Assistant login.</string>

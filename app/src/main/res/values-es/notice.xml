@@ -19,6 +19,7 @@
     <string name="notice_line_ha_compatibility">Compatibilidad con Home Assistant</string>
     <string name="notice_line_ha_dashboard">el panel de control de Home Assistant</string>
     <string name="notice_line_reading_entities">Leyendo tus entidades</string>
+    <string name="notice_line_reading_entities_total">Leyendo tus entidades — %1$s de aproximadamente %2$s</string>
     <string name="notice_line_building_filter">Creando el conjunto filtrado</string>
     <string name="notice_line_entities_need_decision">entidades necesitan una decisión antes de abrir el panel de control</string>
     <string name="notice_line_sign_in_needed">No se puede cargar nada hasta que el panel tenga un inicio de sesión de Home Assistant.</string>

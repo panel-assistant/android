@@ -19,6 +19,7 @@
     <string name="notice_line_ha_compatibility">Kompatibilita s Home Assistant</string>
     <string name="notice_line_ha_dashboard">ovládací panel Home Assistant</string>
     <string name="notice_line_reading_entities">Čtení vašich entit</string>
+    <string name="notice_line_reading_entities_total">Čtení vašich entit — %1$s z přibližně %2$s</string>
     <string name="notice_line_building_filter">Sestavování filtrované sady</string>
     <string name="notice_line_entities_need_decision">entit čeká na rozhodnutí, než se otevře ovládací panel</string>
     <string name="notice_line_sign_in_needed">Nic se nenačte, dokud panel nemá přihlášení k Home Assistant.</string>
