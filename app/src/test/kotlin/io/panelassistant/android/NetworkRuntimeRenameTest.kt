@@ -22,7 +22,19 @@ import org.junit.Test
  * state is restored or reported again; only the advertiser is replaced with the new name.
  */
 internal class NetworkRuntimeRenameTest : io.panelassistant.android.testsupport.PanelRuntimeRig() {
-    @Test fun aRenamedPanelKeepsItsStateCoreAndDispatcherAndAdvertisesTheNewName() {
+    @Test fun aRenamedPanelKeepsItsStateCoreAndDispatcherAndAdvertisesTheNewName() = checkRename()
+
+    @Test fun aHomeAssistantNameOfferReachesMetasEditorOnBothPortalProfilesEvenIfAlreadyStored() {
+        listOf("meta-portal", "meta-portal-10-gen2").forEach { checkRename(it, expectPortal = true) }
+    }
+
+    @Test fun otherProfilesNeverOpenMetasEditorForANameOffer() = checkRename("generic")
+
+    @Test fun nativeVerificationResultIsReportedSeparatelyFromAcceptedName() {
+        listOf(false, true).forEach { checkRename("meta-portal", expectPortal = true, vendorResult = it) }
+    }
+
+    private fun checkRename(profileId: String? = null, expectPortal: Boolean = false, vendorResult: Boolean? = null) {
         val prefs = fakePreferences(mapOf("panel_id" to PANEL, "friendly_name" to "Old name"))
         val config = Config(prefs.instance)
         val service = PaneldService()
@@ -32,6 +44,30 @@ internal class NetworkRuntimeRenameTest : io.panelassistant.android.testsupport.
         setField(service, "appliedNetworkConfiguration", call(service, "currentNetworkConfigurationSnapshot"))
         val android = FakeAndroidName("Jenna")
         setField(service, "androidDeviceName\$delegate", lazy { android.deviceName })
+        profileId?.let {
+            setField(service, "profile", io.panelassistant.android.device.profile.BundledProfileFixtures.profile(it))
+        }
+        val vendorRequests = CopyOnWriteArrayList<String>()
+        val accessibilityType = io.panelassistant.android.platform.AccessibilityActions::class.java
+        val accessibility = java.lang.reflect.Proxy.newProxyInstance(
+            accessibilityType.classLoader, arrayOf(accessibilityType),
+        ) { _, method, args ->
+            when (method.name) {
+                "renamePortal" -> {
+                    vendorRequests += args!![0] as String
+                    @Suppress("UNCHECKED_CAST")
+                    val finished = args[1] as (Boolean, String) -> Unit
+                    vendorResult?.let { finished(it, "native result") }
+                    true
+                }
+                "cancelPortalRename" -> Unit
+                else -> false
+            }
+        }
+        // The same caller test also runs on the base: without the optional vendor connection the
+        // explicit name is still accepted, but no native rename request is emitted.
+        PaneldService::class.java.declaredFields.firstOrNull { it.name == "portalNameAccessibility" }
+            ?.apply { isAccessible = true }?.set(service, accessibility)
 
         val core = idleCore(config)
         val commands = idleCommands()
@@ -67,6 +103,7 @@ internal class NetworkRuntimeRenameTest : io.panelassistant.android.testsupport.
             ) {
                 Thread.sleep(20)
             }
+            assertTrue(owner.reconnect(requireNotNull(owner.observe())) {}.get(5, TimeUnit.SECONDS))
 
             assertTrue("the rename must leave the runtime running", owner.isRunning())
             val renamed = owner.current()
@@ -79,10 +116,24 @@ internal class NetworkRuntimeRenameTest : io.panelassistant.android.testsupport.
             val applied = read(service, "appliedNetworkConfiguration") as NetworkConfigurationSnapshot
             assertEquals("New name", applied.runtime.friendlyName)
             assertEquals("Android's device name follows the rename", listOf("New name"), android.writes)
+            assertEquals(if (expectPortal) listOf("New name") else emptyList<String>(), vendorRequests.toList())
+            if (expectPortal) {
+                assertEquals(
+                    when (vendorResult) { true -> "Verified: native result"; false -> "Failed: native result"; null -> "Pending native verification" },
+                    read(service, "portalNameStatus"),
+                )
+            }
 
             // The same name accepted again (a repeated Home Assistant rename, a restore) writes nothing more.
             settleReconfigure(service, owner, setOf("friendly_name"))
             assertEquals(listOf("New name"), android.writes)
+            assertEquals(
+                "a repeated accepted name still verifies Meta's independent name",
+                if (expectPortal) listOf("New name", "New name") else emptyList<String>(), vendorRequests.toList(),
+            )
+
+            settleReconfigure(service, owner, setOf("ha_expose_temperature"))
+            assertEquals("an unrelated refresh never opens Meta settings", if (expectPortal) 2 else 0, vendorRequests.size)
         } finally {
             owner.shutdown(5_000L) {}
         }
@@ -105,6 +156,7 @@ internal class NetworkRuntimeRenameTest : io.panelassistant.android.testsupport.
         while (System.nanoTime() < settled && (owner.pendingLatestCount() > 0 || read(service, "appliedNetworkConfiguration") === before)) {
             Thread.sleep(20)
         }
+        assertTrue(owner.reconnect(requireNotNull(owner.observe())) {}.get(5, TimeUnit.SECONDS))
         assertTrue("the reconfigure must settle", read(service, "appliedNetworkConfiguration") !== before)
     }
 

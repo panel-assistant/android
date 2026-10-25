@@ -5,6 +5,11 @@ import android.accessibilityservice.GestureDescription
 import android.graphics.Bitmap
 import android.graphics.Path
 import android.graphics.Rect
+import android.content.Intent
+import android.os.Bundle
+import io.panelassistant.android.KioskAdminUi
+import java.util.IdentityHashMap
+import java.util.concurrent.atomic.AtomicLong
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.os.Build
@@ -161,6 +166,7 @@ class PanelAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         if (instance === this) {
+            cancelPortalRename()
             startupOverlayDismissal?.close()
             instance = null
         }
@@ -178,6 +184,7 @@ class PanelAccessibilityService : AccessibilityService() {
             }
             if (GuardDbProcessAdmission.ordinaryMutationsAllowed()) {
                 startupOverlayDismissal?.onEvent(event.eventType, event.packageName, event.className, event.windowId)
+                portalNameSync?.onEvent()
             }
         }
     }
@@ -197,6 +204,46 @@ class PanelAccessibilityService : AccessibilityService() {
             },
         )
     }.getOrNull()
+
+    /** Read a fresh native tree for every operation; node handles never survive an event/timer turn. */
+    private fun portalNameWindow(): Pair<PortalNameSync.Window, IdentityHashMap<PortalNameSync.Node, AccessibilityNodeInfo>>? {
+        val root = rootInActiveWindow ?: return null
+        val nodes = IdentityHashMap<PortalNameSync.Node, AccessibilityNodeInfo>()
+        var count = 0
+        fun read(node: AccessibilityNodeInfo, depth: Int): PortalNameSync.Node {
+            check(depth < 64 && ++count <= 2000) { "Portal editor tree exceeds inspection bound" }
+            val result = PortalNameSync.Node(
+                node.viewIdResourceName.orEmpty(), node.className?.toString().orEmpty(), node.text?.toString(),
+                node.isEnabled, node.isVisibleToUser, node.isClickable,
+                (0 until node.childCount).mapNotNull { node.getChild(it) }.map { read(it, depth + 1) },
+            )
+            nodes[result] = node
+            return result
+        }
+        val state = lastWindowState
+        return PortalNameSync.Window(
+            root.windowId, root.packageName?.toString(),
+            root.packageName?.toString() == packageName && state?.id == root.windowId &&
+                state.className == "io.panelassistant.android.DashboardActivity",
+            if (root.packageName?.toString() == PortalNameSync.SETTINGS) read(root, 0) else PortalNameSync.Node(),
+        ) to nodes
+    }
+
+    private fun operatePortalName(expected: PortalNameSync.Window, action: PortalNameSync.Action, name: String): Boolean {
+        if (!GuardDbProcessAdmission.ordinaryMutationsAllowed() || instance !== this || !portalRenamePending ||
+            portalRenameOwnerGeneration != portalRenameGeneration.get()) return false
+        val (current, nodes) = portalNameWindow() ?: return false
+        if (current != expected || current.packageName != PortalNameSync.SETTINGS) return false
+        val target = current.target(action) ?: return false
+        val node = nodes[target] ?: return false
+        return when (action) {
+            PortalNameSync.Action.BACK -> performGlobalAction(GLOBAL_ACTION_BACK)
+            PortalNameSync.Action.TEXT -> node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, Bundle().apply {
+                putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, name)
+            })
+            else -> node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        }
+    }
 
     /** Press Install on Android's confirmation of this app's own update, and on nothing else. */
     private fun pressOwnUpdateInstall(event: AccessibilityEvent?) {
@@ -275,7 +322,16 @@ class PanelAccessibilityService : AccessibilityService() {
         }
     }
 
-    override fun onInterrupt() {}
+    override fun onInterrupt() { cancelPortalRename() }
+
+    override fun onUnbind(intent: Intent?): Boolean {
+        if (instance === this) {
+            cancelPortalRename()
+            startupOverlayDismissal?.close()
+            instance = null
+        }
+        return super.onUnbind(intent)
+    }
 
     override fun onKeyEvent(event: KeyEvent): Boolean {
         if (!GuardDbProcessAdmission.ordinaryMutationsAllowed()) return super.onKeyEvent(event)
@@ -339,6 +395,91 @@ class PanelAccessibilityService : AccessibilityService() {
                     dismissal.onEvent(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, it.packageName, it.className, it.id)
                 }
             })
+        }
+
+        private val portalRenameGeneration = AtomicLong()
+        @Volatile private var portalRenamePending = false
+        private val portalRenameOwner = Any()
+        private var portalNameSync: PortalNameSync? = null
+        private var portalRenameCallback: ((Boolean, String) -> Unit)? = null
+        private var portalRenameOwnerGeneration = 0L
+
+        override fun portalRenameActive(): Boolean = portalRenamePending
+
+        override fun renamePortal(name: String, onFinished: (Boolean, String) -> Unit): Boolean {
+            val service = instance
+            if (service == null || !GuardDbProcessAdmission.ordinaryMutationsAllowed()) {
+                onFinished(false, "Portal rename requires connected accessibility")
+                return false
+            }
+            val generation = portalRenameGeneration.incrementAndGet()
+            // Publish ownership before posting: the kiosk must not reclaim the editor in the gap.
+            portalRenamePending = true
+            KioskAdminUi.setVisible(portalRenameOwner, true)
+            val queued = mainHandler.post {
+                if (generation != portalRenameGeneration.get()) {
+                    onFinished(false, "Portal rename superseded or cancelled")
+                    return@post
+                }
+                if (instance !== service || !GuardDbProcessAdmission.ordinaryMutationsAllowed()) {
+                    portalRenamePending = false
+                    KioskAdminUi.setVisible(portalRenameOwner, false)
+                    onFinished(false, "Portal accessibility disconnected before rename")
+                    return@post
+                }
+                portalRenameCallback?.invoke(false, "Portal rename superseded")
+                portalRenameCallback = onFinished
+                portalRenameOwnerGeneration = generation
+                if (portalNameSync?.active != true) {
+                    portalNameSync = PortalNameSync(
+                        now = android.os.SystemClock::elapsedRealtime,
+                        window = { service.portalNameWindow()?.first },
+                        launch = { runCatching {
+                            check(portalRenamePending && portalRenameOwnerGeneration == portalRenameGeneration.get())
+                            service.startActivity(Intent(PortalNameSync.ACTION).setPackage(PortalNameSync.SETTINGS)
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                            true
+                        }.getOrDefault(false) },
+                        act = service::operatePortalName,
+                        post = { task, delay -> mainHandler.postDelayed(task, delay) },
+                        cancel = { mainHandler.removeCallbacks(it) },
+                        finished = { success, reason ->
+                            if (portalRenameOwnerGeneration == portalRenameGeneration.get()) {
+                                portalRenamePending = false
+                                KioskAdminUi.setVisible(portalRenameOwner, false)
+                            }
+                            val callback = portalRenameCallback
+                            portalRenameCallback = null
+                            Log.i(TAG, "Portal name sync: success=$success $reason")
+                            callback?.invoke(success, reason)
+                        },
+                    )
+                }
+                runCatching { portalNameSync?.request(name) }.onFailure {
+                    portalNameSync?.close()
+                    Log.w(TAG, "Portal name sync failed", it)
+                }
+            }
+            if (!queued) {
+                if (generation == portalRenameGeneration.get()) {
+                    portalRenamePending = false
+                    KioskAdminUi.setVisible(portalRenameOwner, false)
+                }
+                onFinished(false, "Portal rename could not be scheduled")
+            }
+            return queued
+        }
+
+        override fun cancelPortalRename() {
+            val cancelledGeneration = portalRenameGeneration.incrementAndGet()
+            portalRenamePending = false
+            KioskAdminUi.setVisible(portalRenameOwner, false)
+            mainHandler.post {
+                if (portalRenameOwnerGeneration < cancelledGeneration) {
+                    portalNameSync?.close()
+                    portalNameSync = null
+                }
+            }
         }
 
         override fun connected(): Boolean = instance != null

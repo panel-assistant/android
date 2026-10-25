@@ -412,6 +412,11 @@ class PaneldService : Service() {
     // Controllers are fields so the network runtime can be rebuilt on a panel_id change.
     private lateinit var haLinks: ServiceHaLinks
     private val androidDeviceName by lazy { AndroidDeviceName.of(this) }
+    internal var portalNameAccessibility: io.panelassistant.android.platform.AccessibilityActions =
+        io.panelassistant.android.input.PanelAccessibilityService
+    private val portalNameGeneration = java.util.concurrent.atomic.AtomicLong()
+    @Volatile internal var portalNameStatus = "Not requested"
+        private set
     // Outlives runtime generations: each new state core binds its converger here, and the transport owner
     // reports what it records only on a session Panel Assistant accepts. The button event's types include
     // the active profile's.
@@ -1279,6 +1284,30 @@ class PaneldService : Service() {
             if (outcome != AndroidDeviceName.Outcome.NOT_CHOSEN && outcome != AndroidDeviceName.Outcome.UNCHANGED) {
                 Log.i(TAG, "android device name: ${outcome.name.lowercase()}")
             }
+            // Only an explicitly accepted name starts Meta's normal flow, including an offer already
+            // stored by an older app. Startup/default labels never reach this refresh branch.
+            if (!teardownBoundary.isStopping && ::profile.isInitialized &&
+                io.panelassistant.android.input.PortalStartupOverlayDismissal.supportsProfile(profile.id)) {
+                val name = config.chosenFriendlyName?.takeIf { it.isNotBlank() }
+                if (name == null) {
+                    portalNameGeneration.incrementAndGet()
+                    portalNameAccessibility.cancelPortalRename()
+                    portalNameStatus = "No chosen name"
+                } else {
+                    val generation = portalNameGeneration.incrementAndGet()
+                    portalNameStatus = "Pending native verification"
+                    if (!portalNameAccessibility.renamePortal(name) { success, reason ->
+                            if (generation == portalNameGeneration.get()) {
+                                portalNameStatus = if (success) "Verified: $reason" else "Failed: $reason"
+                            }
+                            if (success) Log.i(TAG, "Meta Portal name: $reason")
+                            else Log.w(TAG, "Meta Portal name not verified: $reason")
+                        }) {
+                        portalNameStatus = "Failed: accessibility unavailable"
+                        Log.w(TAG, "Meta Portal name not verified: accessibility unavailable")
+                    }
+                }
+            }
         }
     }
 
@@ -1406,6 +1435,9 @@ class PaneldService : Service() {
             "Audio playback" to voiceAudio.audio.snapshot().statusText(),
         )
         appDatabase?.let { extras["App database"] = it }
+        if (io.panelassistant.android.input.PortalStartupOverlayDismissal.supportsProfile(profile.id)) {
+            extras["Meta Portal name"] = portalNameStatus
+        }
         // Rolling 24-hour Wi-Fi outage count — present only once the window holds an episode or
         // dropped evidence, so a stable panel (or an Ethernet panel) never carries a zero row.
         wifiOutageStatusText(wifiOutages)?.let { extras["Wi-Fi stability"] = it }
@@ -2039,6 +2071,7 @@ class PaneldService : Service() {
      * every controller exists; normal destruction has already initialized all of them.
      */
     private fun closeServiceAdmissions() {
+        portalNameAccessibility.cancelPortalRename()
         approvalPrompt?.close()
         proximityWizard?.close()
         voiceAudio.closeAdmission()
@@ -2049,6 +2082,7 @@ class PaneldService : Service() {
 
     override fun onDestroy() {
         teardownBoundary.markStopping()
+        portalNameAccessibility.cancelPortalRename()
         controls.closeUsbDebuggingFeedback()
         notifications.releaseForeground()
         portalStartupOverlayDismissal?.close()
