@@ -73,6 +73,15 @@ async function open(engine, t, viewport, colorScheme, hash) {
   const p = await browser.newPage({ viewport: { width: viewport.width, height: viewport.height }, colorScheme });
   const errors = [];
   p.on('pageerror', (e) => errors.push(e.message));
+  // Record when the flash class arrives and leaves, so the test reads the flash's length instead of racing its end.
+  await p.addInitScript((id) => {
+    window.__flash = {};
+    new MutationObserver(() => {
+      const on = document.getElementById(id)?.classList.contains('flash');
+      if (on && !window.__flash.on) window.__flash.on = performance.now();
+      if (!on && window.__flash.on && !window.__flash.off) window.__flash.off = performance.now();
+    }).observe(document, { subtree: true, attributes: true, attributeFilter: ['class'], childList: true });
+  }, ID);
   await p.goto(`${h.url}/configure#${hash}`);
   await p.locator('#cfg-g0_f0').waitFor({ state: 'attached' });
   return { p, errors };
@@ -87,15 +96,16 @@ for (const engine of engines) for (const vp of viewports) for (const scheme of [
       const el = document.getElementById(id), r = el.getBoundingClientRect();
       const button = [...el.querySelectorAll('button')].find((b) => !b.hidden);
       return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, scrollY: window.scrollY, scrollW: document.documentElement.scrollWidth,
-        text: button && button.textContent, disabled: button && button.disabled, flash: el.classList.contains('flash') };
+        text: button && button.textContent, disabled: button && button.disabled };
     }, ID);
-    assert.ok(box.flash, 'the card must still be flashing inside the 1.8 s window');
     assert.ok(box.scrollY > 0, `the page must scroll to the card: ${JSON.stringify(box)}`);
     assert.ok(box.top >= 0 && box.bottom <= vp.height, `card must end in view: ${JSON.stringify(box)}`);
     assert.ok(box.left >= 0 && box.right <= vp.width && box.scrollW <= vp.width, `card must not overflow horizontally: ${JSON.stringify(box)}`);
     assert.equal(box.text, startText);
     assert.equal(box.disabled, false, 'a panel that needs calibration offers an enabled setup button');
-    await p.waitForFunction((id) => !document.getElementById(id).classList.contains('flash'), ID, { timeout: 3000 });
+    await p.waitForFunction(() => window.__flash.off, null, { timeout: 3000 });
+    const flash = await p.evaluate(() => window.__flash.off - window.__flash.on);
+    assert.ok(flash >= 1500, `the card must flash for about 1.8 s, not ${Math.round(flash)} ms`);
     assert.deepEqual(errors, []);
   });
 }
