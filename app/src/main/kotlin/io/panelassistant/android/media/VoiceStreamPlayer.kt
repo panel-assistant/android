@@ -277,7 +277,8 @@ internal class VoiceStreamPlayer(
 
     /** The stream playing now; replaced under [streams] so a [mute] cannot miss a stream starting. */
     @Volatile private var current: StreamWriter? = null
-    private val streams = Any()
+    /** Writers stay owned through END until their pending output is released. */
+    private val streams = mutableListOf<StreamWriter>()
 
     private class Inbound(val text: Boolean, val data: ByteArray, val receiveUs: Long)
 
@@ -326,7 +327,7 @@ internal class VoiceStreamPlayer(
     override fun mute() {
         synchronized(streams) {
             muted = true
-            current?.silence()
+            streams.forEach { it.silence() }
         }
     }
 
@@ -357,7 +358,6 @@ internal class VoiceStreamPlayer(
             return
         }
         val handle = SendspinHandle(raw, native::destroy)
-        val writers = mutableListOf<StreamWriter>()
         var verified = false
         val link = SessionLink(handle, mine, queue, closed, send)
         try {
@@ -378,9 +378,9 @@ internal class VoiceStreamPlayer(
                                 StreamWriter(handle, streamRate, channels).also {
                                     if (muted) it.silence()
                                     current = it
+                                    streams += it
                                 }
                             }
-                            writers += writer
                             writer.start()
                         }
                         SendspinNative.EVENT_STREAM_END -> {
@@ -402,17 +402,22 @@ internal class VoiceStreamPlayer(
                         Log.i(TAG, "voice stream connected")
                     }
                 }
-                writers.removeAll { !it.isAlive }
+                synchronized(streams) { streams.removeAll { !it.isAlive } }
                 Thread.sleep(if (current != null) STREAMING_LOOP_MS else IDLE_LOOP_MS)
             }
         } catch (error: Throwable) {
             Log.w(TAG, "voice stream session failed: ${error.javaClass.simpleName}")
         } finally {
-            current = null
+            val writers = synchronized(streams) {
+                current = null
+                streams.toList().also { owned ->
+                    owned.forEach { it.abort() }
+                    streams.clear()
+                }
+            }
             // Writers never block on the speaker, so once aborted they leave within a buffer. One that has
             // not left by the deadline is not assumed gone: the handle waits for any native call it is in,
             // then refuses its later ones, so destroying the client cannot free state it still uses.
-            writers.forEach { it.abort() }
             val stopping = writers.filter { it.join(writerJoinMs); it.isAlive }
             if (stopping.isNotEmpty()) Log.w(TAG, "voice output still stopping (${stopping.size}); its native calls are refused")
             link.stop()

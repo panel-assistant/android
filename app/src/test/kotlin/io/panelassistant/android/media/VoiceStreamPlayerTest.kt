@@ -63,6 +63,50 @@ class VoiceStreamPlayerTest {
         }
     }
 
+    @Test fun stopAfterEndSilencesTheFinalPendingPcmAndReleasesTheOutputPromptly() {
+        val library = Library()
+        val output = object : VoiceOutput {
+            val fullWrite = CountDownLatch(1)
+            val released = CountDownLatch(1)
+            val nonzeroAccepted = AtomicInteger()
+            @Volatile var full = true
+
+            override fun play() {}
+            override fun write(data: ByteArray, offset: Int, length: Int): Int {
+                if (full) {
+                    if ((offset until offset + length).any { data[it] != 0.toByte() }) fullWrite.countDown()
+                    return 0
+                }
+                nonzeroAccepted.addAndGet((offset until offset + length).count { data[it] != 0.toByte() })
+                return length
+            }
+            override fun pause() {}
+            override fun flush() {}
+            override fun stop() {}
+            override fun release() = released.countDown()
+            override fun playedFrames() = Long.MAX_VALUE
+            override fun finishNs(written: Long, rate: Int) = System.nanoTime()
+        }
+        val player = VoiceStreamPlayer(temp.newFolder(), { "Panel" }, "test", library, { _, _ -> output })
+        try {
+            player.open(PanelAssistantVoiceStreamGrant(serverId, ByteArray(32))) { _, _ -> }
+            library.pcm += chunk(1)
+            library.start()
+            assertTrue("nonzero PCM is pending at the full output", output.fullWrite.await(5, TimeUnit.SECONDS))
+            library.events += SendspinNative.EVENT_STREAM_END
+            assertTrue("the event call following END acknowledges its processing", library.endProcessed.await(5, TimeUnit.SECONDS))
+            player.mute()
+            val acceptedAtMute = output.nonzeroAccepted.get()
+            output.full = false
+            assertTrue("the ended output is released within one second of Stop", output.released.await(1, TimeUnit.SECONDS))
+            assertEquals("no nonzero PCM is accepted after mute returns", 0, output.nonzeroAccepted.get() - acceptedAtMute)
+        } finally {
+            output.full = false
+            player.close()
+            assertTrue(library.destroyedLatch.await(10, TimeUnit.SECONDS))
+        }
+    }
+
     private fun scheduledPlayer(library: Library, speakers: Speakers): PanelAssistantVoiceStreamPeer {
         val root = VoiceStreamPlayer::class.java.name
         val parent = javaClass.classLoader
@@ -151,7 +195,18 @@ class VoiceStreamPlayerTest {
         override fun clientId(handle: Long) = "c".repeat(43)
         override fun connect(handle: Long, url: String) {}
         override fun loop(handle: Long) {}
-        override fun nextEvent(handle: Long): Int = events.poll() ?: 0
+        val endProcessed = CountDownLatch(1)
+        private var endReturned = false
+        override fun nextEvent(handle: Long): Int {
+            // The next call is made only after the production caller has handled END.
+            if (endReturned) endProcessed.countDown()
+            return (events.poll() ?: 0).also {
+                if (it == SendspinNative.EVENT_STREAM_END) {
+                    pcm.clear() // Native END discards its queue; a writer may already own a buffer.
+                    endReturned = true
+                }
+            }
+        }
 
         /** A mono stream starts at [RATE]. */
         fun start() {
