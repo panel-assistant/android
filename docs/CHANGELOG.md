@@ -12,7 +12,7 @@
 
 - UI layout checks use pinned browser images and split the test suite to reduce CI time.
 
-## v1.0.0-rc1
+## v1.0.0-rc1 - 2026-10-25
 
 This is the first release candidate of the panel app's 1.0, the Android app that Panel Assistant installs on your panels. Please open an issue with the panel model and what you saw if something breaks. The story of 1.0 is that MQTT and the old app are gone for good, so this release only works with panels that Panel Assistant 0.9.0 has already moved. In exchange the panel and Panel Assistant now talk over one connection for everything, including the sidebar, updates and voice, and that is what makes most of the changes below possible. A lot changed; I have listed what you will notice rather than every commit.
 
@@ -89,8 +89,8 @@ Pairs with Panel Assistant 1.0.0-rc1, the Home Assistant integration.
 - Pending install approvals end with their connection. Refused screen brightness and RGB LED writes report failure, and failed LED effects become unavailable until output is confirmed again.
 - Configure keeps local Area overrides visible and refreshes dashboard choices after sign-in. Low-memory recovery preserves on-panel sign-in forms, and revision restores name settings the panel can no longer apply.
 - Dashboard responsiveness keeps its live metrics without writing retired performance history.
-
 - **The right WebView for the Smatek S9E and the Electron WF2489T.** The S9E profile now names the 64-bit replacement WebView its 64-bit firmware needs, instead of a 32-bit build that cannot serve the app. The WF2489T profile no longer names a replacement WebView at all, because that panel updates Google's WebView from the Play Store.
+- **The Smatek S9E switches its backlight off.** Switching the screen off used to dim it to black with the backlight still lit, and the screen switch in Home Assistant could turn itself back on a few minutes later. The panel app now powers the S9E's backlight off, the switch stays off, and a touch still wakes the screen. Contributed by @merdok.
 - **Panel Assistant can remove the app when it is a device admin.** Android refuses to uninstall an app that has been made a device admin in its settings, so removing the panel app failed on such a panel. The app now gives up device admin when Panel Assistant asks, just before removing it.
 - **The panel says when it cannot reach Home Assistant.** When the dashboard drops and the panel has no session to Panel Assistant, it shows Cannot reach Home Assistant with a retry timer instead of a bare Offline. The reconnect card also comes back correctly after the dashboard's browser engine crashes or the screen goes dark mid-load.
 - **The restart notice knows when a restart is late.** While Home Assistant restarts, the notice says so when the restart runs past its usual time, even while the dashboard reloads, and gives way if Home Assistant never comes back.
@@ -109,6 +109,33 @@ Pairs with Panel Assistant 1.0.0-rc1, the Home Assistant integration.
 - **Vendor apps are tamed on the first try on a slow panel.** On a panel whose root helper takes more than half a second to stop or disable an app, each action used to run a second time through su, and the whole taming pass repeated for several minutes after the app started. The helper is now given the time those commands take.
 - **Log shipping reports an outage once.** While the log collector cannot be reached, the panel logs the first failed attempt and, when it reconnects, one line saying how many attempts failed and the last reason, instead of a warning every few seconds.
 - **Translation corrections** across every shipped language, including the setup screens, the Voice card and the diagnostics page.
+
+## v0.9.11 - 2026-10-08
+
+A small release that finishes moving the app's internal names onto the project's own namespace before 1.0. Update Panel Assistant to 0.9.0 first.
+
+Pairs with Panel Assistant 0.9.0.
+
+### Update Panel Assistant first
+
+**Update Panel Assistant to 0.9.0 before, or together with, your panels.** A panel on an older Panel Assistant isn't offered v0.9.11 and stays on v0.9.10.
+
+### New
+
+- **Announcements play in step** across panels with Panel Assistant 0.9.0.
+- **Everything MQTT used to report now has a native route**, so with Panel Assistant 0.9.0 panels move off MQTT keeping their entities.
+- **Czech and Brazilian Portuguese** (early translations).
+
+### Changed
+
+- **The app's internal names finished their move** to the project's own namespace.
+- **Shizuku is no longer needed.** Panel Assistant now does everything Shizuku was used for, so the app no longer supports it and Enhanced access is gone from Configure. You can uninstall the Shizuku app if nothing else uses it.
+- **Old short web addresses from before v0.8.5 are retired**; use the `/api/v1/` versions.
+
+### Fixed
+
+- **No more "isn't responding" message** on slower panels after an update.
+- **The button backlight survives a restart** on panels without MQTT.
 
 ## v0.9.10 - 2026-10-07
 
