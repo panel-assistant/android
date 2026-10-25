@@ -9933,11 +9933,6 @@
    "sourceHash": "ad4a9c9f2cdb17eaa7c15c04aac14c932e2e95cf53eba3f3fa4d0a9c4a225331",
    "state": "machine-cross-checked"
   },
-  "setup.action.panel_dashboard": {
-   "text": "Paneeldashboard",
-   "sourceHash": "3db3c314463f71ee6dfd052b3b46cdd2851593ad49f19dcac17289eae7969c00",
-   "state": "machine-cross-checked"
-  },
   "setup.action.save_continue": {
    "text": "Opslaan en doorgaan",
    "sourceHash": "6880daf172a2e6c51f2de1720698f696b73bac86b4b73f3c281f63d1113dc869",
@@ -10737,6 +10732,31 @@
    "text": "De browser-engine van dit paneel is te oud om een actueel Home Assistant-dashboard te tonen. Al het andere kan perfect worden ingesteld, maar het dashboard blijft dan leeg of werkt niet goed, dus dit is het waard om als eerste op te lossen.",
    "sourceHash": "8e3d6c18386c6ca7d5aff8cfc2a6b145770278275ba6d881c421e2b9afa01e0f",
    "state": "machine-cross-checked"
+  },
+  "setup.webview.after_update": {
+   "sourceHash": "9ea7a503304638a49a546bcfb1bed7aadfd5fa80c58ac23e4ec88e51240cda80",
+   "state": "machine-draft",
+   "text": "Na de update start het paneel zijn app opnieuw op. Laat deze pagina open: ze gaat vanzelf verder naar het Home Assistant-adres."
+  },
+  "setup.webview.found": {
+   "sourceHash": "29d3bc49a5e9bbc77f2874fe03a9d53e6e7a5a21fbdcb54fd075343a6ccc98ee",
+   "state": "machine-draft",
+   "text": "Dit paneel heeft Chromium {found}. Een actueel Home Assistant-dashboard heeft Chromium {needed} of nieuwer nodig."
+  },
+  "setup.webview.play": {
+   "sourceHash": "1ee78fca20a49f0b9757b8d2b68b22a61696137734987c922834e800836ee73c",
+   "state": "machine-draft",
+   "text": "Dit paneel werkt zijn engine bij via Google Play: open op het paneel de Play Store en werk Android System WebView bij."
+  },
+  "setup.webview.update_steps": {
+   "sourceHash": "2ede37fa8d53dcf6214ad13dd7b37b3007f234da7cef240307e8592c1bb23a54",
+   "state": "machine-draft",
+   "text": "Updatestappen voor {model}"
+  },
+  "setup.webview.update_steps_any": {
+   "sourceHash": "50ceb4e2fa12f7618c726863fafc21b7e17cd0b94259447bd92afc25e517300f",
+   "state": "machine-draft",
+   "text": "WebView-updatestappen"
   },
   "setup.webview.title": {
    "text": "De browser-engine van het paneel moet worden bijgewerkt",
