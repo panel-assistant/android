@@ -24,8 +24,10 @@ env:
   # One definition for every URL this workflow emits in the release body.
   RELEASE_REPOSITORY: panel-assistant/android
 
+# Tag publication and manual validation retain independent results, including
+# while pending. A trial for a tag cannot replace that tag's publication run.
 concurrency:
-  group: release-${{ inputs.release_tag || github.ref_name }}
+  group: release-${{ github.event_name }}-${{ inputs.release_tag || github.ref_name }}-${{ github.run_id }}
   cancel-in-progress: false
 
 jobs:
