@@ -234,7 +234,17 @@ for (const [engine, browserType] of [['Chromium', chromium], ['WebKit', webkit]]
     await assertOverride(false);
     for (const width of [320, 1280]) {
       await rig.page.setViewportSize({ width, height: 900 });
-      assert.equal(await rig.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      // Wait for the resize to settle, then name whatever still reaches past the viewport, so a failure on
+      // a runner whose fonts or timing differ says which element is too wide.
+      const layout = await eventually(() => rig.page.evaluate(() => ({
+        inner: innerWidth,
+        scroll: document.documentElement.scrollWidth,
+        wide: [...document.querySelectorAll('body *')]
+          .filter((node) => node.getBoundingClientRect().right > innerWidth + 0.5)
+          .map((node) => `${node.tagName.toLowerCase()}${node.id ? '#' + node.id : ''}${node.className && typeof node.className === 'string' ? '.' + node.className.trim().split(/\s+/).join('.') : ''} right=${Math.round(node.getBoundingClientRect().right)}`)
+          .slice(0, 8),
+      })), (value) => value.inner === width && value.scroll <= value.inner);
+      assert.ok(layout.scroll <= layout.inner, `${engine} ${width}px: page is ${layout.scroll}px wide in a ${layout.inner}px viewport; too wide: ${layout.wide.join(', ') || 'none found'}`);
     }
     await selection.selectOption('Office');
     assert.equal(await rig.page.locator('#hd-area small').first().isVisible(), false);
