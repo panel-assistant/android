@@ -216,6 +216,7 @@ internal class ServiceHaLinks(
                 did = panelAssistantDiscoveryId(config.deviceUid),
                 appVersion = BuildConfig.VERSION_NAME,
                 appVersionCode = BuildConfig.VERSION_CODE,
+                httpPort = config.httpPort,
             ),
         )?.copy(routeEpoch = config.haRouteEpoch())
     }

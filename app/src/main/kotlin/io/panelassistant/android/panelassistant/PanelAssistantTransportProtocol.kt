@@ -13,6 +13,7 @@ internal data class PanelAssistantHelloIdentity(
     val did: String?,
     val appVersion: String,
     val appVersionCode: Int,
+    val httpPort: Int = io.panelassistant.android.Config.DEFAULT_PORT,
 )
 
 /** Session-only authority for admitting panel-app candidates. Never persisted while PA is offline. */
@@ -278,6 +279,7 @@ internal object PanelAssistantTransportProtocol {
         .put("type", COMMAND_HELLO)
         .put("protocol", JSONObject().put("min", PROTOCOL_MIN).put("max", PROTOCOL_MAX))
         .put("did", identity.did ?: JSONObject.NULL)
+        .put("http_port", identity.httpPort)
         .put(
             "app",
             JSONObject().put("version", identity.appVersion).put("version_code", identity.appVersionCode),

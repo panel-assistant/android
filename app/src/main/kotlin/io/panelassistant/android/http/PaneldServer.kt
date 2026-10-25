@@ -394,6 +394,12 @@ class PaneldServer internal constructor(
         val listener = PaneldListener(
             scope, { config.httpPort }, { listenerOffLan(config) },
             onBindFailure = { Log.e(TAG, "HTTP bind on :${config.httpPort} failed", it) },
+            onBound = { port ->
+                if (config.httpPort != port) {
+                    config.httpPort = port
+                    if (this.listener != null) onReconfigure(setOf("http_port"))
+                }
+            },
         ) { mount(this) }
         // Treat the bind as required startup, not a best-effort sidecar. A failure must close this
         // generation's admission and reach the service runtime owner, which records FAILED and prevents

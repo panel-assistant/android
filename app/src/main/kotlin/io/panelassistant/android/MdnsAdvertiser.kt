@@ -77,7 +77,7 @@ class MdnsAdvertiser(
     private val config: Config,
     private val runtimePanelId: String = config.panelId,
     private val runtimeFriendlyName: String = config.friendlyName,
-    private val runtimeHttpPort: Int = config.httpPort,
+    private val runtimeHttpPort: Int? = null,
     // Acquires the Wi-Fi multicast lock and returns its release. Injectable so the responder can run
     // on a JVM, where there is no WifiManager.
     private val acquireMulticastLock: () -> () -> Unit = { acquireWifiMulticastLock(context) },
@@ -106,6 +106,7 @@ class MdnsAdvertiser(
     // liveness probe, so a dual-stack panel's IPv4 advertisement behaves exactly as an IPv4-only one.
     @Volatile private var secondaryDns: JmDNS? = null
     @Volatile private var secondaryBoundIp: String? = null
+    private var advertisedPort: Int? = null
     private var advertisedProps: Map<String, String>? = null
     private val liveness = MdnsLivenessPolicy()
     private data class RecoveryRequest(
@@ -226,7 +227,7 @@ class MdnsAdvertiser(
                 return@start false
             }
             if (jmdns != null || lock != null) {
-                if (!mdnsRebindRequired(boundIp, lanIp, browsing)) {
+                if (!mdnsRebindRequired(boundIp, lanIp, browsing) && advertisedPort == (runtimeHttpPort ?: config.httpPort)) {
                     if (resetLivenessBudget) liveness.onStarted(true)
                     reconcileSecondary(secondaryIp)
                     return@start true
@@ -266,7 +267,7 @@ class MdnsAdvertiser(
                 val info = ServiceInfo.create(
                     Config.MDNS_SERVICE_TYPE,
                     runtimePanelId,
-                    runtimeHttpPort,
+                    runtimeHttpPort ?: config.httpPort,
                     0,
                     0,
                     props,
@@ -276,6 +277,7 @@ class MdnsAdvertiser(
                 dns.registerService(info)
                 // JmDNS may rename a colliding instance during registration; monitor the actual name.
                 advertisedInstanceName = info.name ?: runtimePanelId
+                advertisedPort = info.port
                 advertisedProps = props
                 reconcileSecondary(secondaryIp)
                 // Start the persistent peer browse (powers the header switcher) — begins querying immediately
@@ -362,7 +364,7 @@ class MdnsAdvertiser(
                 refreshThread = worker
                 worker.start()
                 liveness.onStarted(resetLivenessBudget)
-                Log.i(TAG, "advertising ${Config.MDNS_SERVICE_TYPE} as $runtimePanelId @ $addr:$runtimeHttpPort")
+                Log.i(TAG, "advertising ${Config.MDNS_SERVICE_TYPE} as $runtimePanelId @ $addr:${runtimeHttpPort ?: config.httpPort}")
                 true
             } catch (e: Exception) {
                 Log.w(TAG, "mDNS advertise failed", e)
@@ -390,14 +392,14 @@ class MdnsAdvertiser(
                 ServiceInfo.create(
                     Config.MDNS_SERVICE_TYPE,
                     advertisedInstanceName ?: runtimePanelId,
-                    runtimeHttpPort,
+                    runtimeHttpPort ?: config.httpPort,
                     0,
                     0,
                     props,
                 ),
             )
             secondaryBoundIp = wanted
-            Log.i(TAG, "also advertising ${Config.MDNS_SERVICE_TYPE} @ $wanted:$runtimeHttpPort")
+            Log.i(TAG, "also advertising ${Config.MDNS_SERVICE_TYPE} @ $wanted:${runtimeHttpPort ?: config.httpPort}")
         } catch (e: Exception) {
             Log.w(TAG, "mDNS advertise at $wanted failed", e)
             stopSecondary()
@@ -589,6 +591,7 @@ class MdnsAdvertiser(
         jmdns = null
         boundIp = null
         advertisedInstanceName = null
+        advertisedPort = null
         advertisedProps = null
         peerMap.clear()
         val activeLock = lock

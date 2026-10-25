@@ -41,6 +41,36 @@ import java.util.concurrent.atomic.AtomicInteger
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class PanelAssistantTransportOwnerTest {
 
+    @Test fun `hello reports the current listener port on each connection`() =
+        io.panelassistant.android.http.PaneldListenerPortTest.withDefaultPortLock { runTest {
+        val first = FakeConnection(Ha.accepting())
+        val second = FakeConnection(Ha.accepting())
+        val harness = harness(first, second)
+        val holder = java.net.ServerSocket().apply { bind(java.net.InetSocketAddress("127.0.0.1", 8888)) }
+        val httpScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+        var actualPort = 8888
+        val listener = io.panelassistant.android.http.PaneldListener(httpScope, { 8888 }, { true }, onBound = { actualPort = it }) {}
+        try {
+            listener.start {}
+            assertTrue(actualPort in 1024..32767 && actualPort != 8888)
+            harness.owner.replaceDemand(DEMAND.copy(identity = IDENTITY.copy(httpPort = actualPort)))
+            runCurrent()
+            assertEquals(actualPort, first.sent.map(::JSONObject).single {
+                it.getString("type") == "panel_assistant/hello"
+            }.optInt("http_port", -1))
+            harness.owner.replaceDemand(DEMAND.copy(identity = IDENTITY.copy(httpPort = 14727)))
+            runCurrent()
+            assertEquals(14727, second.sent.map(::JSONObject).single {
+                it.getString("type") == "panel_assistant/hello"
+            }.optInt("http_port", -1))
+        } finally {
+            harness.owner.close()
+            listener.stop()
+            httpScope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
+            holder.close()
+        }
+    } }
+
     @Test fun `entity estimate follows the accepted current account and disappears immediately on replacement`() = runTest {
         val connection = FakeConnection(Ha.accepting(expectedEntityCount = 2_500))
         val harness = harness(connection)

@@ -1639,11 +1639,11 @@ class DashboardActivity : AppCompatActivity() {
             setBackgroundColor(BG_DARK)
             CookieManager.getInstance().setAcceptCookie(true)
             CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-            webViewClient = PanelHaSignInClient(haUrl, object : PanelHaSignInClient.Host {
+            webViewClient = PanelHaSignInClient(haUrl, activityConfig.httpPort, object : PanelHaSignInClient.Host {
                 override fun isCurrent(view: WebView) = rendererCurrent(generation, view)
                 override fun retryLater(view: WebView, delayMs: Long) {
                     main.postDelayed({
-                        if (rendererCurrent(generation, view) && !destroyed) view.loadUrl(panelHaOAuthStartUrl(haUrl))
+                        if (rendererCurrent(generation, view) && !destroyed) view.loadUrl(panelHaOAuthStartUrl(haUrl, activityConfig.httpPort))
                     }, delayMs)
                 }
                 override fun showUnreachable() = statusScreens.showBlockedAdmissionScreen(
@@ -1679,7 +1679,7 @@ class DashboardActivity : AppCompatActivity() {
         setContentView(content)
         // The sign-in starts no dashboard load, so it must unfreeze timers an activity it replaced froze itself.
         pacer.resumeTimersIfOwner(view)
-        view.loadUrl(panelHaOAuthStartUrl(haUrl))
+        view.loadUrl(panelHaOAuthStartUrl(haUrl, activityConfig.httpPort))
     }
 
     private fun compatibilityOwner(config: Config): DashboardV2CompatibilityOwner =
