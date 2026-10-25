@@ -12248,19 +12248,19 @@
       "sourceHash": "c947e038fffab8a5ec7abf38c5198354fe76061a2d636673487d485d7172730a",
       "state": "machine-cross-checked"
     },
-    "install.backup.dynamic.restore_awaiting_approval": {
-      "text": "Esperando al panel. Si está en modo reforzado, aprueba esta restauración en el panel en 10 minutos: Ajustes, luego el menú, Modo de seguridad, Revisar aprobaciones.",
-      "sourceHash": "b89d61b737afc6f5d7b69f9a56ef3a64f1fdd7185412439d1f702767a2897d7d",
+    "install.approval.waiting": {
+      "text": "Apruébalo en la pantalla del panel. El panel espera hasta 10 minutos.",
+      "sourceHash": "18d37aa301c3d51358478f0194c3d317cbb9e1c29702910c567daf08b9f03579",
       "state": "machine-cross-checked"
     },
-    "install.backup.dynamic.restore_approval_expired": {
-      "text": "Restauración no iniciada: no se aprobó en el panel a tiempo. No se cambió nada.",
-      "sourceHash": "b725b18d4578a86e00a020b60f1b1f48848b0556995a93058e50c9b48627684e",
+    "install.approval.denied": {
+      "text": "No iniciado: se rechazó en el panel. No se cambió nada.",
+      "sourceHash": "5d07f4dc1083f9adea785dd045ca0d230d1a3e37bd574e141f2dded6ffaa327c",
       "state": "machine-cross-checked"
     },
-    "install.backup.dynamic.restore_approval_denied": {
-      "text": "Restauración no iniciada: se denegó en el panel. No se cambió nada.",
-      "sourceHash": "ee31ab363037a0183a8e5d8e50408d3a565b31223f8a7ae4913b852e6947fa4e",
+    "install.approval.expired": {
+      "text": "No iniciado: no se aprobó en el panel a tiempo. No se cambió nada.",
+      "sourceHash": "e07cad6b74d46511394598dd94d73f230e86d71c2c4e5ede5891d53694ce85b1",
       "state": "machine-cross-checked"
     }
   }

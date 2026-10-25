@@ -17842,6 +17842,42 @@
       "softMaxChars": 42,
       "hardMaxChars": 76
     },
+    "install.approval.denied": {
+      "text": "Not started: it was denied on the panel. Nothing was changed.",
+      "sourceHash": "5d07f4dc1083f9adea785dd045ca0d230d1a3e37bd574e141f2dded6ffaa327c",
+      "surface": "install",
+      "context": "Install operation result shown to the panel administrator.",
+      "risk": "consequential",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 79,
+      "hardMaxChars": 122
+    },
+    "install.approval.expired": {
+      "text": "Not started: it was not approved on the panel in time. Nothing was changed.",
+      "sourceHash": "e07cad6b74d46511394598dd94d73f230e86d71c2c4e5ede5891d53694ce85b1",
+      "surface": "install",
+      "context": "Install operation result shown to the panel administrator.",
+      "risk": "consequential",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 97,
+      "hardMaxChars": 150
+    },
+    "install.approval.waiting": {
+      "text": "Approve this on the panel's screen. The panel waits up to 10 minutes for it.",
+      "sourceHash": "18d37aa301c3d51358478f0194c3d317cbb9e1c29702910c567daf08b9f03579",
+      "surface": "install",
+      "context": "Install operation result shown to the panel administrator.",
+      "risk": "consequential",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 98,
+      "hardMaxChars": 152
+    },
     "install.audit.description": {
       "text": "Re-check this panel for problems that stop the dashboard rendering — old WebView, no dashboard app, available updates.",
       "sourceHash": "1f0badfb07dade0f2e55b2e777f6b2f670f8fb38c5e9fa1445fed2f0fb5b800e",
@@ -18358,42 +18394,6 @@
       "frozen": [],
       "softMaxChars": 20,
       "hardMaxChars": 40
-    },
-    "install.backup.dynamic.restore_approval_denied": {
-      "text": "Restore not started: it was denied on the panel. Nothing was changed.",
-      "sourceHash": "ee31ab363037a0183a8e5d8e50408d3a565b31223f8a7ae4913b852e6947fa4e",
-      "surface": "install",
-      "context": "Install operation result shown to the panel administrator.",
-      "risk": "consequential",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 89,
-      "hardMaxChars": 138
-    },
-    "install.backup.dynamic.restore_approval_expired": {
-      "text": "Restore not started: it was not approved on the panel in time. Nothing was changed.",
-      "sourceHash": "b725b18d4578a86e00a020b60f1b1f48848b0556995a93058e50c9b48627684e",
-      "surface": "install",
-      "context": "Install operation result shown to the panel administrator.",
-      "risk": "consequential",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 103,
-      "hardMaxChars": 166
-    },
-    "install.backup.dynamic.restore_awaiting_approval": {
-      "text": "Waiting for the panel. If it is in Hardened mode, approve this restore on the panel within 10 minutes: Settings, then the menu, Security mode, Review approvals.",
-      "sourceHash": "b89d61b737afc6f5d7b69f9a56ef3a64f1fdd7185412439d1f702767a2897d7d",
-      "surface": "install",
-      "context": "Install operation result shown to the panel administrator.",
-      "risk": "consequential",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 180,
-      "hardMaxChars": 320
     },
     "install.backup.dynamic.restore_confirm": {
       "text": "Restore overwrites this panel's config and Companion login. Continue?",

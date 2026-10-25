@@ -205,7 +205,24 @@
     if (reply.outcome === 'pending_approval') throw approvalError(body);
     return body;
   }
-  function approved(op, args) { return transport.request(op, args).then(approvalAwareJson); }
+  // Panel Assistant's sidebar relay answers a request a Hardened panel holds only once its approval ends, so
+  // nothing reaches the page while the panel waits: on a panel rendered in Hardened mode, `show` is told at once
+  // where to approve it. An approval that is denied or runs out ends as an approval error with its own message.
+  function guarded(op, args, show) {
+    var body = document.body;
+    if (show && body && body.hasAttribute && body.hasAttribute('data-hardened')) {
+      show(t('install.approval.waiting', 'Approve this on the panel\'s screen. The panel waits up to 10 minutes for it.'));
+    }
+    return transport.request(op, args).then(function (reply) {
+      if (reply.outcome !== 'refused' || (reply.code !== 'approval_denied' && reply.code !== 'approval_timeout')) return reply;
+      var ended = new Error(reply.code === 'approval_denied'
+        ? t('install.approval.denied', 'Not started: it was denied on the panel. Nothing was changed.')
+        : t('install.approval.expired', 'Not started: it was not approved on the panel in time. Nothing was changed.'));
+      ended.approvalRequired = true;
+      throw ended;
+    });
+  }
+  function approved(op, args, show) { return guarded(op, args, show).then(approvalAwareJson); }
 
   // Follows install/status through the install family until the operation finishes; gives up when the
   // panel stays unreachable for lostAfterMs.
@@ -336,7 +353,7 @@
     var fields = { name: name };
     if (extra.action) fields.action = extra.action;
     if (extra.version) fields.version = extra.version;
-    approved('install.component', fields).then(function (d) {
+    approved('install.component', fields, msg).then(function (d) {
         if (d.status === 'busy') { msg(t('install.progress.busy', 'Another install is already running — try again shortly.')); if (btn) btn.disabled = false; return; }
         if (d.status !== 'started') { var status = d.status || 'error'; msg(t('install.progress.could_not_start', 'Could not start: {status}', { status: closedToken(COMPONENT_STATUS, status) })); if (btn) btn.disabled = false; return; }
         pollInstall();
@@ -360,7 +377,7 @@
   window.repairCompUrl = function (btn) {
     btn.disabled = true; var s = document.getElementById('cu-fix');
     if (s) s.textContent = t('install.progress.companion_repairing', 'Repairing + relaunching the Companion…');
-    approved('companion.repair_url', {}).then(function (d) {
+    approved('companion.repair_url', {}, function (text) { if (s) s.textContent = text; }).then(function (d) {
       if (d.status === 'busy') { if (s) s.textContent = t('install.progress.operation_busy', 'Another operation is running — try again shortly.'); btn.disabled = false; return; }
       if (s) setPresented(s, d.presentation, t('install.progress.companion_repair_started', 'Repair started — the Companion will relaunch; refresh this page in a few seconds to confirm.'));
     }).catch(function (error) { if (s) s.textContent = requestFailure(error, t('install.progress.companion_repair_failed', 'Failed to start — check root.')); btn.disabled = false; });
@@ -535,7 +552,7 @@
         '<button class="pbtn" style="margin-top:8px" onclick="apkCancelFetch()">' + esc(t('install.apk.dynamic.cancel', 'Cancel')) + '</button>';
       scheduleInstallColumnAlignment();
     }
-    approved('install.apk.from_url', { url: url, request: request }).then(function (d) {
+    approved('install.apk.from_url', { url: url, request: request }, apkMsg).then(function (d) {
       if (mine !== apkPreviewGeneration) return;
       apkFetchRequest = null;
       if (!d.ok && d.error === 'cancelled') {
@@ -598,7 +615,7 @@
 
   window.apkInstall = function (btn) {
     btn.disabled = true; apkMsg(t('install.apk.dynamic.installing', 'Installing…'));
-    approved('install.apk.commit', { token: btn.getAttribute('data-token') || '' }).then(function (d) {
+    approved('install.apk.commit', { token: btn.getAttribute('data-token') || '' }, apkMsg).then(function (d) {
       if (d.status === 'busy') { apkMsg(t('install.apk.dynamic.install_busy', 'Another install is running — try again shortly.')); btn.disabled = false; return; }
       if (d.status === 'stale-or-missing') { apkMsg(t('install.apk.dynamic.stale', 'This APK was replaced or expired — choose or fetch it again.')); btn.disabled = false; return; }
       if (d.status !== 'started') { var status = d.status || 'error'; apkMsg(t('install.progress.could_not_start', 'Could not start: {status}', { status: apkErrorText(status) })); btn.disabled = false; return; }
@@ -632,7 +649,7 @@
     var pkg = sel && sel.value; if (!pkg) return;
     if (!confirm(t('install.uninstall.dynamic.confirm', 'Uninstall {package}? This removes the app and its data.', { package: pkg }))) return;
     btn.disabled = true; if (msg) msg.textContent = t('install.uninstall.dynamic.working', 'Uninstalling {package}…', { package: pkg });
-    approved('uninstall', { pkg: pkg }).then(function (d) {
+    approved('uninstall', { pkg: pkg }, function (text) { if (msg) msg.textContent = text; }).then(function (d) {
         if (msg) {
           var compatibility = d.ok ? ('Uninstalled ' + pkg) : ('Failed: ' + (d.result || d.error || 'error'));
           renderPresentedEvidence(msg, d.presentation, compatibility);
@@ -685,7 +702,7 @@
       return;
     }
     btn.disabled = true; bkMsg(pw ? t('install.backup.dynamic.building_encrypted', 'Building encrypted backup…') : t('install.backup.dynamic.building_plain', 'Building unencrypted ZIP…'));
-    transport.request('backup', { passphrase: pw, allow_plaintext: plain ? '1' : '0', include_companion: comp && comp.checked ? '1' : '0' })
+    guarded('backup', { passphrase: pw, allow_plaintext: plain ? '1' : '0', include_companion: comp && comp.checked ? '1' : '0' }, bkMsg)
       .then(function (r) {
         // An approval body is not an archive. Check it before the blob branch so it can never be
         // saved with an .hpb or .zip filename.
@@ -715,7 +732,7 @@
     var out = document.getElementById('cfg-export-result');
     if (btn) btn.disabled = true;
     if (out) out.textContent = includeSecrets ? t('install.backup.dynamic.export_requesting_secrets', 'Requesting credential-inclusive export…') : t('install.backup.dynamic.export_building', 'Building configuration export…');
-    transport.request('config.export', includeSecrets ? { include_secrets: 1 } : {}).then(function (r) {
+    guarded('config.export', includeSecrets ? { include_secrets: 1 } : {}, includeSecrets ? function (text) { if (out) out.textContent = text; } : null).then(function (r) {
       var d = approvalAwareJson(r);
       if (r.outcome !== 'applied') throw new Error(d.message || d.error || (r.code || r.outcome));
       if (r.result instanceof Blob) return r.result;
@@ -762,24 +779,12 @@
       });
   };
 
-  var RESTORE_APPROVAL_HINT_MS = 2000;
   window.restoreConfirm = function (btn) {
     if (!rsFile) return;
     if (!confirm(t('install.backup.dynamic.restore_confirm', 'Restore overwrites this panel\'s config and Companion login. Continue?'))) return;
     var pw = (document.getElementById('rs-pw') || {}).value || '';
     btn.disabled = true; bkMsg(t('install.backup.dynamic.restoring', 'Restoring…'));
-    // Through Panel Assistant's sidebar a Hardened panel holds the restore until it is approved on its own
-    // screen, and the page hears nothing until then: say where to approve it while the answer is outstanding.
-    var waiting = setTimeout(function () {
-      bkMsg(t('install.backup.dynamic.restore_awaiting_approval', 'Waiting for the panel. If it is in Hardened mode, approve this restore on the panel within 10 minutes: Settings, then the menu, Security mode, Review approvals.'));
-    }, RESTORE_APPROVAL_HINT_MS);
-    transport.request('restore', { passphrase: pw, blob: rsFile }).then(function (reply) {
-        clearTimeout(waiting);
-        if (reply.outcome === 'refused' && reply.code === 'approval_timeout') { bkMsg(t('install.backup.dynamic.restore_approval_expired', 'Restore not started: it was not approved on the panel in time. Nothing was changed.')); btn.disabled = false; return; }
-        if (reply.outcome === 'refused' && reply.code === 'approval_denied') { bkMsg(t('install.backup.dynamic.restore_approval_denied', 'Restore not started: it was denied on the panel. Nothing was changed.')); btn.disabled = false; return; }
-        return approvalAwareJson(reply);
-      }, function (error) { clearTimeout(waiting); throw error; }).then(function (d) {
-        if (!d) return;
+    approved('restore', { passphrase: pw, blob: rsFile }, bkMsg).then(function (d) {
         if (d.status === 'busy') { bkMsg(t('install.progress.operation_busy', 'Another operation is running — try again shortly.')); btn.disabled = false; return; }
         if (d.status !== 'started') { bkMsg(t('install.progress.could_not_start', 'Could not start: {status}', { status: closedToken(COMPONENT_STATUS, d.status || 'error') })); btn.disabled = false; return; }
         pollRestore();
@@ -809,7 +814,7 @@
             if (out) out.textContent = t('install.backup.dynamic.import_cancelled', 'Import cancelled.');
             return;
           }
-          return transport.request('config.import', { expected_cfg: dry.expected_cfg || '', body: bodyText })
+          return guarded('config.import', { expected_cfg: dry.expected_cfg || '', body: bodyText }, function (text) { if (out) out.textContent = text; })
             .then(function (r) { return { ok: r.outcome === 'applied', code: r.code || r.outcome, body: approvalAwareJson(r) }; })
             .then(function (response) {
               if (response.code === 'not_commandable') {
@@ -863,7 +868,7 @@
     }
     note.textContent = t('install.backup.dynamic.form_applying', 'Applying…');
     if (submitter) submitter.disabled = true;
-    transport.request(path, fields).then(function (response) {
+    guarded(path, fields, function (text) { note.textContent = text; }).then(function (response) {
       var result = approvalAwareJson(response);
       if (response.outcome !== 'applied' || result.ok !== true) {
         throw new Error(result.message || result.error || (response.code || response.outcome));

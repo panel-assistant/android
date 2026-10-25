@@ -155,9 +155,16 @@ internal class StubTest : PanelRuntimeRig() {
                     return html.contains("data-ui-socket=\"ui\"")
                 }
 
+                suspend fun hardenedNamed(): Boolean = Regex("<body[^>]*data-hardened").containsMatchIn(
+                    client.get("/configure") { header(HttpHeaders.Cookie, "wiz_escape=1") }.bodyAsText(),
+                )
+
                 assertTrue("relaxed: a LAN page uses the socket", socketNamed())
+                assertFalse("relaxed: the page is not marked Hardened", hardenedNamed())
                 assertTrue(fixture.config.setSecurityMode(Config.SecurityMode.HARDENED))
                 assertFalse("hardened: a LAN page stays on HTTP, which it may use", socketNamed())
+                // Its scripts say at once to approve a held request on the panel only when they know the mode.
+                assertTrue("hardened: the page says so, for its approval notices", hardenedNamed())
                 peer = "127.0.0.1"
                 assertTrue("hardened: the panel's own loopback page uses the socket", socketNamed())
             }

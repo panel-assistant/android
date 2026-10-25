@@ -91,6 +91,9 @@ internal class PageShell(
         // loopback, so a LAN page there stays on HTTP.
         val socket = !config.hardenedSecurityEnabled || peer?.let { io.panelassistant.android.util.isLoopbackPeer(it) } == true
         val embedAttr = if (embed != null) " data-embedded data-ui-relay" else if (socket) """ data-ui-socket="ui"""" else ""
+        // A Hardened panel holds a guarded request until it is approved on its own screen, and the page hears nothing
+        // until then: the mode at render lets a page say so as soon as it sends one.
+        val hardenedAttr = if (config.hardenedSecurityEnabled) " data-hardened" else ""
         // Embedded keeps only the panel identity install.js names downloads from, as escaped attributes.
         val header = if (embed != null) """<span id="pswitch" hidden data-self-id="$panelId" data-self-name="$friendlyName"></span>""" else """<div class="hdr"><button id="navburger" class="navburger pbtn" aria-label="${esc(strings.get("shell.menu.label"))}">☰</button><h1>${brandLockup(asset)} <small id="pswitch" data-self-id="$panelId" data-self-name="$friendlyName"><span class="sep">·</span>$friendlyName</small></h1>
  <span style="display:flex;gap:10px;align-items:center">$rightControls</span></div>
@@ -124,7 +127,7 @@ PaneldTransport.request(a.getAttribute('data-op'),{}).then(function(r){if(r.outc
 var b=typeof Blob!=='undefined'&&r.result instanceof Blob?r.result:new Blob([typeof r.result==='string'?r.result:JSON.stringify(r.result,null,2)],{type:typeof r.result==='string'?'text/plain':'application/json'});
 var named=((r.headers&&r.headers['content-disposition'])||'').match(/filename="?([^";]+)"?/);
 var u=URL.createObjectURL(b);if(w){w.location.href=u;}else{var l=document.createElement('a');l.href=u;l.download=named?named[1]:(a.getAttribute('data-file')||'');document.body.appendChild(l);l.click();l.remove();}
-setTimeout(function(){URL.revokeObjectURL(u);},60000);}).catch(function(err){if(w)w.close();window.alert(String(err&&err.message||err));});});</script></head><body $bodyAttrs$embedAttr><div class="wrap">
+setTimeout(function(){URL.revokeObjectURL(u);},60000);}).catch(function(err){if(w)w.close();window.alert(String(err&&err.message||err));});});</script></head><body $bodyAttrs$embedAttr$hardenedAttr><div class="wrap">
 <div class="topbar">$header${navBar(active, strings, preserveExplicitEnglish, embed?.hiddenTabs.orEmpty())}</div>
 $switcher<div id="halifebar" class="notice" style="display:none"></div>
 <div id="hanetbar" class="notice" style="display:none"></div>

@@ -12248,19 +12248,19 @@
       "sourceHash": "c947e038fffab8a5ec7abf38c5198354fe76061a2d636673487d485d7172730a",
       "state": "machine-cross-checked"
     },
-    "install.backup.dynamic.restore_awaiting_approval": {
-      "text": "正在等待面板。如果面板处于强化模式，请在 10 分钟内在面板上批准此恢复：设置，然后菜单、安全模式、审核批准。",
-      "sourceHash": "b89d61b737afc6f5d7b69f9a56ef3a64f1fdd7185412439d1f702767a2897d7d",
+    "install.approval.waiting": {
+      "text": "请在面板屏幕上批准此操作。面板最多等待 10 分钟。",
+      "sourceHash": "18d37aa301c3d51358478f0194c3d317cbb9e1c29702910c567daf08b9f03579",
       "state": "machine-cross-checked"
     },
-    "install.backup.dynamic.restore_approval_expired": {
-      "text": "恢复未开始：未及时在面板上获得批准。未做任何更改。",
-      "sourceHash": "b725b18d4578a86e00a020b60f1b1f48848b0556995a93058e50c9b48627684e",
+    "install.approval.denied": {
+      "text": "未开始：已在面板上被拒绝。未做任何更改。",
+      "sourceHash": "5d07f4dc1083f9adea785dd045ca0d230d1a3e37bd574e141f2dded6ffaa327c",
       "state": "machine-cross-checked"
     },
-    "install.backup.dynamic.restore_approval_denied": {
-      "text": "恢复未开始：已在面板上被拒绝。未做任何更改。",
-      "sourceHash": "ee31ab363037a0183a8e5d8e50408d3a565b31223f8a7ae4913b852e6947fa4e",
+    "install.approval.expired": {
+      "text": "未开始：未在面板上及时批准。未做任何更改。",
+      "sourceHash": "e07cad6b74d46511394598dd94d73f230e86d71c2c4e5ede5891d53694ce85b1",
       "state": "machine-cross-checked"
     }
   }

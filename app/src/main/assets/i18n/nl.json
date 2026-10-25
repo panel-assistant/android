@@ -3204,9 +3204,9 @@
    "state": "machine-cross-checked"
   },
   "dashboard.fact.usb_debugging": {
-    "text": "USB-foutopsporing",
-    "sourceHash": "b717e583d6326d6b22ebe7350400ad7894456fc01a7a98710d34967300728636",
-    "state": "machine-cross-checked"
+   "text": "USB-foutopsporing",
+   "sourceHash": "b717e583d6326d6b22ebe7350400ad7894456fc01a7a98710d34967300728636",
+   "state": "machine-cross-checked"
   },
   "dashboard.fact.webview_reporting": {
    "text": "Systeem-WebView-rapportage",
@@ -4029,9 +4029,9 @@
    "state": "machine-cross-checked"
   },
   "dashboard.sensors.estimated_colour_temperature": {
-    "text": "Geschatte kleurtemperatuur",
-    "sourceHash": "cf4b16879fa7023e3b4bf31a7c2608969596dd8e5314bcd767520baae979c91c",
-    "state": "machine-cross-checked"
+   "text": "Geschatte kleurtemperatuur",
+   "sourceHash": "cf4b16879fa7023e3b4bf31a7c2608969596dd8e5314bcd767520baae979c91c",
+   "state": "machine-cross-checked"
   },
   "dashboard.sensors.far": {
    "text": "ver",
@@ -4269,9 +4269,9 @@
    "state": "machine-cross-checked"
   },
   "dashboard.value.unknown": {
-    "text": "onbekend",
-    "sourceHash": "b23a6a8439c0dde5515893e7c90c1e3233b8616e634470f20dc4928bcf3609bc",
-    "state": "machine-cross-checked"
+   "text": "onbekend",
+   "sourceHash": "b23a6a8439c0dde5515893e7c90c1e3233b8616e634470f20dc4928bcf3609bc",
+   "state": "machine-cross-checked"
   },
   "entities.age.days": {
    "text": "{count}d geleden",
@@ -12248,19 +12248,19 @@
    "sourceHash": "c947e038fffab8a5ec7abf38c5198354fe76061a2d636673487d485d7172730a",
    "state": "machine-cross-checked"
   },
-  "install.backup.dynamic.restore_awaiting_approval": {
-   "text": "Wachten op het paneel. Staat het in de geharde modus, keur dit herstel dan binnen 10 minuten op het paneel goed: Instellingen, dan het menu, Beveiligingsmodus, Goedkeuringen bekijken.",
-   "sourceHash": "b89d61b737afc6f5d7b69f9a56ef3a64f1fdd7185412439d1f702767a2897d7d",
+  "install.approval.waiting": {
+   "text": "Keur dit goed op het scherm van het paneel. Het paneel wacht er tot 10 minuten op.",
+   "sourceHash": "18d37aa301c3d51358478f0194c3d317cbb9e1c29702910c567daf08b9f03579",
    "state": "machine-cross-checked"
   },
-  "install.backup.dynamic.restore_approval_expired": {
-   "text": "Herstel niet gestart: het is niet op tijd op het paneel goedgekeurd. Er is niets gewijzigd.",
-   "sourceHash": "b725b18d4578a86e00a020b60f1b1f48848b0556995a93058e50c9b48627684e",
+  "install.approval.denied": {
+   "text": "Niet gestart: het is op het paneel geweigerd. Er is niets gewijzigd.",
+   "sourceHash": "5d07f4dc1083f9adea785dd045ca0d230d1a3e37bd574e141f2dded6ffaa327c",
    "state": "machine-cross-checked"
   },
-  "install.backup.dynamic.restore_approval_denied": {
-   "text": "Herstel niet gestart: het is op het paneel geweigerd. Er is niets gewijzigd.",
-   "sourceHash": "ee31ab363037a0183a8e5d8e50408d3a565b31223f8a7ae4913b852e6947fa4e",
+  "install.approval.expired": {
+   "text": "Niet gestart: het is niet op tijd op het paneel goedgekeurd. Er is niets gewijzigd.",
+   "sourceHash": "e07cad6b74d46511394598dd94d73f230e86d71c2c4e5ede5891d53694ce85b1",
    "state": "machine-cross-checked"
   }
  }
