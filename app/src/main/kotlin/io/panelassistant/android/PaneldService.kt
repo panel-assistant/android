@@ -288,7 +288,7 @@ internal fun configOwnerRefreshPlan(changedKeys: Set<String>): ConfigOwnerRefres
         // The master switch closes a live session on this lane too, not only on the watchdog tick.
         camera = "camera_enabled" in changedKeys,
         // Credentials only; the owner itself ignores a change that leaves the credential identity equal.
-        panelAssistantTransport = changedKeys.any(ha::contains),
+        panelAssistantTransport = "http_port" in changedKeys || changedKeys.any(ha::contains),
         // A rename from Home Assistant, the sidebar or the Configure page, or a restored name.
         androidDeviceName = "friendly_name" in changedKeys,
     )
@@ -1000,7 +1000,6 @@ class PaneldService : Service() {
         config,
         runtimePanelId = identity.panelId,
         runtimeFriendlyName = identity.friendlyName,
-        runtimeHttpPort = identity.httpPort,
     )
 
     /** Make the journalled desired value immediately visible/durable, but pass the previous value through
@@ -1708,6 +1707,8 @@ class PaneldService : Service() {
             displayPower.applyKeepAwake()
             io.panelassistant.android.http.PerfReader.start(scope, packageName, rendererTargetSnapshot())
             server.start()
+            // Discovery starts before renderer preparation; refresh a provisional SRV if binding moved it.
+            activeRuntime.mdns.ensureStarted()
             // Startup always reconciles both additions and removals from durable desired state against
             // the write-ahead overlay ownership markers. This completes work handed off by profile restart.
             server.requestTameReconcile()

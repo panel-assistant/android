@@ -162,7 +162,12 @@ class Config private constructor(
         Unit
     }
 
-    val httpPort: Int get() = prefs.getInt("http_port", DEFAULT_PORT)
+    var httpPort: Int
+        get() = prefs.getInt("http_port", DEFAULT_PORT)
+        internal set(value) {
+            require(value in 1024..65535)
+            check(prefs.edit().putInt("http_port", value).commit()) { "HTTP port did not persist" }
+        }
 
     /**
      * Device-local control-plane posture. This key deliberately lives outside SettingsRegistry, so a

@@ -303,19 +303,19 @@ internal fun entityFilterQuestionPending(
     haUrl.isNotBlank() &&
     (haToken.isNotBlank() || haRefreshToken.isNotBlank())
 
-internal fun panelHaOAuthStartUrl(haUrl: String): String =
-    "http://127.0.0.1:8888/api/v1/ha/oauth/panel-start?ha_url=${URLEncoder.encode(haUrl.trim().trimEnd('/'), "UTF-8")}"
+internal fun panelHaOAuthStartUrl(haUrl: String, httpPort: Int): String =
+    "http://127.0.0.1:$httpPort/api/v1/ha/oauth/panel-start?ha_url=${URLEncoder.encode(haUrl.trim().trimEnd('/'), "UTF-8")}"
 
-internal fun panelHaOAuthNavigationAllowed(configuredUrl: String, candidateUrl: String): Boolean =
-    dashboardNavigationAllowed(configuredUrl, candidateUrl) || isPanelHaOAuthCallback(candidateUrl)
+internal fun panelHaOAuthNavigationAllowed(configuredUrl: String, candidateUrl: String, httpPort: Int): Boolean =
+    dashboardNavigationAllowed(configuredUrl, candidateUrl) || isPanelHaOAuthCallback(candidateUrl, httpPort)
 
-internal fun isPanelHaOAuthCallback(candidateUrl: String): Boolean = runCatching {
+internal fun isPanelHaOAuthCallback(candidateUrl: String, httpPort: Int): Boolean = runCatching {
     val uri = URI(candidateUrl.trim())
     val scheme = uri.scheme?.lowercase() ?: return@runCatching false
     val host = uri.host?.lowercase() ?: return@runCatching false
     scheme == "http" &&
         host in setOf("127.0.0.1", "localhost") &&
-        (uri.port == -1 || uri.port == 8888) &&
+        uri.port == httpPort &&
         uri.path == HA_OAUTH_CALLBACK_PATH
 }.getOrDefault(false)
 

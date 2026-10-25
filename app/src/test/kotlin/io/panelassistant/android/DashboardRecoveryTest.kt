@@ -376,19 +376,34 @@ class DashboardRecoveryTest {
         assertFalse(dashboardNavigationAllowed("not a url", "https://ha.example/lovelace/0"))
     }
 
-    @Test fun `physical panel oauth navigation admits only HA and local callback`() {
-        assertTrue(panelHaOAuthNavigationAllowed("https://ha.example", "https://ha.example/auth/authorize?state=s"))
-        assertTrue(panelHaOAuthNavigationAllowed("https://ha.example", "http://127.0.0.1:8888/api/v1/ha/oauth/callback?state=s&code=c"))
-        assertTrue(panelHaOAuthNavigationAllowed("https://ha.example", "http://localhost:8888/api/v1/ha/oauth/callback?state=s&code=c"))
-        assertFalse(panelHaOAuthNavigationAllowed("https://ha.example", "http://ha.example/lovelace/0"))
-        assertFalse(panelHaOAuthNavigationAllowed("https://ha.example", "http://127.0.0.1:8888/configure"))
-        assertFalse(panelHaOAuthNavigationAllowed("https://ha.example", "http://other.example:8888/api/v1/ha/oauth/callback?state=s"))
+    @Test fun `physical panel oauth navigation admits only HA and callback on current port`() {
+        val ha = "https://ha.example"
+        assertTrue(panelHaOAuthNavigationAllowed(ha, "$ha/auth/authorize?state=s", 8889))
+        for (host in listOf("127.0.0.1", "localhost")) {
+            assertTrue(panelHaOAuthNavigationAllowed(ha, "http://$host:8889/api/v1/ha/oauth/callback?state=s&code=c", 8889))
+        }
+        for (url in listOf(
+            "http://ha.example/lovelace/0",
+            "http://127.0.0.1:8889/configure",
+            "http://other.example:8889/api/v1/ha/oauth/callback?state=s",
+            "https://127.0.0.1:8889/api/v1/ha/oauth/callback?state=s",
+        )) assertFalse(url, panelHaOAuthNavigationAllowed(ha, url, 8889))
     }
 
-    @Test fun `physical panel oauth start url targets local control surface`() {
+    @Test fun `physical panel oauth callback rejects default wrong and implicit ports`() {
+        for (host in listOf("127.0.0.1", "localhost")) {
+            for (port in listOf(":8888", ":8890", "")) {
+                val url = "http://$host$port/api/v1/ha/oauth/callback?state=s&code=c"
+                assertFalse(url, isPanelHaOAuthCallback(url, 8889))
+                assertFalse(url, panelHaOAuthNavigationAllowed("https://ha.example", url, 8889))
+            }
+        }
+    }
+
+    @Test fun `physical panel oauth start url targets current local control port`() {
         assertEquals(
-            "http://127.0.0.1:8888/api/v1/ha/oauth/panel-start?ha_url=https%3A%2F%2Fha.example%3A8123",
-            panelHaOAuthStartUrl("https://ha.example:8123/"),
+            "http://127.0.0.1:8889/api/v1/ha/oauth/panel-start?ha_url=https%3A%2F%2Fha.example%3A8123",
+            panelHaOAuthStartUrl("https://ha.example:8123/", 8889),
         )
     }
 
