@@ -69,10 +69,13 @@ internal class ManageApproval(
     private val broker: () -> ApprovalBroker,
     val owner: String,
     private val holders: MutableSet<ManageApproval>,
+    private val op: String,
+    private val args: JSONObject,
 ) {
     private var id: String? = null
     private var closed = false
     private var admitted = false
+    private var cancellation: ManageReply? = null
 
     fun request(action: () -> Pair<ApprovalBroker.Decision, String>): Pair<ApprovalBroker.Decision, String> = synchronized(lock) {
         check(!closed) { "request origin ended" }
@@ -91,7 +94,29 @@ internal class ManageApproval(
         }
     }
 
+    /** Retire only this owner's matching approval waits; admitted work keeps its own cancellation. */
+    fun cancelPending(op: String, matches: (JSONObject) -> Boolean, answer: ManageReply): Boolean = synchronized(lock) {
+        val pending = holders.filter {
+            it.owner == owner && it.op == op && it.id != null && !it.closed && !it.admitted && matches(it.args)
+        }
+        pending.forEach { it.cancellation = answer; it.close() }
+        pending.isNotEmpty()
+    }
+
+    fun cancelledReply(): ManageReply? = synchronized(lock) { cancellation }
+
+    /** Also fence replay when security mode changes and authorization no longer asks the broker. */
+    fun admit(): Boolean = synchronized(lock) {
+        if (closed) false else { admitted = true; true }
+    }
+
     fun release() = synchronized(lock) { holders.remove(this); Unit }
+
+    /** Settlement and cancellation cannot both win: a settled request is no longer cancellable. */
+    fun finish(answer: ManageReply): ManageReply = synchronized(lock) {
+        holders.remove(this)
+        cancellation ?: answer
+    }
 }
 
 internal fun interface ManageHandler {
@@ -307,20 +332,25 @@ internal class ManageOperations(
 
     private fun trackedRequest(op: String, args: JSONObject, origin: CommandOrigin, blobs: ManageBlobs?): ManageRequest {
         val approval = synchronized(lock) {
-            ManageApproval(lock, approvals, origin.subscriptionOwner, approvalHolders).also { approvalHolders += it }
+            ManageApproval(lock, approvals, origin.subscriptionOwner, approvalHolders, op, args).also { approvalHolders += it }
         }
         return ManageRequest(op, args, origin, blobs, approval)
     }
 
-    private suspend fun run(entry: ManageTable.Entry, request: ManageRequest, onPending: () -> Unit): ManageReply = try {
-        runActive(entry, request, onPending)
-    } finally {
-        request.approval?.release()
+    private suspend fun run(entry: ManageTable.Entry, request: ManageRequest, onPending: () -> Unit): ManageReply {
+        val answer = try {
+            runActive(entry, request, onPending)
+        } catch (error: Throwable) {
+            request.approval?.release()
+            throw error
+        }
+        return request.approval?.finish(answer) ?: answer
     }
 
     private suspend fun runActive(entry: ManageTable.Entry, request: ManageRequest, onPending: () -> Unit): ManageReply {
         var pendingSent = false
         while (true) {
+            request.approval?.cancelledReply()?.let { return it }
             val approvalId = try {
                 return entry.handler.handle(request)
             } catch (cancelled: CancellationException) {
@@ -328,9 +358,11 @@ internal class ManageOperations(
             } catch (pending: ManageApprovalPending) {
                 pending.approvalId
             } catch (e: Exception) {
+                request.approval?.cancelledReply()?.let { return it }
                 Log.w(TAG, "operation ${request.op} failed", e)
                 return ManageReply.failed()
             }
+            request.approval?.cancelledReply()?.let { return it }
             // Asked again after an approval was consumed: its record expired between the approval and
             // the run. One interim answer per request, so this one is final.
             if (pendingSent) {
@@ -343,6 +375,7 @@ internal class ManageOperations(
             val heldAt = System.nanoTime()
             while (true) {
                 delay(approvalPollMs)
+                request.approval?.cancelledReply()?.let { return it }
                 when (approvals().state(approvalId)) {
                     ApprovalBroker.State.PENDING -> continue
                     ApprovalBroker.State.APPROVED -> break

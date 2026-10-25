@@ -575,8 +575,18 @@
   window.apkCancelFetch = function () {
     var request = apkFetchRequest;
     if (!request) return;
+    var mine = apkPreviewGeneration;
     apkMsg(t('install.apk.dynamic.cancelling', 'Cancelling…'));
-    transport.request('install.apk.fetch.cancel', { request: request }).then(function () { apkMsg(''); }).catch(function () { apkMsg(''); });
+    transport.request('install.apk.fetch.cancel', { request: request }).then(function (reply) {
+      if (mine !== apkPreviewGeneration) return;
+      apkMsg('');
+      var d = replyBody(reply);
+      if (reply.outcome !== 'applied' || !d.ok || !d.cancelled) return;
+      ++apkPreviewGeneration;
+      apkFetchRequest = null;
+      var prev = document.getElementById('apk-preview');
+      if (prev) { prev.innerHTML = '<p class="note">' + esc(t('install.apk.dynamic.download_cancelled', 'Download cancelled — the panel stopped it.')) + '</p>'; scheduleInstallColumnAlignment(); }
+    }).catch(function () { if (mine === apkPreviewGeneration) apkMsg(''); });
   };
 
   // Cancel/Discard is the counterpart of Install: it retires the inspected upload and deletes its
