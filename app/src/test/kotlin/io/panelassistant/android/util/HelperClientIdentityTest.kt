@@ -91,7 +91,7 @@ class HelperClientIdentityTest {
             }
 
             assertEquals(InstallOutcome.Succeeded,
-                HelperInstallTransaction(IdentityAdmittingHelperClient(transport)).install(source, directory, gate))
+                HelperInstallTransaction(IdentityAdmittingHelperClient(transport)).install(source, directory, beforeSubmit = gate))
             assertFalse(admitted)
             assertEquals(1, transport.fileCommands.size)
             assertTrue(transport.longCommands.isEmpty())

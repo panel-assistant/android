@@ -284,7 +284,7 @@ class SetupRoutesHttpTest {
             testApplication {
                 application { fixture.mount(this) }
                 val state = JSONObject(client.get("/api/v1/setup").bodyAsText())
-                assertEquals("renderer", state.getString("next"))
+                assertEquals("ha_url", state.getString("next"))
                 val webView = state.getJSONObject("webview")
                 assertEquals(83, webView.getInt("found"))
                 assertEquals(PanelHealth.MIN_CHROMIUM, webView.getInt("needed"))

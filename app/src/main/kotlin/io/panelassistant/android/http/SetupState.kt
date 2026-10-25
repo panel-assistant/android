@@ -354,7 +354,7 @@ internal class SetupState(
             "\"source\":${config.haSetupHandover}," +
             "\"url\":${jsonStr(config.haUrlHandover)}," +
             "\"reason\":${jsonStr(config.haUrlHandoverReason)}}"
-        // `webview` carries the facts the browser engine step names, only while that step is the blocker:
+        // `webview` carries the engine advisory facts while the built-in engine is below the floor:
         // the engine found, the floor, and where this model's update steps are.
         val webView = if (journey.step(SetupJourney.Stage.RENDERER).detail == "webview_too_old") {
             val status = webViewOnce()

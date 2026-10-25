@@ -11868,39 +11868,9 @@
       "state": "machine-cross-checked",
       "text": "正在保存…"
     },
-    "setup.webview.companion_does_not_help": {
-      "sourceHash": "4171f88e5b4a771642eb0eb6f9f3b801f333f3770ccaea54ee59339ced8b07fe",
-      "state": "machine-cross-checked",
-      "text": "改用 Home Assistant 应用也无济于事——它使用相同引擎绘制仪表盘。"
-    },
-    "setup.webview.explanation": {
-      "sourceHash": "8e3d6c18386c6ca7d5aff8cfc2a6b145770278275ba6d881c421e2b9afa01e0f",
-      "state": "machine-cross-checked",
-      "text": "此面板的浏览器引擎太旧，无法显示当前的 Home Assistant 仪表盘。即使其他设置完全正确，仪表盘仍会空白或显示异常，因此值得先修复此问题。"
-    },
-    "setup.webview.after_update": {
-      "text": "更新后，面板会重启其应用。请保持此页面打开：它会自动继续前往 Home Assistant 地址。",
-      "sourceHash": "9ea7a503304638a49a546bcfb1bed7aadfd5fa80c58ac23e4ec88e51240cda80",
-      "state": "machine-cross-checked"
-    },
     "setup.webview.found": {
       "text": "此面板的 Chromium 版本为 {found}。当前的 Home Assistant 仪表盘需要 Chromium {needed} 或更高版本。",
       "sourceHash": "29d3bc49a5e9bbc77f2874fe03a9d53e6e7a5a21fbdcb54fd075343a6ccc98ee",
-      "state": "machine-cross-checked"
-    },
-    "setup.webview.play": {
-      "text": "此面板通过 Google Play 更新其引擎：请在面板上打开 Play Store，更新 Android System WebView。",
-      "sourceHash": "1ee78fca20a49f0b9757b8d2b68b22a61696137734987c922834e800836ee73c",
-      "state": "machine-cross-checked"
-    },
-    "setup.webview.update_steps": {
-      "text": "{model} 的更新步骤",
-      "sourceHash": "2ede37fa8d53dcf6214ad13dd7b37b3007f234da7cef240307e8592c1bb23a54",
-      "state": "machine-cross-checked"
-    },
-    "setup.webview.update_steps_any": {
-      "text": "WebView 更新步骤",
-      "sourceHash": "50ceb4e2fa12f7618c726863fafc21b7e17cd0b94259447bd92afc25e517300f",
       "state": "machine-cross-checked"
     },
     "setup.webview.title": {

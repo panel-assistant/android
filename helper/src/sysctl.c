@@ -813,7 +813,7 @@ static int copy_exact(int input, int output, uint64_t remaining) {
 // Two-phase upload keeps binary bytes out of server.c's line accumulator: the client sends only this
 // command, waits for READY, then writes exactly <bytes>. The app opened its own private file, while
 // this SELinux domain reads only the authenticated socket and writes the root staging path.
-void cmd_installstream(conn_ctx *ctx, const char *args) {
+static void install_stream(conn_ctx *ctx, const char *args, int upgrade_only) {
     uint64_t size;
     if (parse_install_stream_size(args, &size) != 0) {
         reply(ctx->fd, "STREAMERR\n");
@@ -858,13 +858,24 @@ void cmd_installstream(conn_ctx *ctx, const char *args) {
     int closed = close(output) == 0;
     int installed = 0;
     if (copied && synced && closed) {
-        const char *const argv[] = { "pm", "install", "-r", "-d", INSTALL_STREAM_STAGE, NULL };
-        installed = sysexec_run_argv("/system/bin/pm", argv, 1) == 0;
+        const char *const upgrade_argv[] = { "pm", "install", "-r", INSTALL_STREAM_STAGE, NULL };
+        const char *const replace_argv[] = { "pm", "install", "-r", "-d", INSTALL_STREAM_STAGE, NULL };
+        installed = sysexec_run_argv("/system/bin/pm", upgrade_only ? upgrade_argv : replace_argv, 1) == 0;
     }
     unlink(INSTALL_STREAM_STAGE);
     pthread_mutex_unlock(&install_lock);
     guard_maintenance_install_end();
     reply(ctx->fd, installed ? "OK\n" : "ERR\n");
+}
+
+void cmd_installstream(conn_ctx *ctx, const char *args) {
+    install_stream(ctx, args, 0);
+}
+
+// A provider update must preserve PackageManager's downgrade rejection even if another installer
+// advances the package after the app's last observation. Older helpers refuse this distinct verb.
+void cmd_installstreamupgrade(conn_ctx *ctx, const char *args) {
+    install_stream(ctx, args, 1);
 }
 
 // Compatibility acknowledgement for clients which clean retained inputs from the removed pathname

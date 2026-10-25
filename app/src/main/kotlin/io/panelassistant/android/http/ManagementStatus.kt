@@ -53,6 +53,7 @@ internal fun managementStatusJson(
     panelAssistantTransport: PanelAssistantTransportFacts? = null,
     /** The capability rows' wire text is English, from the same catalogue the dashboard reads. */
     english: AppStrings,
+    webView: (() -> String)? = null,
 ): String {
     // Engine-aware WebView age check (a Cromite swap reports the stale OEM package version). Same finding
     // set as the dashboard banner + Install tab (HealthAudit); the audit lists ALL available updates
@@ -178,6 +179,7 @@ internal fun managementStatusJson(
         "\"panel_assistant_transport\":${
             (panelAssistantTransport ?: PanelAssistantTransportFacts(PanelAssistantTransportPhase.STOPPED, null)).statusJson()
         }," +
+        (webView?.let { "\"webview\":${it()}," } ?: "") +
         "\"renderer\":${renderer().statusJson()}," +
         "\"camera\":${camera().statusJson()}," +
         proximityJson +

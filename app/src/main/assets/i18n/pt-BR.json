@@ -11933,39 +11933,9 @@
       "sourceHash": "23e39291d6135814ed7c936e278974544b0df5fbf0eb0427b6700979b7472a93",
       "state": "machine-cross-checked"
     },
-    "setup.webview.companion_does_not_help": {
-      "text": "Escolher o app Home Assistant não ajudará — ele desenha o dashboard usando o mesmo mecanismo.",
-      "sourceHash": "4171f88e5b4a771642eb0eb6f9f3b801f333f3770ccaea54ee59339ced8b07fe",
-      "state": "machine-cross-checked"
-    },
-    "setup.webview.explanation": {
-      "text": "O mecanismo do navegador deste painel é antigo demais para mostrar um dashboard atual do Home Assistant. Todo o resto pode estar configurado perfeitamente e, ainda assim, o dashboard ficará em branco ou com falhas. Por isso, vale a pena corrigir isso primeiro.",
-      "sourceHash": "8e3d6c18386c6ca7d5aff8cfc2a6b145770278275ba6d881c421e2b9afa01e0f",
-      "state": "machine-cross-checked"
-    },
-    "setup.webview.after_update": {
-      "text": "Depois da atualização, o painel reinicia o aplicativo. Mantenha esta página aberta: ela segue sozinha para o endereço do Home Assistant.",
-      "sourceHash": "9ea7a503304638a49a546bcfb1bed7aadfd5fa80c58ac23e4ec88e51240cda80",
-      "state": "machine-cross-checked"
-    },
     "setup.webview.found": {
       "text": "Este painel tem o Chromium {found}. Um dashboard atual do Home Assistant precisa do Chromium {needed} ou mais recente.",
       "sourceHash": "29d3bc49a5e9bbc77f2874fe03a9d53e6e7a5a21fbdcb54fd075343a6ccc98ee",
-      "state": "machine-cross-checked"
-    },
-    "setup.webview.play": {
-      "text": "Este painel atualiza o mecanismo pelo Google Play: no painel, abra a Play Store e atualize o Android System WebView.",
-      "sourceHash": "1ee78fca20a49f0b9757b8d2b68b22a61696137734987c922834e800836ee73c",
-      "state": "machine-cross-checked"
-    },
-    "setup.webview.update_steps": {
-      "text": "Etapas de atualização: {model}",
-      "sourceHash": "2ede37fa8d53dcf6214ad13dd7b37b3007f234da7cef240307e8592c1bb23a54",
-      "state": "machine-cross-checked"
-    },
-    "setup.webview.update_steps_any": {
-      "text": "Etapas de atualização do WebView",
-      "sourceHash": "50ceb4e2fa12f7618c726863fafc21b7e17cd0b94259447bd92afc25e517300f",
       "state": "machine-cross-checked"
     },
     "setup.webview.title": {

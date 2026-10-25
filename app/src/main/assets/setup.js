@@ -255,6 +255,13 @@
         i18nText("setup.repair.title", "This panel has stopped working fully."),
         i18nText("setup.repair.explanation", "Its settings are still here — nothing has been reset. One thing needs attention below.")));
     }
+    if (journey.webview) {
+      var wv = journey.webview;
+      stepHost.appendChild(window.HaNotice.row("warning",
+        i18nText("setup.webview.title", "The panel’s browser engine needs updating"),
+        wv.found && wv.needed ? i18nText("setup.webview.found", "This panel has Chromium {found}. A current Home Assistant dashboard needs Chromium {needed} or newer.",
+          { found: String(wv.found), needed: String(wv.needed) }) : ""));
+    }
     kids.forEach(function (k) { if (k) stepHost.appendChild(k); });
     var h = stepHost.querySelector("h2");
     if (h) { h.setAttribute("tabindex", "-1"); h.focus({ preventScroll: false }); }
@@ -516,39 +523,6 @@
         text: i18nText("setup.attest.no", "No — it’s blank or wrong") }),
       el("p", { class: "muted", id: "wiz-err", role: "alert" }),
     ])], "attest");
-  }
-
-  /* ---------- the browser-engine blocker, raised before any sign-in ---------- */
-
-  /* The panel's system WebView is below the floor a current Home Assistant frontend needs, so no amount of
-   * correct configuration produces a working dashboard. Raised at the renderer step — before the Home
-   * Assistant address and sign-in — because the alternative is letting someone complete the whole journey
-   * for a panel that was never going to render. */
-  function webViewCard() {
-    var body = [
-      el("p", { class: "wiz-lead", text: i18nText("setup.webview.explanation", "This panel’s browser engine is too old to show a current Home Assistant dashboard. Everything else can be set up perfectly and the dashboard will still come up blank or broken, so this is worth fixing first.") }),
-      // Said plainly because it is the wrong turn people take next: both renderers draw the dashboard in the
-      // panel's one system WebView, so switching to the Home Assistant app does not avoid this.
-      el("p", { class: "wiz-consequence", text: i18nText("setup.webview.companion_does_not_help", "Choosing the Home Assistant app instead will not help — it draws the dashboard using the same engine.") }),
-    ];
-    // The engine found and the floor, then where this model's update steps are. The panel app no longer
-    // updates the engine itself, and no page of this panel can do more than repeat the warning, so the only
-    // action is the website's steps, in a new tab so this page stays open to carry on.
-    var wv = journey.webview || {};
-    if (wv.found && wv.needed) {
-      body.splice(1, 0, el("p", { text: i18nText("setup.webview.found", "This panel has Chromium {found}. A current Home Assistant dashboard needs Chromium {needed} or newer.", { found: String(wv.found), needed: String(wv.needed) }) }));
-    }
-    if (wv.play) body.push(el("p", { text: i18nText("setup.webview.play", "This panel updates its engine through Google Play: on the panel, open the Play Store and update Android System WebView.") }));
-    if (wv.steps) {
-      body.push(el("p", { class: "wiz-cta" }, [
-        el("a", { class: "pbtn", href: wv.steps, target: "_blank", rel: "noopener",
-          text: wv.model ? i18nText("setup.webview.update_steps", "Update steps for {model}", { model: wv.model }) : i18nText("setup.webview.update_steps_any", "WebView update steps") }),
-      ]));
-    }
-    // The page follows the journey, so it moves on once the restarted app reports a current engine.
-    body.push(el("p", { class: "muted", text: i18nText("setup.webview.after_update", "After the update the panel restarts its app. Keep this page open: it carries on to the Home Assistant address by itself.") }));
-    body.push(el("p", { class: "muted", id: "wiz-err", role: "alert" }));
-    show([card(i18nText("setup.webview.title", "The panel’s browser engine needs updating"), null, body)], "webview");
   }
 
   /* ---------- step 4½: which dashboard this panel shows ----------
@@ -1054,10 +1028,11 @@
     var attested = proof.detail === "user_attested";
     var ef = journey.entity_filter || {};
 
+    var unproven = proof.status !== "satisfied";
     var completeStatus = attested
       ? i18nText("setup.done.status.attested", "Dashboard confirmed by you.")
       : i18nText("setup.done.status.rendering", "Home Assistant is rendering on the panel.");
-    var top = [statusLine(completeStatus, true)];
+    var top = unproven ? [] : [statusLine(completeStatus, true)];
     // Confirm the filter state so answering the question earlier is never a silent no-op.
     if (ef.relevant && ef.enabled) {
       top.push(el("p", { class: "muted", text: i18nText("setup.done.filter_note", "Entity filter is on — it’s learning which entities to show; review the list any time on the Entities tab. The panel’s dashboard may reload a few times in the first minutes while that settles — nothing is wrong.") }));
@@ -1125,9 +1100,7 @@
     if (journey.complete) return "done";
     switch (journey.next) {
       case "identity": return "identity";
-      case "renderer":
-        // A too-old engine is a renderer that cannot work, not a renderer that is unchosen.
-        return step("renderer").detail.indexOf("webview_too_old") === 0 ? "webview" : "renderer";
+      case "renderer": return "renderer";
       case "ha_url": return "ha_url";
       case "ha_credentials": return "signin";
       case "home_dashboard": return "home_dashboard";
@@ -1144,7 +1117,6 @@
     switch (key) {
       case "identity": return identityCard();
       case "entity_filter": return entityFilterCard();
-      case "webview": return webViewCard();
       case "renderer": return rendererCard();
       case "ha_url": return haUrlCard();
       case "signin": return signinCard(step("ha_credentials").status === "in_flight");
