@@ -803,7 +803,17 @@
         return postForm("settings", { dashboard_entity_learning: "true" })
           .then(function () { return postForm("setup.entity_filter", {}); });
       })
-      .then(function () { typed = {}; refresh(); })
+      .then(function () {
+        typed = {};
+        if (forcedRevisitKey() === "home_dashboard") {
+          // Continue the known journey just like the revisit link, even when its next step
+          // is unchanged or the follow-up read fails. Ordinary polls still preserve the card.
+          clearRevisit();
+          renderedKey = "";
+          render();
+        }
+        refresh();
+      })
       .catch(function (e) {
         lockStep(false);
         button.disabled = false;

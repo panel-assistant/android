@@ -723,3 +723,123 @@ for (const [engine, browserType] of [['Chromium', chromium], ['WebKit', webkit]]
   });
 
 }
+
+
+for (const [engine, browserType] of [['Chromium', chromium], ['WebKit', webkit]]) {
+  const run = existsSync(browserType === chromium ? chrome : browserType.executablePath()) ? test : test.skip;
+  const completed = () => journey('render_proof', {
+    complete: true,
+    home_dashboard: { value: '/home', answered: true },
+    statuses: { home_dashboard: { status: 'satisfied' }, render_proof: { status: 'satisfied' } },
+  });
+  const revisit = {
+    locale: 'en',
+    dashboards: { queried: true, items: [
+      { group: 'panel', path: '/home', title: 'home' },
+      { group: 'dashboard', path: '/wall', title: 'Wall' },
+    ], default: { explicit: false, path: '' } },
+    area: { queried: true, areas: [{ name: 'Kitchen' }, { name: 'Office' }], device: { found: true, area_name: 'Kitchen' }, admin: true },
+  };
+  for (const edit of ['dashboard', 'area', 'offline', 'incomplete']) {
+    run(`A dashboard revisit continues after a ${edit} save in ${engine}`, async (t) => {
+      const current = completed();
+      if (edit === 'incomplete') { current.complete = false; current.next = 'entity_filter'; }
+      const rig = await openRig(t, { ...revisit, initialJourney: current }, '/#dash', browserType);
+      let failedReads = 0;
+      if (edit === 'offline') await rig.page.route('**/api/v1/setup', (route) => {
+        failedReads += 1;
+        return route.abort('failed');
+      });
+      await rig.page.locator('#wiz-home_dashboard option[value="/wall"]').waitFor({ state: 'attached' });
+      await rig.page.locator('#wiz-ha_area').waitFor();
+      if (edit === 'dashboard') await rig.page.locator('#wiz-home_dashboard').selectOption('/wall');
+      else if (edit === 'area') await rig.page.locator('#wiz-ha_area').selectOption('Office');
+      await rig.page.locator('button.wiz-primary').click();
+      if (edit === 'incomplete') await rig.page.locator('#ef-decline').waitFor();
+      else await rig.page.getByRole('link', { name: 'Configure the panel', exact: true }).waitFor();
+      if (edit === 'offline') assert.ok(await eventually(() => Promise.resolve(failedReads), (count) => count > 0) > 0);
+      assert.doesNotMatch(await rig.page.locator('#wiz-step').textContent(), /Saving/);
+      assert.equal(await rig.page.locator('#wiz-home_dashboard').count(), 0);
+      assert.equal(await rig.page.evaluate(() => location.hash), '');
+      const posts = rig.state.requests.filter((r) => r.method === 'POST');
+      assert.deepEqual(posts.map((r) => r.path), ['/api/v1/config', '/api/v1/setup/home-dashboard']);
+      const fields = new URLSearchParams(posts[0].body);
+      assert.equal(fields.get('home_dashboard'), edit === 'dashboard' ? '/wall' : '/home');
+      assert.equal(fields.get('ha_area'), edit === 'area' ? 'Office' : null);
+      assert.equal(rig.state.current.next, edit === 'incomplete' ? 'entity_filter' : 'render_proof');
+    });
+  }
+
+  run(`A dashboard revisit preserves edits through refresh, retry and refusal in ${engine}`, async (t) => {
+    let releaseSettings;
+    const settingsHeld = new Promise((done) => { releaseSettings = done; });
+    let releaseAnswer;
+    const answerHeld = new Promise((done) => { releaseAnswer = done; });
+    let answers = 0;
+    let settings = 0;
+    const rig = await openRig(t, {
+      ...revisit, initialJourney: completed(),
+      async route(url, request) {
+        if (request.method !== 'POST') return;
+        if (url.pathname === '/api/v1/config') {
+          settings += 1;
+          if (settings === 1) { await settingsHeld; return json({ ok: false, error: 'Settings refused' }, 409); }
+          return json({ ok: true });
+        }
+        if (url.pathname === '/api/v1/setup/home-dashboard') {
+          answers += 1;
+          if (answers === 1) return json({ ok: false, error: 'Choose again' }, 409);
+          await answerHeld;
+          return json({ ok: true });
+        }
+      },
+    }, '/#dash', browserType);
+    await rig.page.locator('#wiz-home_dashboard option[value="/wall"]').waitFor({ state: 'attached' });
+    await rig.page.locator('#wiz-home_dashboard').selectOption('/wall');
+    await rig.page.locator('#wiz-ha_area').selectOption('Office');
+    async function sameJourneyRefresh() {
+      const before = rig.state.requests.filter((r) => r.path === '/api/v1/setup').length;
+      await rig.page.evaluate(() => {
+        const channel = new BroadcastChannel('ha-paneld-ha-oauth');
+        channel.postMessage({}); channel.close();
+      });
+      assert.ok(await eventually(() => Promise.resolve(rig.state.requests.filter((r) => r.path === '/api/v1/setup').length), (count) => count > before) > before);
+      assert.equal(await rig.page.locator('#wiz-home_dashboard').inputValue(), '/wall');
+      assert.equal(await rig.page.locator('#wiz-ha_area').inputValue(), 'Office');
+    }
+    await sameJourneyRefresh();
+    // A real fetch failure exercises setup's delayed retry through the production transport.
+    let attempts = 0;
+    await rig.page.route('**/api/v1/config', async (route) => {
+      attempts += 1;
+      if (attempts === 1) await route.abort('failed');
+      else await route.continue();
+    });
+    const save = rig.page.locator('button.wiz-primary');
+    await save.click();
+    assert.equal(await save.isDisabled(), true);
+    await sameJourneyRefresh();
+    assert.equal(await save.isDisabled(), true);
+    assert.equal(await eventually(() => Promise.resolve(attempts), (count) => count === 2), 2);
+    assert.equal(await save.isDisabled(), true);
+    releaseSettings();
+    await rig.page.getByText('Settings refused', { exact: true }).waitFor();
+    assert.equal(await rig.page.evaluate(() => location.hash), '#dash');
+    assert.equal(await save.isDisabled(), false);
+    assert.equal(answers, 0, 'a refused setting must not record an answer');
+    assert.equal(await rig.page.locator('#wiz-home_dashboard').inputValue(), '/wall');
+    assert.equal(await rig.page.locator('#wiz-ha_area').inputValue(), 'Office');
+    await save.click();
+    await rig.page.getByText('Choose again', { exact: true }).waitFor();
+    assert.equal(await rig.page.evaluate(() => location.hash), '#dash');
+    assert.equal(await save.isDisabled(), false);
+    assert.equal(await rig.page.locator('#wiz-home_dashboard').inputValue(), '/wall');
+    assert.equal(await rig.page.locator('#wiz-ha_area').inputValue(), 'Office');
+    await save.click();
+    assert.equal(await eventually(() => Promise.resolve(answers), (count) => count === 2), 2);
+    await sameJourneyRefresh();
+    assert.equal(await save.isDisabled(), true);
+    releaseAnswer();
+    await rig.page.getByRole('link', { name: 'Configure the panel', exact: true }).waitFor();
+  });
+}
