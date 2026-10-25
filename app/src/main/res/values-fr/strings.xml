@@ -212,4 +212,5 @@
     <string name="listening_on_port">Écoute sur :%1$d</string>
     <string name="degraded_profile_startup">Dégradé · échec du démarrage du profil</string>
     <string name="degraded_startup">Dégradé · échec du démarrage</string>
+    <string name="approval_op_local_adb">Exécuter la maintenance du panneau</string>
 </resources>

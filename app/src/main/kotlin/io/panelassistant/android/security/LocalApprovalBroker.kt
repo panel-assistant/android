@@ -5,6 +5,7 @@ import java.security.MessageDigest
 import java.security.SecureRandom
 
 internal enum class SensitiveOperation(val label: String) {
+    LOCAL_ADB_MAINTENANCE("Run panel maintenance"),
     APK_INSTALL("Install uploaded APK"),
     APK_FETCH("Download an APK from a link"),
     BACKUP_EXPORT("Export panel backup"),

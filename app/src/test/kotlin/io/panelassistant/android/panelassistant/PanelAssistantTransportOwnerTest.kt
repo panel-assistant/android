@@ -1150,6 +1150,25 @@ class PanelAssistantTransportOwnerTest {
         harness.owner.close()
     }
 
+    @Test fun privilegedShellWithoutNegotiatedCapabilityNeverReachesManagement() = runTest {
+        val management = FakeManagement()
+        val seen = mutableListOf<String>()
+        management.serve = { op, _, _ ->
+            seen += op
+            PanelAssistantManageReply("applied", null, JSONObject())
+        }
+        val connection = FakeConnection(Ha.accepting(capabilities = listOf("management")))
+        val harness = harness(connection, management = management)
+        harness.owner.replaceDemand(DEMAND)
+        runCurrent()
+        connection.inbound.trySend(Ha.manage("privileged", "adb.shell", args = JSONObject().put("command", "id").put("timeout_ms", 1000)))
+        runCurrent()
+        val answer = JSONObject(connection.sent.last())
+        assertEquals("refused", answer.getString("outcome"))
+        assertTrue("unnegotiated shell must never execute", seen.isEmpty())
+        harness.owner.close()
+    }
+
     @Test fun aNamedRequestCarriesItsArgumentsAndAnswersPendingApprovalBeforeItsResult() = runTest {
         val management = FakeManagement()
         val approved = CompletableDeferred<Unit>()

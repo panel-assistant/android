@@ -1300,7 +1300,8 @@ class PaneldService : Service() {
             networkAdbPersisted = persistedAdb,
             // A persisted intent is reported by whether adbd really listens: its own property writes
             // would otherwise read as active while vendor init or an adbd restart has dropped TCP.
-            networkAdbActive = if (persistedAdb) controls.adb.listenerState(allowRootCrossCheck = privilege.directSuReady)
+            networkAdbActive = if (io.panelassistant.android.control.ManagedNetworkAdb.managed) false
+                else if (persistedAdb) controls.adb.listenerState(allowRootCrossCheck = privilege.directSuReady)
                 else controls.adb.activeState(allowRootCrossCheck = privilege.directSuReady),
             zigbee = controls.zigbee.observe(includeRole = true, directSuReady = privilege.directSuReady),
             relayCount = controls.relay.count(allowRootProbe = privilege.directSuReady),

@@ -101,7 +101,7 @@ internal class SidebarRelayTest : io.panelassistant.android.testsupport.PanelRun
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val requests = PanelAssistantManagementRequests(
             scope,
-            PanelAssistantManagement.of({ error("no snapshot") }, { _, _ -> error("no settings") }, door, PanelAssistantBlobs(auth), serve),
+            PanelAssistantManagement.of({ error("no snapshot") }, { _, _ -> error("no settings") }, door, PanelAssistantBlobs(auth), serve = serve),
             PanelAssistantSession(5, TOKEN, listOf("management", "ui_subscribe", "ui_bundle"), "1.0.0"),
             { System.nanoTime() / 1_000_000 },
         )

@@ -202,4 +202,5 @@
     <string name="listening_on_port">Naslouchá na :%1$d</string>
     <string name="degraded_profile_startup">Omezený provoz · spuštění profilu selhalo</string>
     <string name="degraded_startup">Omezený provoz · spuštění selhalo</string>
+    <string name="approval_op_local_adb">Spustit údržbu panelu</string>
 </resources>
