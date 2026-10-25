@@ -10289,8 +10289,8 @@
       "state": "machine-cross-checked"
     },
     "settings.dashboard_native_kiosk.help": {
-      "text": "仅限内置渲染器。Home Assistant 2026.4.2+ 连接后，请求其原生前端隐藏导航。\n\n默认开启；不支持或请求失败时，仪表盘保持不变。此设置不会锁定 Android，也不会向仪表盘注入 CSS。",
-      "sourceHash": "693cd97f26d4d60d16c4242e8a199bb2fd202edee948efab4880e41313b05e29",
+      "text": "仅限内置渲染器。Home Assistant 2026.4.2+ 连接后，请求其原生前端隐藏导航。\n\n默认关闭；不支持或请求失败时，仪表盘保持不变。此设置不会锁定 Android，也不会向仪表盘注入 CSS。",
+      "sourceHash": "c30fd02f9f696a1528f10845426c3d4aee33d4b517d3069912eb22f9dcafef55",
       "state": "machine-cross-checked"
     },
     "settings.dashboard_native_kiosk.label": {

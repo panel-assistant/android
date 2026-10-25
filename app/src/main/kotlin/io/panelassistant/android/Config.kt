@@ -1542,6 +1542,14 @@ class Config private constructor(
                 ed.putString(SettingsRegistry.ADDRESS_FAMILY_KEY, it)
             }
         }
+        // Schema 16 turns Home Assistant navigation hiding off for new panels only. A store that booted a
+        // build with the setting and never chose was showing it on, and an update must not change that; a
+        // fresh store (the schema-1 sentinel) or one from before the setting gets the new default.
+        if (from >= SettingsRegistry.FIRST_SCHEMA_WITH_NATIVE_KIOSK && from < 16 &&
+            !prefs.contains(SettingsRegistry.NATIVE_KIOSK_KEY)
+        ) {
+            ed.putBoolean(SettingsRegistry.NATIVE_KIOSK_KEY, true)
+        }
         // A schema-3 live store may have relied on the old true fallbacks without ever materializing
         // them. Preserve that upgrade behavior, while fresh schema-1 stores receive schema-4 defaults.
         if (from == 3) {

@@ -10289,8 +10289,8 @@
       "state": "machine-cross-checked"
     },
     "settings.dashboard_native_kiosk.help": {
-      "text": "Solo renderer integrato. Dopo la connessione di Home Assistant 2026.4.2+, chiede al frontend nativo di nascondere la propria navigazione.\n\nAttivo per impostazione predefinita; se la richiesta non è supportata o non riesce, la plancia resta invariata. Non blocca Android né inserisce CSS nella plancia.",
-      "sourceHash": "693cd97f26d4d60d16c4242e8a199bb2fd202edee948efab4880e41313b05e29",
+      "text": "Solo renderer integrato. Dopo la connessione di Home Assistant 2026.4.2+, chiede al frontend nativo di nascondere la propria navigazione.\n\nDisattivato per impostazione predefinita; se la richiesta non è supportata o non riesce, la plancia resta invariata. Non blocca Android né inserisce CSS nella plancia.",
+      "sourceHash": "c30fd02f9f696a1528f10845426c3d4aee33d4b517d3069912eb22f9dcafef55",
       "state": "machine-cross-checked"
     },
     "settings.dashboard_native_kiosk.label": {

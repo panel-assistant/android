@@ -9,9 +9,9 @@ import org.junit.Test
 class DashboardNativeKioskSpecTest {
     private val spec = requireNotNull(SettingsRegistry.spec("dashboard_native_kiosk"))
 
-    @Test fun `native kiosk defaults on as portable renderer configuration`() {
+    @Test fun `native kiosk defaults off as portable renderer configuration`() {
         assertEquals(SettingType.BOOL, spec.type)
-        assertEquals("true", spec.default)
+        assertEquals("false", spec.default)
         assertEquals("Dashboard", spec.group)
         assertEquals(Scope.PORTABLE, spec.scope)
         assertFalse(spec.hidden)

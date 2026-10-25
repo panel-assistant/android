@@ -759,18 +759,35 @@ class ConfigTransactionTest {
         assertFalse(prefs.values.containsKey("panel_id"))
     }
 
-    @Test fun nativeKioskDefaultsOnAndPersistsExplicitOverrides() {
+    @Test fun nativeKioskStartsOffOnAFreshInstallAndPersistsExplicitOverrides() {
         val prefs = fakePreferences()
         val config = Config(prefs.instance)
 
-        assertTrue(config.dashboardNativeKiosk)
-        assertFalse(prefs.values.containsKey("dashboard_native_kiosk"))
-        config.setRaw(requireNotNull(SettingsRegistry.spec("dashboard_native_kiosk")), "false")
+        assertTrue(config.migrateLiveStore())
         assertFalse(config.dashboardNativeKiosk)
-        assertEquals(false, prefs.values["dashboard_native_kiosk"])
         config.setRaw(requireNotNull(SettingsRegistry.spec("dashboard_native_kiosk")), "true")
         assertTrue(config.dashboardNativeKiosk)
         assertEquals(true, prefs.values["dashboard_native_kiosk"])
+        config.setRaw(requireNotNull(SettingsRegistry.spec("dashboard_native_kiosk")), "false")
+        assertFalse(config.dashboardNativeKiosk)
+        assertEquals(false, prefs.values["dashboard_native_kiosk"])
+    }
+
+    @Test fun anUpgradedPanelKeepsTheNativeKioskItWasShowing() {
+        // Schema 4 shipped the setting on by default; a store from before it never hid the navigation.
+        for ((schema, showing) in listOf(3 to false, 4 to true, 15 to true)) {
+            val prefs = fakePreferences(initial = mapOf("config_schema" to schema, "panel_id" to "existing-panel"))
+            val config = Config(prefs.instance)
+
+            assertTrue("migration from schema $schema", config.migrateLiveStore())
+            assertEquals("schema $schema", showing, config.dashboardNativeKiosk)
+            val committed = prefs.values.toMap()
+            assertTrue(Config(prefs.instance).migrateLiveStore())
+            assertEquals("a second startup must be a no-op", committed, prefs.values)
+        }
+        val chosen = fakePreferences(initial = mapOf("config_schema" to 15, "dashboard_native_kiosk" to false))
+        assertTrue(Config(chosen.instance).migrateLiveStore())
+        assertFalse("an owner's explicit choice survives", Config(chosen.instance).dashboardNativeKiosk)
     }
 
     @Test fun autoSleepDefaultsOffAndPersistsBeforeRuntimeRefresh() {

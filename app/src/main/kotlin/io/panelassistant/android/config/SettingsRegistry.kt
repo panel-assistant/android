@@ -76,7 +76,7 @@ object SettingsRegistry {
     }
 
     /** Bump whenever the persisted shape changes; drives bundle migration. */
-    const val SCHEMA = 15
+    const val SCHEMA = 16
     const val MAX_PANEL_ID_CHARS = 63
     const val DEFAULT_SILENCE_BOOT_CHIME = true
     const val DEFAULT_ADDRESS_FAMILY = "Automatic"
@@ -190,6 +190,10 @@ object SettingsRegistry {
      * previous response to carry forward.
      */
     const val FIRST_SCHEMA_WITH_SENSITIVITY = 2
+
+    /** v0.9.6-rc1 added `dashboard_native_kiosk` on by default at schema 4; schema 16 turns it off for new panels. */
+    const val FIRST_SCHEMA_WITH_NATIVE_KIOSK = 4
+    const val NATIVE_KIOSK_KEY = "dashboard_native_kiosk"
     private const val MAX_PANEL_ID_INPUT_CHARS = 255
     private val HA_ILLUMINANCE_ENTITY = Regex("^sensor\\.[a-z0-9_]+$")
 
@@ -665,8 +669,8 @@ object SettingsRegistry {
             key = "dashboard_native_kiosk", type = SettingType.BOOL, group = "Dashboard",
             renderer = RendererApply.LIVE,
             tier = Tier.ADVANCED, summary = "Ask Home Assistant to hide its own navigation.",
-            label = "Hide Home Assistant navigation (native)", default = "true", scope = Scope.PORTABLE,
-            help = "Built-in renderer only. After Home Assistant 2026.4.2+ connects, asks its native frontend to hide its navigation.\n\nOn by default; an unsupported or failed request leaves the dashboard unchanged. It does not lock Android or inject CSS into the dashboard.",
+            label = "Hide Home Assistant navigation (native)", default = "false", scope = Scope.PORTABLE,
+            help = "Built-in renderer only. After Home Assistant 2026.4.2+ connects, asks its native frontend to hide its navigation.\n\nOff by default; an unsupported or failed request leaves the dashboard unchanged. It does not lock Android or inject CSS into the dashboard.",
         ),
         SettingSpec(
             key = "dashboard_idle_return_min", type = SettingType.INT, group = "Dashboard",

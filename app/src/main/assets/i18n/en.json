@@ -31135,8 +31135,8 @@
       "hardMaxChars": 90
     },
     "settings.dashboard_native_kiosk.help": {
-      "text": "Built-in renderer only. After Home Assistant 2026.4.2+ connects, asks its native frontend to hide its navigation.\n\nOn by default; an unsupported or failed request leaves the dashboard unchanged. It does not lock Android or inject CSS into the dashboard.",
-      "sourceHash": "693cd97f26d4d60d16c4242e8a199bb2fd202edee948efab4880e41313b05e29",
+      "text": "Built-in renderer only. After Home Assistant 2026.4.2+ connects, asks its native frontend to hide its navigation.\n\nOff by default; an unsupported or failed request leaves the dashboard unchanged. It does not lock Android or inject CSS into the dashboard.",
+      "sourceHash": "c30fd02f9f696a1528f10845426c3d4aee33d4b517d3069912eb22f9dcafef55",
       "surface": "settings",
       "context": "Configure > Dashboard > Hide Home Assistant navigation (native): supporting help for the dashboard_native_kiosk setting.",
       "risk": "ordinary",

@@ -97,6 +97,10 @@ object Migrations {
                 values.putIfAbsent(SettingsRegistry.ADDRESS_FAMILY_KEY, it)
             }
         },
+        // Schema 16 turns Home Assistant navigation hiding off for new panels; Config.migrateLiveStore keeps it
+        // on for an existing panel that never chose. A bundle needs nothing: exports and revisions carry every
+        // setting's effective value, and a hand-written partial bundle leaves an absent setting as it is.
+        Migration { },
     )
 
     /**

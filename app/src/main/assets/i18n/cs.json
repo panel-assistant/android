@@ -10319,8 +10319,8 @@
       "state": "machine-cross-checked"
     },
     "settings.dashboard_native_kiosk.help": {
-      "text": "Pouze vestavěný renderer. Jakmile se Home Assistant 2026.4.2+ připojí, požádá své nativní uživatelské rozhraní, aby skrylo svou navigaci.\n\nVe výchozím nastavení zapnuto; nepodporovaný nebo neúspěšný požadavek ponechá ovládací panel beze změny. Neuzamkne Android ani nevloží CSS do ovládacího panelu.",
-      "sourceHash": "693cd97f26d4d60d16c4242e8a199bb2fd202edee948efab4880e41313b05e29",
+      "text": "Pouze vestavěný renderer. Jakmile se Home Assistant 2026.4.2+ připojí, požádá své nativní uživatelské rozhraní, aby skrylo svou navigaci.\n\nVe výchozím nastavení vypnuto; nepodporovaný nebo neúspěšný požadavek ponechá ovládací panel beze změny. Neuzamkne Android ani nevloží CSS do ovládacího panelu.",
+      "sourceHash": "c30fd02f9f696a1528f10845426c3d4aee33d4b517d3069912eb22f9dcafef55",
       "state": "machine-cross-checked"
     },
     "settings.dashboard_native_kiosk.label": {

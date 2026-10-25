@@ -10289,8 +10289,8 @@
       "state": "machine-cross-checked"
     },
     "settings.dashboard_native_kiosk.help": {
-      "text": "Moteur de rendu intégré uniquement. Après la connexion de Home Assistant 2026.4.2+, demande à son interface native de masquer sa navigation.\n\nActivé par défaut ; une demande non prise en charge ou échouée laisse le tableau de bord inchangé. Cela ne verrouille pas Android et n’injecte aucun CSS dans le tableau de bord.",
-      "sourceHash": "693cd97f26d4d60d16c4242e8a199bb2fd202edee948efab4880e41313b05e29",
+      "text": "Moteur de rendu intégré uniquement. Après la connexion de Home Assistant 2026.4.2+, demande à son interface native de masquer sa navigation.\n\nDésactivé par défaut ; une demande non prise en charge ou échouée laisse le tableau de bord inchangé. Cela ne verrouille pas Android et n’injecte aucun CSS dans le tableau de bord.",
+      "sourceHash": "c30fd02f9f696a1528f10845426c3d4aee33d4b517d3069912eb22f9dcafef55",
       "state": "machine-cross-checked"
     },
     "settings.dashboard_native_kiosk.label": {

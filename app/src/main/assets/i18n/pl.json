@@ -9144,8 +9144,8 @@
    "state": "machine-cross-checked"
   },
   "settings.dashboard_native_kiosk.help": {
-   "text": "Tylko wbudowany renderer. Po połączeniu z Home Assistant 2026.4.2+ prosi jego natywny interfejs o ukrycie nawigacji.\n\nDomyślnie włączone; nieobsługiwane lub nieudane żądanie pozostawia pulpit bez zmian. Nie blokuje systemu Android ani nie wstrzykuje CSS do pulpitu.",
-   "sourceHash": "693cd97f26d4d60d16c4242e8a199bb2fd202edee948efab4880e41313b05e29",
+   "text": "Tylko wbudowany renderer. Po połączeniu z Home Assistant 2026.4.2+ prosi jego natywny interfejs o ukrycie nawigacji.\n\nDomyślnie wyłączone; nieobsługiwane lub nieudane żądanie pozostawia pulpit bez zmian. Nie blokuje systemu Android ani nie wstrzykuje CSS do pulpitu.",
+   "sourceHash": "c30fd02f9f696a1528f10845426c3d4aee33d4b517d3069912eb22f9dcafef55",
    "state": "machine-cross-checked"
   },
   "settings.dashboard_native_kiosk.label": {

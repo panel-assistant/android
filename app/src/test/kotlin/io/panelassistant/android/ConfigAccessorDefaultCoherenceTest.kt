@@ -55,13 +55,13 @@ class ConfigAccessorDefaultCoherenceTest {
         // Booleans that default true.
         listOf(
             c.darkMode, c.preventIdleDim, c.keepAwake, c.dashboardFullscreen, c.dashboardNetworkWarning,
-            c.dashboardEntityAutoStatic, c.dashboardEntityAutoRuntime, c.dashboardNativeKiosk,
+            c.dashboardEntityAutoStatic, c.dashboardEntityAutoRuntime,
             c.silenceBootChime,
         ).forEach { assertTrue(it) }
 
         // Booleans that default false.
         listOf(
-            c.wakeOnWave, c.autoSleep, c.watchdogEnabled, c.kioskLock,
+            c.wakeOnWave, c.autoSleep, c.watchdogEnabled, c.kioskLock, c.dashboardNativeKiosk,
             c.dashboardEntityLearningEnabled, c.dashboardEntityLearningApplied, c.logShipEnabled,
             c.autoBrightness, c.cameraEnabled,
         ).forEach { assertEquals(false, it) }

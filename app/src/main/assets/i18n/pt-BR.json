@@ -10354,8 +10354,8 @@
       "state": "machine-cross-checked"
     },
     "settings.dashboard_native_kiosk.help": {
-      "text": "Apenas no renderizador integrado. Após a conexão com Home Assistant 2026.4.2+, pede à interface nativa que oculte sua navegação.\n\nAtivado por padrão; uma solicitação incompatível ou com falha mantém o dashboard como está. Não bloqueia o Android nem injeta CSS no dashboard.",
-      "sourceHash": "693cd97f26d4d60d16c4242e8a199bb2fd202edee948efab4880e41313b05e29",
+      "text": "Apenas no renderizador integrado. Após a conexão com Home Assistant 2026.4.2+, pede à interface nativa que oculte sua navegação.\n\nDesativado por padrão; uma solicitação incompatível ou com falha mantém o dashboard como está. Não bloqueia o Android nem injeta CSS no dashboard.",
+      "sourceHash": "c30fd02f9f696a1528f10845426c3d4aee33d4b517d3069912eb22f9dcafef55",
       "state": "machine-cross-checked"
     },
     "settings.dashboard_native_kiosk.label": {

@@ -9144,8 +9144,8 @@
    "state": "machine-cross-checked"
   },
   "settings.dashboard_native_kiosk.help": {
-   "text": "Alleen ingebouwde renderer. Nadat er verbinding is met Home Assistant 2026.4.2+, wordt de eigen frontend daarvan gevraagd de navigatie te verbergen.\n\nStandaard ingeschakeld; bij een niet-ondersteund of mislukt verzoek blijft het dashboard ongewijzigd. Het vergrendelt Android niet en injecteert geen CSS in het dashboard.",
-   "sourceHash": "693cd97f26d4d60d16c4242e8a199bb2fd202edee948efab4880e41313b05e29",
+   "text": "Alleen ingebouwde renderer. Nadat er verbinding is met Home Assistant 2026.4.2+, wordt de eigen frontend daarvan gevraagd de navigatie te verbergen.\n\nStandaard uitgeschakeld; bij een niet-ondersteund of mislukt verzoek blijft het dashboard ongewijzigd. Het vergrendelt Android niet en injecteert geen CSS in het dashboard.",
+   "sourceHash": "c30fd02f9f696a1528f10845426c3d4aee33d4b517d3069912eb22f9dcafef55",
    "state": "machine-cross-checked"
   },
   "settings.dashboard_native_kiosk.label": {
