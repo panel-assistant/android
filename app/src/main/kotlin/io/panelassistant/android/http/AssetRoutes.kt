@@ -3,12 +3,27 @@ package io.panelassistant.android.http
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
+import io.ktor.server.plugins.origin
+import io.ktor.server.response.respondBytes
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
+import io.panelassistant.android.PanelFont
+import io.panelassistant.android.util.isLoopbackPeer
+
+/**
+ * The bundled Roboto as the pages' text face. Appended to the stylesheet only for the panel's own WebView on a panel
+ * whose system font replaces Roboto ([PanelFont.bundled]): every other panel, and every browser and sidebar showing the
+ * pages, keeps the stylesheet's platform face.
+ */
+private const val PANEL_FONT_CSS = """
+@font-face{font-family:"Panel Roboto";src:url(assets/${PanelFont.ASSET}) format("truetype");font-weight:100 900;font-stretch:75% 100%}
+body{font-family:"Panel Roboto",system-ui,-apple-system,sans-serif}
+button,input,select,textarea{font-family:inherit}
+"""
 
 /** Bundled front-end assets, mounted beneath the shared production root guards. */
-internal fun Route.assetRoutes(asset: (String) -> String) {
+internal fun Route.assetRoutes(asset: (String) -> String, bytes: (String) -> ByteArray, panelFont: () -> Boolean) {
     // Static front-end assets (externalised from the Kotlin string so CI can lint them).
     get("/info.js") {
         call.response.headers.append("Cache-Control", "no-cache")  // assets iterate; always serve fresh
@@ -16,7 +31,8 @@ internal fun Route.assetRoutes(asset: (String) -> String) {
     }
     get("/info.css") {
         call.response.headers.append("Cache-Control", "no-cache")
-        call.respondText(asset("info.css"), ContentType.Text.CSS)
+        val own = panelFont() && isLoopbackPeer(call.request.origin.remoteAddress)
+        call.respondText(asset("info.css") + (if (own) PANEL_FONT_CSS else ""), ContentType.Text.CSS)
     }
     // The mark from the brand asset set; browsers ask for /favicon.svg too, so both names serve it.
     for (path in BUNDLE_ROOT_FILES.keys.filter { it.endsWith(".svg") }) get("/$path") {
@@ -25,6 +41,10 @@ internal fun Route.assetRoutes(asset: (String) -> String) {
     // Generic bundled-asset server for the redesigned UI (page scripts + vendored libs).
     get("/assets/{f...}") {
         val rel = call.parameters.getAll("f")?.joinToString("/").orEmpty()
+        if (rel == PanelFont.ASSET) {
+            call.response.headers.append("Cache-Control", "no-cache")
+            return@get call.respondBytes(bytes(rel), ContentType("font", "ttf"))
+        }
         val body = if (rel.isEmpty() || rel.contains("..")) null else runCatching { asset(rel) }.getOrNull()
         if (body == null) {
             call.respondText("not found\n", status = HttpStatusCode.NotFound)

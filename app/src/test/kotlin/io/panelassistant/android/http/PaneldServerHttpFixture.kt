@@ -43,6 +43,8 @@ internal class PaneldServerHttpFixture(
     logWebView: io.panelassistant.android.logship.LogCapture? = null,
     webViewConsoleEnabled: () -> Boolean = { false },
     systemLogAvailable: () -> Boolean = { false },
+    /** Whether the panel's system font replaces Roboto (PanelFont.bundled). */
+    panelFont: Boolean = false,
 ) : java.io.Closeable {
     val directory = scratchDirectory("paneld-http-baseline").toFile()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -149,6 +151,7 @@ internal class PaneldServerHttpFixture(
             override fun names() = root.walkTopDown().filter { it.isFile }.map { it.relativeTo(root).invariantSeparatorsPath }.toList()
             override fun bytes(name: String) = File(root, name).readBytes()
         })
+        field("panelFontBundled", { panelFont })
         field("pendingApks", pending)
         field("guardDbStaging", guardDbAppStaging(context))
         wakeWords?.let { field("wakeWords", it) }

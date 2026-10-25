@@ -6,10 +6,12 @@ import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.plugins.mutableOriginConnectionPoint
 import io.ktor.server.testing.testApplication
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AssetRoutesHttpTest {
@@ -57,6 +59,36 @@ class AssetRoutesHttpTest {
                     assertEquals(path, "not found\n", response.bodyAsText())
                     assertEquals(null, response.headers[HttpHeaders.CacheControl])
                 }
+            }
+        }
+    }
+
+    @Test fun `only the panel's own pages take the bundled font, and only where the system font replaces Roboto`() {
+        val stylesheet = File("src/main/assets/info.css").readText()
+        for (replaced in listOf(true, false)) PaneldServerHttpFixture(panelFont = replaced).use { fixture ->
+            var peer = "127.0.0.1"
+            testApplication {
+                application {
+                    intercept(io.ktor.server.application.ApplicationCallPipeline.Setup) {
+                        context.mutableOriginConnectionPoint.remoteAddress = peer
+                    }
+                    fixture.mount(this)
+                }
+                val own = client.get("/info.css").bodyAsText()
+                if (replaced) {
+                    assertTrue(own.startsWith(stylesheet))
+                    val face = Regex("""@font-face\{font-family:"([^"]+)";src:url\(([^)]+)\)""").find(own)?.groupValues ?: error("the panel's own stylesheet names no bundled face")
+                    assertTrue(Regex("""body\{font-family:"${face[1]}",""").containsMatchIn(own.removePrefix(stylesheet)))
+                    // The url resolves against the stylesheet at the root, as the pages' base puts it.
+                    val font = client.get("/${face[2]}")
+                    assertEquals(HttpStatusCode.OK, font.status)
+                    assertEquals("font/ttf", font.headers[HttpHeaders.ContentType])
+                    assertArrayEquals(File("src/main/assets/fonts/Roboto.ttf").readBytes(), font.body<ByteArray>())
+                } else {
+                    assertEquals("a panel that draws Roboto keeps the stylesheet as shipped", stylesheet, own)
+                }
+                peer = "192.168.50.20"
+                assertEquals("a browser on the network keeps the stylesheet as shipped", stylesheet, client.get("/info.css").bodyAsText())
             }
         }
     }

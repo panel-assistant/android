@@ -305,7 +305,7 @@ class AdminLauncherActivity : AppCompatActivity() {
     ): TextView = TextView(this).apply {
         textSize = size
         setTextColor(Color.parseColor(color))
-        if (bold) setTypeface(typeface, Typeface.BOLD)
+        typeface = Typeface.create(PanelFont.regular(this@AdminLauncherActivity), if (bold) Typeface.BOLD else Typeface.NORMAL)
         setPadding(0, dp(padTop), 0, dp(padBottom))
         text = s
     }

@@ -90,11 +90,13 @@ class ConfigActivity : AppCompatActivity() {
         }
         readinessMessage = TextView(this).apply {
             setText(R.string.config_service_starting)
+            typeface = PanelFont.regular(this@ConfigActivity)
             gravity = Gravity.CENTER
         }
         readinessProgress = ProgressBar(this)
         retryButton = Button(this).apply {
             setText(R.string.retry)
+            typeface = PanelFont.medium(this@ConfigActivity)
             isAllCaps = false
             isEnabled = false
             setOnClickListener { waitForAdminServer(restartService = true) }
@@ -128,6 +130,10 @@ class ConfigActivity : AppCompatActivity() {
             )
             navigationContentDescription = getString(R.string.back_to_dashboard)
             setNavigationOnClickListener { finish() }
+            // The title and subtitle take the panel's faces where a vendor font replaces Roboto (PanelFont).
+            if (PanelFont.bundled) for (i in 0 until childCount) (getChildAt(i) as? TextView)?.let {
+                it.typeface = if (it.text == title) PanelFont.medium(this@ConfigActivity) else PanelFont.regular(this@ConfigActivity)
+            }
             securityModeItem = menu.add(R.string.security_mode).apply {
                 isEnabled = false
                 setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_NEVER)

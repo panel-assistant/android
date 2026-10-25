@@ -128,7 +128,7 @@ internal class Notice(
     /** The width the slots get inside the card's padding. */
     private val innerWidthPx: Int = (widthPx - 2 * px(PAD_H)).coerceAtLeast(1)
 
-    private val pillText = text(PILL, colours.text, MEDIUM).apply { maxLines = 1 }
+    private val pillText = text(PILL, colours.text, PanelFont.medium(context)).apply { maxLines = 1 }
     private val pillDot = dot(DOT)
     private val pill = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
@@ -226,7 +226,7 @@ internal class Notice(
     }
 
     /** One number (a countdown, a count) at the hero size, or a word at the smaller hero size. */
-    fun hero(value: CharSequence, word: Boolean = false): TextView = text(HERO_NUMBER, colours.text, LIGHT_FACE).apply {
+    fun hero(value: CharSequence, word: Boolean = false): TextView = text(HERO_NUMBER, colours.text, PanelFont.light(context)).apply {
         tag = HERO_TAG
         maxLines = if (word) 2 else 1
         fontFeatureSettings = "tnum"
@@ -244,14 +244,14 @@ internal class Notice(
      * A sentence as the hero (what someone said), smaller than a word hero so a spoken command fits in a
      * line or two, and in the medium face so it still reads across a room.
      */
-    fun sentence(value: CharSequence): TextView = text(HERO_SENTENCE, colours.text, MEDIUM).apply {
+    fun sentence(value: CharSequence): TextView = text(HERO_SENTENCE, colours.text, PanelFont.medium(context)).apply {
         tag = HERO_TAG
         maxLines = 3
         text = value
     }
 
     /** The height of a number hero, so a hero that switches between a number and a word never resizes the card. */
-    fun heroNumberHeightPx(): Int = Paint().apply { textSize = HERO_NUMBER * textScale; typeface = LIGHT_FACE }
+    fun heroNumberHeightPx(): Int = Paint().apply { textSize = HERO_NUMBER * textScale; typeface = PanelFont.light(context) }
         .fontMetricsInt.let { it.bottom - it.top }
 
     /** The one sentence on what is happening. */
@@ -344,7 +344,7 @@ internal class Notice(
         text = label
         isAllCaps = false
         setTextSize(TypedValue.COMPLEX_UNIT_PX, ACTION * textScale)
-        typeface = if (primary) MEDIUM else Typeface.DEFAULT
+        typeface = if (primary) PanelFont.medium(context) else PanelFont.regular(context)
         stateListAnimator = null
         val corner = ACTION_CORNER * scale
         fun face(fill: Int, stroke: Int?) = GradientDrawable().apply {
@@ -404,7 +404,7 @@ internal class Notice(
         }
     }
 
-    private fun text(size: Float, colour: Int, face: Typeface = Typeface.DEFAULT) = TextView(context).apply {
+    private fun text(size: Float, colour: Int, face: Typeface = PanelFont.regular(context)) = TextView(context).apply {
         setTextSize(TypedValue.COMPLEX_UNIT_PX, size * textScale)
         setTextColor(colour)
         typeface = face
@@ -419,10 +419,6 @@ internal class Notice(
     internal companion object {
         const val HERO_TAG = "noticeHero"
         const val LINE_TAG = "noticeLine"
-
-        // Created on first use, so a JVM test can hold a Notice without the platform's font machinery.
-        val MEDIUM: Typeface by lazy { Typeface.create("sans-serif-medium", Typeface.NORMAL) }
-        val LIGHT_FACE: Typeface by lazy { Typeface.create("sans-serif-light", Typeface.NORMAL) }
 
         /** The lock-up's width over its height, and where its name starts, from the brand asset set. */
         const val WORDMARK_ASPECT = 373.57f / 56f
@@ -490,7 +486,7 @@ internal class NoticeTrack(
         names.forEachIndexed { i, name ->
             val active = i == current
             name.setTextColor(if (active) colours.text else colours.muted)
-            name.typeface = if (active) Notice.MEDIUM else Typeface.DEFAULT
+            name.typeface = if (active) PanelFont.medium(name.context) else PanelFont.regular(name.context)
         }
         fills?.forEachIndexed { i, fill -> segments.getOrNull(i)?.progress = fill }
         pulse(current?.takeIf { pulsing && it in segments.indices })
@@ -555,12 +551,13 @@ internal class CompactNotice(
     val title: TextView = TextView(context).apply {
         setTextSize(TypedValue.COMPLEX_UNIT_PX, (if (inline) 15f else 17f) * textScale)
         setTextColor(colours.text)
-        typeface = Notice.MEDIUM
+        typeface = PanelFont.medium(context)
         maxLines = 1
     }
     val detail: TextView = TextView(context).apply {
         setTextSize(TypedValue.COMPLEX_UNIT_PX, (if (inline) 15f else 13f) * textScale)
         setTextColor(colours.secondary)
+        typeface = PanelFont.regular(context)
         maxLines = if (inline) 2 else 1
         ellipsize = android.text.TextUtils.TruncateAt.END
     }

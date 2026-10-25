@@ -28,6 +28,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import io.panelassistant.android.PanelFont
 import io.panelassistant.android.R
 import io.panelassistant.android.nativeString
 import io.panelassistant.android.metrics.FeatureCostOperation
@@ -817,6 +818,7 @@ class NavbarController(
     private fun valueLabel(): TextView = TextView(context).apply {
         setTextColor(Color.WHITE)
         textSize = 14f
+        typeface = PanelFont.regular(context)
         gravity = Gravity.CENTER
         minWidth = dp(VALUE_LABEL_MIN_W_DP)
         layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, TIGHTEN)

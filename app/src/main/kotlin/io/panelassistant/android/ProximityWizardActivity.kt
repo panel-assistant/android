@@ -2,7 +2,6 @@ package io.panelassistant.android
 
 import android.graphics.Color
 import android.content.Intent
-import android.graphics.Typeface
 import android.content.res.ColorStateList
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
@@ -187,7 +186,7 @@ class ProximityWizardActivity : AppCompatActivity() {
             textSize = size
             gravity = Gravity.START
             setTextColor(bodyColor)
-            typeface = if (bold) Notice.MEDIUM else Typeface.DEFAULT
+            typeface = if (bold) PanelFont.medium(this@ProximityWizardActivity) else PanelFont.regular(this@ProximityWizardActivity)
             includeFontPadding = false
             setLineSpacing(dp(3).toFloat(), 1f)
             setPadding(0, dp(6), 0, dp(6))
@@ -213,7 +212,7 @@ class ProximityWizardActivity : AppCompatActivity() {
         }
         rawValue = label(layoutSpec.rawValueSp, true).apply {
             setTextColor(accentColor)
-            typeface = Notice.LIGHT_FACE
+            typeface = PanelFont.light(this@ProximityWizardActivity)
             fontFeatureSettings = "tnum"
             gravity = if (compactSquare) Gravity.START else Gravity.CENTER_HORIZONTAL
             maxLines = 1
@@ -305,7 +304,7 @@ class ProximityWizardActivity : AppCompatActivity() {
         fun button(filled: Boolean) = Button(this).apply {
             isAllCaps = false
             textSize = 24f
-            typeface = Notice.MEDIUM
+            typeface = PanelFont.medium(this@ProximityWizardActivity)
             minimumHeight = dp(60)
             minHeight = dp(60)
             setPadding(dp(16), dp(12), dp(16), dp(12))

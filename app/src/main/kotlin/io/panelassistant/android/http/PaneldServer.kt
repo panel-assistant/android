@@ -221,6 +221,8 @@ class PaneldServer internal constructor(
     private val door: () -> io.panelassistant.android.ManageDoor? = { null },
     /** The bundle Panel Assistant keeps for the sidebar (protocol section 20.5): the APK's assets. */
     private val bundleAssets: UiBundleAssets = UiBundleAssets.ofApk { appContext.applicationInfo.sourceDir },
+    /** Whether this panel's system font replaces Roboto, so its own WebView's pages take the bundled face. */
+    private val panelFontBundled: () -> Boolean = { io.panelassistant.android.PanelFont.bundled },
 ) {
     /** The dispatcher the sidebar relay enters, as the stub's door does (protocol section 20.2). */
     internal fun manageDoor(): io.panelassistant.android.ManageDoor? = door()
@@ -440,7 +442,7 @@ class PaneldServer internal constructor(
                     guardDbBootstrapDependencies(appContext, config, scope, pendingApks, guardDbStaging),
                 )
                 dashboardPageRoute(::requestStrings) { strings, embed, peer -> dashboardPageHandler().html(strings, embed, peer) }
-                assetRoutes(asset)
+                assetRoutes(asset, bundleAssets::bytes, panelFontBundled)
                 // Tabbed multi-page shell. `/` stays the existing dashboard (now with a tab bar); the
                 // other tabs are dedicated pages that consume /api/v1.
                 configurePageRoute(::requestStrings, { pages }) { strings -> configurePageHandler().body(strings) }
