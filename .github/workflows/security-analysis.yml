@@ -100,3 +100,4 @@ jobs:
         with:
           category: /language:${{ matrix.language }}
           upload: ${{ vars.CI_REHEARSAL == 'true' && 'never' || 'always' }}
+          upload-database: ${{ vars.CI_REHEARSAL != 'true' }}
