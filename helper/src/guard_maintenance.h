@@ -91,6 +91,8 @@ int guard_maintenance_install_begin(void);
 void guard_maintenance_install_end(void);
 /* Root-side helper replacement admission. Returns 0 only for a locked, truly empty namespace. */
 int guard_maintenance_replacement_safe(void);
+// Supervisor only, with its worker/executor reaped. Returns zero only after owned files retire.
+int guard_maintenance_retire_uninstalled(void);
 int guard_maintenance_replacement_parent_grant(char nonce[65]);
 int guard_maintenance_replacement_export_lease(void);
 int guard_maintenance_replacement_parent_abort(const char nonce[65]);

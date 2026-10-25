@@ -1,9 +1,20 @@
-// The app identity table. Pure data plus exact lookups — no stat, no exec, so it stays host-native
-// testable and the peer-authentication policy that DOES stat can keep living in main.c, where the
-// white-box regression test replaces stat(2) alone.
+// The shared app identity table and its exact lookups. Presence checks use both data addresses;
+// peer-credential authentication remains in main.c.
 #include "identity.h"
-
+#include <errno.h>
+#include <sys/stat.h>
 #include <string.h>
+
+int helper_app_data_absent(void) {
+    for (size_t i = 0; i < HELPER_APP_PACKAGE_COUNT; i++) {
+        const char *paths[] = { HELPER_APP_PACKAGES[i].data_dir, HELPER_APP_PACKAGES[i].user_dir };
+        for (size_t j = 0; j < 2; j++) {
+            struct stat st;
+            if (lstat(paths[j], &st) == 0 || errno != ENOENT) return 0;
+        }
+    }
+    return 1;
+}
 
 const helper_app_package HELPER_APP_PACKAGES[HELPER_APP_PACKAGE_COUNT] = {
     { HELPER_CALLER_SUCCESSOR, "io.panelassistant.android", APP_DATA, APP_USER_DATA },

@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include "guard_maintenance.h"
+#include "companion.h"
 
 #include "sha256.h"
 #include "sysexec.h"
@@ -5117,7 +5118,7 @@ static int reconcile_terminal_retirement_at(int dir) {
 }
 
 static int finalized_retirement_preflight(int dir, const guard_plan *plan,
-                                          const guard_journal *journal) {
+                                          const guard_journal *journal, int uninstalled) {
     int rolled_back = strncmp(journal->outcome, "ROLLED_BACK_", 12) == 0;
     int recovery_exact = journal->premigrate_bytes == 0
         ? known_file_present(dir, GUARD_PREMIGRATE) == 0
@@ -5137,11 +5138,11 @@ static int finalized_retirement_preflight(int dir, const guard_plan *plan,
         validate_settings_authority_at(dir, plan) == 0 &&
         retirement_regular_exact_at(dir, GUARD_BASELINE, plan->baseline_bytes,
                                     plan->baseline_sha) && recovery_exact &&
-        installed_apk_stable_exact(plan->package, &plan->a) == 0 &&
+        (uninstalled || (installed_apk_stable_exact(plan->package, &plan->a) == 0 &&
         (rolled_back ? rollback_inventory_exact(plan) == 0
                      : (strcmp(journal->outcome, "CANARY_PASSED") == 0 &&
                         final_recovery_artifacts_exact(plan, journal) == 0 &&
-                        live_db_semantic_exact(dir, plan, plan->a.expected_schema, 0) == 0)) &&
+                        live_db_semantic_exact(dir, plan, plan->a.expected_schema, 0) == 0)))) &&
         known_file_present(dir, GUARD_REPLACEMENT) == 0 &&
         known_file_present(dir, GUARD_REPLACEMENT_TMP) == 0;
     return exact;
@@ -5764,7 +5765,7 @@ static void cmd_guardretire_terminal(conn_ctx *ctx, const char *args) {
         return;
     }
     char evidence_sha[65];
-    int exact = finalized_retirement_preflight(dir, &plan, &journal) &&
+    int exact = finalized_retirement_preflight(dir, &plan, &journal, 0) &&
         guard_evidence_sha(&plan, &journal, evidence_sha) == 0;
     if (!exact) {
         close(dir);
@@ -6091,6 +6092,85 @@ void guard_maintenance_set_supervisor_owner(void) {
     guard_supervised = 0;
     guard_supervisor_owner = 1;
     guard_supervisor_pid = getpid();
+}
+
+int guard_maintenance_retire_uninstalled(void) {
+    if (!guard_maintenance_supervisor_authoritative() || !helper_app_data_absent()) return -1;
+    helper_transaction_lock lease;
+    if (acquire_helper_transaction_lock(&lease) != HELPER_TRANSACTION_LOCK_ACQUIRED) return -1;
+    pthread_mutex_lock(&guard_lock);
+    int parent = open_app_helper_parent();
+    struct stat self, live;
+    int exact = parent >= 0 && stat("/proc/self/exe", &self) == 0 &&
+        fstatat(parent, GUARD_APP_HELPER_LIVE, &live, AT_SYMLINK_NOFOLLOW) == 0 &&
+        S_ISREG(live.st_mode) && live.st_uid == geteuid() && live.st_nlink == 1 &&
+        self.st_dev == live.st_dev && self.st_ino == live.st_ino;
+    int dir = exact ? open_guard_dir() : -1;
+    exact = exact && dir >= 0 && acquire_owner_lock(dir) == 0 &&
+        retirement_owner_lock_exact(dir) && helper_app_data_absent();
+    if (exact) {
+        guard_plan plan;
+        guard_journal journal;
+        int manifest = load_plan_at(dir, GUARD_MANIFEST, &plan);
+        int stored = load_journal_at(dir, &journal);
+        // A completed Guard session no longer needs the uninstalled app's live DB/installed APK.
+        // Keep its signed artifacts and durable terminal journal checks before discarding custody.
+        if (manifest == 1 && stored == 1 && journal.phase == GUARD_PHASE_FINALIZED &&
+            journal_matches_plan(&plan, &journal) &&
+            finalized_retirement_preflight(dir, &plan, &journal, 1)) {
+            char evidence[65];
+            exact = guard_evidence_sha(&plan, &journal, evidence) == 0;
+            if (exact) {
+                journal.generation++;
+                journal.phase = GUARD_PHASE_RETIRING;
+                snprintf(journal.retirement_sha, sizeof journal.retirement_sha, "%s", evidence);
+                exact = store_journal_at(dir, &journal) == GUARD_PUBLISH_COMMITTED;
+            }
+        }
+        exact = exact && reconcile_terminal_retirement_at(dir) >= 0 &&
+            replacement_namespace_empty(dir);
+    }
+    // Unknown entries, active plans and interrupted Companion restores retain their custody.
+    if (exact) exact = companion_retire_uninstalled() == 0;
+    static const char *const remnants[] = {
+        GUARD_APP_HELPER_STAGE, GUARD_APP_HELPER_PREVIOUS, GUARD_APP_HELPER_PREVIOUS_TMP,
+    };
+    for (size_t i = 0; exact && i < sizeof remnants / sizeof remnants[0]; i++) {
+        struct stat st;
+        if (fstatat(parent, remnants[i], &st, AT_SYMLINK_NOFOLLOW) != 0) {
+            if (errno != ENOENT) exact = 0;
+        } else if (!S_ISREG(st.st_mode) || st.st_uid != geteuid() || st.st_nlink != 1 ||
+                   unlinkat(parent, remnants[i], 0) != 0) exact = 0;
+    }
+    const char *guard_parent = GUARD_PARENT;
+#ifdef HAPANELD_TEST
+    const char *test_parent = getenv("HAPANELD_GUARD_TEST_PARENT");
+    if (test_parent && *test_parent) guard_parent = test_parent;
+#endif
+    int state_parent = exact ? open(guard_parent, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC) : -1;
+    struct stat held, named;
+    exact = exact && state_parent >= 0 && fstat(dir, &held) == 0 &&
+        fstatat(state_parent, GUARD_DIR_NAME, &named, AT_SYMLINK_NOFOLLOW) == 0 &&
+        held.st_dev == named.st_dev && held.st_ino == named.st_ino && helper_app_data_absent();
+    if (exact) {
+        exact = unlinkat(dir, GUARD_OWNER_LOCK, 0) == 0 && fsync(dir) == 0;
+        close(guard_owner_fd);
+        guard_owner_fd = -1;
+        exact = exact && unlinkat(state_parent, GUARD_DIR_NAME, AT_REMOVEDIR) == 0 &&
+            fsync(state_parent) == 0;
+    }
+    // Last mutation: a crash before this point leaves a launchable binary that can retry cleanup.
+    if (exact) exact = helper_app_data_absent() &&
+        fstatat(parent, GUARD_APP_HELPER_LIVE, &named, AT_SYMLINK_NOFOLLOW) == 0 &&
+        named.st_dev == live.st_dev && named.st_ino == live.st_ino &&
+        unlinkat(parent, GUARD_APP_HELPER_LIVE, 0) == 0;
+    if (exact) (void)fsync(parent);
+    if (state_parent >= 0) close(state_parent);
+    if (dir >= 0) close(dir);
+    if (parent >= 0) close(parent);
+    pthread_mutex_unlock(&guard_lock);
+    (void)release_helper_transaction_lock(&lease);
+    return exact ? 0 : -1;
 }
 
 int guard_maintenance_supervised(void) {

@@ -20,6 +20,9 @@ int companion_guard_package_launch(const char *pkg);
 int companion_guard_component_launch(const char *component);
 void companion_guard_release(int guard);
 
+// Called by the supervisor only after its worker has been reaped. Pending restore custody holds.
+int companion_retire_uninstalled(void);
+
 #ifdef HAPANELD_TEST
 enum companion_test_fault {
     COMPANION_TEST_FAULT_NONE = 0,
