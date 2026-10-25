@@ -1,6 +1,7 @@
 package io.panelassistant.android.util
 
 import io.panelassistant.android.device.WebViewSpec
+import io.panelassistant.android.webViewRebindRestartCoordinator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -303,5 +304,49 @@ class WebViewUpdateTest {
             replacement.observe()
             assertEquals(1, fixture.submissions)
         } finally { release.countDown() }
+    }
+
+    @Test fun `installed package stays installing through deferred rebind until the new process binds it`() = runBlocking {
+        val fixture = Fixture()
+        fixture.observed = fixture.observed.copy(boundPackage = "com.android.webview", boundVersionCode = 530410501)
+        fixture.afterInstall = {
+            fixture.observed = fixture.observed.copy(versionName = fixture.spec.version, versionCode = fixture.spec.versionCode)
+        }
+        val scheduled = ArrayDeque<Pair<Long, () -> Unit>>()
+        var setupWalked = true
+        var restarts = 0
+        val coordinator = webViewRebindRestartCoordinator(
+            schedule = { delay, action -> scheduled.addLast(delay to action); true },
+            restartProcess = { restarts++ },
+            destructiveOperationRunning = { InstallProgress.running },
+            guidedSetupBeingWalked = { setupWalked },
+            serviceStopping = { false },
+        )
+        val owner = fixture.owner(this, coordinator::request)
+        owner.install("owner", fixture.spec.apkSha256)
+        finishWork()
+        assertFalse(InstallProgress.running)
+        assertEquals("installed", fixture.durable?.optString("state"))
+        assertEquals("installing", owner.observe().getJSONObject("transaction").optString("state"))
+        val grace = scheduled.removeFirst()
+        assertEquals(350L, grace.first)
+        grace.second()
+        assertEquals(0, restarts)
+        assertEquals("installing", owner.observe().getJSONObject("transaction").optString("state"))
+        assertEquals(1, scheduled.size)
+        setupWalked = false
+        scheduled.removeFirst().second()
+        assertEquals(1, restarts)
+        assertEquals("installing", owner.observe().getJSONObject("transaction").optString("state"))
+        fixture.observed = fixture.observed.copy(processId = "new-process", engineVersion = fixture.spec.version,
+            boundVersionName = fixture.spec.version, boundVersionCode = fixture.spec.versionCode)
+        val fresh = fixture.owner(this, coordinator::request)
+        val complete = fresh.observe()
+        assertEquals("installed", complete.getJSONObject("transaction").optString("state"))
+        assertEquals("current", complete.optString("reason"))
+        fresh.install("owner", fixture.spec.apkSha256)
+        assertEquals(1, fixture.submissions)
+        assertEquals(1, restarts)
+        assertTrue(scheduled.isEmpty())
     }
 }

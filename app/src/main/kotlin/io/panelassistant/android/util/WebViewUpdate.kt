@@ -208,11 +208,13 @@ internal class WebViewUpdate(
     private fun maybeRebind(observed: WebViewObservation) {
         if (active || InstallProgress.running || rebindRequested || receipt?.optString("state") != "installed") return
         val spec = candidate()?.second?.takeIf { it.apkSha256 == receipt?.optString("artifact_sha256") } ?: return
-        val boundOld = observed.boundPackage == AppInstaller.WEBVIEW_PKG &&
+        if (boundOld(observed, spec)) rebindRequested = requestRebind()
+    }
+
+    private fun boundOld(observed: WebViewObservation, spec: WebViewSpec): Boolean =
+        observed.boundPackage == AppInstaller.WEBVIEW_PKG &&
             ((observed.boundVersionCode != null && observed.boundVersionCode < spec.versionCode) ||
                 (observed.engineVersion?.let { compareEngine(it, spec.version) }?.let { it < 0 } == true))
-        if (boundOld) rebindRequested = requestRebind()
-    }
 
     private fun stage(spec: WebViewSpec) = File(io.directory, "${spec.apkSha256}.apk")
 
@@ -255,6 +257,12 @@ internal class WebViewUpdate(
         val progress = InstallProgress.presentationSnapshot()
         // Disk stays uncertain before submission. Only the live shared owner can say it is still working.
         if (transaction?.optString("state") == "submitted_unknown" && progress.running && progress.component == "WebView") {
+            transaction.put("state", "installing")
+        }
+        // Package readback finishes before a deferred process boundary can bind the new engine.
+        if (transaction?.optString("state") == "installed" && spec != null &&
+            transaction.optString("artifact_sha256") == spec.apkSha256 && boundOld(observed, spec)
+        ) {
             transaction.put("state", "installing")
         }
         return JSONObject().put("schema", 1).put("supported", true).put("eligible", reason == null)
