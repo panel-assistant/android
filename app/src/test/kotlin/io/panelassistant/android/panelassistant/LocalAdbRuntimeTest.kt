@@ -227,7 +227,6 @@ class LocalAdbRuntimeTest {
                 "replace" -> runtime.session("replacement", true)
                 "mode" -> {
                     io.panelassistant.android.control.RemoteDebugSecurityTransitionGate.mutate { hardened = false }
-                    broker.clear()
                     io.panelassistant.android.control.RemoteDebugSecurityTransitionGate.mutate { hardened = true }
                 }
             }
