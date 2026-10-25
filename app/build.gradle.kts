@@ -1,9 +1,11 @@
+import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
 import java.util.Properties
 import java.security.MessageDigest
 import org.cyclonedx.gradle.CyclonedxDirectTask
 import org.cyclonedx.model.Component
 import org.gradle.api.tasks.Exec
+import org.gradle.api.tasks.Sync
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.testing.Test
 
@@ -88,6 +90,10 @@ dependencyLocking {
 // neither changes the Gradle cache key nor matches the build-file paths that start the emulator tests.
 val appVersion = Properties().apply { file("version.properties").inputStream().use { load(it) } }
 
+// Stable development identity: release numbering must not invalidate debug compilation or lint.
+val debugVersionName = "1.0.0"
+val debugAssetsDirectory = layout.buildDirectory.dir("debug-assets")
+
 android {
     namespace = "io.panelassistant.android"
     compileSdk = 37
@@ -158,6 +164,15 @@ android {
                 keyPassword = props.getProperty("keyPassword")
             }
         }
+    }
+
+    sourceSets {
+        // Lint fingerprints assets too. Debug uses the same assets with stable OpenAPI metadata;
+        // release keeps the original published contract. Keep debug's directory a normal source
+        // directory because lint excludes generated asset directories from its inputs.
+        getByName("main").assets.setSrcDirs(emptyList<String>())
+        getByName("release").assets.srcDir("src/main/assets")
+        getByName("debug").assets.srcDir(debugAssetsDirectory.get().asFile)
     }
 
     buildFeatures {
@@ -291,6 +306,13 @@ tasks.named<CyclonedxDirectTask>("cyclonedxDirectBom") {
 // Compile the CDP relay (helper/cdprelay.c) into assets at build time for the fleet ABIs, using the
 // pinned NDK that's already present in the Docker toolchain image and CI — so the repo ships source,
 // not prebuilt binaries. Extracted + launched at runtime by control/CdpRelay.kt.
+androidComponents.onVariants(androidComponents.selector().withBuildType("debug")) { variant ->
+    variant.outputs.forEach { output ->
+        output.versionCode.set(1)
+        output.versionName.set(debugVersionName)
+    }
+}
+
 val ndkDirectory = androidComponents.sdkComponents.sdkDirectory.map {
     it.dir("ndk/${android.ndkVersion}")
 }
@@ -423,6 +445,23 @@ val verifyOpenApiVersion = tasks.register("verifyOpenApiVersion") {
     }
 }
 tasks.named("preBuild") { dependsOn(compileCdpRelay, verifyBundledRootHelperBuildIdentity, verifyOpenApiVersion) }
+
+val prepareDebugAssets = tasks.register<Sync>("prepareDebugAssets") {
+    dependsOn(compileCdpRelay, verifyBundledRootHelperBuildIdentity, verifyOpenApiVersion)
+    from("src/main/assets")
+    into(debugAssetsDirectory)
+    val openApi = debugAssetsDirectory.get().file("openapi.json").asFile
+    val versionName = debugVersionName
+    doLast {
+        @Suppress("UNCHECKED_CAST")
+        val document = JsonSlurper().parse(openApi) as MutableMap<String, Any?>
+        @Suppress("UNCHECKED_CAST")
+        val info = document["info"] as MutableMap<String, Any?>
+        info["version"] = versionName
+        openApi.writeText(JsonOutput.prettyPrint(JsonOutput.toJson(document)) + "\n")
+    }
+}
+tasks.matching { it.name == "preDebugBuild" }.configureEach { dependsOn(prepareDebugAssets) }
 
 // Built outside helper/build, which the helper Makefile's clean deletes while a JVM run may be using it.
 val helperSocketTestServer = layout.buildDirectory.file("helper-socket-test/socket-test-server").get().asFile

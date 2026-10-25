@@ -2,9 +2,9 @@ package io.panelassistant.android.http
 
 import io.panelassistant.android.testsupport.TestSources
 import io.panelassistant.android.testsupport.Node
-import io.panelassistant.android.BuildConfig
 import io.panelassistant.android.testsupport.NodeI18n
 import java.io.File
+import java.util.Properties
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -24,7 +24,9 @@ class HardenedApprovalAssetContractTest {
 
     @Test fun openApiHardenedHttpOutcomeContract() {
         val document = JSONObject(asset("openapi.json"))
-        assertEquals(BuildConfig.VERSION_NAME, document.getJSONObject("info").getString("version"))
+        // Source-text reason: the published API contract follows the declared release, including in debug.
+        val declared = Properties().apply { TestSources.appFile("version.properties").inputStream().use { load(it) } }
+        assertEquals(declared.getProperty("versionName"), document.getJSONObject("info").getString("version"))
         val paths = document.getJSONObject("paths")
         val protected = listOf(
             "POST /play",
