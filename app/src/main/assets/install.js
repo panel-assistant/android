@@ -554,6 +554,7 @@
     }
     approved('install.apk.from_url', { url: url, request: request }, apkMsg).then(function (d) {
       if (mine !== apkPreviewGeneration) return;
+      apkMsg('');
       apkFetchRequest = null;
       if (!d.ok && d.error === 'cancelled') {
         if (prev) { prev.innerHTML = '<p class="note">' + esc(t('install.apk.dynamic.download_cancelled', 'Download cancelled — the panel stopped it.')) + '</p>'; scheduleInstallColumnAlignment(); }
@@ -562,6 +563,7 @@
       renderApkPreview(prev, d, t('install.apk.dynamic.download_failed', 'Download failed'));
     }).catch(function (error) {
       if (mine !== apkPreviewGeneration) return;
+      apkMsg('');
       apkFetchRequest = null;
       if (prev) {
         prev.innerHTML = '<p class="note">' + esc(requestFailure(error, t('install.apk.dynamic.download_failed_sentence', 'Download failed.'))) + '</p>';
