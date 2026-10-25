@@ -84,7 +84,8 @@ class RestoreExecutorTest {
                 )
                 val result = JSONObject(InstallProgress.json()).getJSONObject("result")
                 assertTrue(rolledBack)
-                assertEquals("failed", result.getString("status"))
+                assertEquals("partial", result.getString("status"))
+                assertEquals(1, result.getJSONObject("wake_words").getInt("items"))
                 assertEquals("succeeded", result.getJSONObject("wake_words").getString("status"))
                 assertEquals(listOf("porch"), catalog.exportImported().map { it.id })
             } finally {

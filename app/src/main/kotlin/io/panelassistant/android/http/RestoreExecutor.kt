@@ -84,6 +84,7 @@ internal class RestoreExecutor(
         var configCommitted = false
         var configItems = 0
         var restoredStateRows = 0
+        var restoredCalibrations = 0
         val admittedStateCount = restorableState.size + ownerChoices.values.size + restorableIssues.size
         var ownerChoicesRestored = 0
         var issuesRestored = 0
@@ -91,15 +92,17 @@ internal class RestoreExecutor(
         // A row the restore policy withheld was never admitted, so the restore is partial.
         val policySkipIsPartial = stateSkipped > 0
         fun stateComponent(): InstallProgress.ComponentResult? {
-            if (admittedStateCount == 0 && stateSkipped == 0 && !stateUnavailable) return null
-            val restored = restoredStateRows + ownerChoicesRestored + issuesRestored
-            val failed = (admittedStateCount - restored).coerceAtLeast(0)
+            // Calibration restore only fills gaps. Count actual inserts, not existing local rows.
+            val admitted = admittedStateCount + restoredCalibrations
+            if (admitted == 0 && stateSkipped == 0 && !stateUnavailable) return null
+            val restored = restoredStateRows + ownerChoicesRestored + issuesRestored + restoredCalibrations
+            val failed = (admitted - restored).coerceAtLeast(0)
             return InstallProgress.ComponentResult(
                 status = if (failed > 0 || stateRefreshFailed) InstallProgress.Outcome.PARTIAL
                     else if (stateSkipped > 0 || stateUnavailable) InstallProgress.Outcome.SKIPPED
                     else InstallProgress.Outcome.SUCCEEDED,
                 items = restored,
-                detail = "admitted=$admittedStateCount; skipped=$stateSkipped; failed=$failed" +
+                detail = "admitted=$admitted; skipped=$stateSkipped; failed=$failed" +
                     if (stateRefreshFailed) "; runtime reload failed" else "",
             )
         }
@@ -151,7 +154,7 @@ internal class RestoreExecutor(
                         else runCatching { dashboardIssues.restore(restorableIssues) }.getOrDefault(0)
                     // A calibration this install already holds under the same key is kept; the
                     // archive's copy only fills a gap. Never fatal, like the state write above.
-                    val restoredCalibrations = if (restorableCalibrations.isEmpty()) 0
+                    restoredCalibrations = if (restorableCalibrations.isEmpty()) 0
                         else runCatching { calibrations.restore(restorableCalibrations) }.getOrDefault(0)
                     if (restoredStateRows > 0 || restoredCalibrations > 0 || ownerChoicesRestored > 0 || issuesRestored > 0) {
                         // Never fatal, exactly like the writes above: the restore is
@@ -230,6 +233,7 @@ internal class RestoreExecutor(
                 else InstallProgress.ComponentResult(InstallProgress.Outcome.ROLLBACK_FAILED)
             } else null
             val partial = companionResult?.ok == true ||
+                (wakeWordComponent?.items ?: 0) > 0 ||
                 (stateComponent()?.items ?: 0) > 0 ||
                 companionResult?.component?.status == InstallProgress.Outcome.PARTIAL ||
                 profileResult?.outcome == ProfileBackupRestoreOutcome.SUCCEEDED ||
