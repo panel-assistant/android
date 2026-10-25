@@ -12,8 +12,8 @@ object ProfileArtifacts {
             apkSha256 = "3fe65c631ce9b0f8e573198a783cf8ad1013aef02b83f04e7871952879b599cf",
             versionCode = 720406301L,
             size = 244902814L,
-            // The historical artifact id says arm; this exact binary contains arm64 only.
-            abis = setOf("arm64-v8a"),
+            // This exact APK contains both 64-bit and 32-bit ARM ELF payloads.
+            abis = setOf("arm64-v8a", "armeabi-v7a"),
             minSdk = 26,
             maxSdk = 28,
         ),
@@ -34,7 +34,7 @@ object ProfileArtifacts {
             apkSha256 = "1319b1e76b4e1cb32d7019b6f7566ebb048e3c09bd0f344124122e58390b5939",
             versionCode = 787106301L,
             size = 262187199L,
-            abis = setOf("arm64-v8a"),
+            abis = setOf("arm64-v8a", "armeabi-v7a"),
             minSdk = 29,
         ),
     )
