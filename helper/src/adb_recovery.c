@@ -371,7 +371,7 @@ int adb_recovery_main(void) {
     int managed = 0, hold = 0, recovery_pending = 0;
     pid_t workers[MAX_EXECUTORS] = {0};
     for (;;) {
-        if (atomic_load(&lease->recovered)) { managed = 0; hold = 1; }
+        if (atomic_load(&lease->recovered)) managed = 0;
         if (guardian > 0) {
             pid_t done = waitpid(guardian, NULL, WNOHANG);
             if (done == guardian || (done < 0 && errno != EINTR)) {
@@ -391,7 +391,7 @@ int adb_recovery_main(void) {
         }
         if (managed && (now_ms() - renewed >= ADB_RECOVERY_LEASE_MS || helper_app_data_absent())) recovery_pending = 1;
         if (recovery_pending) {
-            if (!set_network(1)) { managed = 0; hold = 1; recovery_pending = 0; atomic_store(&lease->armed, 0); }
+            if (!set_network(1)) { managed = 0; recovery_pending = 0; atomic_store(&lease->armed, 0); }
         }
         struct pollfd pfd = { .fd = server, .events = POLLIN };
         if (poll(&pfd, 1, 100) <= 0) continue;

@@ -157,6 +157,8 @@ int main(int argc,char **argv) {
     long long slow_deadline = now_ms() + 1200;
     while (!network_is("running") && now_ms() < slow_deadline) usleep(10000);
     CHECK(network_is("running"),"guardian expires a lease while request framing is blocked");close(slow);
+    arm();
+    CHECK(network_is("stopped"),"healthy app can rearm after automatic recovery without a new websocket");
     stop();start();arm();kill(guardian,SIGKILL);waitpid(guardian,NULL,0);guardian=-1;
     CHECK(wait_network("running"),"guardian death reopens network ADB");stop();
     start();arm();
@@ -174,7 +176,9 @@ int main(int argc,char **argv) {
     CHECK(access(fixture_path("unfenced-reopen"),F_OK)!=0,"network reopen cannot precede durable authority invalidation");stop();
     start();arm();char reply[160];
     CHECK(!request("RECOVER bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n",reply,sizeof reply)&&!strcmp(reply,"OK"),"a fresh session may recover before ARM");
-    usleep(800000);CHECK(network_is("running"),"recovery hold survives the previous lease deadline");stop();
+    usleep(800000);CHECK(network_is("running"),"recovery hold survives the previous lease deadline");
+    CHECK(!request("ARM bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n",reply,sizeof reply)&&!strcmp(reply,"HELD"),"explicit recovery hold rejects reclosure in the same session");
+    CHECK(!request("ARM cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\n",reply,sizeof reply)&&!strcmp(reply,"OK"),"a fresh compatible session releases the explicit recovery hold");stop();
     start();arm();put("loopback-only","yes");
     CHECK(!request("RECOVER aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n",reply,sizeof reply)&&!strcmp(reply,"ERR"),"loopback listener is not a network recovery acknowledgement");
     unlink(fixture_path("loopback-only"));stop();
@@ -186,7 +190,7 @@ int main(int argc,char **argv) {
     start();arm();put("no_backup/remote-debug-security-authority.v1","old-hardened-authority");
     put("fence-write-fails","yes");put("authority-readonly","yes");
     CHECK(wait_network("running"),"read-only authority storage cannot strand emergency recovery");
-    CHECK(!request("STATUS\n",reply,sizeof reply) && strstr(reply," 0 1 1")!=NULL,"emergency recovery reports unverified security and no managed-OFF proof");
+    CHECK(!request("STATUS\n",reply,sizeof reply) && strstr(reply," 0 0 1")!=NULL,"emergency recovery reports unverified security and no managed-OFF proof");
     unlink(fixture_path("fence-write-fails"));unlink(fixture_path("authority-readonly"));stop();
     char command[700];snprintf(command,sizeof command,"rm -rf -- '%s'",directory);int cleanup_status = system(command); CHECK(cleanup_status == 0,"fixture cleanup succeeds");
     if(!failures)puts("adb recovery behavioral contracts passed");

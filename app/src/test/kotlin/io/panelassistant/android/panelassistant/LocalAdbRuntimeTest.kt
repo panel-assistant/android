@@ -40,6 +40,24 @@ class LocalAdbRuntimeTest {
         assertEquals(LocalAdbState(false, true), endpoint.status)
     }
 
+    @Test fun aHardenedCompatibilityRollbackKeepsHealthMonitoringWithoutGrantingMaintenance() = runTest {
+        val endpoint = Endpoint()
+        var bootstrap = 0
+        val runtime = LocalAdbRuntime(backgroundScope, endpoint, { true }, { JSONObject() }, { bootstrap++; false }, StandardTestDispatcher(testScheduler), { it() })
+        runtime.session("initial-old-pa", false); runCurrent()
+        assertTrue(endpoint.effects.isEmpty())
+        assertEquals(0, bootstrap)
+        runtime.session("compatible", true); runCurrent()
+        runtime.session("old-pa", false); runCurrent()
+        assertEquals(listOf("arm"), endpoint.effects)
+        advanceTimeBy(30_001); runCurrent()
+        assertEquals(listOf("arm", "beat"), endpoint.effects)
+        assertEquals(0, bootstrap)
+        val reply = runtime.request("adb.shell", JSONObject().put("command", "id").put("timeout_ms", 1000), { true })
+        assertEquals("expired", reply.code)
+        assertTrue(endpoint.effects.none { it.startsWith("shell") || it == "recover" })
+    }
+
     @Test fun anUnresponsiveUiStopsRenewalEvenWhileTheProcessAndSessionRemainAlive() = runTest {
         val endpoint = Endpoint()
         var uiHealthy = true
@@ -53,6 +71,25 @@ class LocalAdbRuntimeTest {
         uiHealthy = true
         advanceTimeBy(30_000); runCurrent()
         assertEquals(listOf("arm", "beat"), endpoint.effects)
+    }
+
+    @Test fun aLostDaemonIsBootstrappedAndRearmedWithoutLosingTheHeartbeatTaskOnATransientFailure() = runTest {
+        val endpoint = Endpoint()
+        var bootstraps = 0
+        val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, {
+            bootstraps++
+            if (bootstraps == 1) error("temporary bootstrap failure")
+            endpoint.status = LocalAdbState(false, false)
+            true
+        }, StandardTestDispatcher(testScheduler), { it() })
+        runtime.session("pa", true); runCurrent()
+        endpoint.status = null
+        advanceTimeBy(30_001); runCurrent()
+        assertEquals(1, bootstraps)
+        assertEquals(listOf("arm"), endpoint.effects)
+        advanceTimeBy(30_000); runCurrent()
+        assertEquals(2, bootstraps)
+        assertEquals(listOf("arm", "arm"), endpoint.effects)
     }
 
     @Test fun expiredFinalAdmissionNeverExecutesOrRetriesTheScript() = runTest {

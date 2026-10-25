@@ -51,17 +51,20 @@ internal class LocalAdbRuntime(
     private val shells = Mutex()
     @Volatile private var nonce = ""
     @Volatile private var granted = false
+    @Volatile private var compatibleHistory = false
 
     override fun session(token: String, granted: Boolean) {
         val current = generation.incrementAndGet()
         this.granted = granted
-        val fresh = MessageDigest.getInstance("SHA-256").digest(UUID.randomUUID().toString().toByteArray()).joinToString("") { "%02x".format(it) }
+        val retainExistingLease = !granted && compatibleHistory && nonce.isNotEmpty()
+        if (granted) compatibleHistory = true
+        val fresh = if (retainExistingLease) nonce else MessageDigest.getInstance("SHA-256").digest(UUID.randomUUID().toString().toByteArray()).joinToString("") { "%02x".format(it) }
         nonce = fresh
         scope.launch(dispatcher) {
-            effects.withLock {
+            try { effects.withLock {
                 if (generation.get() != current) return@withLock
                 if (!granted) {
-                    if (endpoint.state() != null) transition { endpoint.recover(fresh) }
+                    if (!hardened() && endpoint.state() != null) transition { generation.get() == current && !hardened() && endpoint.recover(fresh) }
                     publish()
                     return@withLock
                 }
@@ -71,23 +74,26 @@ internal class LocalAdbRuntime(
                     publish()
                     onClosed()
                 }
-            }
-            if (granted && generation.get() == current) {
+            } } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+              catch (_: Exception) { publish() }
+            if ((granted || (retainExistingLease && hardened())) && generation.get() == current) {
                 while (scope.isActive && generation.get() == current) {
                     delay(30_000)
                     if (!healthy()) continue
-                    effects.withLock {
+                    try { effects.withLock {
                         if (generation.get() == current) {
-                            val state = endpoint.state()
-                            if (state != null && !state.managed && !state.recoveryHold) {
+                            var state = endpoint.state()
+                            if (state == null && granted) { bootstrap(); state = endpoint.state() }
+                            if (state != null && !state.managed && !state.recoveryHold && granted) {
                                 transition { generation.get() == current && endpoint.arm(fresh) }
                                 publish()
                                 onClosed()
                             }
-                            else endpoint.beat(fresh)
+                            else if (state != null) endpoint.beat(fresh)
                             publish()
                         }
-                    }
+                    } } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                      catch (_: Exception) { publish() }
                 }
             }
         }
