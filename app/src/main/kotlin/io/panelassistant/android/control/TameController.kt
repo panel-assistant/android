@@ -1,5 +1,7 @@
 package io.panelassistant.android.control
 
+import io.panelassistant.android.setupEverCompleted
+
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
@@ -50,6 +52,7 @@ class TameController(
         reassert = ::reassertTame,
         restore = ::restoreOwned,
         clearAbsent = ::clearAbsentMarker,
+        allowTaming = { io.panelassistant.android.Config(context).setupEverCompleted },
     )
 
     /** Reconcile desired state against the existing write-ahead overlay restoration records. */

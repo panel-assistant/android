@@ -37,4 +37,51 @@ class ConfigPreviousHomeTest {
         assertFalse(config.preservePreviousHome(original, emptyList()))
         assertNull(config.previousHomeComponent)
     }
+    @Test fun `installer arms deferred ownership and only durable acknowledgement clears it`() {
+        val prefs = fakePreferences()
+        val config = Config(prefs.instance)
+        assertTrue(config.preservePreviousHome(original, listOf(original), armTakeover = true))
+        assertTrue(Config(prefs.instance).homeTakeoverPending)
+        config.setupEverCompleted = true
+        assertTrue(config.homeTakeoverPending)
+        prefs.commitsSucceed.set(false)
+        assertFalse(config.completeHomeTakeover())
+        assertTrue(config.homeTakeoverPending)
+        prefs.commitsSucceed.set(true)
+        assertTrue(config.completeHomeTakeover())
+        assertFalse(config.homeTakeoverPending)
+    }
+
+    @Test fun `explicit handback cancels deferred claim atomically with desired state`() {
+        val prefs = fakePreferences()
+        val config = Config(prefs.instance)
+        assertTrue(config.preservePreviousHome(original, listOf(original), armTakeover = true))
+        config.setTameVendorPackages("com.vendor.launcher")
+        config.setLauncherPackage(AppIdentity.OWN)
+        prefs.commitsSucceed.set(false)
+        assertFalse(config.clearHandBackDesiredState())
+        assertTrue(config.homeTakeoverPending)
+        assertEquals(AppIdentity.OWN, config.launcherPackage)
+        prefs.commitsSucceed.set(true)
+        assertTrue(config.clearHandBackDesiredState())
+        assertFalse(config.homeTakeoverPending)
+        assertTrue(config.tameVendorPackages.isEmpty())
+        assertEquals("", config.launcherPackage)
+        assertEquals(original.component, config.previousHomeComponent)
+    }
+
+    @Test fun `pending ownership needs completed setup and exact observed home component`() {
+        val config = Config(fakePreferences().instance)
+        assertTrue(config.preservePreviousHome(original, listOf(original), armTakeover = true))
+        val target = ActivityRef(AppIdentity.OWN, "${AppIdentity.OWN}.DashboardActivity")
+        assertFalse(config.confirmHomeTakeover(target, target))
+        assertTrue(config.homeTakeoverPending)
+        config.setupEverCompleted = true
+        assertFalse(config.confirmHomeTakeover(target, target.copy(cls = "${AppIdentity.OWN}.AdminLauncherActivity")))
+        assertFalse(config.confirmHomeTakeover(target, null))
+        assertTrue(config.homeTakeoverPending)
+        assertTrue(config.confirmHomeTakeover(target, target))
+        assertFalse(config.homeTakeoverPending)
+    }
+
 }

@@ -1,5 +1,8 @@
 package io.panelassistant.android.control
 
+import io.panelassistant.android.Config
+import io.panelassistant.android.previousHomeComponent
+
 /**
  * Executes one [HandBackHomePolicy] decision, in the only order that cannot strand the panel.
  *
@@ -94,3 +97,23 @@ internal class HandBackHomeController(
         )
     }
 }
+
+/** The same restore transaction serves explicit removal and recovery of abandoned first setup. */
+internal fun handBackHomeController(
+    config: Config,
+    tame: TameController,
+    setHome: (String) -> Boolean,
+    ownPackage: String,
+    clearDesiredState: () -> Boolean = config::clearHandBackDesiredState,
+): HandBackHomeController = HandBackHomeController(
+    ownedMarkers = tame::ownedMarkerSnapshot,
+    packageStates = tame::handBackPackageStates,
+    homeCandidates = tame::handBackHomeCandidates,
+    clearDesiredState = clearDesiredState,
+    restoreOwned = tame::restoreEveryOwnedPackage,
+    enable = tame::adoptAndEnable,
+    setHome = setHome,
+    observeHome = tame::observeDefaultHomeComponent,
+    previousHomeComponent = { config.previousHomeComponent },
+    ownPackage = ownPackage,
+)

@@ -30,6 +30,7 @@ class TameDesiredStateReconcilerTest {
         var reassertSucceeds = true
         var restoreSucceeds = true
         var clearSucceeds = true
+        var allowTaming = true
 
         val reconciler = TameDesiredStateReconciler(
             readOwned = {
@@ -53,11 +54,31 @@ class TameDesiredStateReconcilerTest {
                 restored += marker
                 restoreSucceeds.also { if (it) markers.remove(marker.pkg) }
             },
+            allowTaming = { allowTaming },
             clearAbsent = { marker ->
                 cleared += marker
                 clearSucceeds.also { if (it) markers.remove(marker.pkg) }
             },
         )
+    }
+
+    @Test fun `incomplete setup restores existing ownership and defers selected vendor packages until completion`() {
+        val f = Fixture(mapOf("vendor.old" to "foreground")).apply {
+            presence["vendor.old"] = TamePackagePresence.PRESENT
+            presence["vendor.new"] = TamePackagePresence.PRESENT
+            allowTaming = false
+        }
+        val selection = setOf("vendor.old", "vendor.new")
+        val incomplete = f.reconciler.reconcile(selection)
+        assertFalse(incomplete.retryableFailure)
+        assertEquals(listOf(TameOwnedMarker("vendor.old", "foreground")), f.restored)
+        assertTrue(f.reasserted.isEmpty())
+        assertTrue(f.markers.isEmpty())
+        f.allowTaming = true
+        val completed = f.reconciler.reconcile(selection)
+        assertFalse(completed.retryableFailure)
+        assertEquals(selection, f.reasserted.toSet())
+        assertEquals(selection, f.markers.keys)
     }
 
     @Test fun `legacy overlay marker is the sole rollback ownership record`() {

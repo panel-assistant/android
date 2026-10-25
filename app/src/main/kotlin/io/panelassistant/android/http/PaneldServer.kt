@@ -433,7 +433,7 @@ class PaneldServer internal constructor(
                     config = config,
                     tameController = { tame },
                     profileKnownPackages = { tameProfileCandidates.mapTo(hashSetOf()) { it.pkg } },
-                    setHome = { system.setHomeActivity(it) },
+                    setHome = { system.setHomeActivity(it, restoringHome = true) },
                     ownPackage = { appContext.packageName },
                     authorize = ::authorizeSensitive,
                 ))

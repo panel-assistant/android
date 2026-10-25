@@ -124,6 +124,16 @@ class HandBackHomeControllerTest {
         assertFalse(result.outcome.uninstallSafe)
     }
 
+    @Test fun `abandoned setup can restore original home without deleting deferred selections`() {
+        val panel = tamedPanel()
+        panel.previousHome = "$launcher/.Launcher"
+        val result = panel.controller(clear = { true }).handBack(emptySet()) as HandBackHomeController.Result.Done
+        assertTrue(result.outcome.uninstallSafe)
+        assertEquals(launcher, panel.currentHome)
+        assertFalse(panel.desiredCleared)
+        assertTrue(panel.markers.isEmpty())
+    }
+
     /** The common shape: ha-paneld owns the vendor launcher and one other app, and holds HOME. */
     private fun tamedPanel() = Panel(
         markers = mutableMapOf(launcher to "default", monitor to "deny"),

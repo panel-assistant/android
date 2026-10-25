@@ -1,9 +1,9 @@
 package io.panelassistant.android.http
 
 import io.panelassistant.android.Config
-import io.panelassistant.android.previousHomeComponent
 import io.panelassistant.android.control.TameController
 import io.panelassistant.android.control.HandBackHomeController
+import io.panelassistant.android.control.handBackHomeController
 import io.panelassistant.android.control.HandBackHomePolicy
 import io.panelassistant.android.security.SensitiveOperation
 import io.panelassistant.android.util.AndroidInput
@@ -154,19 +154,10 @@ internal fun handBackHomeDependencies(
         profileKnownPackages = profileKnownPackages,
         handBack = { profileKnown ->
             val tame = tameController()
-            HandBackHomeController(
-                ownedMarkers = tame::ownedMarkerSnapshot,
-                packageStates = tame::handBackPackageStates,
-                homeCandidates = tame::handBackHomeCandidates,
-                // Both keys, before the role moves: the reconciler re-asserts the desired blocklist on
-                // every wake, and `launcher_package` naming ha-paneld keeps the admin-home repair tick
-                // putting the role straight back.
-                clearDesiredState = config::clearHandBackDesiredState,
-                restoreOwned = tame::restoreEveryOwnedPackage,
-                enable = tame::adoptAndEnable,
+            handBackHomeController(
+                config = config,
+                tame = tame,
                 setHome = setHome,
-                observeHome = tame::observeDefaultHomeComponent,
-                previousHomeComponent = { config.previousHomeComponent },
                 ownPackage = ownPackage(),
             ).handBack(profileKnown)
         },

@@ -5,6 +5,9 @@ import android.content.Context
 import android.content.Intent
 import io.panelassistant.android.Config
 import io.panelassistant.android.preservePreviousHome
+import io.panelassistant.android.setupEverCompleted
+import io.panelassistant.android.confirmHomeTakeover
+import io.panelassistant.android.homeTakeoverPending
 
 /** Marks [AndroidSystemEnv.dashboardHomeIntent]: the app bringing its dashboard back, not a HOME press. */
 const val EXTRA_DASHBOARD_RETURN = "io.panelassistant.android.extra.DASHBOARD_RETURN"
@@ -40,6 +43,14 @@ interface SystemEnv {
     /** Persist the original real HOME before claiming the role. Failure prevents takeover. */
     fun preservePreviousHome(): Boolean = true
 
+    /** First setup retains ordinary Android uninstall until it has actually completed. */
+    fun homeTakeoverAllowed(): Boolean = true
+
+    fun homeTakeoverPending(): Boolean = false
+
+    /** A successful actuator alone does not acknowledge pending ownership. */
+    fun acknowledgeHomeTakeover(component: String) {}
+
     /** Whether Android accepted a direct start of [component] ("pkg/cls") — the pre-BAL fallback. */
     fun directStart(component: String): Boolean
 
@@ -71,6 +82,16 @@ class AndroidSystemEnv(private val context: Context) : SystemEnv {
 
     override fun defaultHome(): ActivityRef? =
         pm.resolveActivity(homeIntent(), 0)?.activityInfo?.let { ActivityRef(it.packageName, it.name) }
+
+    override fun homeTakeoverPending(): Boolean = Config(context).homeTakeoverPending
+
+    override fun homeTakeoverAllowed(): Boolean = Config(context).setupEverCompleted
+
+    override fun acknowledgeHomeTakeover(component: String) {
+        val expected = ComponentName.unflattenFromString(component) ?: return
+        val home = defaultHome() ?: return
+        Config(context).confirmHomeTakeover(ActivityRef(expected.packageName, expected.className), home)
+    }
 
     override fun preservePreviousHome(): Boolean = runCatching {
         Config(context).preservePreviousHome(defaultHome(), homeActivities())

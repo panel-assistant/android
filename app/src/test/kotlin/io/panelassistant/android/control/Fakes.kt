@@ -254,6 +254,8 @@ class FakeSystemEnv(
     var default: ActivityRef? = null,
     var directStartSucceeds: Boolean = true,
     var preserveHomeSucceeds: Boolean = true,
+    var homeTakeoverAllowed: Boolean = true,
+    var pendingHomeTakeover: Boolean = false,
 ) : SystemEnv {
     val directStarts = mutableListOf<String>()
     var homeStarts = 0
@@ -266,6 +268,8 @@ class FakeSystemEnv(
     override fun homeActivities() = homes
     override fun defaultHome() = default
     override fun preservePreviousHome() = preserveHomeSucceeds
+    override fun homeTakeoverAllowed() = homeTakeoverAllowed
+    override fun homeTakeoverPending() = pendingHomeTakeover
     override fun directStart(component: String): Boolean {
         directStarts += component
         return directStartSucceeds
