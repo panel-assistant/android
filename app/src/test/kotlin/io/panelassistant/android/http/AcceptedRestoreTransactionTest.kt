@@ -1,5 +1,13 @@
 package io.panelassistant.android.http
 
+import io.panelassistant.android.assist.wakeword.WakeWordCatalog
+import io.panelassistant.android.backup.WakeWordBackup
+import io.panelassistant.android.dashboard.EntityCatalogSchema
+import io.panelassistant.android.dashboard.EntityCatalogStore
+import io.panelassistant.android.persistence.ProximityCalibrationBackup
+import io.panelassistant.android.persistence.ProximityCalibrationCustody
+import io.panelassistant.android.sensors.ProximityCalibrationEngine
+import io.panelassistant.android.sensors.ProximityCalibrationRuntime
 import io.panelassistant.android.config.Capabilities
 import io.panelassistant.android.config.SettingsRegistry
 import io.panelassistant.android.HaAuthSnapshot
@@ -31,6 +39,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
+import java.sql.DriverManager
 
 class AcceptedRestoreTransactionTest {
     @Test fun retainedOwnerChoiceMakesAStaleCatalogRestorePartialAfterRealConfigRollback() = runBlocking {
@@ -110,6 +120,191 @@ class AcceptedRestoreTransactionTest {
                     InstallProgress.finish(ticket, "test cleanup")
                 }
               }
+            }
+        }
+    }
+
+    @Test fun retainedModelsArePartialAfterRealConfigRollbackAndRefusedImportsAreNotSuccess() = runBlocking {
+        for (failConfig in listOf(false, true)) for (payload in listOf("new", "refused", "absent")) {
+            withRouteConfig { config, persistence, _, _ ->
+                PaneldServerHttpFixture().use { fixture ->
+                    val directory = File(fixture.directory, "models")
+                    val original = importedWakeWord("porch")
+                    if (payload == "refused") {
+                        assertEquals(listOf("porch"), WakeWordBackup.restore(wakeWordCatalog(directory), listOf(original)).restored)
+                    }
+                    val catalog = wakeWordCatalog(directory, accepts = payload != "refused")
+                    val imported = WakeWordCatalog.ImportedFiles("porch", original.manifest, byteArrayOf(4, 5, 6))
+                    val words = if (payload == "absent") emptyList() else listOf(imported)
+                    val before = config.panelId
+                    var notifications = 0
+                    var applyAttempts = 0
+                    val executor = restoreExecutor(
+                        fixture, capabilities = { Capabilities() }, persist = { true }, config = config,
+                        onWakeWordsChanged = {
+                            notifications++
+                            assertTrue(wakeWordCatalog(directory).exportImported().single().model.contentEquals(imported.model))
+                        },
+                        onReconfigure = {
+                            if (config.panelId == "restored") {
+                                applyAttempts++
+                                assertEquals(if (payload == "new") 1 else 0, notifications)
+                                if (failConfig) error("configuration rearming failed")
+                            }
+                        },
+                    )
+                    val ticket = requireNotNull(InstallProgress.start("restore"))
+                    try {
+                        runBlocking { executor.execute(
+                            RestoreConfigPlan(mapOf("panel_id" to "restored", "dashboard_zoom" to "120"), emptyList(), emptyList()),
+                            null, null, null, null, emptyList(), false, words, catalog, ticket,
+                        ) }
+                        val body = JSONObject(InstallProgress.json())
+                        val result = body.getJSONObject("result")
+                        assertEquals(1, applyAttempts)
+                        assertEquals(if (failConfig) before else "restored", persistence.initialize()["panel_id"])
+                        val retained = wakeWordCatalog(directory).exportImported()
+                        if (payload == "absent") {
+                            assertTrue(retained.isEmpty())
+                            assertFalse(result.has("wake_words"))
+                        } else {
+                            assertTrue(retained.single().model.contentEquals(if (payload == "new") imported.model else original.model))
+                            assertEquals(if (payload == "new") 1 else 0, result.getJSONObject("wake_words").getInt("items"))
+                        }
+                        val expected = if (failConfig) {
+                            if (payload == "new") "partial" else "failed"
+                        } else if (payload == "refused") "partial" else "succeeded"
+                        assertEquals("$failConfig/$payload: $body", expected, result.getString("status"))
+                        if (failConfig) {
+                            assertEquals("rolled_back", result.getJSONObject("config").getString("status"))
+                            assertEquals("rolled_back", result.getJSONObject("rollback").getString("status"))
+                            assertEquals(if (payload == "new") "restore-partial" else "restore-failed", body.getJSONObject("presentation").getString("code"))
+                            assertEquals(if (payload == "new") "Restore partially completed" else "Restore failed", body.getString("message"))
+                        }
+                    } finally {
+                        InstallProgress.finish(ticket, "test cleanup")
+                    }
+                }
+            }
+        }
+    }
+
+    @Test fun retainedCalibrationMakesAStaleCatalogRestorePartialAfterRealConfigRollback() = runBlocking {
+        for (stale in listOf(true, false)) for (payload in listOf("missing", "existing", "absent")) {
+            withRouteConfig { config, persistence, _, _ ->
+                PaneldServerHttpFixture().use { fixture ->
+                    val before = config.panelId
+                    val preferences = object : ProfilePreferences {
+                        val data = mutableMapOf<String, Any?>()
+                        override fun getString(key: String, default: String) = data[key] as? String ?: default
+                        override fun getLong(key: String, default: Long) = data[key] as? Long ?: default
+                        override fun put(vararg values: Pair<String, Any?>): Boolean {
+                            values.forEach { (key, value) -> data[key] = value }
+                            return true
+                        }
+                    }
+                    val generic = ProfileYaml.serialize(testProfileDocument(id = "generic", fallback = true))
+                    val registry = RuntimeProfileRegistry(
+                        fixture.directory, preferences, { mapOf("generic.yaml" to generic) },
+                        DeviceFacts("test-panel", "test-device", "fw-1"), "1.0.0", { 1000L },
+                    )
+                    val profiles = registry.exportBackup()
+                    val plan = registry.planBackupRestore(profiles)
+                    assertTrue(plan.valid)
+                    val snapshot = ProximityCalibrationRuntime.encode(
+                        ProximityCalibrationEngine.Calibration(mode = ProximityCalibrationEngine.Mode.RANGED, clearRaw = 120f, nearRaw = 900f),
+                    )
+                    val saved = EntityCatalogStore.ProximityModelRow(
+                        "a".repeat(64), ProximityCalibrationRuntime.STORAGE_VERSION, "explicit-calibration-v2", snapshot, true, 1000L,
+                    )
+                    val manifest = JSONObject("{" + ProximityCalibrationBackup.manifestFragment(listOf(saved)).removePrefix(",") + "}")
+                    val rows = if (payload == "absent") emptyList() else ProximityCalibrationBackup.restorable(manifest, samePanel = true)
+                    assertEquals(if (payload == "absent") 0 else 1, rows.size)
+                    val database = File(fixture.directory, "calibrations.db")
+                    val custody = SqliteCalibrations(database)
+                    val existing = saved.copy(behaviorSignature = "local-calibration", updatedAt = 2000L)
+                    if (payload == "existing") assertEquals(1, custody.restore(listOf(existing)))
+                    var concurrentImport = false
+                    var reloads = 0
+                    val executor = restoreExecutor(
+                        fixture, capabilities = { Capabilities() }, persist = { true }, config = config,
+                        calibrations = custody, profileAdmin = registry,
+                        onDurableStateRestored = { reloads++ },
+                        onReconfigure = {
+                            if (stale && !concurrentImport) {
+                                assertEquals("restored", config.panelId)
+                                val raw = ProfileYaml.serialize(testProfileDocument(id = "community.concurrent"))
+                                val preview = registry.preview(raw)
+                                assertTrue(registry.importProfile(raw, requireNotNull(preview.previewToken)) is ProfileMutation.Success)
+                                concurrentImport = true
+                            }
+                        },
+                    )
+                    val ticket = requireNotNull(InstallProgress.start("restore"))
+                    try {
+                        runBlocking { executor.execute(
+                            RestoreConfigPlan(mapOf("panel_id" to "restored", "dashboard_zoom" to "120"), emptyList(), emptyList()),
+                            null, ProfileBackupDecodeResult(profiles, emptyList()), plan, null, emptyList(), false,
+                            emptyList(), null, ticket, restorableCalibrations = rows,
+                        ) }
+                        val body = JSONObject(InstallProgress.json())
+                        val result = body.getJSONObject("result")
+                        assertEquals(stale, concurrentImport)
+                        assertEquals(if (stale) before else "restored", persistence.initialize()["panel_id"])
+                        // Reopen SQLite: the retained row is independent of the executor and its custody owner.
+                        assertEquals(if (payload == "absent") emptyList() else listOf(if (payload == "existing") existing else saved), SqliteCalibrations(database).export())
+                        if (stale) {
+                            assertTrue(registry.status().catalogRevision != plan.expectedCatalogRevision)
+                            assertEquals("failed", result.getJSONObject("profiles").getString("status"))
+                            assertEquals("rolled_back", result.getJSONObject("config").getString("status"))
+                        }
+                        assertEquals(if (payload == "missing") 1 else 0, reloads)
+                        assertEquals("$stale/$payload: $body", if (!stale) "succeeded" else if (payload == "missing") "partial" else "failed", result.getString("status"))
+                        if (payload == "missing") {
+                            assertTrue(body.toString(), result.has("state"))
+                            assertEquals("succeeded", result.getJSONObject("state").getString("status"))
+                            assertEquals(1, result.getJSONObject("state").getInt("items"))
+                        } else assertFalse(result.has("state"))
+                        if (stale) {
+                            assertEquals("rolled_back", result.getJSONObject("rollback").getString("status"))
+                            assertEquals(if (payload == "missing") "restore-partial" else "restore-failed", body.getJSONObject("presentation").getString("code"))
+                            assertEquals(if (payload == "missing") "Restore partially completed" else "Restore failed", body.getString("message"))
+                        }
+                    } finally {
+                        InstallProgress.finish(ticket, "test cleanup")
+                    }
+                }
+            }
+        }
+    }
+
+    // JVM SQLite custody uses the production table schema and missing-only contract. Android's
+    // CatalogProximityCalibrationCustody adapter is reviewed statically, not executed here.
+    private class SqliteCalibrations(private val database: File) : ProximityCalibrationCustody {
+        init {
+            connection().use { db -> db.createStatement().use { it.execute(EntityCatalogSchema.PROXIMITY_MODEL_TABLE_SQL.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS ")) } }
+        }
+        private fun connection() = DriverManager.getConnection("jdbc:sqlite:${database.path}")
+        override fun restore(rows: List<EntityCatalogStore.ProximityModelRow>): Int = connection().use { db ->
+            rows.sumOf { row ->
+                db.prepareStatement("INSERT OR IGNORE INTO proximity_model(fingerprint,algorithm_version,behavior_signature,snapshot_json,ready,updated_at) VALUES(?,?,?,?,?,?)").use {
+                    it.setString(1, row.fingerprint)
+                    it.setInt(2, row.algorithmVersion)
+                    it.setString(3, row.behaviorSignature)
+                    it.setString(4, row.snapshotJson)
+                    it.setInt(5, if (row.ready) 1 else 0)
+                    it.setLong(6, row.updatedAt)
+                    it.executeUpdate()
+                }
+            }
+        }
+        override fun export(): List<EntityCatalogStore.ProximityModelRow> = connection().use { db ->
+            db.createStatement().use { statement ->
+                statement.executeQuery("SELECT fingerprint,algorithm_version,behavior_signature,snapshot_json,ready,updated_at FROM proximity_model WHERE ready=1").use { rows ->
+                    buildList {
+                        while (rows.next()) add(EntityCatalogStore.ProximityModelRow(rows.getString(1), rows.getInt(2), rows.getString(3), rows.getString(4), rows.getInt(5) != 0, rows.getLong(6)))
+                    }
+                }
             }
         }
     }
@@ -196,6 +391,9 @@ class AcceptedRestoreTransactionTest {
         onTransactionRead: () -> Unit = {},
         profileAdmin: ProfileAdmin? = null,
         config: io.panelassistant.android.Config = fixture.config,
+        calibrations: ProximityCalibrationCustody = io.panelassistant.android.persistence.CatalogProximityCalibrationCustody(fixture.context),
+        onDurableStateRestored: () -> Unit = {},
+        onWakeWordsChanged: () -> Unit = { error("No wake word payload") },
     ): RestoreExecutor {
         val values = ConfigValueProjection(
             config = config,
@@ -246,8 +444,9 @@ class AcceptedRestoreTransactionTest {
             profileAdmin = profileAdmin,
             onProfileRestart = { true },
             onProfileRestartAbort = { true },
-            onDurableStateRestored = {},
-            onWakeWordsChanged = { error("No wake word payload") },
+            calibrations = calibrations,
+            onDurableStateRestored = onDurableStateRestored,
+            onWakeWordsChanged = onWakeWordsChanged,
         )
     }
 
