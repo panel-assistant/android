@@ -1294,3 +1294,47 @@ jobs:
             /usr/bin/printf '%s\n' "${packaged_apks[@]}"
             exit 1
           fi
+
+  publish-release-list:
+    if: github.event_name == 'push'
+    needs: sign-and-publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Publish the project release list
+        env:
+          # Fine-grained token: Actions write on panel-assistant.io only.
+          GH_TOKEN: ${{ secrets.RELEASE_WEBSITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::RELEASE_WEBSITE_TOKEN is required to publish the project release list."
+            exit 1
+          fi
+          gh workflow run ci.yml --repo panel-assistant/panel-assistant.io \
+            --ref main -f "release_tag=$RELEASE_TAG"
+          # A dispatch is only a request. Require the static list to expose this
+          # release before considering the release flow complete.
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error --max-time 10 \
+              "https://panel-assistant.io/releases/v1.json?release=$RELEASE_TAG&attempt=$attempt" \
+              -o "$RUNNER_TEMP/release-list.json" && \
+              jq -e --arg tag "$RELEASE_TAG" \
+                '"panel-assistant-\($tag)-manual-setup-required.apk.bin" as $apk |
+                 "ha-paneld-\($tag)-install.json" as $descriptor |
+                 "ha-paneld-\($tag)-protocol.json" as $protocol |
+                 [$apk, ($apk+".idsig"), ($apk+".sha256"), ($apk+".sha256.sig"), $descriptor,
+                  ($descriptor+".sig"), $protocol, ($protocol+".sig")] as $required |
+                 .schema == 1 and ([.latest, .releases[]] | any(
+                   .tag_name == $tag and .draft == false and
+                   .prerelease == ($tag | contains("-")) and
+                   ($required - [.assets[] | select(.browser_download_url ==
+                     ("https://github.com/panel-assistant/android/releases/download/"+$tag+"/"+.name)) | .name] | length == 0)))' \
+                "$RUNNER_TEMP/release-list.json" >/dev/null; then
+              echo "The project release list includes $RELEASE_TAG."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::The project release list did not publish $RELEASE_TAG. Check website CI."
+          exit 1
