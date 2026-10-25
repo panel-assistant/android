@@ -229,6 +229,18 @@ class SetupRoutesHttpTest {
         }
     }
 
+    @Test fun `attestation cannot complete first setup before its unanswered questions`() = withSetup { fixture ->
+        fixture.config.setDashboardPackage("builtin")
+        fixture.config.setupIdentityConfirmed = true
+        fixture.config.setupHomeDashboardChosen = false
+        fixture.config.setHaConnection("http://initial.example", "fixture-token")
+        testApplication {
+            application { fixture.mount(this) }
+            assertEquals(HttpStatusCode.OK, client.post("/api/v1/setup/attest").status)
+            assertFalse(fixture.config.setupEverCompleted)
+        }
+    }
+
     @Test fun `render attestation completes the journey only for its current endpoint`() = withSetup { fixture ->
         fixture.config.setHaConnection("http://initial.example", "fixture-token")
         testApplication {

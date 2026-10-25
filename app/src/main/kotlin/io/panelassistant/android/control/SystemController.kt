@@ -318,7 +318,10 @@ class SystemController(
         ensureAdminLauncherHomeWithRoute(admittedRoute)
 
     private fun ensureAdminLauncherHomeWithRoute(admittedRoute: PrivilegeRoute?): Boolean {
-        if (isAdminLauncherHome()) return true
+        if (isAdminLauncherHome()) {
+            if (env.homeTakeoverAllowed()) env.acknowledgeHomeTakeover(adminLauncherActivity().component)
+            return true
+        }
         val comp = adminLauncherActivity().component
         Log.i(TAG, "ensureHome(admin): default home was '${env.defaultHome()?.component}' -> $comp")
         return setHomeActivity(comp, admittedRoute)
@@ -351,8 +354,11 @@ class SystemController(
     internal fun setHomeActivity(
         component: String,
         admittedRoute: PrivilegeRoute? = null,
+        restoringHome: Boolean = false,
     ): Boolean {
+        if (!restoringHome && !env.homeTakeoverAllowed()) return false
         if (!AndroidInput.isComponent(component)) return false
+        if (!env.preservePreviousHome()) return false
         // The ordered DAEMON→SU route definitions live once; the admitted-route path runs exactly the
         // one admitted attempt (never falling through to another transport), while the automatic path
         // tries them in order via the shared router.
@@ -361,9 +367,13 @@ class SystemController(
             EffectAttempt(PrivilegeRoute.SU) { root.run("cmd package set-home-activity $component") },
         )
         if (admittedRoute != null) {
-            return attempts.firstOrNull { it.route == admittedRoute }?.execute() ?: false
+            return (attempts.firstOrNull { it.route == admittedRoute }?.execute() ?: false).also {
+                if (it && !restoringHome) env.acknowledgeHomeTakeover(component)
+            }
         }
-        return ShortOperationRouter.effect(*attempts) != null
+        return (ShortOperationRouter.effect(*attempts) != null).also {
+            if (it && !restoringHome) env.acknowledgeHomeTakeover(component)
+        }
     }
 
     /**
@@ -386,11 +396,15 @@ class SystemController(
         if (target.isBlank()) { missingHomeTarget = null; Log.i(TAG, "ensureHome: no dashboard app installed; leaving home as-is"); return }
         val currentHome = env.defaultHome()
         val current = currentHome?.pkg
-        if (current == target) { missingHomeTarget = null; return }     // already correct
+        if (current == target) {
+            missingHomeTarget = null
+            if (env.homeTakeoverAllowed()) currentHome?.component?.let(env::acknowledgeHomeTakeover)
+            return
+        }     // already correct
         // Respect a real third-party launcher the user chose. A known Companion HOME is one ha-paneld
         // may previously have assigned, so switching between installed renderer variants must reclaim it.
         if (current != null && current != "android" && current != env.ownPackage &&
-            current !in KNOWN_RENDERER_HOMES && !isSystemFallbackHome(currentHome)) {
+            current !in KNOWN_RENDERER_HOMES && !isSystemFallbackHome(currentHome) && !env.homeTakeoverPending()) {
             missingHomeTarget = null
             return
         }
@@ -416,10 +430,13 @@ class SystemController(
         val comp = env.homeActivities().firstOrNull(::isOwnDashboard)?.component
         if (comp == null) { Log.w(TAG, "ensureHome(builtin): DashboardActivity has no HOME activity"); return }
         val current = env.defaultHome()
-        if (current?.component == comp) return                           // already correct
+        if (current?.component == comp) {
+            if (env.homeTakeoverAllowed()) env.acknowledgeHomeTakeover(comp)
+            return
+        }
         val curPkg = current?.pkg
         if (curPkg != null && curPkg != "android" && curPkg != env.ownPackage &&
-            curPkg !in KNOWN_RENDERER_HOMES && !isSystemFallbackHome(current)) return
+            curPkg !in KNOWN_RENDERER_HOMES && !isSystemFallbackHome(current) && !env.homeTakeoverPending()) return
         Log.i(TAG, "ensureHome(builtin): default home was '${current?.component}' -> $comp")
         setHomeActivity(comp)
     }
@@ -497,7 +514,13 @@ class SystemController(
     }
 
     /** A healthy service is not proof that the panel left Android's HOME chooser. */
-    fun homeUiProof(dashboardPkg: String, adminUiVisible: Boolean): HomeUiProof {
+    fun homeUiProof(dashboardPkg: String, adminUiVisible: Boolean, requireOwnedHome: Boolean = true): HomeUiProof {
+        if (!requireOwnedHome) {
+            if (adminUiVisible) return HomeUiProof("setup", "admin_foreground", "admin_lifecycle")
+            return if (isBuiltin(resolveDashboard(dashboardPkg)) && builtinForeground())
+                HomeUiProof("ready", "dashboard_foreground", "builtin_lifecycle")
+            else HomeUiProof("blocked", "dashboard_background", "admin_lifecycle")
+        }
         val home = env.defaultHome()
         if (home?.pkg == "android" || home?.cls?.endsWith("ResolverActivity") == true) {
             return HomeUiProof("blocked", "home_resolver", "home_resolve")

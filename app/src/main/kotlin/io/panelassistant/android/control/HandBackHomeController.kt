@@ -1,5 +1,8 @@
 package io.panelassistant.android.control
 
+import io.panelassistant.android.Config
+import io.panelassistant.android.previousHomeComponent
+
 /**
  * Executes one [HandBackHomePolicy] decision, in the only order that cannot strand the panel.
  *
@@ -24,6 +27,7 @@ internal class HandBackHomeController(
     private val setHome: (component: String) -> Boolean,
     private val observeHome: () -> String?,
     private val ownPackage: String,
+    private val previousHomeComponent: () -> String? = { null },
 ) {
 
     sealed interface Result {
@@ -48,7 +52,7 @@ internal class HandBackHomeController(
         val currentHome = runCatching { observeHome() }.getOrNull()
         val plan = when (
             val decision =
-                HandBackHomePolicy.decide(owned, profileKnown, observed, homes, ownPackage, currentHome)
+                HandBackHomePolicy.decide(owned, profileKnown, observed, homes, ownPackage, currentHome?.substringBefore('/'), previousHomeComponent())
         ) {
             is HandBackHomePolicy.Decision.Refuse -> return Result.Refused(decision.reason)
             is HandBackHomePolicy.Decision.Proceed -> decision.plan
@@ -82,7 +86,7 @@ internal class HandBackHomeController(
         }
         val handedOver = setHome(target.component)
         val observedHome = observeHome()
-        val secured = HandBackHomePolicy.homeHandbackSecured(handedOver, observedHome, target.pkg, ownPackage)
+        val secured = HandBackHomePolicy.homeHandbackSecured(handedOver, observedHome, target.component, ownPackage)
         return Result.Done(
             HandBackHomePolicy.Outcome(
                 restored = restored,
@@ -93,3 +97,23 @@ internal class HandBackHomeController(
         )
     }
 }
+
+/** The same restore transaction serves explicit removal and recovery of abandoned first setup. */
+internal fun handBackHomeController(
+    config: Config,
+    tame: TameController,
+    setHome: (String) -> Boolean,
+    ownPackage: String,
+    clearDesiredState: () -> Boolean = config::clearHandBackDesiredState,
+): HandBackHomeController = HandBackHomeController(
+    ownedMarkers = tame::ownedMarkerSnapshot,
+    packageStates = tame::handBackPackageStates,
+    homeCandidates = tame::handBackHomeCandidates,
+    clearDesiredState = clearDesiredState,
+    restoreOwned = tame::restoreEveryOwnedPackage,
+    enable = tame::adoptAndEnable,
+    setHome = setHome,
+    observeHome = tame::observeDefaultHomeComponent,
+    previousHomeComponent = { config.previousHomeComponent },
+    ownPackage = ownPackage,
+)

@@ -6,6 +6,7 @@ import io.panelassistant.android.sensors.HaApiSessionProvider
 import org.json.JSONObject
 import android.content.Context
 import android.util.Log
+import io.panelassistant.android.requiresOwnedHomeProof
 import io.panelassistant.android.Config
 import io.panelassistant.android.BuildConfig
 import io.panelassistant.android.DiscoveryResult
@@ -439,7 +440,7 @@ class PaneldServer internal constructor(
                     config = config,
                     tameController = { tame },
                     profileKnownPackages = { tameProfileCandidates.mapTo(hashSetOf()) { it.pkg } },
-                    setHome = { system.setHomeActivity(it) },
+                    setHome = { system.setHomeActivity(it, restoringHome = true) },
                     ownPackage = { appContext.packageName },
                     authorize = ::authorizeSensitive,
                 ))
@@ -665,6 +666,7 @@ class PaneldServer internal constructor(
         storageSnapshot: StorageHealthSnapshot,
         databaseObservationNonce: String? = null,
         homeProofRequested: Boolean = false,
+        setupForegroundRequested: Boolean = false,
     ): String {
         val management = managementObservations.snapStaleOk()
         val powerAdvisory = pageHealth.powerSafetyAdvisory(management.privilege, { profile.appCanSu }, powerSafety)
@@ -685,7 +687,8 @@ class PaneldServer internal constructor(
             proximity = sensors::proximityStatusJson,
             panelAssistantTransport = panelAssistantTransport?.facts(),
             homeProof = if (homeProofRequested) ({
-                val proof = system.homeUiProof(config.dashboardPackage, KioskAdminUi.isVisible())
+                val proof = system.homeUiProof(config.dashboardPackage, KioskAdminUi.isVisible(),
+                    requireOwnedHome = config.requiresOwnedHomeProof(setupForegroundRequested))
                 homeUiProofJson(proof.state, proof.reason, proof.evidence)
             }) else null,
             english = catalogueLoader.strings(AppLocale.ENGLISH),

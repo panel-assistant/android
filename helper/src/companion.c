@@ -6,6 +6,7 @@
 #include "util.h"
 
 #include <errno.h>
+#include <dirent.h>
 #include <fcntl.h>
 #include <pthread.h>
 #include <stdint.h>
@@ -558,6 +559,38 @@ static int companion_pending_transaction(void) {
         if (!clean) return 1;
     }
     return 0;
+}
+
+int companion_retire_uninstalled(void) {
+    if (companion_pending_transaction()) return -1;
+    int dir = open_stage_dir();
+    if (dir < 0) return -1;
+    int duplicate = openat(dir, ".", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    DIR *stream = duplicate >= 0 ? fdopendir(duplicate) : NULL;
+    if (!stream) { if (duplicate >= 0) close(duplicate); close(dir); return -1; }
+    int safe = 1;
+    errno = 0;
+    for (struct dirent *entry = readdir(stream); entry; entry = readdir(stream)) {
+        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..")) continue;
+        int allowed = 0;
+        for (size_t i = 0; i < 3; i++)
+            if (!strcmp(entry->d_name, ROOT_STAGE_NAMES[i])) allowed = 1;
+        struct stat st;
+        if (!allowed || fstatat(dir, entry->d_name, &st, AT_SYMLINK_NOFOLLOW) != 0 ||
+            !S_ISREG(st.st_mode) || st.st_uid != geteuid() || st.st_nlink != 1) {
+            safe = 0;
+            break;
+        }
+        errno = 0;
+    }
+    if (errno != 0) safe = 0;
+    closedir(stream);
+    for (size_t i = 0; safe && i < 3; i++)
+        if (unlinkat(dir, ROOT_STAGE_NAMES[i], 0) != 0 && errno != ENOENT) safe = 0;
+    if (safe && fsync(dir) != 0) safe = 0;
+    close(dir);
+    if (safe && rmdir(STAGE_PARENT "/" STAGE_DIR_NAME) != 0) safe = 0;
+    return safe ? 0 : -1;
 }
 
 static int write_prepared_marker(

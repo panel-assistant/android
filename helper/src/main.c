@@ -457,9 +457,25 @@ static int run_supervisor(char **argv, const char *replacement_nonce) {
     enum guard_supervisor_work executor_work = GUARD_WORK_NONE;
     long long executor_deadline_ms = 0;
     enum guard_supervisor_work pending_work = GUARD_WORK_NONE;
+    long long retirement_after_ms = 0;
     for (;;) {
         long long now = monotonic_millis();
         if (now < 0) return 1;
+        if (executor <= 1 && pending_work == GUARD_WORK_NONE && now >= retirement_after_ms &&
+            helper_app_data_absent()) {
+            // Reap before deleting custody: no socket handler may still write or restore state.
+            if (worker > 1) {
+                (void)kill(worker, SIGKILL);
+                pid_t reaped;
+                do reaped = waitpid(worker, NULL, 0); while (reaped < 0 && errno == EINTR);
+                if (reaped != worker && errno != ECHILD) return 1;
+                worker = -1;
+            }
+            if (guard_maintenance_retire_uninstalled() == 0) return 0;
+            // A reinstall, active Guard plan, lease or Companion restore retains the supervisor.
+            // Give its socket worker time to serve recovery/status between refused cleanup attempts.
+            retirement_after_ms = now + 1000;
+        }
         if (worker <= 1 && now >= worker_after_ms) {
             int may_retire_replaced = replacement_nonce == NULL &&
                 guard_maintenance_replacement_safe() == 0;

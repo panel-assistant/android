@@ -56,7 +56,7 @@ internal class SetupState(
         // renderer or account silently voids it and the journey re-arms — nothing to
         // expire, nothing to clean up.
         config.setupRenderAttestation = setupProofFingerprint()
-        config.setupEverCompleted = true
+        if (SetupJourney.evaluate(setupJourneyInputs()).complete) config.setupEverCompleted = true
     }
 
     fun confirmIdentity() {

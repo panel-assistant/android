@@ -20,6 +20,7 @@ class PanelAssistantDeviceStatusContractTest {
         val endpoint = openApi.getJSONObject("paths").getJSONObject("/api/v1/status").getJSONObject("get")
         val params = endpoint.getJSONArray("parameters")
         assertTrue((0 until params.length()).any { params.getJSONObject(it).optString("name") == "home_proof" })
+        assertTrue((0 until params.length()).any { params.getJSONObject(it).optString("name") == "setup_foreground" })
         val schema = endpoint.getJSONObject("responses").getJSONObject("200")
             .getJSONObject("content").getJSONObject("application/json").getJSONObject("schema")
         assertFalse((0 until schema.getJSONArray("required").length()).any {

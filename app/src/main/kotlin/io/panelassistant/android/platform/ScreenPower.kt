@@ -10,6 +10,9 @@ import android.content.Intent
 import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
+import io.panelassistant.android.Config
+import io.panelassistant.android.migrateSetupQuestionsForExistingInstall
+import io.panelassistant.android.setupEverCompleted
 
 /**
  * The platform power and lock facts [io.panelassistant.android.control.ScreenController] needs — a
@@ -67,10 +70,24 @@ interface ScreenPower {
 
 /**
  * Device admin with the force-lock policy only, so the screen-off can use `lockNow()` without root.
- * Panel Assistant activates it at install and after each update (`dpm set-active-admin`); it does
- * nothing on its own.
+ * Panel Assistant activates it after setup and after updates (`dpm set-active-admin`). An unfinished
+ * first run gives it up so Android Settings can uninstall an abandoned installation.
  */
-class PanelDeviceAdminReceiver : DeviceAdminReceiver()
+class PanelDeviceAdminReceiver(
+    private val config: (Context) -> Config = ::Config,
+    private val power: (Context) -> ScreenPower = ::AndroidScreenPower,
+) : DeviceAdminReceiver() {
+    override fun onEnabled(context: Context, intent: Intent) {
+        reconcileSetupDeviceAdmin(config(context), power(context))
+    }
+}
+
+/** Also run at service startup to release an admin left by an earlier, abandoned installation. */
+internal fun reconcileSetupDeviceAdmin(config: Config, power: ScreenPower) {
+    // Legacy configured panels need their existing completion migration before this decision.
+    config.migrateSetupQuestionsForExistingInstall()
+    if (!config.setupEverCompleted) power.releaseDeviceAdmin()
+}
 
 /**
  * Gives up [PanelDeviceAdminReceiver] when Panel Assistant is about to uninstall the app: Android

@@ -514,6 +514,7 @@ class Config private constructor(
 
     /** Hand-back: drop the tame blocklist and the launcher choice in one durable write; false publishes neither. */
     internal fun clearHandBackDesiredState(): Boolean = applyBatch {
+        edit { putBoolean("device_local_home_takeover_pending", false) }
         setTameVendorPackages("")
         setLauncherPackage("")
     }

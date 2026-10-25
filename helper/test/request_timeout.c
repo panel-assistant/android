@@ -30,6 +30,7 @@ void conn_release(void) {}
 int conn_admit(void) { return 0; }
 int guard_maintenance_init(void) { return 0; }
 int guard_maintenance_replacement_safe(void) { return 0; }
+int guard_maintenance_retire_uninstalled(void) { return -1; }
 int guard_maintenance_replacement_parent_grant(char nonce[65]) { (void)nonce; return -1; }
 int guard_maintenance_replacement_export_lease(void) { return -1; }
 int guard_maintenance_replacement_parent_abort(const char nonce[65]) { (void)nonce; return -1; }

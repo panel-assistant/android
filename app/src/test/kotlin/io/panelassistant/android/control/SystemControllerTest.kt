@@ -71,6 +71,67 @@ class SystemControllerTest {
     private val BUILTIN = SystemController.BUILTIN_DASHBOARD
     private val DASH_HOME = ActivityRef(OWN, "io.panelassistant.android.DashboardActivity")
 
+    @Test fun `home claim is refused when original launcher cannot be persisted`() {
+        val env = FakeSystemEnv(preserveHomeSucceeds = false)
+        val (controller, root, daemon) = sc(env)
+        assertFalse(controller.ensureAdminLauncherHome())
+        assertTrue(root.ran.isEmpty())
+        assertTrue(daemon.sent.isEmpty())
+    }
+
+    @Test fun `first setup never claims admin builtin or foreign renderer home`() {
+        val env = FakeSystemEnv(
+            homeTakeoverAllowed = false,
+            installed = setOf(MIN),
+            homes = listOf(DASH_HOME, ActivityRef(MIN, "Home")),
+            default = ActivityRef("android", "ResolverActivity"),
+        )
+        val (controller, root, daemon) = sc(env)
+        assertFalse(controller.ensureAdminLauncherHome())
+        controller.ensureDashboardHome(BUILTIN)
+        controller.ensureDashboardHome(MIN)
+        assertTrue(root.ran.isEmpty())
+        assertTrue(daemon.sent.isEmpty())
+
+        // Completion enables the same existing owner without recreating it; repair never clears this bit.
+        env.homeTakeoverAllowed = true
+        assertTrue(controller.ensureAdminLauncherHome())
+        assertTrue(root.ran.any { it.startsWith("cmd package set-home-activity") })
+    }
+
+    @Test fun `completed pending installation claims home from original vendor but later choices are respected`() {
+        val env = FakeSystemEnv(
+            pendingHomeTakeover = true,
+            homes = listOf(DASH_HOME),
+            default = ActivityRef(VENDOR, "Home"),
+        )
+        val (controller, root, _) = sc(env)
+        controller.ensureDashboardHome(BUILTIN)
+        assertTrue(root.ran.any { it.startsWith("cmd package set-home-activity") })
+        root.ran.clear()
+        env.pendingHomeTakeover = false
+        controller.ensureDashboardHome(BUILTIN)
+        assertTrue(root.ran.isEmpty())
+    }
+
+    @Test fun `handback can restore vendor home while first setup is incomplete`() {
+        val env = FakeSystemEnv(homeTakeoverAllowed = false)
+        val (controller, root, _) = sc(env)
+        assertTrue(controller.setHomeActivity("com.vendor/.Home", restoringHome = true))
+        assertTrue(root.ran.contains("cmd package set-home-activity com.vendor/.Home"))
+    }
+
+    @Test fun `deferred first setup proof requires actual own foreground without taking home`() {
+        val env = FakeSystemEnv(default = ActivityRef("android", "ResolverActivity"))
+        val visible = sc(env).first
+        assertEquals("blocked", visible.homeUiProof("", adminUiVisible = true).state)
+        assertEquals("setup", visible.homeUiProof("", adminUiVisible = true, requireOwnedHome = false).state)
+        assertEquals("blocked", visible.homeUiProof("", adminUiVisible = false, requireOwnedHome = false).state)
+        val builtin = sc(env, builtinForeground = true).first
+        assertEquals("ready", builtin.homeUiProof("", adminUiVisible = false, requireOwnedHome = false).state)
+        assertEquals("blocked", builtin.homeUiProof("", adminUiVisible = false).state)
+    }
+
     @Test fun homeUiProofRequiresForegroundDashboardAndResolvedHome() {
         val ready = sc(FakeSystemEnv(default = DASH_HOME), builtinForeground = true).first
             .homeUiProof("", adminUiVisible = false)
