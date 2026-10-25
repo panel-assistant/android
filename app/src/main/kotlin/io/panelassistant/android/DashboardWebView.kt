@@ -37,10 +37,12 @@ internal fun createDashboardWebView(
     bridge: DashboardFrontendBridge,
 ): WebView = WebView(
     // CSS media queries (including HA's loading screen) do not use the JavaScript matchMedia shim.
+    // AppCompat themes set both its own isLightTheme (read by WebView before Android 10) and the
+    // framework attribute. A framework-only theme leaves the inherited app attribute unchanged.
     // Give the provider the panel's scheme before it can paint; Follow keeps the activity's theme.
     when (DashboardTheme.forcedDark(config.dashboardThemeEffective)) {
-        false -> android.view.ContextThemeWrapper(activity, android.R.style.Theme_Material_Light_NoActionBar)
-        true -> android.view.ContextThemeWrapper(activity, android.R.style.Theme_Material_NoActionBar)
+        false -> android.view.ContextThemeWrapper(activity, androidx.appcompat.R.style.Theme_AppCompat_Light_NoActionBar)
+        true -> android.view.ContextThemeWrapper(activity, androidx.appcompat.R.style.Theme_AppCompat_NoActionBar)
         null -> activity
     },
 ).apply {
