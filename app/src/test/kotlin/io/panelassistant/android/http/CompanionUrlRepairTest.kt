@@ -55,7 +55,15 @@ class CompanionUrlRepairTest {
         DurableRecoveryMarker(root.resolve("state").apply { mkdirs() }.resolve("companion-data-operation.pending")),
     )
     private val env = FakeSystemEnv(installed = setOf(pkg), launchers = mapOf(pkg to launcher))
-    private val daemon = FakeDaemon(replies = mapOf("START $launcher" to "OK"))
+    private val daemon = FakeDaemon(
+        replies = mapOf("START $launcher" to "OK"),
+        onSend = { command ->
+            if (command == "START $launcher") {
+                assertFalse("recovery must release the launch gate first", CompanionDataOperationGate.blocks(pkg))
+                assertFalse("recovery must clear the durable marker first", operationState.isPending())
+            }
+        },
+    )
     private val system = SystemController(env, FakeRootShell(runResult = false), daemon, sdkInt = 27)
     private val config = companionDashboardConfig()
     private val device = CompanionDevice(root.resolve("data"), pkg)
@@ -89,6 +97,7 @@ class CompanionUrlRepairTest {
         assertEquals("the helper keeps the captured Companion stopped until the restore", listOf(true), device.holds)
         awaitGateReleased()
         assertFalse(operationState.isPending())
+        assertEquals("the completed restore already relaunched Companion", 0, launches())
         assertTrue("the repair leaves no capture or preparation files", cache.listFiles().orEmpty().isEmpty())
     }
 
@@ -121,6 +130,109 @@ class CompanionUrlRepairTest {
         awaitGateReleased()
         assertFalse(operationState.isPending())
         assertEquals("the Companion held for the repair is relaunched once, after release", 1, launches())
+    }
+
+    @Test fun aRejectedRestoreRelaunchesTheHeldCompanionWithoutChangingItsData() {
+        assertSafeRejection(CompanionHelperProtocol.RestoreResult.FAILED, "restore rejected before commit")
+    }
+
+    @Test fun anUnsubmittedRestoreRelaunchesTheHeldCompanionWithoutChangingItsData() {
+        assertSafeRejection(CompanionHelperProtocol.RestoreResult.NOT_SUBMITTED, "Companion helper is unavailable")
+    }
+
+    @Test fun aRejectedRepairReturnsToAnotherConfiguredDashboardAfterRecoveringCompanion() {
+        val dashboard = "org.example.dashboard"
+        val dashboardLauncher = "$dashboard/.Launch"
+        env.installed = env.installed + dashboard
+        env.launchers = env.launchers + (dashboard to dashboardLauncher)
+
+        assertSafeRejection(
+            CompanionHelperProtocol.RestoreResult.FAILED,
+            "restore rejected before commit",
+            companionDashboardConfig(dashboard),
+        )
+
+        assertEquals("the configured surface is returned after Companion recovery", listOf(dashboardLauncher), env.directStarts)
+        assertEquals(listOf("START $launcher", "START $dashboardLauncher"), daemon.sent.filter { it.startsWith("START ") })
+    }
+
+    @Test fun aRejectedRestoreDoesNotDuplicateAHelperLaunch() {
+        // The capture protocol can report that the helper already relaunched Companion.
+        device.captureRelaunched = true
+        device.restoreReply = CompanionHelperProtocol.RestoreResult.FAILED
+        val live = device.fingerprint()
+
+        assertEquals("restore rejected before commit", repairThroughService())
+
+        assertEquals(listOf(true), device.holds)
+        assertEquals(listOf(CompanionRestore.DATABASE_FILE), device.restoredPaths)
+        assertEquals(live, device.fingerprint())
+        awaitGateReleased()
+        assertFalse(operationState.isPending())
+        assertEquals("the helper has already relaunched Companion", 0, launches())
+    }
+
+    @Test fun unsafeRestoreOutcomesKeepCustodyAndNeverRequestCompanionRecovery() {
+        val dashboard = "org.example.dashboard"
+        val dashboardLauncher = "$dashboard/.Launch"
+        env.installed = env.installed + dashboard
+        env.launchers = env.launchers + (dashboard to dashboardLauncher)
+        val live = device.fingerprint()
+        for (outcome in listOf(
+            CompanionHelperProtocol.RestoreResult.INDETERMINATE,
+            CompanionHelperProtocol.RestoreResult.BUSY,
+            CompanionHelperProtocol.RestoreResult.ROLLBACK_FAILED,
+            CompanionHelperProtocol.RestoreResult.ROLLBACK_FAILED_RELAUNCH_FAILED,
+            CompanionHelperProtocol.RestoreResult.ROLLBACK_FAILED_RELAUNCH_SUPPRESSED,
+        )) {
+            device.restoreReply = outcome
+            device.helperIdle = false
+            val attempts = device.restoredPaths.size
+
+            repairThroughService(companionDashboardConfig(dashboard))
+
+            assertEquals("the restore path must be exercised for $outcome", attempts + 1, device.restoredPaths.size)
+            assertEquals(live, device.fingerprint())
+            assertTrue("$outcome retains the marker", operationState.isPending())
+            assertTrue("$outcome retains the launch gate", CompanionDataOperationGate.blocks(pkg))
+            system.launchHome(pkg)
+            assertEquals("$outcome must suppress launch", 0, launches())
+            device.helperIdle = true
+            awaitGateReleased()
+            // This return follows the recovery decision, so observe the whole asynchronous callback.
+            await("the configured dashboard must return for $outcome") { env.directStarts.size == attempts + 1 }
+            assertFalse(operationState.isPending())
+            assertEquals("IDLE alone must not request recovery for $outcome", 0, launches())
+        }
+    }
+
+    private fun assertSafeRejection(
+        outcome: CompanionHelperProtocol.RestoreResult,
+        detail: String,
+        dashboardConfig: Config = config,
+    ) {
+        device.restoreReply = outcome
+        device.competingLaunch = { system.launchHome(pkg) }
+        val live = device.fingerprint()
+        val rows = device.liveRows()
+
+        assertEquals(detail, repairThroughService(dashboardConfig))
+
+        assertEquals("DB, WAL and SHM remain byte-identical", live, device.fingerprint())
+        assertEquals("committed WAL rows and the original URLs remain readable", rows, device.liveRows())
+        assertEquals(listOf(true), device.holds)
+        assertEquals(listOf(CompanionRestore.DATABASE_FILE), device.restoredPaths)
+        assertEquals(
+            listOf(
+                Sample(gateHeld = true, markerArmed = true, launched = false),
+                Sample(gateHeld = true, markerArmed = true, launched = false),
+            ),
+            device.samples,
+        )
+        awaitGateReleased()
+        assertFalse(operationState.isPending())
+        assertEquals("the held Companion is recovered exactly once", 1, launches())
+        assertTrue("capture and preparation files are released", cache.listFiles().orEmpty().isEmpty())
     }
 
     @Test fun aStopThatFailsChangesNothingAndHoldsLaunchUntilTheHelperIsIdle() {
@@ -211,14 +323,14 @@ class CompanionUrlRepairTest {
     }
 
     /** The service caller, with this test's Companion behind the data custody the repair uses. */
-    private fun repairThroughService(): String {
+    private fun repairThroughService(dashboardConfig: Config = config): String {
         val operations = CompanionBackupOperations(
             installedCompanionPackage = { pkg },
             cacheDir = cache,
             ensureCompanionHelper = { true },
             companionDataOperationState = operationState,
             scope = scope,
-            config = config,
+            config = dashboardConfig,
             system = system,
             helper = device,
             database = database,
@@ -227,7 +339,7 @@ class CompanionUrlRepairTest {
         val service = ServiceComponentOperations(
             ContextWrapper(null),
             scope,
-            { config },
+            { dashboardConfig },
             { error("no core") },
             { error("no profile") },
         )
@@ -247,7 +359,7 @@ class CompanionUrlRepairTest {
         },
     )
 
-    private fun launches() = daemon.sent.count { it == "START $launcher" } + env.directStarts.size
+    private fun launches() = daemon.sent.count { it == "START $launcher" } + env.directStarts.count { it == launcher }
 
     private fun awaitLaneReleased() = await("the repair must release the lane") { !InstallProgress.running }
 
@@ -261,8 +373,8 @@ class CompanionUrlRepairTest {
         assertTrue(reason, done())
     }
 
-    private fun companionDashboardConfig(): Config {
-        val values = ConcurrentHashMap<String, Any>(mapOf("dashboard_package" to pkg))
+    private fun companionDashboardConfig(dashboardPackage: String = pkg): Config {
+        val values = ConcurrentHashMap<String, Any>(mapOf("dashboard_package" to dashboardPackage))
         val prefs = Proxy.newProxyInstance(
             SharedPreferences::class.java.classLoader,
             arrayOf(SharedPreferences::class.java),
@@ -314,6 +426,7 @@ private class CompanionDevice(dataDir: File, private val pkg: String) : Companio
     private val db = databases.resolve("HomeAssistantDB")
     private val trio get() = listOf(db, File("${db.path}-wal"), File("${db.path}-shm"))
     var stopFails = false
+    var captureRelaunched = false
     var restoreReply: CompanionHelperProtocol.RestoreResult? = null
     var restoreThrows = false
     /** What a launch from outside Panel Assistant does between the capture and the restore. */
@@ -389,7 +502,7 @@ private class CompanionDevice(dataDir: File, private val pkg: String) : Companio
             CompanionHelperProtocol.DATABASE_SHM_FILE to File("${db.path}-shm"),
         ).filterValues { it.length() > 0 }.mapValues { (_, live) -> live.copyTo(captured.resolve(live.name)) }
         return CompanionHelperProtocol.BackupResult.Success(
-            CompanionHelperProtocol.Capture(files, relaunched = !hold, directory),
+            CompanionHelperProtocol.Capture(files, relaunched = !hold || captureRelaunched, directory),
         )
     }
 
