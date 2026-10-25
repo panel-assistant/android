@@ -325,6 +325,7 @@ object DiagReader {
         appendLine()
         appendLine("[build] fingerprint=${Build.FINGERPRINT}")
         appendLine("board=${Build.BOARD} product=${Build.PRODUCT} hardware=${Build.HARDWARE} abis=${Build.SUPPORTED_ABIS.joinToString(",")}")
+        appendLine(PanelInfo.webViewSigningLine(ctx))
         appendLine(profileLine(profile))
         appendLine(bootSecurityLine(SystemProps::get, Build.TYPE))
         val evdev = EvdevButtonClient.snapshot()

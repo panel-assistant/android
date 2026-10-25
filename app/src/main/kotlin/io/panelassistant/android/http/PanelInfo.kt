@@ -18,6 +18,7 @@ import io.panelassistant.android.dashboard.EntityCatalogStore
 import io.panelassistant.android.util.AccessDenialMemo
 import io.panelassistant.android.util.CompanionInstaller
 import java.io.File
+import java.security.MessageDigest
 import java.util.Locale
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -211,6 +212,33 @@ object PanelInfo {
         } ?: WebViewPackage("unknown", null)
     } catch (e: Throwable) {
         WebViewPackage("unknown", null)
+    }
+
+    /** Current provider's installed APK signers, independent of package name and signing history. */
+    @Suppress("DEPRECATION")
+    internal fun webViewSigningLine(context: Context): String =
+        webViewSigningLine(webViewPackage().packageName) { packageName ->
+            val modern = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+            val flags = if (modern) PackageManager.GET_SIGNING_CERTIFICATES else PackageManager.GET_SIGNATURES
+            val info = context.packageManager.getPackageInfo(packageName, flags)
+            val signers = if (modern) info.signingInfo?.apkContentsSigners else info.signatures
+            signers.orEmpty().map { it.toByteArray() }
+        }
+
+    internal fun webViewSigningLine(
+        packageName: String?,
+        certificates: (String) -> List<ByteArray>,
+    ): String {
+        val fingerprints = packageName?.let { name ->
+            runCatching {
+                certificates(name).map { certificate ->
+                    require(certificate.isNotEmpty())
+                    MessageDigest.getInstance("SHA-256").digest(certificate)
+                        .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+                }.sorted().takeIf { it.isNotEmpty() }?.joinToString(",")
+            }.getOrNull()
+        }
+        return "[webview-signing] provider=${packageName ?: "unknown"} cert_sha256=${fingerprints ?: "unavailable"}"
     }
 
     @Suppress("DEPRECATION")
