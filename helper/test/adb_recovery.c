@@ -25,9 +25,14 @@ static int fixture_unlinkat(int directory, const char *name, int flags) {
     if(!strcmp(name,"remote-debug-security-authority.v1") && access(fixture_path("authority-readonly"),F_OK)==0) { errno=EROFS; return -1; }
     return unlinkat(directory,name,flags);
 }
+static int fixture_execve(const char *path, char *const arguments[], char *const environment[]) {
+    extern char **environ;
+    /* Only property fixtures need the host fixture directory. Shells use the real clean env. */
+    return execve(path, arguments, !strcmp(path,"/proc/self/exe") ? environ : environment);
+}
 #define openat fixture_openat
 #define unlinkat fixture_unlinkat
-#define HAPANELD_TEST_ADB_RECOVERY 1
+#define execve fixture_execve
 #define ADB_RECOVERY_GETPROP "/proc/self/exe"
 #define ADB_RECOVERY_SETPROP "/proc/self/exe"
 #define ADB_RECOVERY_SHELL "/bin/sh"
@@ -39,6 +44,7 @@ static int fixture_unlinkat(int directory, const char *name, int flags) {
 #include "../src/adb_recovery.c"
 #undef openat
 #undef unlinkat
+#undef execve
 static int failures;
 #define CHECK(c,m) do { if (!(c)) { fprintf(stderr,"FAIL: %s\n",m); failures++; } } while (0)
 static pid_t owner = -1, guardian = -1;
@@ -136,6 +142,13 @@ static void shell_tests(void) {
     CHECK(!read_line(fd,reply,sizeof reply)&&!strcmp(reply,"RESULT -1 1 1 32768"),"endless output remains bounded and times out");close(fd);
     fd=connect_owner();program="sleep 30 & wait";snprintf(header,sizeof header,"SHELL 100 %zu\n",strlen(program));write_all(fd,header,strlen(header));write_all(fd,program,strlen(program));read_deadline=now_ms()+4000;
     CHECK(!read_line(fd,reply,sizeof reply)&&!strcmp(reply,"RESULT -1 1 0 0"),"timeout terminates the whole shell process group");close(fd);
+    fd=connect_owner();
+    program="if [ \"$ANDROID_ROOT\" != /system ] || [ \"$ANDROID_DATA\" != /data ] || [ \"${CLASSPATH-unset}\" != unset ]; then exit 134; fi; printf package:/system/framework/framework-res.apk";
+    snprintf(header,sizeof header,"SHELL 1000 %zu\n",strlen(program));write_all(fd,header,strlen(header));write_all(fd,program,strlen(program));read_deadline=now_ms()+4000;
+    int read_result=read_line(fd,reply,sizeof reply);
+    if(read_result || strcmp(reply,"RESULT 0 0 0 43"))fprintf(stderr,"platform environment result: %s\n",read_result ? "unreadable" : reply);
+    CHECK(!read_result&&!strcmp(reply,"RESULT 0 0 0 43"),"platform command receives fixed Android roots without inherited classpath");
+    char package[44]={0};CHECK(!exact_read(fd,package,43)&&!strcmp(package,"package:/system/framework/framework-res.apk"),"platform package response survives the production shell environment");close(fd);
 }
 int main(int argc,char **argv) {
     if(argc==2){fputs(get(argv[1]),stdout);put("getprop.calls","yes");return 0;}
@@ -151,6 +164,7 @@ int main(int argc,char **argv) {
     }
     prctl(PR_SET_CHILD_SUBREAPER,1);
     char directory[]="/tmp/adb-recovery-XXXXXX";if(!mkdtemp(directory)||setenv("HAPANELD_ADB_FIXTURE",directory,1))abort();
+    if(setenv("ANDROID_ROOT","/poison-root",1)||setenv("ANDROID_DATA","/poison-data",1)||setenv("CLASSPATH","/poison-classpath",1))abort();
     if (mkdir(fixture_path("no_backup"),0700)) abort();
     start();unauthorized_test();shell_tests();worker_death_test();stop();start();arm();
     int slow=connect_owner();write_all(slow,"S",1);

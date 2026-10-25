@@ -127,14 +127,11 @@ static int capture(const char *path, char *const argv[], unsigned timeout, unsig
         int null = open("/dev/null", O_RDONLY);
         if (null < 0 || dup2(null, 0) < 0 || dup2(pipes[1], 1) < 0 || dup2(pipes[1], 2) < 0) _exit(127);
         close(pipes[0]); close(pipes[1]); if (null > 2) close(null);
-        char *const environment[] = { "PATH=/system/bin:/system/xbin:/usr/bin:/bin", NULL };
-#ifdef HAPANELD_TEST_ADB_RECOVERY
-        extern char **environ;
-        (void)environment;
-        execve(path, argv, environ);
-#else
+        char *const environment[] = {
+            "PATH=/system/bin:/system/xbin:/usr/bin:/bin",
+            "ANDROID_ROOT=/system", "ANDROID_DATA=/data", NULL
+        };
         execve(path, argv, environment);
-#endif
         _exit(127);
     }
     close(pipes[1]);
