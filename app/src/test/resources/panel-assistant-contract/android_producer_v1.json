@@ -167,7 +167,8 @@
         "contract_digest": "36a0c4c8b3135c74f89d16444ba61cacaa0d7ab3752b4b1fe42a7166b8032f61",
         "id": 1,
         "type": "panel_assistant/hello",
-        "did": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        "did": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "http_port": 8888
       }
     },
     {
@@ -225,7 +226,7 @@
       }
     }
   ],
-  "sourceRevision": "562ad120a51ff40964ec781bb98340dae6567f46",
+  "sourceRevision": "324c65188036f45370c9e3368957ea9ab9c6e365",
   "channelDescriptors": [
     {
       "entity_category": null,
