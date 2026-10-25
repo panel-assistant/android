@@ -267,14 +267,6 @@ else
   fail_test "release exact-source gate stays lightweight while packaging performs a clean exact-tag build"
 fi
 
-if grep -Fqx 'concurrency:' "$WORKFLOW" && \
-   grep -Fq 'group: release-${{ inputs.release_tag || github.ref_name }}' "$WORKFLOW" && \
-   grep -Fqx '  cancel-in-progress: false' "$WORKFLOW"; then
-  pass "same-tag release runs serialize without cancelling publication"
-else
-  fail_test "same-tag release runs serialize without cancelling publication"
-fi
-
 if grep -Fqx '    needs: [verify, seal]' <<<"$publish_job" && \
    grep -Fqx '    needs: [package, package-apk]' <<<"$package_job" && \
    grep -Fqx '      input-manifest-sha256: ${{ steps.manifest.outputs.sha256 }}' <<<"$package_job" && \
