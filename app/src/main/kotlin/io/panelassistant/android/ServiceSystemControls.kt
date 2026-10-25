@@ -307,7 +307,7 @@ internal class ServiceSystemControls(
     }
 
     /** The launcher, dashboard or URL changed: a new HOME policy generation, applied off the caller. */
-    fun onLauncherHomeChanged() {
+    fun onLauncherHomeChanged(afterHome: () -> Unit = {}) {
         launcherHomePolicyGeneration.incrementAndGet()
         launcherHomeFailedGeneration.set(Long.MIN_VALUE)
         scope.launch(Dispatchers.IO) {
@@ -317,6 +317,7 @@ internal class ServiceSystemControls(
                     config().dashboardPackage,
                     config().haUrl.isNotBlank(),
                 )
+                afterHome()
             }.onFailure { Log.w(TAG, "launcher HOME policy apply failed", it) }
         }
     }

@@ -58,15 +58,12 @@ internal class ServiceVoiceAudio(
     // One coalesced restart per burst of voice_* changes: a bundle import writes every key in turn and
     // must not rearm the listener once per key.
     @Volatile private var voiceRestart: kotlinx.coroutines.Job? = null
-    private val voicePrefsListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        if (key == HaConnectionRoutes.EPOCH_KEY) reconfigure(setOf(key))
-        if (key != null && key.startsWith("voice_")) {
-            voiceRestart?.cancel()
-            voiceRestart = scope.launch {
-                kotlinx.coroutines.delay(VOICE_SETTINGS_COALESCE_MS)
-                voice.start()
-                panelAssistantVoice.configurationChanged()
-            }
+    private val voicePrefsListener = serviceConfigurationListener(reconfigure) {
+        voiceRestart?.cancel()
+        voiceRestart = scope.launch {
+            kotlinx.coroutines.delay(VOICE_SETTINGS_COALESCE_MS)
+            voice.start()
+            panelAssistantVoice.configurationChanged()
         }
     }
     /**
@@ -261,3 +258,13 @@ internal class ServiceVoiceAudio(
         private const val AUDIO_SHUTDOWN_MS = 2_000L
     }
 }
+
+/** The service's existing configuration subscription also resumes ownership after first setup. */
+internal fun serviceConfigurationListener(
+    reconfigure: (Set<String>) -> Unit,
+    voiceSettingsChanged: () -> Unit,
+): android.content.SharedPreferences.OnSharedPreferenceChangeListener =
+    android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == HaConnectionRoutes.EPOCH_KEY || key == SETUP_EVER_COMPLETED_PREF) reconfigure(setOf(key))
+        if (key != null && key.startsWith("voice_")) voiceSettingsChanged()
+    }

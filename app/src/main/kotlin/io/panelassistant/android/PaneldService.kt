@@ -283,7 +283,7 @@ internal fun configOwnerRefreshPlan(changedKeys: Set<String>): ConfigOwnerRefres
             "log_ship_enabled", "log_ship_system_enabled", "log_ship_host", "log_ship_port", "log_ship_protocol",
         )::contains),
         keepAwake = "keep_awake" in changedKeys,
-        launcherHome = changedKeys.any(setOf("launcher_package", "dashboard_package", "ha_url")::contains),
+        launcherHome = changedKeys.any(setOf("launcher_package", "dashboard_package", "ha_url", SETUP_EVER_COMPLETED_PREF)::contains),
         rendererTarget = changedKeys.any((ha + setOf("dashboard_package", "home_dashboard"))::contains),
         // The master switch closes a live session on this lane too, not only on the watchdog tick.
         camera = "camera_enabled" in changedKeys,
@@ -1049,7 +1049,11 @@ class PaneldService : Service() {
             if (resetLiveRetries) changedKeys.forEach { liveSettingRetryAttempts[it] = 0 }
         }
         if (configOwnerRefreshPlan(changedKeys).launcherHome) {
-            controls.onLauncherHomeChanged()
+            controls.onLauncherHomeChanged {
+                if (SETUP_EVER_COMPLETED_PREF in changedKeys && config.setupEverCompleted) {
+                    server.requestTameReconcile()
+                }
+            }
         }
         when (runtime.requestLatest()) {
             ServiceRuntimeOwner.LatestAdmission.COALESCED ->
@@ -1681,6 +1685,14 @@ class PaneldService : Service() {
             )
             // Learning resolves the HA instance identity through this runtime. Start mDNS before either
             // the initial learner sync or a borrowed renderer commit can notify the learner of a target.
+            if (!config.setupEverCompleted && AppIdentity.isPanelApp(controls.tame.observeDefaultHome().orEmpty())) {
+                val handback = io.panelassistant.android.control.handBackHomeController(
+                    config, controls.tame,
+                    { controls.system.setHomeActivity(it, restoringHome = true) },
+                    packageName, clearDesiredState = { true },
+                ).handBack(profile.tameVendorCandidates.map { it.pkg }.toSet())
+                Log.i(TAG, "unfinished setup HOME restoration: $handback")
+            }
             val rendererResult = prepareEntityLearningStartup(
                 startMdns = activeRuntime.mdns::start,
                 reconcileRenderer = {

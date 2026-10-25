@@ -4,6 +4,9 @@ import io.panelassistant.android.config.SettingsRegistry
 import io.panelassistant.android.BuildConfig
 import io.panelassistant.android.Config
 import io.panelassistant.android.setupEverCompleted
+import io.panelassistant.android.preservePreviousHome
+import io.panelassistant.android.completeHomeTakeover
+import io.panelassistant.android.platform.ActivityRef
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -23,10 +26,14 @@ class HealthRoutesHttpTest {
             testApplication {
                 application { fixture.mount(this) }
                 assertTrue(client.get("/health").bodyAsText().contains(" setup_complete=0 "))
+                val original = ActivityRef("com.vendor.launcher", "com.vendor.launcher.Home")
+                assertTrue(fixture.config.preservePreviousHome(original, listOf(original), armTakeover = true))
                 fixture.config.setupEverCompleted = true
                 for (path in listOf("/health", "/api/v1/health")) {
-                    assertTrue(client.get(path).bodyAsText().contains(" setup_complete=1 "))
+                    assertTrue(client.get(path).bodyAsText().contains(" setup_complete=1 home_pending=1 "))
                 }
+                assertTrue(fixture.config.completeHomeTakeover())
+                assertTrue(client.get("/health").bodyAsText().contains(" home_pending=0 "))
                 // Completion remains durable even with no working sign-in; permission reconciliation
                 // must not remove an established panel's screen-lock fallback during a repair.
                 assertTrue(fixture.config.setupEverCompleted)
