@@ -59,7 +59,7 @@ internal class PageHealth(
     )
 
     /**
-     * Whether the system WebView is too old, resolved once per process.
+     * The system WebView's status, resolved once per process.
      *
      * `GET /api/v1/setup` is polled every two seconds during setup, and reading the true engine version can
      * load the WebView provider to get its user agent — far too expensive to repeat on a poll. Caching is
@@ -68,7 +68,7 @@ internal class PageHealth(
      * the new process. Routed through [healthInputs] so the probe keeps its single call site — surfaces
      * that probe independently drift.
      */
-    val webViewTooOldOnce: Boolean by lazy { healthInputs().webView.tooOld }
+    val webViewOnce: PanelInfo.WebViewStatus by lazy { healthInputs().webView }
 
     fun healthInputs(): Inputs = Inputs(
         PanelInfo.webViewStatus(appContext),

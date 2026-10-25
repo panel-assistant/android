@@ -39,7 +39,7 @@ internal class SetupState(
     private val appContext: Context,
     private val haOAuthPending: () -> Int,
     private val lastHaDiscovery: () -> DiscoveryResult,
-    private val webViewTooOldOnce: () -> Boolean,
+    private val webViewOnce: () -> PanelInfo.WebViewStatus,
     private val effectiveDashboardIsBuiltin: () -> Boolean,
     private val scope: CoroutineScope,
     private val rendererPreparation: RendererPreparationCoordinator,
@@ -170,7 +170,7 @@ internal class SetupState(
             // Uses the true engine major from the WebView user agent, not the package stamp, so a panel
             // already swapped to a LineageOS/Cromite build is not accused of being ancient because the
             // provider still reports the OEM version.
-            webViewTooOld = builtin && webViewTooOldOnce(),
+            webViewTooOld = builtin && webViewOnce().tooOld,
             entityFilterAnswered = config.setupEntityFilterAnswered || preTracking,
             homeDashboardChosen = config.setupHomeDashboardChosen || preTracking,
             proof = proof,
@@ -354,6 +354,16 @@ internal class SetupState(
             "\"source\":${config.haSetupHandover}," +
             "\"url\":${jsonStr(config.haUrlHandover)}," +
             "\"reason\":${jsonStr(config.haUrlHandoverReason)}}"
+        // `webview` carries the facts the browser engine step names, only while that step is the blocker:
+        // the engine found, the floor, and where this model's update steps are.
+        val webView = if (journey.step(SetupJourney.Stage.RENDERER).detail == "webview_too_old") {
+            val status = webViewOnce()
+            ",\"webview\":{\"found\":${status.engineMajor ?: "null"}," +
+                "\"needed\":${PanelHealth.MIN_CHROMIUM}," +
+                "\"model\":${jsonStr(if (profile.id == "generic") "" else profile.displayName)}," +
+                "\"play\":${status.playManaged}," +
+                "\"steps\":${jsonStr(webViewUpdateSteps(profile.id))}}"
+        } else ""
         return "{\"complete\":${journey.complete}," +
             "\"needs_user\":${journey.needsUser}," +
             "\"handover\":$handover," +
@@ -365,7 +375,7 @@ internal class SetupState(
             "\"panel\":{\"id\":${jsonStr(config.panelId)},\"name\":${jsonStr(config.friendlyName)}}," +
             "\"steps\":[$steps]," +
             "\"discovery\":{\"outcome\":${jsonStr(discovery.outcome.name.lowercase())}," +
-            "\"reason\":$reason,\"explanation\":$explanation}}"
+            "\"reason\":$reason,\"explanation\":$explanation}$webView}"
     }
 
     private fun jsonStr(s: String): String = Json.str(s)

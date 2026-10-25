@@ -364,7 +364,7 @@ internal class PaneldServerHttpFixture(
             config, system,
             allocate(io.panelassistant.android.dashboard.EntityLearningManager::class.java),
             profile, context, { 0 },
-            { io.panelassistant.android.DiscoveryResult() }, { false },
+            { io.panelassistant.android.DiscoveryResult() }, { PanelInfo.WebViewStatus("unknown", tooOld = false) },
             { system.resolveDashboard(config.dashboardPackage) == io.panelassistant.android.control.SystemController.BUILTIN_DASHBOARD },
             scope, io.panelassistant.android.util.RendererPreparationCoordinator(
                 builtinPackage = "builtin", state = { error("Unexpected renderer preparation") },

@@ -330,7 +330,7 @@ class PaneldServer internal constructor(
     )
     private val setupState = SetupState(
         config, system, entityLearning, profile, appContext, haOAuth::pendingCount,
-        { lastHaDiscovery }, { pageHealth.webViewTooOldOnce },
+        { lastHaDiscovery }, { pageHealth.webViewOnce },
         ::effectiveDashboardIsBuiltin, scope, rendererPreparation,
     )
     private val catalogueLoader by lazy { CatalogueLoader(asset) }

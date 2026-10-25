@@ -40,6 +40,16 @@ function journey(next, overrides = {}) {
   };
 }
 
+const WEBVIEW_STEPS = 'https://panel-assistant.io/go/update-webview';
+
+// The renderer step as the panel reports an engine below the floor, with the facts it sends beside it.
+function webViewJourney(webview = {}) {
+  return journey('renderer', {
+    statuses: { renderer: { status: 'blocked', detail: 'webview_too_old' } },
+    webview: { found: 107, needed: 110, model: 'Sonoff NSPanel Pro', play: false, steps: WEBVIEW_STEPS, ...webview },
+  });
+}
+
 function json(body, status = 200) {
   return { status, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) };
 }
@@ -628,10 +638,9 @@ browserTest('Setup preserves the active locale on every JavaScript-authored cros
   }));
   assert.equal(await rig.page.locator('#wiz-step a').getAttribute('href'), './?lang=zh-Hans');
 
-  await reloadJourney(rig, journey('renderer', {
-    statuses: { renderer: { status: 'blocked', detail: 'webview_too_old_unfixable' } },
-  }));
-  assert.equal(await rig.page.locator('#wiz-step a').getAttribute('href'), './?lang=zh-Hans');
+  // The browser engine step's only link is the website's update steps, which the locale does not touch.
+  await reloadJourney(rig, webViewJourney());
+  assert.equal(await rig.page.locator('#wiz-step a').getAttribute('href'), WEBVIEW_STEPS);
 
   await reloadJourney(rig, completeJourney);
   const hrefs = await rig.page.locator('#wiz-step a').evaluateAll((links) => links.map((link) => link.getAttribute('href')));
@@ -789,19 +798,49 @@ browserTest('Setup maps discovery codes to translated messages without translati
 
 for (const [engine, browserType] of [['Chromium', chromium], ['WebKit', webkit]]) {
   const run = existsSync(browserType === chromium ? chrome : browserType.executablePath()) ? test : test.skip;
-  run(`Setup keeps the old WebView warning without offering an engine installation in ${engine}`, async (t) => {
+  run(`Setup's browser engine step leads to this model's update steps and moves on once the engine is current in ${engine}`, async (t) => {
     const rig = await openRig(t, {
-      initialJourney: journey('renderer', {
-        statuses: { renderer: { status: 'blocked', detail: 'webview_too_old_fixable' } },
-      }),
+      initialJourney: webViewJourney(),
       translations: { 'setup.webview.title': '浏览器引擎需要更新' },
     }, '/', browserType);
+    await rig.page.context().route('https://panel-assistant.io/**', (route) => route.fulfill({ body: 'update steps' }));
     assert.equal(await rig.page.locator('.card h2').textContent(), '浏览器引擎需要更新');
-    assert.equal(await rig.page.locator('button').count(), 0);
-    assert.equal(await rig.page.locator('.wiz-cta a').getAttribute('href'), './');
+    const text = await rig.page.locator('#wiz-step').textContent();
+    assert.match(text, /Chromium 107\b/);
+    assert.match(text, /Chromium 110\b/);
+    assert.doesNotMatch(text, /Google Play/);
+
+    // Every action on the step leaves it: the model's update steps open in a new tab, and the way out is
+    // the frame's skip link. Nothing points back at this page or the dashboard, which redirects here.
+    const page = new URL(rig.page.url());
+    const links = await rig.page.locator('#wiz-step a, .wiz-escape a').evaluateAll((all) => all.map((a) => ({ href: a.href, target: a.target, text: a.textContent })));
+    for (const link of links) {
+      const to = new URL(link.href);
+      assert.ok(to.origin !== page.origin || !['/', '/setup', page.pathname].includes(to.pathname), `${link.text} leads back to the step`);
+    }
+    const update = rig.page.locator('#wiz-step a');
+    assert.equal(await update.count(), 1);
+    assert.equal(await update.textContent(), 'Update steps for Sonoff NSPanel Pro');
+    assert.equal(await update.getAttribute('target'), '_blank');
+    const [popup] = await Promise.all([rig.page.waitForEvent('popup'), update.click()]);
+    assert.equal(popup.url(), WEBVIEW_STEPS);
+    assert.equal(await rig.page.locator('.card h2').textContent(), '浏览器引擎需要更新');
     assert.equal(rig.state.requests.filter((request) => request.method === 'POST').length, 0);
+
+    // After the update the restarted app reports a current engine and the page carries on by itself.
+    rig.state.current = journey('ha_url', { statuses: { renderer: { status: 'satisfied', detail: 'builtin' } } });
+    await eventually(() => rig.page.locator('#wiz-ha_url').count(), (n) => n === 1, 8_000);
+    assert.equal(await rig.page.locator('#wiz-ha_url').count(), 1);
   });
 }
+
+browserTest('Setup\'s browser engine step names Google Play and a generic link when the model is unknown', async (t) => {
+  const rig = await openRig(t, {
+    initialJourney: webViewJourney({ model: '', play: true }),
+  });
+  assert.match(await rig.page.locator('#wiz-step').textContent(), /open the Play Store and update Android System WebView/);
+  assert.equal(await rig.page.locator('#wiz-step a').textContent(), 'WebView update steps');
+});
 
 for (const [engine, browserType] of [['Chromium', chromium], ['WebKit', webkit]]) {
   const run = existsSync(browserType === chromium ? chrome : browserType.executablePath()) ? test : test.skip;

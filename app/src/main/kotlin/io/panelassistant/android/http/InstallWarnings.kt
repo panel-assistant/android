@@ -4,6 +4,15 @@ import io.panelassistant.android.i18n.Strings as AppStrings
 
 internal const val WEBVIEW_DOC = "https://panel-assistant.io/go/docs?page=hardware/readme"
 
+/** The WebView update steps for a panel model, keyed by profile id. The TPA10 (signature-locked, needs the
+ *  root swap) and the original Shelly Wall Display (Shelly's own update ZIP) have their own sections; every
+ *  other panel, Play-managed ones included, is a row of the update guide's table above its sideload steps. */
+internal fun webViewUpdateSteps(profileId: String): String = when (profileId) {
+    "tpa10" -> "https://panel-assistant.io/go/docs?page=hardware/tpa10#webview-update-this-first"
+    "shelly-wall-display" -> "https://panel-assistant.io/go/docs?page=hardware/shelly-wall-display#webview"
+    else -> "https://panel-assistant.io/go/update-webview"
+}
+
 /** A render-blocking warning; a missing renderer can offer an explicit Companion install. */
 internal fun installWarning(
     f: HealthAudit.Finding,

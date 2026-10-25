@@ -531,9 +531,22 @@
       // panel's one system WebView, so switching to the Home Assistant app does not avoid this.
       el("p", { class: "wiz-consequence", text: i18nText("setup.webview.companion_does_not_help", "Choosing the Home Assistant app instead will not help — it draws the dashboard using the same engine.") }),
     ];
-    body.push(el("p", { class: "wiz-cta" }, [
-      el("a", { class: "pbtn", href: internalHref("./"), text: i18nText("setup.action.panel_dashboard", "Panel dashboard") }),
-    ]));
+    // The engine found and the floor, then where this model's update steps are. The panel app no longer
+    // updates the engine itself, and no page of this panel can do more than repeat the warning, so the only
+    // action is the website's steps, in a new tab so this page stays open to carry on.
+    var wv = journey.webview || {};
+    if (wv.found && wv.needed) {
+      body.splice(1, 0, el("p", { text: i18nText("setup.webview.found", "This panel has Chromium {found}. A current Home Assistant dashboard needs Chromium {needed} or newer.", { found: String(wv.found), needed: String(wv.needed) }) }));
+    }
+    if (wv.play) body.push(el("p", { text: i18nText("setup.webview.play", "This panel updates its engine through Google Play: on the panel, open the Play Store and update Android System WebView.") }));
+    if (wv.steps) {
+      body.push(el("p", { class: "wiz-cta" }, [
+        el("a", { class: "pbtn", href: wv.steps, target: "_blank", rel: "noopener",
+          text: wv.model ? i18nText("setup.webview.update_steps", "Update steps for {model}", { model: wv.model }) : i18nText("setup.webview.update_steps_any", "WebView update steps") }),
+      ]));
+    }
+    // The page follows the journey, so it moves on once the restarted app reports a current engine.
+    body.push(el("p", { class: "muted", text: i18nText("setup.webview.after_update", "After the update the panel restarts its app. Keep this page open: it carries on to the Home Assistant address by itself.") }));
     body.push(el("p", { class: "muted", id: "wiz-err", role: "alert" }));
     show([card(i18nText("setup.webview.title", "The panel’s browser engine needs updating"), null, body)], "webview");
   }
