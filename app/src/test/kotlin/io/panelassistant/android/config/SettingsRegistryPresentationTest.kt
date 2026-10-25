@@ -60,7 +60,7 @@ class SettingsRegistryPresentationTest {
 
     @Test fun processAndSystemLogShippingRemainSeparateOptIns() {
         assertEquals(
-            "Forward Panel Assistant's own process log — not the full system log — to a central sink " +
+            "Forward Panel Assistant's own process log — not the full system log — to a central log collector " +
                 "(LAN-only, tokens and passwords redacted).",
             SettingsRegistry.spec("log_ship_enabled")!!.help,
         )
