@@ -11868,39 +11868,9 @@
       "state": "machine-cross-checked",
       "text": "Salvataggio…"
     },
-    "setup.webview.companion_does_not_help": {
-      "sourceHash": "4171f88e5b4a771642eb0eb6f9f3b801f333f3770ccaea54ee59339ced8b07fe",
-      "state": "machine-cross-checked",
-      "text": "Scegliere invece l’app Home Assistant non serve: disegna la plancia con lo stesso motore."
-    },
-    "setup.webview.explanation": {
-      "sourceHash": "8e3d6c18386c6ca7d5aff8cfc2a6b145770278275ba6d881c421e2b9afa01e0f",
-      "state": "machine-cross-checked",
-      "text": "Il motore browser di questo pannello è troppo vecchio per mostrare una plancia Home Assistant attuale. Tutto il resto può essere configurato perfettamente, ma la plancia risulterà comunque vuota o malfunzionante: conviene risolvere prima questo problema."
-    },
-    "setup.webview.after_update": {
-      "text": "Dopo l’aggiornamento il pannello riavvia la sua app. Tieni aperta questa pagina: prosegue da sola verso l’indirizzo di Home Assistant.",
-      "sourceHash": "9ea7a503304638a49a546bcfb1bed7aadfd5fa80c58ac23e4ec88e51240cda80",
-      "state": "machine-cross-checked"
-    },
     "setup.webview.found": {
       "text": "Questo pannello ha Chromium {found}. Una plancia Home Assistant attuale richiede Chromium {needed} o successivo.",
       "sourceHash": "29d3bc49a5e9bbc77f2874fe03a9d53e6e7a5a21fbdcb54fd075343a6ccc98ee",
-      "state": "machine-cross-checked"
-    },
-    "setup.webview.play": {
-      "text": "Questo pannello aggiorna il proprio motore tramite Google Play: sul pannello apri il Play Store e aggiorna Android System WebView.",
-      "sourceHash": "1ee78fca20a49f0b9757b8d2b68b22a61696137734987c922834e800836ee73c",
-      "state": "machine-cross-checked"
-    },
-    "setup.webview.update_steps": {
-      "text": "Come aggiornare {model}",
-      "sourceHash": "2ede37fa8d53dcf6214ad13dd7b37b3007f234da7cef240307e8592c1bb23a54",
-      "state": "machine-cross-checked"
-    },
-    "setup.webview.update_steps_any": {
-      "text": "Come aggiornare WebView",
-      "sourceHash": "50ceb4e2fa12f7618c726863fafc21b7e17cd0b94259447bd92afc25e517300f",
       "state": "machine-cross-checked"
     },
     "setup.webview.title": {
