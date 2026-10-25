@@ -282,6 +282,22 @@ class SetupRoutesHttpTest {
             }
         }
 
+    @Test fun `a panel of unknown model below the engine floor is sent to the update guide, unnamed`() =
+        withSetup(
+            webView = PanelInfo.WebViewStatus("com.android.webview 107.0.5304.105", tooOld = true, engineMajor = 107),
+            profileId = "generic",
+        ) { fixture ->
+            fixture.config.setDashboardPackage(SystemController.BUILTIN_DASHBOARD)
+            fixture.config.setupIdentityConfirmed = true
+            testApplication {
+                application { fixture.mount(this) }
+                val webView = JSONObject(client.get("/api/v1/setup").bodyAsText()).getJSONObject("webview")
+                assertEquals(107, webView.getInt("found"))
+                assertEquals("", webView.getString("model"))
+                assertEquals("https://panel-assistant.io/go/update-webview", webView.getString("steps"))
+            }
+        }
+
     @Test fun `a builtin panel with a current engine goes on to the Home Assistant address without engine facts`() =
         withSetup(webView = PanelInfo.WebViewStatus("com.android.webview 138.0.7204.63", tooOld = false, engineMajor = 138)) { fixture ->
             fixture.config.setDashboardPackage(SystemController.BUILTIN_DASHBOARD)
@@ -296,6 +312,7 @@ class SetupRoutesHttpTest {
 
     private fun withSetup(
         webView: PanelInfo.WebViewStatus = PanelInfo.WebViewStatus("unknown", tooOld = false),
+        profileId: String = "tpa10",
         block: (PaneldServerHttpFixture) -> Unit,
     ) {
         PaneldServerHttpFixture().use { fixture ->
@@ -322,8 +339,8 @@ class SetupRoutesHttpTest {
             ) { _, method, _ ->
                 when (method.name) {
                     "getSoc", "getRecommendedWebView" -> null
-                    "getId" -> "tpa10"
-                    "getDisplayName" -> "Tuya TPA10"
+                    "getId" -> profileId
+                    "getDisplayName" -> if (profileId == "generic") "Unknown panel" else "Tuya TPA10"
                     else -> error("Unexpected profile read: ${method.name}")
                 }
             } as DeviceProfile
