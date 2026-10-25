@@ -52,6 +52,7 @@ Pairs with Panel Assistant 1.0.0-rc1, the Home Assistant integration.
 
 ### Fixed
 
+- **Text on a Meta Portal matches every other panel.** The Portal's own font is wider than the Roboto every other panel draws, so the panel app now uses a copy of Roboto that ships with it on the Portal: in its notices, such as the Home Assistant restart card, and on its own pages opened on the Portal. Other panels, and the pages in a browser or the Panel Assistant sidebar, are unchanged.
 - **Reconnect sign-in works from the sidebar.** Reconnect opens Home Assistant sign-in in a separate window, and Configure follows the new account once sign-in finishes.
 - **Basic view keeps a blocked setting's prerequisites within reach.** If automatic brightness needs a light source, or auto-sleep needs a source or Area, those choices stay visible without switching to Advanced.
 - **Configure remembers your view in the sidebar.** Basic or Advanced, Descriptions, expanded settings and the setting filter survive a reload or a switch to another panel.
