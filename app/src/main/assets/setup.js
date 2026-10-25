@@ -597,29 +597,47 @@
    * so a wall panel should sit in the right one. A pop-up list of HA's real areas, never free text —
    * nobody knows what to type — and no creation here: picking from what exists is the job, creating
    * areas belongs in Home Assistant. Editing is offered only where it can act (an admin account, or a
-   * device with no area yet, whose request seeds first registration); HA's value stays canonical. */
+   * device with no area yet, whose request seeds first registration). The read endpoint has already
+   * reconciled adopted values; a deliberate local override can still differ from HA's assignment. */
   function paintHomeDashboardArea() {
     var host = document.getElementById("hd-area");
     if (!host || renderedKey !== "home_dashboard") return;
     host.textContent = "";
     if (!hdArea || !hdArea.queried) return; // could not ask HA — the area is a bonus, never a blocker
     var current = hdArea.device && hdArea.device.found ? (hdArea.device.area_name || "") : "";
+    // requested is the effective local value AFTER the endpoint's ownership/reconciliation rule.
+    var savedArea = hdArea.requested || current;
+    var chosenArea = typed.ha_area !== undefined ? typed.ha_area : savedArea;
+    function overrideNote(area) {
+      return area && current && area.toLowerCase() !== current.toLowerCase()
+        ? i18nText("configure.area.local_override_ha", "Local override only — Home Assistant has “{area}”", { area: current }) : "";
+    }
+    var localOverrideNote = overrideNote(chosenArea);
     var editable = hdArea.admin || !current;
     host.appendChild(el("b", { class: "hd-area-label", text: i18nText("setup.area.label", "Set the HA Area that your panel is in") }));
     if (!editable) {
       // A DISABLED select, not bare text: it must read as "a control you don't have permission for",
       // not as missing UI (hardware-review note). Same control either way; only the permission differs.
       var locked = el("select", {});
-      locked.appendChild(el("option", { text: current }));
+      locked.appendChild(el("option", { value: savedArea, text: savedArea }));
       locked.disabled = true;
       host.appendChild(locked);
-      host.appendChild(el("small", { class: "hd-area-note", text: i18nText("setup.area.locked_note", "This panel is already registered in Home Assistant, so its area can only be changed there by an HA admin user — this panel will follow whatever is set.") }));
+      host.appendChild(el("small", { class: "hd-area-note", text: overrideNote(savedArea) || i18nText("setup.area.locked_note", "This panel is already registered in Home Assistant, so its area can only be changed there by an HA admin user — this panel will follow whatever is set.") }));
       return;
     }
+    var areaNote = el("small", { class: "hd-area-note", text: localOverrideNote });
+    areaNote.hidden = !localOverrideNote;
     var sel = el("select", { id: "wiz-ha_area",
-      onchange: function (e) { typed.ha_area = e.target.value; } });
+      onchange: function (e) {
+        typed.ha_area = e.target.value;
+        areaNote.textContent = overrideNote(typed.ha_area);
+        areaNote.hidden = !areaNote.textContent;
+      } });
     sel.appendChild(el("option", { value: "", text: current ? i18nText("setup.area.none", "No area") : i18nText("setup.area.none_yet", "No area yet — pick one") }));
-    var chosenArea = typed.ha_area !== undefined ? typed.ha_area : (current || hdArea.requested || "");
+    // Preserve a saved or typed choice even if HA no longer lists that area.
+    if (chosenArea && !(hdArea.areas || []).some(function (a) { return a && a.name === chosenArea; })) {
+      sel.appendChild(el("option", { value: chosenArea, text: chosenArea, selected: "selected" }));
+    }
     (hdArea.areas || []).forEach(function (a) {
       if (!a || !a.name) return;
       var o = el("option", { value: a.name, text: a.name });
@@ -627,6 +645,7 @@
       sel.appendChild(o);
     });
     host.appendChild(sel);
+    host.appendChild(areaNote);
     host.appendChild(el("small", { class: "hd-area-note", text: hdArea.admin
       ? i18nText("setup.area.admin_help", "Where this panel lives. Home Assistant uses areas to build dashboards automatically.")
       // Non-admin with an unregistered/area-less device: the choice is recorded and applied by the

@@ -180,6 +180,12 @@ class PageRoutesHttpTest {
                     assertTrue(path, html.contains("Contract &lt;panel&gt;"))
                     assertTrue(path, html.contains("href=\"configure?lang=zh-Hans\""))
                     assertTrue(path, html.contains(marker))
+                    if (path == "setup") {
+                        val bridge = html.substringAfter("<script id=\"ha-i18n\" type=\"application/json\">")
+                            .substringBefore("</script>")
+                        val strings = org.json.JSONObject(bridge).getJSONObject("strings")
+                        assertTrue(strings.getString("configure.area.local_override_ha").contains("{area}"))
+                    }
                     // The header carries the brand lock-up: the name drawn inline from the brand asset set, and the build.
                     val brand = html.substringAfter("<span class=\"brand\">").substringBefore("</h1>")
                     assertTrue(path, brand.startsWith("<svg class=\"brand-name\"") && "<path" in brand && "<!--" !in brand)

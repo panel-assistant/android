@@ -91,7 +91,7 @@ internal fun Route.setupPageRoute(
         call.response.headers.append(HttpHeaders.Vary, HttpHeaders.AcceptLanguage)
         call.response.headers.append(
             HttpHeaders.ContentLanguage,
-            strings.languages(setOf("shell.", "setup.")).joinToString(", "),
+            strings.languages(setOf("shell.", "setup.", "configure.area.")).joinToString(", "),
         )
         call.respondText(
             pages().pageShell(
@@ -101,7 +101,7 @@ internal fun Route.setupPageRoute(
                 rightControls = ghLink(strings),
                 body = setupBody(strings, preserveExplicitEnglish, embedded = call.embedMode() != null),
                 strings = strings,
-                translationPrefixes = setOf("shell.", "setup.", "runtime."),
+                translationPrefixes = setOf("shell.", "setup.", "runtime.", "configure.area."),
                 preserveExplicitEnglish = preserveExplicitEnglish,
                 embed = call.embedMode(),
                 peer = call.origin.peerAddress,

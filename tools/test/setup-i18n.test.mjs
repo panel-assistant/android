@@ -212,6 +212,90 @@ async function eventually(read, accepted, timeoutMs = 3_000) {
   return value;
 }
 
+for (const [engine, browserType] of [['Chromium', chromium], ['WebKit', webkit]]) {
+  test(`Setup keeps the saved effective Area and HA assignment distinct in ${engine}`, async (t) => {
+    const area = {
+      queried: true, admin: true, requested: 'Kitchen',
+      device: { found: true, area_name: 'Office' },
+      areas: [{ name: 'Office' }, { name: 'Kitchen' }],
+    };
+    const rig = await openRig(t, {
+      initialJourney: journey('entity_filter'), locale: 'en', withHelper: false, withStyles: true, area,
+      dashboards: { queried: true, items: [{ group: 'panel', path: '/home', title: 'home' }], default: { explicit: false, path: '' } },
+    }, '/#dash', browserType);
+    const selection = rig.page.locator('#hd-area select');
+    const assertOverride = async (disabled) => {
+      await selection.waitFor();
+      assert.equal(await selection.inputValue(), 'Kitchen');
+      assert.equal(await selection.isDisabled(), disabled);
+      assert.match(await rig.page.locator('#hd-area').textContent(), /Local override only — Home Assistant has “Office”/);
+      assert.doesNotMatch(await rig.page.locator('#hd-area').textContent(), /this panel will follow whatever is set/);
+    };
+    await assertOverride(false);
+    for (const width of [320, 1280]) {
+      await rig.page.setViewportSize({ width, height: 900 });
+      assert.equal(await rig.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    }
+    await selection.selectOption('Office');
+    assert.equal(await rig.page.locator('#hd-area small').first().isVisible(), false);
+    await rig.page.evaluate(() => { location.hash = 'optimize'; });
+    await rig.page.locator('#ef-verdict').waitFor();
+    await rig.page.evaluate(() => { location.hash = 'dash'; });
+    await selection.waitFor();
+    assert.equal(await selection.inputValue(), 'Office');
+    assert.equal(await rig.page.locator('#hd-area small').first().isVisible(), false);
+    area.admin = false;
+    await rig.page.evaluate(() => { location.hash = 'optimize'; });
+    await rig.page.locator('#ef-verdict').waitFor();
+    await rig.page.evaluate(() => { location.hash = 'dash'; });
+    await assertOverride(true);
+    area.admin = true;
+    await rig.page.reload();
+    await assertOverride(false);
+    await rig.page.evaluate(() => { location.hash = 'optimize'; });
+    await rig.page.locator('#ef-verdict').waitFor();
+    await rig.page.evaluate(() => { location.hash = 'dash'; });
+    await assertOverride(false);
+    // A saved local value need not still exist in HA's area catalogue.
+    area.areas = [{ name: 'Office' }];
+    await rig.page.reload();
+    await assertOverride(false);
+    // Permission changes must not hide the saved effective choice or enable registry edits.
+    area.admin = false;
+    await rig.page.reload();
+    await assertOverride(true);
+    await rig.page.locator('button.wiz-primary').click();
+    await eventually(() => rig.state.requests.filter(r => r.method === 'POST').length, n => n > 0);
+    assert.ok(rig.state.requests.filter(r => r.method === 'POST').every(r => !r.body.includes('ha_area')));
+    assert.equal(area.device.area_name, 'Office');
+  });
+
+  test(`Setup adopts HA Area without a local override in ${engine}`, async (t) => {
+    // The area endpoint returns requested after its existing runtime reconciliation.
+    const area = {
+      queried: true, admin: false, requested: 'Office',
+      device: { found: true, area_name: 'Office' }, areas: [{ name: 'Office' }],
+    };
+    const rig = await openRig(t, {
+      initialJourney: journey('entity_filter'), locale: 'en', withHelper: false, withStyles: true, area,
+      dashboards: { queried: true, items: [{ group: 'panel', path: '/home', title: 'home' }], default: { explicit: false, path: '' } },
+    }, '/#dash', browserType);
+    const selection = rig.page.locator('#hd-area select');
+    await selection.waitFor();
+    assert.equal(await selection.inputValue(), 'Office');
+    assert.equal(await selection.isDisabled(), true);
+    assert.doesNotMatch(await rig.page.locator('#hd-area').textContent(), /Local override/);
+    // Empty local choice also follows HA, and an administrator may edit it.
+    area.requested = '';
+    area.admin = true;
+    await rig.page.reload();
+    await selection.waitFor();
+    assert.equal(await selection.inputValue(), 'Office');
+    assert.equal(await selection.isDisabled(), false);
+    assert.doesNotMatch(await rig.page.locator('#hd-area').textContent(), /Local override/);
+  });
+}
+
 browserTest('Setup localizes representative cards and stable state tokens with an English identity fallback', async (t) => {
   const translations = {
     'setup.identity.title': '命名此面板',
