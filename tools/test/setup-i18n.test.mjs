@@ -57,8 +57,8 @@ function requestBody(request) {
 function fixture(translations, locale, withHelper, withStyles) {
   const strings = withHelper ? translations : {};
   return `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">${withStyles ? '<link rel="stylesheet" href="/info.css">' : ''}${i18nBridge({ locale, strings })}</head><body>
-    <ol id="wiz-dots"></ol><main id="wiz-step"></main>
-    <a class="wiz-escape" href="/configure">escape</a>
+    <div class="wiz" id="wiz"><ol class="wiz-dots" id="wiz-dots"></ol><div id="wiz-step" class="wiz-step"></div>
+    <p class="wiz-escape"><a href="/configure">escape</a></p></div>
     <script src="/setup.js"></script>
   </body></html>`;
 }
