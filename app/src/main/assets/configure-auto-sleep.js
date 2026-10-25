@@ -49,7 +49,7 @@
         cfg.i18nText("configure.auto_sleep.source_panel", "This panel’s proximity sensor"),
         cfg.i18nText("configure.auto_sleep.phase", "Phase: {phase}", { phase: autoSleepHuman(status.phase || "unknown") }),
         cfg.i18nText("configure.auto_sleep.reason", "Reason: {reason}", { reason: autoSleepHuman(status.reason || "unknown") }),
-        cfg.i18nText("configure.auto_sleep.panel_setup_help", "Uses calibrated presence at this panel. Set up proximity first; automatic sleep pauses if the sensor is unavailable.")
+        cfg.i18nText("configure.auto_sleep.panel_setup_help", "Uses calibrated presence at this panel. Set up proximity first; auto-sleep pauses if the sensor is unavailable.")
       ];
       return { lines: localLines, accessible: localLines.join(" · ") };
     }
@@ -119,7 +119,7 @@
   function autoSleepUsesHa() { return !autoSleepUsesPanel() && !autoSleepUsesTouch(); }
 
   function autoSleepPrerequisiteText() {
-    if (autoSleepUsesPanel()) return cfg.i18nText("configure.auto_sleep.panel_setup_help", "Uses calibrated presence at this panel. Set up proximity first; automatic sleep pauses if the sensor is unavailable.");
+    if (autoSleepUsesPanel()) return cfg.i18nText("configure.auto_sleep.panel_setup_help", "Uses calibrated presence at this panel. Set up proximity first; auto-sleep pauses if the sensor is unavailable.");
     if (autoSleepUsesTouch()) return cfg.i18nText("configure.auto_sleep.touch_help", "Uses touch activity on this panel. Home Assistant and presence sensors are not required.");
     var phase = String(cfg.autoSleepPrerequisite.phase || "unavailable").toLowerCase();
     var areaName = cfg.autoSleepPrerequisite.area_name != null ? cfg.autoSleepPrerequisite.area_name : cfg.autoSleepPrerequisite.areaName;
@@ -127,8 +127,8 @@
     if (cfg.autoSleepPrerequisite.eligible === true && phase === "assigned") return cfg.i18nText("configure.auto_sleep.area", "Home Assistant Area: {area}", {
       area: String(areaName || "").trim() || cfg.i18nText("configure.auto_sleep.assigned", "Assigned")
     });
-    if (phase === "unassigned") return cfg.i18nText("configure.auto_sleep.assign_area_first", "Assign this panel to a Home Assistant Area before enabling Auto sleep.");
-    if (phase === "auth_failed") return cfg.i18nText("configure.auto_sleep.reconnect_first", "Reconnect Home Assistant before enabling Auto sleep.");
+    if (phase === "unassigned") return cfg.i18nText("configure.auto_sleep.assign_area_first", "Assign this panel to a Home Assistant Area before enabling Auto-sleep.");
+    if (phase === "auth_failed") return cfg.i18nText("configure.auto_sleep.reconnect_first", "Reconnect Home Assistant before enabling Auto-sleep.");
     return cfg.i18nText("configure.auto_sleep.area_check_failed", "Could not check this panel’s Home Assistant Area. Check the Home Assistant connection.");
   }
 

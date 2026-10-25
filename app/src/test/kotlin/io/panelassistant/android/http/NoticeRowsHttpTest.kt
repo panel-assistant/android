@@ -77,7 +77,7 @@ class NoticeRowsHttpTest {
                         POWER,
                         "action_needed" to "Zigbee gateway is runaway",
                         AUTH,
-                        "action_needed" to "Built-in renderer stopped retrying after repeated WebView failures. Update or repair System WebView, then use Reload dashboard from the panel navbar or Dashboard tab.",
+                        "action_needed" to esc(englishCatalogue.get("runtime.renderer_recovery.builtin")),
                         "warning" to esc(formattedString(englishCatalogue, "dashboard.banner.zoom.title", "zoom" to "125")),
                         WEBVIEW,
                         TERMUX,

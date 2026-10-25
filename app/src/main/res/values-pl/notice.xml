@@ -11,7 +11,7 @@
     <string name="notice_hero_version_check">Kontrola wersji</string>
     <string name="notice_hero_finding_dashboards">Szukanie pulpitów</string>
     <string name="notice_hero_upgrade_ha">Zaktualizuj HA</string>
-    <string name="notice_hero_ancient_webview">Zabytkowy Webview</string>
+    <string name="notice_hero_ancient_webview">Zabytkowy WebView</string>
     <string name="notice_hero_filter_failed">Filtr zawiódł</string>
     <string name="notice_hero_filter_refused">Filtr odrzucony</string>
     <string name="notice_hero_reading">Odczyt</string>

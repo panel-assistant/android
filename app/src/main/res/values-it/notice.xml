@@ -11,7 +11,7 @@
     <string name="notice_hero_version_check">Verifica versione</string>
     <string name="notice_hero_finding_dashboards">Ricerca plance</string>
     <string name="notice_hero_upgrade_ha">Aggiorna HA</string>
-    <string name="notice_hero_ancient_webview">Webview preistorico</string>
+    <string name="notice_hero_ancient_webview">WebView preistorico</string>
     <string name="notice_hero_filter_failed">Filtro fallito</string>
     <string name="notice_hero_filter_refused">Filtro rifiutato</string>
     <string name="notice_hero_reading">Lettura</string>

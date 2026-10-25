@@ -175,8 +175,8 @@
       if (f.displaySizingAvailable === true) {
         if (!zoomKids.length) zoomKids.push(cfg.el("p"));
         var last = zoomKids[zoomKids.length - 1];
-        last.appendChild(document.createTextNode(cfg.i18nText("configure.display.recommend_prefix", " Recommend use ")));
-        last.appendChild(cfg.el("a", { href: cfg.localizedPageHref("install#cfg-display"), text: cfg.i18nText("configure.display.sizing", "Display Sizing") }));
+        last.appendChild(document.createTextNode(cfg.i18nText("configure.display.recommend_prefix", " We recommend using ")));
+        last.appendChild(cfg.el("a", { href: cfg.localizedPageHref("install#cfg-display"), text: cfg.i18nText("configure.display.sizing", "Display sizing") }));
         last.appendChild(document.createTextNode(cfg.i18nText("configure.display.recommend_suffix", " for better results")));
       }
       return zoomKids;

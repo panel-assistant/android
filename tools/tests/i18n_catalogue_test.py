@@ -1017,7 +1017,9 @@ class CatalogueTest(unittest.TestCase):
                 i18n.validate_target(target_path, i18n.validate_source(source_path))
 
     def test_target_language_exceptions_are_exact_and_key_scoped(self):
-        latin_locales = ("de", "es", "fr", "it")
+        latin_locales = tuple(
+            locale for locale, policy in i18n.TARGET_SCRIPT_POLICIES.items() if policy == "latin"
+        )
         catalogue_dir = SCRIPT.parents[1] / "app/src/main/assets/i18n"
         source = i18n.validate_source(catalogue_dir / "en.json")
         for pair, expected in {

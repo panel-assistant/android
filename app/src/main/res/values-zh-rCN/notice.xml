@@ -11,7 +11,7 @@
     <string name="notice_hero_version_check">版本检查</string>
     <string name="notice_hero_finding_dashboards">查找仪表盘</string>
     <string name="notice_hero_upgrade_ha">升级 HA</string>
-    <string name="notice_hero_ancient_webview">古董 Webview</string>
+    <string name="notice_hero_ancient_webview">古董 WebView</string>
     <string name="notice_hero_filter_failed">筛选失败</string>
     <string name="notice_hero_filter_refused">筛选被拒</string>
     <string name="notice_hero_reading">读取中</string>

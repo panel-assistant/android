@@ -11,7 +11,7 @@
     <string name="notice_hero_version_check">Versiecontrole</string>
     <string name="notice_hero_finding_dashboards">Dashboards zoeken</string>
     <string name="notice_hero_upgrade_ha">HA bijwerken</string>
-    <string name="notice_hero_ancient_webview">Oeroude Webview</string>
+    <string name="notice_hero_ancient_webview">Oeroude WebView</string>
     <string name="notice_hero_filter_failed">Filter mislukt</string>
     <string name="notice_hero_filter_refused">Filter geweigerd</string>
     <string name="notice_hero_reading">Lezen</string>

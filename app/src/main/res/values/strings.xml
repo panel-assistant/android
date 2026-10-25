@@ -147,7 +147,7 @@
     <string name="home_assistant_could_not_open_detail">The panel’s web viewer would not start Home Assistant. The panel keeps trying. If it keeps failing, the web viewer needs updating or repairing; it is called Android System WebView, and reinstalling the same build repairs a damaged one.</string>
     <string name="skip_load_dashboard">Skip and load the dashboard now</string>
     <string name="skip_entity_filter_detail">Skipping loads every entity Home Assistant has, which is slower on this panel. You can turn filtering on later under Configure → Dashboard.</string>
-    <string name="optimized_subscription_unavailable">Optimized dashboard subscription unavailable</string>
+    <string name="optimized_subscription_unavailable">Optimised dashboard subscription unavailable</string>
     <string name="ha_refused_entity_scan">Home Assistant refused the entity scan</string>
     <string name="dashboard_scan_failed">Dashboard scan could not finish</string>
     <string name="entity_filter_hold_detail">%1$s Home Assistant has not been opened, because loading every entity would make this panel slow. Try again, or turn the entity filter off under Configure, in the Dashboard settings.</string>
