@@ -171,7 +171,14 @@ int main(int argc,char **argv) {
     long long slow_deadline = now_ms() + 1200;
     while (!network_is("running") && now_ms() < slow_deadline) usleep(10000);
     CHECK(network_is("running"),"guardian expires a lease while request framing is blocked");close(slow);
-    arm();
+    char rearm[100],rearm_reply[160];int rearmed=0;
+    snprintf(rearm,sizeof rearm,"ARM %s\n",nonce);
+    long long rearm_deadline=now_ms()+1200;
+    while(now_ms()<rearm_deadline){
+        if(!request(rearm,rearm_reply,sizeof rearm_reply)&&!strcmp(rearm_reply,"OK")){rearmed=1;break;}
+        usleep(10000);
+    }
+    CHECK(rearmed,"healthy app can rearm the same session after recovery finishes");
     CHECK(network_is("stopped"),"healthy app can rearm after automatic recovery without a new websocket");
     stop();start();arm();kill(guardian,SIGKILL);waitpid(guardian,NULL,0);guardian=-1;
     CHECK(wait_network("running"),"guardian death reopens network ADB");stop();
