@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.0.0-rc2
+
+### Changed
+
+- UI layout checks use pinned browser images and split the test suite to reduce CI time.
+
 ## v1.0.0-rc1
 
 This is the first release candidate of the panel app's 1.0, the Android app that Panel Assistant installs on your panels. Please open an issue with the panel model and what you saw if something breaks. The story of 1.0 is that MQTT and the old app are gone for good, so this release only works with panels that Panel Assistant 0.9.0 has already moved. In exchange the panel and Panel Assistant now talk over one connection for everything, including the sidebar, updates and voice, and that is what makes most of the changes below possible. A lot changed; I have listed what you will notice rather than every commit.
