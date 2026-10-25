@@ -43,7 +43,8 @@ class ManagementHomeProofTest {
                                 refreshUpdates = { events += "updates" },
                                 refreshStorage = { events += "storage"; StorageHealthSnapshot.UNCHECKED },
                                 cachedStorage = { events += "cached"; StorageHealthSnapshot.UNCHECKED },
-                                status = { storage, nonce, requested ->
+                                status = { storage, nonce, requested, setupForeground ->
+                                    if (setupForeground) events += "setup-foreground"
                                     managementStatusJson(
                                         fixture.config, snapshot, CompanionDb.ServerObservation.EMPTY, power,
                                         null, HealthAudit.storage(storage),
@@ -84,6 +85,13 @@ class ManagementHomeProofTest {
                 assertTrue(requestedBody.contains("\"home_ui\":{\"state\":\"ready\",\"reason\":\"dashboard_foreground\",\"evidence\":\"builtin_lifecycle\"},"))
                 assertEquals(3, JSONObject(requestedBody).getJSONObject("home_ui").length())
                 assertEquals(listOf("cached", "recovery", "mdns", "rollback", "home", "renderer", "camera"), events)
+                events.clear()
+                val setup = client.get("/api/v1/status?home_proof=1&setup_foreground=1")
+                assertTrue(JSONObject(setup.bodyAsText()).has("home_ui"))
+                assertTrue(events.contains("setup-foreground"))
+                events.clear()
+                client.get("/api/v1/status?home_proof=1&setup_foreground=true")
+                assertFalse(events.contains("setup-foreground"))
                 val nonce = "0123456789abcdef0123456789abcdef"
                 for (query in listOf("refresh=1", "database_observation_nonce=$nonce")) {
                     events.clear()

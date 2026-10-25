@@ -21,6 +21,10 @@ internal fun Config.completeHomeTakeover(): Boolean = synchronizedTransaction {
 internal fun Config.confirmHomeTakeover(expected: ActivityRef, observed: ActivityRef?): Boolean =
     setupEverCompleted && expected == observed && completeHomeTakeover()
 
+/** Explicit first-install proof may establish foreground while HOME acquisition is still deferred. */
+internal fun Config.requiresOwnedHomeProof(setupForegroundRequested: Boolean): Boolean =
+    !setupForegroundRequested || (setupEverCompleted && !homeTakeoverPending)
+
 /** Write before taking HOME or disabling its launcher. Retries must never replace the first record. */
 internal fun Config.preservePreviousHome(
     home: ActivityRef?,

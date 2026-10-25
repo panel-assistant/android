@@ -514,7 +514,13 @@ class SystemController(
     }
 
     /** A healthy service is not proof that the panel left Android's HOME chooser. */
-    fun homeUiProof(dashboardPkg: String, adminUiVisible: Boolean): HomeUiProof {
+    fun homeUiProof(dashboardPkg: String, adminUiVisible: Boolean, requireOwnedHome: Boolean = true): HomeUiProof {
+        if (!requireOwnedHome) {
+            if (adminUiVisible) return HomeUiProof("setup", "admin_foreground", "admin_lifecycle")
+            return if (isBuiltin(resolveDashboard(dashboardPkg)) && builtinForeground())
+                HomeUiProof("ready", "dashboard_foreground", "builtin_lifecycle")
+            else HomeUiProof("blocked", "dashboard_background", "admin_lifecycle")
+        }
         val home = env.defaultHome()
         if (home?.pkg == "android" || home?.cls?.endsWith("ResolverActivity") == true) {
             return HomeUiProof("blocked", "home_resolver", "home_resolve")

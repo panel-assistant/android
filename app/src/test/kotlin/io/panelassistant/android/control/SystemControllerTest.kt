@@ -121,6 +121,17 @@ class SystemControllerTest {
         assertTrue(root.ran.contains("cmd package set-home-activity com.vendor/.Home"))
     }
 
+    @Test fun `deferred first setup proof requires actual own foreground without taking home`() {
+        val env = FakeSystemEnv(default = ActivityRef("android", "ResolverActivity"))
+        val visible = sc(env).first
+        assertEquals("blocked", visible.homeUiProof("", adminUiVisible = true).state)
+        assertEquals("setup", visible.homeUiProof("", adminUiVisible = true, requireOwnedHome = false).state)
+        assertEquals("blocked", visible.homeUiProof("", adminUiVisible = false, requireOwnedHome = false).state)
+        val builtin = sc(env, builtinForeground = true).first
+        assertEquals("ready", builtin.homeUiProof("", adminUiVisible = false, requireOwnedHome = false).state)
+        assertEquals("blocked", builtin.homeUiProof("", adminUiVisible = false).state)
+    }
+
     @Test fun homeUiProofRequiresForegroundDashboardAndResolvedHome() {
         val ready = sc(FakeSystemEnv(default = DASH_HOME), builtinForeground = true).first
             .homeUiProof("", adminUiVisible = false)

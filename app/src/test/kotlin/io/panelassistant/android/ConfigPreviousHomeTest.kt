@@ -84,4 +84,16 @@ class ConfigPreviousHomeTest {
         assertFalse(config.homeTakeoverPending)
     }
 
+    @Test fun `setup foreground proof stays available until completed ownership is acknowledged`() {
+        val config = Config(fakePreferences().instance)
+        assertTrue(config.requiresOwnedHomeProof(false))
+        assertFalse(config.requiresOwnedHomeProof(true))
+        assertTrue(config.preservePreviousHome(original, listOf(original), armTakeover = true))
+        config.setupEverCompleted = true
+        assertFalse(config.requiresOwnedHomeProof(true))
+        assertTrue(config.requiresOwnedHomeProof(false))
+        assertTrue(config.completeHomeTakeover())
+        assertTrue(config.requiresOwnedHomeProof(true))
+    }
+
 }
