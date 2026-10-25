@@ -257,7 +257,11 @@ internal class CompanionBackupOperations(
                 val companionStopped = when {
                     captureResult == CompanionHelperProtocol.BackupResult.Indeterminate -> true
                     captureResult is CompanionHelperProtocol.BackupResult.Failed -> captureResult.relaunchFailed
-                    restoreResult != null -> restoreResult in RELAUNCH_FAILED
+                    restoreResult != null -> restoreResult in RELAUNCH_FAILED ||
+                        capture?.relaunched == false && restoreResult in setOf(
+                            CompanionHelperProtocol.RestoreResult.FAILED,
+                            CompanionHelperProtocol.RestoreResult.NOT_SUBMITTED,
+                        )
                     else -> capture?.relaunched == false
                 }
                 if (companionStopped) system.launchHome(pkg)
