@@ -145,7 +145,7 @@ internal class DashboardRendererRig(
 
     companion object {
         const val HA = "http://ha.local:8123"
-        val SIGNED_IN: Map<String, Any?> = mapOf("ha_url" to HA, "ha_token" to "token")
+        val SIGNED_IN: Map<String, Any?> = mapOf("panel_id" to "renderer_fixture", "ha_url" to HA, "ha_token" to "token")
 
         @Suppress("UNCHECKED_CAST")
         fun <T> allocate(type: Class<T>): T {
