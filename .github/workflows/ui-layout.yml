@@ -1,7 +1,7 @@
 # Web interface layout. The language layout gate lays out every page in every catalogue locale, light and
 # dark, Chromium and WebKit, at the panel sizes and in the Panel Assistant sidebar views, and fails on
-# cut-off text, overflow or overlap, unreachable controls and excess wrapping. One job per browser runs its
-# pages in parallel; the `ui-layout` job aggregates them so a single required check can be configured.
+# cut-off text, overflow or overlap, unreachable controls and excess wrapping. Groups of pages per browser
+# run in parallel; the `ui-layout` job aggregates them so a single required check can be configured.
 # The CLS matrix stays report-only. Nothing in ci.yml needs or waits for this workflow. See tools/test/README.md.
 name: UI layout
 run-name: UI layout · ${{ github.head_ref || github.ref_name }}
@@ -21,6 +21,10 @@ concurrency:
 
 permissions:
   contents: read
+
+defaults:
+  run:
+    shell: bash
 
 # Every browser job runs in Playwright's own image for the pinned playwright-core version, which carries
 # both browsers, their system libraries and fonts: nothing is downloaded from the Ubuntu mirror, whose
@@ -49,6 +53,19 @@ jobs:
           node-version: '22.23.2'
       - name: Install playwright-core
         run: cd tools/test && npm ci --ignore-scripts
+      - name: Use the hosted runners' default font
+        # The image's only Latin sans fonts lose to a CJK default for system-ui; the layout checks are tuned
+        # to DejaVu Sans, the hosted runners' default. Two pinned packages, fetched directly, no apt index.
+        run: |
+          cd "$RUNNER_TEMP"
+          get() { curl -fsS --retry 3 --retry-all-errors --max-time 60 -o "$1" "http://archive.ubuntu.com/ubuntu/pool/main/f/fonts-dejavu/$1"; }
+          get fonts-dejavu-core_2.37-8_all.deb
+          get fonts-dejavu-mono_2.37-8_all.deb
+          printf '%s  %s\n' \
+            40049660c194f3b8a2541fc7369efebb10e9f94bdac836a2f38fafedd10fa73a fonts-dejavu-core_2.37-8_all.deb \
+            8a599d6553307db7ecb795d2f0e5a301e03234afc75c7358b0ba43466454c89a fonts-dejavu-mono_2.37-8_all.deb | sha256sum -c -
+          dpkg -i fonts-dejavu-mono_2.37-8_all.deb fonts-dejavu-core_2.37-8_all.deb > /dev/null
+          fc-match system-ui | grep -q 'DejaVu Sans'
       - name: Run tools/test
         run: |
           cd tools/test
@@ -59,7 +76,7 @@ jobs:
           for test in ./*.test.mjs; do grep -q 'test-fixtures' "$test" || tests+=("$test"); done
           node --test --test-shard=${{ matrix.shard }}/3 "${tests[@]}"
 
-  # One job per browser; its pages run four at a time, each in its own process and fixture server.
+  # Each job runs a group of one browser's pages two at a time, each in its own process and fixture server.
   layout:
     runs-on: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.actor != 'dependabot[bot]' && vars.CI_RUNNER == 'blacksmith' && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04' }}
     container:
@@ -69,11 +86,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        browser: [chromium, webkit]
-    name: layout · ${{ matrix.browser }}
+        # Each browser's pages split by measured gate time so no group runs much past two minutes.
+        # Keep in step with tools/test/language-layout/pages/index.mjs (a test in tools/test enforces it).
+        include:
+          - { browser: webkit, pages: configure }
+          - { browser: webkit, pages: install setup }
+          - { browser: webkit, pages: logs entities }
+          - { browser: webkit, pages: profiles api dashboard }
+          - { browser: chromium, pages: configure install }
+          - { browser: chromium, pages: profiles logs }
+          - { browser: chromium, pages: api entities setup dashboard }
+    name: layout · ${{ matrix.browser }} · ${{ matrix.pages }}
     env:
-      # Keep in step with tools/test/language-layout/pages/index.mjs (a test in tools/test enforces it).
-      LAYOUT_PAGE_LIST: dashboard configure setup profiles entities install logs api
+      LAYOUT_PAGE_LIST: ${{ matrix.pages }}
       LAYOUT_BROWSERS: ${{ matrix.browser }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -84,13 +109,26 @@ jobs:
           node-version: '22.23.2'
       - name: Install playwright-core
         run: cd tools/test && npm ci --ignore-scripts
+      - name: Use the hosted runners' default font
+        # The image's only Latin sans fonts lose to a CJK default for system-ui; the layout checks are tuned
+        # to DejaVu Sans, the hosted runners' default. Two pinned packages, fetched directly, no apt index.
+        run: |
+          cd "$RUNNER_TEMP"
+          get() { curl -fsS --retry 3 --retry-all-errors --max-time 60 -o "$1" "http://archive.ubuntu.com/ubuntu/pool/main/f/fonts-dejavu/$1"; }
+          get fonts-dejavu-core_2.37-8_all.deb
+          get fonts-dejavu-mono_2.37-8_all.deb
+          printf '%s  %s\n' \
+            40049660c194f3b8a2541fc7369efebb10e9f94bdac836a2f38fafedd10fa73a fonts-dejavu-core_2.37-8_all.deb \
+            8a599d6553307db7ecb795d2f0e5a301e03234afc75c7358b0ba43466454c89a fonts-dejavu-mono_2.37-8_all.deb | sha256sum -c -
+          dpkg -i fonts-dejavu-mono_2.37-8_all.deb fonts-dejavu-core_2.37-8_all.deb > /dev/null
+          fc-match system-ui | grep -q 'DejaVu Sans'
       - name: Language layout gate
         run: |
           cd tools/test
           export CHROME="$(node -e "console.log(require('playwright-core').chromium.executablePath())")"
           test -x "$CHROME"
           mkdir -p layout-out
-          printf '%s\n' $LAYOUT_PAGE_LIST | xargs -P 4 -I{} sh -c \
+          printf '%s\n' $LAYOUT_PAGE_LIST | xargs -P 2 -I{} sh -c \
             'LAYOUT_PAGES={} node --test language-layout-gate.mjs > layout-out/{}.log 2>&1; echo $? > layout-out/{}.rc'
           status=0
           for page in $LAYOUT_PAGE_LIST; do

@@ -184,10 +184,13 @@ test('breakpoint views are selected', () => {
 test('the CI layout jobs cover exactly the gate pages and browsers', async () => {
   const { readFile } = await import('node:fs/promises');
   const workflow = await readFile(new URL('../../.github/workflows/ui-layout.yml', import.meta.url), 'utf8');
-  const pages = workflow.match(/\n\s+LAYOUT_PAGE_LIST: ([^\n]+)/)[1].trim().split(/\s+/).sort();
-  const browsers = workflow.match(/\n\s+browser: \[([^\]]+)\]/)[1].split(',').map((item) => item.trim()).sort();
-  assert.deepEqual(pages, PAGES.map((page) => page.name).sort());
-  assert.deepEqual(browsers, [...BROWSERS].sort());
+  const groups = [...workflow.matchAll(/\n\s+- \{ browser: (\w+), pages: ([^}]+) \}/g)]
+    .map((match) => ({ browser: match[1], pages: match[2].trim().split(/\s+/) }));
+  assert.deepEqual([...new Set(groups.map((group) => group.browser))].sort(), [...BROWSERS].sort());
+  for (const browser of BROWSERS) {
+    const pages = groups.filter((group) => group.browser === browser).flatMap((group) => group.pages).sort();
+    assert.deepEqual(pages, PAGES.map((page) => page.name).sort(), `${browser} runs every page exactly once`);
+  }
 });
 
 test('every CI browser job runs the Playwright image of the pinned playwright-core', async () => {
