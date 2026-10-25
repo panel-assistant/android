@@ -69,6 +69,40 @@ class HaConnectionRoutesTest {
         assertEquals(listOf("/api/panel_assistant/instance", "/auth/token"), working.requests.map { it.path })
     }
 
+    @Test fun alternateRefusalRecoversOnConfiguredRouteWithoutAnotherSignIn() {
+        val configured = server().also { it.status = 503 }
+        val alternate = server().also { it.tokenStatus = 403 }
+        val (config, values) = config(configured.url)
+        val owner = config.haAuthSnapshot().stableOwner()
+        // An already deployed peer may still advertise the cloud route to a local-only user.
+        assertTrue(learn(config, alternate.url))
+        val unavailable = DashboardHaApiSessionProvider(config).resolve(false)
+        assertNull(unavailable.accessToken)
+        assertFalse("a fallback refusal must not ask the user to sign in", unavailable.rejected)
+        assertNotNull("the existing reconnect lane must retry", unavailable.transientDetail)
+        assertEquals("refresh", values["ha_refresh_token"])
+        assertEquals("expired", values["ha_token"])
+        assertEquals(1, alternate.requests.count { it.path == "/auth/token" })
+
+        configured.status = 200
+        // No sign-in, operator retry, credential replacement or new advertisement intervenes.
+        val renderer = HaCredentialManager.resolve(config)
+        assertEquals("fresh", renderer.session?.accessToken)
+        assertFalse(renderer.rejected)
+        assertEquals(configured.url, renderer.route?.url)
+        val native = DashboardHaApiSessionProvider(config).resolve(false)
+        assertEquals("fresh", native.accessToken)
+        assertEquals(configured.url, native.baseUrl)
+        assertEquals(owner, native.owner)
+        assertEquals("refresh", values["ha_refresh_token"])
+        assertEquals(configured.url, config.haUrl)
+        assertEquals(1, configured.requests.count { it.path == "/auth/token" })
+        assertEquals("the rejected fallback yields to the configured route", 1,
+            alternate.requests.count { it.path == "/auth/token" })
+        assertNoProofCredentials(configured)
+        assertNoProofCredentials(alternate)
+    }
+
     @Test fun failedOnlyRouteIsStillTriedOnceItAnswersAgain() {
         val ha = server()
         val (config, _) = config(ha.url)

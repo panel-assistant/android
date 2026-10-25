@@ -96,8 +96,15 @@ internal object HaCredentialManager {
                     ),
                 )
                 HaLink.Refresh.Rejected -> {
-                    synchronized(lock) { refused = owner }
-                    Outcome(fresh, committed = true)
+                    if (route.url != owner.url) {
+                        // An alternate (for example cloud for a local-only user) can refuse a
+                        // valid credential. Let the existing reconnect lane try the other routes.
+                        HaConnectionRoutes.failed(config, route)
+                        Outcome(HaLink.Refresh.Transient("Home Assistant connection refused sign-in"), committed = true)
+                    } else {
+                        synchronized(lock) { refused = owner }
+                        Outcome(fresh, committed = true)
+                    }
                 }
                 is HaLink.Refresh.Transient -> {
                     HaConnectionRoutes.failed(config, route)
