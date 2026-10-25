@@ -1,6 +1,7 @@
 package io.panelassistant.android.http
 
 import io.panelassistant.android.Config
+import io.panelassistant.android.previousHomeComponent
 import io.panelassistant.android.control.TameController
 import io.panelassistant.android.control.HandBackHomeController
 import io.panelassistant.android.control.HandBackHomePolicy
@@ -164,7 +165,8 @@ internal fun handBackHomeDependencies(
                 restoreOwned = tame::restoreEveryOwnedPackage,
                 enable = tame::adoptAndEnable,
                 setHome = setHome,
-                observeHome = tame::observeDefaultHome,
+                observeHome = tame::observeDefaultHomeComponent,
+                previousHomeComponent = { config.previousHomeComponent },
                 ownPackage = ownPackage(),
             ).handBack(profileKnown)
         },

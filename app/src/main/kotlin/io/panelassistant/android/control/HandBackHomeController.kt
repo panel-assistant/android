@@ -24,6 +24,7 @@ internal class HandBackHomeController(
     private val setHome: (component: String) -> Boolean,
     private val observeHome: () -> String?,
     private val ownPackage: String,
+    private val previousHomeComponent: () -> String? = { null },
 ) {
 
     sealed interface Result {
@@ -48,7 +49,7 @@ internal class HandBackHomeController(
         val currentHome = runCatching { observeHome() }.getOrNull()
         val plan = when (
             val decision =
-                HandBackHomePolicy.decide(owned, profileKnown, observed, homes, ownPackage, currentHome)
+                HandBackHomePolicy.decide(owned, profileKnown, observed, homes, ownPackage, currentHome?.substringBefore('/'), previousHomeComponent())
         ) {
             is HandBackHomePolicy.Decision.Refuse -> return Result.Refused(decision.reason)
             is HandBackHomePolicy.Decision.Proceed -> decision.plan
@@ -82,7 +83,7 @@ internal class HandBackHomeController(
         }
         val handedOver = setHome(target.component)
         val observedHome = observeHome()
-        val secured = HandBackHomePolicy.homeHandbackSecured(handedOver, observedHome, target.pkg, ownPackage)
+        val secured = HandBackHomePolicy.homeHandbackSecured(handedOver, observedHome, target.component, ownPackage)
         return Result.Done(
             HandBackHomePolicy.Outcome(
                 restored = restored,

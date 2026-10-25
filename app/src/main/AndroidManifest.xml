@@ -239,6 +239,11 @@
             android:exported="true"
             android:permission="android.permission.DUMP" />
 
+        <receiver
+            android:name="io.panelassistant.android.platform.PreservePreviousHomeReceiver"
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
+
         <!-- Optional hardware-button capture. Enabled at provisioning:
              settings put secure enabled_accessibility_services <pkg>/.input.PanelAccessibilityService -->
         <service

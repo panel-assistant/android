@@ -3,6 +3,8 @@ package io.panelassistant.android.platform
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import io.panelassistant.android.Config
+import io.panelassistant.android.preservePreviousHome
 
 /** Marks [AndroidSystemEnv.dashboardHomeIntent]: the app bringing its dashboard back, not a HOME press. */
 const val EXTRA_DASHBOARD_RETURN = "io.panelassistant.android.extra.DASHBOARD_RETURN"
@@ -35,6 +37,9 @@ interface SystemEnv {
     /** The current default HOME activity, or null if unresolved (may be the `android` resolver). */
     fun defaultHome(): ActivityRef?
 
+    /** Persist the original real HOME before claiming the role. Failure prevents takeover. */
+    fun preservePreviousHome(): Boolean = true
+
     /** Whether Android accepted a direct start of [component] ("pkg/cls") — the pre-BAL fallback. */
     fun directStart(component: String): Boolean
 
@@ -66,6 +71,10 @@ class AndroidSystemEnv(private val context: Context) : SystemEnv {
 
     override fun defaultHome(): ActivityRef? =
         pm.resolveActivity(homeIntent(), 0)?.activityInfo?.let { ActivityRef(it.packageName, it.name) }
+
+    override fun preservePreviousHome(): Boolean = runCatching {
+        Config(context).preservePreviousHome(defaultHome(), homeActivities())
+    }.getOrDefault(false)
 
     override fun directStart(component: String): Boolean {
         val cn = ComponentName.unflattenFromString(component) ?: return false

@@ -71,6 +71,14 @@ class SystemControllerTest {
     private val BUILTIN = SystemController.BUILTIN_DASHBOARD
     private val DASH_HOME = ActivityRef(OWN, "io.panelassistant.android.DashboardActivity")
 
+    @Test fun `home claim is refused when original launcher cannot be persisted`() {
+        val env = FakeSystemEnv(preserveHomeSucceeds = false)
+        val (controller, root, daemon) = sc(env)
+        assertFalse(controller.ensureAdminLauncherHome())
+        assertTrue(root.ran.isEmpty())
+        assertTrue(daemon.sent.isEmpty())
+    }
+
     @Test fun homeUiProofRequiresForegroundDashboardAndResolvedHome() {
         val ready = sc(FakeSystemEnv(default = DASH_HOME), builtinForeground = true).first
             .homeUiProof("", adminUiVisible = false)

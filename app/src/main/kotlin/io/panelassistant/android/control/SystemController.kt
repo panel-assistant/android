@@ -353,6 +353,7 @@ class SystemController(
         admittedRoute: PrivilegeRoute? = null,
     ): Boolean {
         if (!AndroidInput.isComponent(component)) return false
+        if (!env.preservePreviousHome()) return false
         // The ordered DAEMON→SU route definitions live once; the admitted-route path runs exactly the
         // one admitted attempt (never falling through to another transport), while the automatic path
         // tries them in order via the shared router.
