@@ -40,12 +40,16 @@ internal class RemoteDebugSecurityAuthorityStore(
     private val chmod0600: (File) -> Boolean = ::chmodRemoteDebugSecurityAuthorityFile,
     private val syncDirectory: (File) -> Boolean = ::syncRemoteDebugSecurityAuthorityDirectory,
 ) {
+    private val recoveryFence = noBackupFilesDir.resolve("network-adb-recovery.fence")
     private val record = noBackupFilesDir.resolve(RECORD_FILE)
     private val temporary = noBackupFilesDir.resolve(TEMPORARY_FILE)
     private val publication = noBackupFilesDir.resolve(PUBLICATION_FILE)
     private val parent = noBackupFilesDir
 
-    fun load(): RemoteDebugSecurityAuthorityLoad {
+    fun load(): RemoteDebugSecurityAuthorityLoad = loadRecord(false)
+
+    private fun loadRecord(ignoreRecoveryFence: Boolean): RemoteDebugSecurityAuthorityLoad {
+        if (!ignoreRecoveryFence && !Files.notExists(recoveryFence.toPath(), LinkOption.NOFOLLOW_LINKS)) return RemoteDebugSecurityAuthorityLoad.Corrupt
         // A durable publication fence means the target rename was not durably settled. Any entry,
         // including a foreign type or unreadable object, is fail-closed until a new TRANSITION
         // publication replaces the authority and retires the fence.
@@ -87,6 +91,7 @@ internal class RemoteDebugSecurityAuthorityStore(
 
     private fun writeAndReadBack(authority: RemoteDebugSecurityAuthority): Boolean = runCatching {
         if (!parent.isDirectory || Files.isSymbolicLink(parent.toPath())) return@runCatching false
+        if (authority.state == RemoteDebugSecurityState.HARDENED && !Files.notExists(recoveryFence.toPath(), LinkOption.NOFOLLOW_LINKS)) return@runCatching false
         if (authority.state == RemoteDebugSecurityState.HARDENED && !armPublicationFence(authority)) {
             return@runCatching false
         }
@@ -105,7 +110,7 @@ internal class RemoteDebugSecurityAuthorityStore(
         // already-durable fence remains and both this process and a fresh process reject HARDENED.
         if (!syncDirectory(parent)) return@runCatching false
         if (!retirePublicationFence()) return@runCatching false
-        load() == RemoteDebugSecurityAuthorityLoad.Valid(authority)
+        loadRecord(authority.state == RemoteDebugSecurityState.TRANSITION) == RemoteDebugSecurityAuthorityLoad.Valid(authority)
     }.getOrDefault(false).also { runCatching { Files.deleteIfExists(temporary.toPath()) } }
 
     private fun armPublicationFence(authority: RemoteDebugSecurityAuthority): Boolean = runCatching {

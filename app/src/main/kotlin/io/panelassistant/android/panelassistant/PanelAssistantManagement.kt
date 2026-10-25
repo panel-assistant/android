@@ -13,6 +13,8 @@ internal data class PanelAssistantManagementSnapshot(val health: String, val sta
 
 /** What the panel serves when Panel Assistant manages it over its own session. */
 internal interface PanelAssistantManagement {
+    val localAdb: PanelAssistantLocalAdb? get() = null
+
     suspend fun snapshot(): PanelAssistantManagementSnapshot
 
     /**
@@ -41,8 +43,10 @@ internal interface PanelAssistantManagement {
             write: suspend (Map<String, String>, () -> Boolean) -> String?,
             door: () -> io.panelassistant.android.ManageDoor? = { null },
             blobs: PanelAssistantBlobs? = null,
+            localAdb: PanelAssistantLocalAdb? = null,
             serve: suspend (String, JSONObject, () -> Unit) -> PanelAssistantManageReply? = { _, _, _ -> null },
         ): PanelAssistantManagement = object : PanelAssistantManagement {
+            override val localAdb = localAdb
             override suspend fun snapshot() = read()
 
             override suspend fun applySettings(settings: Map<String, String>, admit: () -> Boolean) = write(settings, admit)
@@ -141,6 +145,10 @@ internal class PanelAssistantManagementRequests(
     })
 
     fun onRequest(event: PanelAssistantSessionEvent.Manage) {
+        if (event.op.startsWith("adb.") && event.origin != null) {
+            if (event.session == session.token) enqueue(Answer(event.commandId, "refused", "not_commandable", null))
+            return
+        }
         if (event.origin != null) {
             return relay(event.session, event.commandId, event.origin) {
                 JSONObject().put("kind", "manage").put("command_id", event.commandId).put("op", event.op)
@@ -277,6 +285,19 @@ internal class PanelAssistantManagementRequests(
         fun refused(code: String) = Answer(event.commandId, PanelAssistantTransportProtocol.OUTCOME_REFUSED, code, null)
         val deadline = event.deadlineMs ?: return refused(PanelAssistantCommandProcessor.CODE_INVALID_VALUE)
         if (monotonicMillis() - receivedAt > deadline) return refused(PanelAssistantCommandProcessor.CODE_EXPIRED)
+        if (event.op.startsWith("adb.")) {
+            if (PanelAssistantTransportProtocol.CAPABILITY_LOCAL_ADB !in session.capabilities) return refused("not_commandable")
+            val channel = management.localAdb ?: return refused("not_commandable")
+            var waitingForApproval = false
+            val reply = channel.request(event.op, event.args ?: JSONObject(),
+                { !closed && monotonicMillis() - receivedAt <= deadline + if (waitingForApproval) 600_000L else 0L },
+                {
+                    waitingForApproval = true
+                    enqueue(Answer(event.commandId, "pending_approval", null, null))
+                },
+            )
+            return Answer(event.commandId, reply.outcome, reply.code, reply.result)
+        }
         return when (event.op) {
             PanelAssistantTransportProtocol.MANAGE_SNAPSHOT -> {
                 val snapshot = management.snapshot()
@@ -306,9 +327,11 @@ internal class PanelAssistantManagementRequests(
 
     /** End the session's requests; one still running is cancelled and never answered. */
     fun close() {
-        val ending = synchronized(lock) {
-            closed = true
-            relays.values.toList().also { relays.clear() }
+        val ending = io.panelassistant.android.control.RemoteDebugSecurityTransitionGate.withLock {
+            synchronized(lock) {
+                closed = true
+                relays.values.toList().also { relays.clear() }
+            }
         }
         // Every relayed connection ends with the session: its subscriptions stop and its commands fail.
         ending.forEach { relay ->

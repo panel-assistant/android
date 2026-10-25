@@ -202,4 +202,5 @@
     <string name="listening_on_port">Luistert op :%1$d</string>
     <string name="degraded_profile_startup">Verminderde functionaliteit · het opstarten van het profiel is mislukt</string>
     <string name="degraded_startup">Verminderde functionaliteit · opstarten mislukt</string>
+    <string name="approval_op_local_adb">Paneelonderhoud uitvoeren</string>
 </resources>

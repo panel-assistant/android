@@ -37,12 +37,14 @@ class AdbController internal constructor(
     private val disableMarker: NetworkAdbDisableTransitionMarker,
     // Production injects Su; a JVM test injects a fake root boundary.
     private val root: RootShell = Su,
+    private val managedOff: () -> Boolean = { false },
 ) {
     constructor(context: Context, config: Config) : this(
         config = config,
         disableMarker = NetworkAdbDisableTransitionMarker(
             context.applicationContext.noBackupFilesDir.resolve(NETWORK_ADB_DISABLE_MARKER_FILE),
         ),
+        managedOff = { io.panelassistant.android.panelassistant.RootLocalAdbEndpoint().state()?.let { it.managed && !it.recoveryHold } == true },
     )
 
     /** Root present — required to set the props and restart adbd. */
@@ -50,12 +52,19 @@ class AdbController internal constructor(
 
     /** ha-paneld's persist intent = the switch state. ha-paneld re-asserts adb-tcp at boot/reconnect
      *  while this is true, so it survives firmwares that drop `persist.adb.tcp.port`. */
-    fun isPersisted(): Boolean = config.networkAdbEnabled
+    fun isPersisted(): Boolean = config.networkAdbEnabled && !ManagedNetworkAdb.managed
 
     /** Exact Hardened/Guard admission: durable OFF marker settled, ownership false, and live state
      * repeatedly proven inactive. Caller composes this under [RemoteDebugSecurityTransitionGate]. */
     internal fun hardenedRemoteDebugOff(): Boolean = !config.networkAdbEnabled &&
-        disableMarker.isAbsentDurably() && proveInactive()
+        disableMarker.isAbsentDurably() && (managedOffProof() || proveInactive())
+
+    private fun managedOffProof(): Boolean = ManagedNetworkAdb.managed && managedOff()
+
+    internal fun resealManagedHardened(): Boolean = RemoteDebugSecurityTransitionGate.withLock {
+        if (!config.hardenedSecurityEnabled || !managedOffProof() || CdpRelay.running || !disableMarker.isAbsentDurably()) false
+        else config.setNetworkAdbEnabled(false) && RemoteDebugSecurityTransitionGate.sealHardened()
+    }
 
     /** Whether network adb is live or enabled right now, or null when the relevant properties cannot
      *  all be proven inactive. The unprivileged reads detect Developer-options/external adb even on
@@ -102,6 +111,7 @@ class AdbController internal constructor(
      */
     internal fun set(on: Boolean): ControlApplyOutcome = RemoteDebugSecurityTransitionGate.mutate {
         if (on) {
+            if (ManagedNetworkAdb.ownsRuntime()) return@mutate ControlApplyOutcome.FAILED
             // A marker is a durable OFF instruction, including when its contents are corrupt. Never
             // convert an interrupted teardown into TCP enablement merely because config ownership is
             // still true from the pre-teardown state.
@@ -117,6 +127,10 @@ class AdbController internal constructor(
             }
             if (!config.setNetworkAdbEnabled(true)) return@mutate ControlApplyOutcome.FAILED
             return@mutate if (apply()) ControlApplyOutcome.APPLIED else ControlApplyOutcome.FAILED
+        }
+        if (ManagedNetworkAdb.managed) {
+            closeWebViewDebugging()
+            return@mutate if (config.setNetworkAdbEnabled(false)) ControlApplyOutcome.APPLIED else ControlApplyOutcome.FAILED
         }
         // This switch is also the explicit admission control for the built-in renderer's DevTools
         // socket. Closing the global WebView debugging surface before the potentially slow root teardown
@@ -143,6 +157,7 @@ class AdbController internal constructor(
             resealHardenedAuthorityIfExact()
             return@mutate
         }
+        if (ManagedNetworkAdb.ownsRuntime()) return@mutate
         val persisted = config.networkAdbEnabled
         val rootAvailable = available()
         if (shouldReassertNetworkAdb(
@@ -160,6 +175,10 @@ class AdbController internal constructor(
     internal fun commitHardenedWhenRemoteAdbInactive(commit: () -> Boolean): HardenedNetworkAdbAdmission =
         RemoteDebugSecurityTransitionGate.mutate {
             closeWebViewDebugging()
+            if (managedOffProof()) {
+                if (!config.setNetworkAdbEnabled(false) || !disableMarker.clear() || !disableMarker.isAbsentDurably()) return@mutate HardenedNetworkAdbAdmission.DISABLE_FAILED
+                return@mutate if (commit()) HardenedNetworkAdbAdmission.APPLIED else HardenedNetworkAdbAdmission.COMMIT_FAILED
+            }
             val disableRequired = config.networkAdbEnabled || disableMarker.isPending()
             completeHardenedNetworkAdbAdmission(
                 disableRequired = disableRequired,
@@ -217,6 +236,8 @@ class AdbController internal constructor(
     fun statusText(): String {
         val active = activeState()
         return when {
+            ManagedNetworkAdb.managed -> "off (managed by Panel Assistant)"
+            ManagedNetworkAdb.recoveryHold -> "active (recovery)"
             disableMarker.isPending() -> "disabling (recovery pending)"
             config.networkAdbEnabled -> "persistent (Panel Assistant)"
             active == true -> "active (external — not Panel Assistant)"
@@ -236,6 +257,8 @@ class AdbController internal constructor(
                 context.applicationContext.noBackupFilesDir.resolve(NETWORK_ADB_DISABLE_MARKER_FILE),
             )
             if (!marker.isAbsentDurably()) return false
+            val managed = io.panelassistant.android.panelassistant.RootLocalAdbEndpoint().state()
+            if (managed?.managed == true && !managed.recoveryHold) return true
             return proveSettledNetworkAdbInactive(
                 sample = {
                     remoteAdbActiveState(

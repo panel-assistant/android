@@ -212,4 +212,5 @@
     <string name="listening_on_port">正在监听 :%1$d</string>
     <string name="degraded_profile_startup">降级 · 硬件配置启动失败</string>
     <string name="degraded_startup">降级 · 启动失败</string>
+    <string name="approval_op_local_adb">运行面板维护</string>
 </resources>

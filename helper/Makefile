@@ -24,14 +24,14 @@ BUILD   := build
 # the unit tests, so coverage can never silently drop a module. main.c (accept loop) and sysexec.c
 # (real exec/pipe/thread/reboot) are deliberately NOT here: the fuzz and test builds swap in a stub
 # sysexec and never run main, so a valid REBOOT/RELOAD/WATCH/GPIOWATCH can't exec or spawn on the build host.
-CORE_SRCS := $(addprefix $(SRC_DIR)/, identity.c util.c sha256.c led.c screen.c input.c gpio.c sysctl.c perf.c cht8305.c vi530x.c version.c companion.c guard_maintenance.c logcat.c server.c dispatch.c)
+CORE_SRCS := $(addprefix $(SRC_DIR)/, identity.c adb_recovery.c util.c sha256.c led.c screen.c input.c gpio.c sysctl.c perf.c cht8305.c vi530x.c version.c companion.c guard_maintenance.c logcat.c server.c dispatch.c)
 DAEMON_SRCS := $(CORE_SRCS) $(SRC_DIR)/main.c $(SRC_DIR)/sysexec.c
 STUB := test/sysexec_stub.c
 TEST_BUILD_ID := aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 REPLACEMENT_OLD_BUILD_ID := eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
 REPLACEMENT_NEW_BUILD_ID := dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 
-.PHONY: all daemon test test-units peer-auth-test request-timeout-test replacement-identity-test cdprelay-resource-test socket-test-server fuzz contract clean print-core
+.PHONY: adb-recovery-test all daemon test test-units peer-auth-test request-timeout-test replacement-identity-test cdprelay-resource-test socket-test-server fuzz contract clean print-core
 all: daemon
 
 # Host build of the real daemon — a compile sanity check (-Werror); the shipped binary is build.sh.
@@ -42,11 +42,12 @@ $(BUILD)/hapaneld-helper: $(DAEMON_SRCS) | $(BUILD)
 # Unit tests: CORE modules + the sysexec stub (no real exec) + the test driver. `test` runs the three
 # groups one after another, even under -j; CI runs each group as its own job because the two installer
 # scripts spend most of their time waiting on the installer's retry intervals.
-TEST_BINS := $(BUILD)/uninstall-supervisor $(BUILD)/unit $(BUILD)/hapaneld-helper $(BUILD)/companion-boundary $(BUILD)/guard-maintenance-boundary $(BUILD)/guard-maintenance-gates $(BUILD)/replacement-lease-old $(BUILD)/replacement-lease-new $(BUILD)/sysexec-fd-boundary $(BUILD)/sysexec-platform-wrapper $(BUILD)/peer-auth $(BUILD)/request-timeout $(BUILD)/bounded-exec $(BUILD)/hapaneld-helper-old $(BUILD)/hapaneld-helper-new $(BUILD)/cdprelay-resource-test $(BUILD)/cdprelay-test $(BUILD)/logcat-fixture $(BUILD)/logcat-boundary
+TEST_BINS := $(BUILD)/adb-recovery $(BUILD)/uninstall-supervisor $(BUILD)/unit $(BUILD)/hapaneld-helper $(BUILD)/companion-boundary $(BUILD)/guard-maintenance-boundary $(BUILD)/guard-maintenance-gates $(BUILD)/replacement-lease-old $(BUILD)/replacement-lease-new $(BUILD)/sysexec-fd-boundary $(BUILD)/sysexec-platform-wrapper $(BUILD)/peer-auth $(BUILD)/request-timeout $(BUILD)/bounded-exec $(BUILD)/hapaneld-helper-old $(BUILD)/hapaneld-helper-new $(BUILD)/cdprelay-resource-test $(BUILD)/cdprelay-test $(BUILD)/logcat-fixture $(BUILD)/logcat-boundary
 test:
 	$(MAKE) test-units
 
 test-units: $(TEST_BINS)
+	$(BUILD)/adb-recovery
 	$(BUILD)/uninstall-supervisor
 	$(BUILD)/unit
 	test "$$($(BUILD)/hapaneld-helper --version)" = "HELPER version=1.3.1 proto=1.3"
@@ -99,7 +100,7 @@ $(BUILD)/sysexec-platform-wrapper: $(SRC_DIR)/sysexec.c test/sysexec_platform_wr
 peer-auth-test: $(BUILD)/peer-auth
 	$(BUILD)/peer-auth
 $(BUILD)/peer-auth: test/peer_auth.c $(SRC_DIR)/main.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c $(SRC_DIR)/identity.c | $(BUILD)
-	$(CC) $(CFLAGS) -I$(SRC_DIR) test/peer_auth.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c $(SRC_DIR)/identity.c $(LDLIBS) -o $@
+	$(CC) $(CFLAGS) -I$(SRC_DIR) test/peer_auth.c $(SRC_DIR)/adb_recovery.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c $(SRC_DIR)/identity.c $(LDLIBS) -o $@
 
 request-timeout-test: $(BUILD)/request-timeout
 	$(BUILD)/request-timeout
@@ -115,7 +116,7 @@ $(BUILD)/logcat-fixture: test/logcat_fixture.c | $(BUILD)
 $(BUILD)/logcat-boundary: $(CORE_SRCS) $(SRC_DIR)/sysexec.c test/logcat_boundary.c $(BUILD)/logcat-fixture | $(BUILD)
 	$(CC) $(CFLAGS) -DHAPANELD_LOGCAT_PATH='"$(abspath $(BUILD)/logcat-fixture)"' -I$(SRC_DIR) $(CORE_SRCS) $(SRC_DIR)/sysexec.c test/logcat_boundary.c $(LDLIBS) -o $@
 $(BUILD)/request-timeout: test/request_timeout.c $(SRC_DIR)/main.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c $(SRC_DIR)/identity.c | $(BUILD)
-	$(CC) $(CFLAGS) -I$(SRC_DIR) test/request_timeout.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c $(SRC_DIR)/identity.c $(LDLIBS) -o $@
+	$(CC) $(CFLAGS) -I$(SRC_DIR) test/request_timeout.c $(SRC_DIR)/adb_recovery.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c $(SRC_DIR)/identity.c $(LDLIBS) -o $@
 
 # Start two real daemon binaries on an isolated socket. Their names intentionally share the exact
 # 15-byte Linux comm value used on panels while their executable inodes and BUILDIDs differ.
@@ -170,3 +171,8 @@ $(BUILD)/uninstall-supervisor: $(CORE_SRCS) $(SRC_DIR)/main.c $(SRC_DIR)/sysexec
 	$(CC) $(CFLAGS) -DHAPANELD_TEST -DSOCK_NAME='"hapaneld-helper-uninstall-test"' \
 		-DAPP_DATA='"/tmp/.hapaneld-uninstall-data-test"' -DAPP_USER_DATA='"/tmp/.hapaneld-uninstall-user-test"' \
 		-I$(SRC_DIR) $(CORE_SRCS) $(SRC_DIR)/sysexec.c test/uninstall_supervisor.c $(LDLIBS) -Wl,--wrap=unlinkat -Wl,--wrap=lstat -o $@
+
+$(BUILD)/adb-recovery: test/adb_recovery.c $(SRC_DIR)/adb_recovery.c $(SRC_DIR)/identity.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c | $(BUILD)
+	$(CC) $(CFLAGS) -DAPP_DATA='"/proc/self"' -DAPP_USER_DATA='"/proc/self"' -DHAPANELD_BUILD_ID='"$(TEST_BUILD_ID)"' -I$(SRC_DIR) test/adb_recovery.c $(SRC_DIR)/identity.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c $(LDLIBS) -o $@
+adb-recovery-test: $(BUILD)/adb-recovery
+	$(BUILD)/adb-recovery

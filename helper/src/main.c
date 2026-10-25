@@ -43,6 +43,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "adb_recovery.h"
 #include "led.h"
 #include "screen.h"
 #include "input.h"
@@ -587,6 +588,7 @@ static int run_supervisor_entry(char **argv) {
 }
 
 int main(int argc, char **argv) {
+    if (argc == 2 && strcmp(argv[1], "--adb-recovery") == 0) return adb_recovery_main();
     if (argc == 2 && strcmp(argv[1], "--version") == 0) {
         puts(helper_identity());
         return 0;

@@ -120,6 +120,7 @@ internal class ServiceHaLinks(
                 { server().managementSnapshot() },
                 { settings, admit -> server().applyManagedSettings(settings, admit) },
                 door = { server().manageDoor() },
+                localAdb = io.panelassistant.android.panelassistant.LocalAdbRuntime.create(context, scope, config),
                 blobs = io.panelassistant.android.panelassistant.PanelAssistantBlobs(haSessionAuthority),
             ) { op, args, onPending -> server().managementRequest(op, args, onPending, haSessionAuthority) },
             onConnected = config::markPanelAssistantConnected,

@@ -202,4 +202,5 @@
     <string name="listening_on_port">Nasłuchiwanie na :%1$d</string>
     <string name="degraded_profile_startup">Ograniczona funkcjonalność · nie udało się uruchomić profilu</string>
     <string name="degraded_startup">Ograniczona funkcjonalność · nie udało się uruchomić</string>
+    <string name="approval_op_local_adb">Uruchom konserwację panelu</string>
 </resources>

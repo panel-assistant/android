@@ -202,4 +202,5 @@
     <string name="listening_on_port">Прослуховування на :%1$d</string>
     <string name="degraded_profile_startup">Погіршена робота · не вдалося запустити профіль</string>
     <string name="degraded_startup">Погіршена робота · збій під час запуску</string>
+    <string name="approval_op_local_adb">Виконати обслуговування панелі</string>
 </resources>

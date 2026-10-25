@@ -101,6 +101,7 @@ internal fun Context.nativeString(@StringRes id: Int, vararg formatArgs: Any): S
 
 internal fun Context.localizedLabel(operation: SensitiveOperation): String = getString(
     when (operation) {
+        SensitiveOperation.LOCAL_ADB_MAINTENANCE -> R.string.approval_op_local_adb
         SensitiveOperation.APK_INSTALL -> R.string.approval_op_apk_install
         SensitiveOperation.APK_FETCH -> R.string.approval_op_apk_fetch
         SensitiveOperation.BACKUP_EXPORT -> R.string.approval_op_backup_export

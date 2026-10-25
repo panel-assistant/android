@@ -212,4 +212,5 @@
     <string name="listening_on_port">Lauscht auf :%1$d</string>
     <string name="degraded_profile_startup">Eingeschränkt · Profilstart fehlgeschlagen</string>
     <string name="degraded_startup">Eingeschränkt · Start fehlgeschlagen</string>
+    <string name="approval_op_local_adb">Wartung des Panels ausführen</string>
 </resources>

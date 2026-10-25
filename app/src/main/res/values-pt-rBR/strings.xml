@@ -202,4 +202,5 @@
     <string name="listening_on_port">Escutando em :%1$d</string>
     <string name="degraded_profile_startup">Degradado · falha ao iniciar o perfil</string>
     <string name="degraded_startup">Degradado · falha na inicialização</string>
+    <string name="approval_op_local_adb">Executar manutenção do painel</string>
 </resources>

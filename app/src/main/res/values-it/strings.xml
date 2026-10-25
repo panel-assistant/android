@@ -212,4 +212,5 @@
     <string name="listening_on_port">In ascolto su :%1$d</string>
     <string name="degraded_profile_startup">Funzionamento degradato · avvio del profilo non riuscito</string>
     <string name="degraded_startup">Funzionamento degradato · avvio non riuscito</string>
+    <string name="approval_op_local_adb">Esegui manutenzione del pannello</string>
 </resources>

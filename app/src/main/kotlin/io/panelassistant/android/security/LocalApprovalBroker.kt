@@ -5,6 +5,7 @@ import java.security.MessageDigest
 import java.security.SecureRandom
 
 internal enum class SensitiveOperation(val label: String) {
+    LOCAL_ADB_MAINTENANCE("Run panel maintenance"),
     APK_INSTALL("Install uploaded APK"),
     APK_FETCH("Download an APK from a link"),
     BACKUP_EXPORT("Export panel backup"),
@@ -63,8 +64,8 @@ internal class ApprovalBroker(
     @Volatile
     var onRequested: ((PendingApproval) -> Unit)? = null
 
-    fun request(operation: SensitiveOperation, peer: String, payload: String, summary: String): Pair<Decision, String> {
-        val (answer, created) = register(operation, peer, payload, summary)
+    fun request(operation: SensitiveOperation, peer: String, payload: String, summary: String, consumeApproved: Boolean = true): Pair<Decision, String> {
+        val (answer, created) = register(operation, peer, payload, summary, consumeApproved)
         created?.let { onRequested?.invoke(it) }
         return answer
     }
@@ -75,6 +76,7 @@ internal class ApprovalBroker(
         peer: String,
         payload: String,
         summary: String,
+        consumeApproved: Boolean,
     ): Pair<Pair<Decision, String>, PendingApproval?> {
         val now = monotonicMs()
         prune(now)
@@ -82,7 +84,7 @@ internal class ApprovalBroker(
         val match = records.values.firstOrNull { it.digest == digest }
         if (match != null) {
             if (match.approved) {
-                records.remove(match.visible.id)
+                if (consumeApproved) records.remove(match.visible.id)
                 return (Decision.APPROVED to match.visible.id) to null
             }
             return (Decision.PENDING to match.visible.id) to null
@@ -118,6 +120,16 @@ internal class ApprovalBroker(
 
     @Synchronized
     fun deny(id: String): Boolean = records.remove(id) != null
+
+    /** Final admission consumes only this original, still-live exact request; it never registers a retry. */
+    @Synchronized
+    fun consume(id: String, operation: SensitiveOperation, peer: String, payload: String): Boolean {
+        prune()
+        val record = records[id] ?: return false
+        if (!record.approved || record.digest != requestDigest(operation, peer, payload)) return false
+        records.remove(id)
+        return true
+    }
 
     @Synchronized
     fun clear() = records.clear()

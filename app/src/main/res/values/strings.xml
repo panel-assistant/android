@@ -214,4 +214,5 @@
     <string name="listening_on_port">Listening on :%1$d</string>
     <string name="degraded_profile_startup">Degraded · profile startup failed</string>
     <string name="degraded_startup">Degraded · startup failed</string>
+    <string name="approval_op_local_adb">Run panel maintenance</string>
 </resources>
