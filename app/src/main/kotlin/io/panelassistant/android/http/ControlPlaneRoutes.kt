@@ -606,8 +606,8 @@ private suspend fun handleApkFetchFromUrl(call: OpCall, routes: ControlPlaneRout
         )
         return
     }
-    // Bound to the URL alone, not the whole body: the destination is what is being approved, and the
-    // request identifier carries no authority, so a retry after approval need not reuse it.
+    // The body digest binds the destination. Managed arguments are also canonical request parameters,
+    // so the sidebar's replay retains its request identifier as part of the exact approval identity.
     if (!routes.authorize(
             call,
             SensitiveOperation.APK_FETCH,
@@ -616,6 +616,12 @@ private suspend fun handleApkFetchFromUrl(call: OpCall, routes: ControlPlaneRout
         )
     ) return
     val echo = requestEcho(request)
+    // Cancellation and approval admission share the existing request owner. A replay whose security
+    // mode changed must still be inert if Cancel retired it while the approval was waiting.
+    if ((call as? ManageOpCall)?.managed?.approval?.admit() == false) {
+        call.respondText("""{"ok":false,"error":"cancelled"$echo}""", ContentType.Application.Json, CLIENT_CLOSED_REQUEST)
+        return
+    }
     // Reserving supersedes any panel-side work the operator has just replaced, so the previous fetch
     // is stopped and its staged token retired rather than stranding this request behind them.
     val admitted = beginApkStaging(call, dependencies, echo, owner = request) ?: return
@@ -653,7 +659,17 @@ private suspend fun handleApkFetchCancel(call: OpCall, dependencies: ApkUploadRo
         )
         return
     }
-    val cancelled = dependencies.pending.cancelPanelWork(request)
+    val waiting = (call as? ManageOpCall)?.managed?.approval?.cancelPending(
+        "install.apk.from_url",
+        { it.optString("request").trim() == request },
+        manageReplyFor(
+            CLIENT_CLOSED_REQUEST.value,
+            org.json.JSONObject().put("ok", false).put("error", "cancelled").put("request", request),
+            ContentType.Application.Json.toString(),
+            emptyList(),
+        ),
+    ) == true
+    val cancelled = dependencies.pending.cancelPanelWork(request) || waiting
     call.respondText("""{"ok":true,"cancelled":$cancelled}""", ContentType.Application.Json)
 }
 
