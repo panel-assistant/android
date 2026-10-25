@@ -538,7 +538,9 @@ class PaneldService : Service() {
         preparedConfig.migrateLiveStore() // carry persisted settings across a schema bump before anything reads them
         // These migrations and generated identities precede every renderer and network owner.
         preparedConfig.migrateLogShipTcpDefault()
-        preparedConfig.migrateSetupQuestionsForExistingInstall()
+        io.panelassistant.android.platform.reconcileSetupDeviceAdmin(
+            preparedConfig, io.panelassistant.android.platform.AndroidScreenPower(this@PaneldService),
+        )
         preparedConfig.ensureDeviceUid()
         preparedConfig.ensurePanelId()
         val preparedLiveSettings = LiveSettingAuthority.persistent(

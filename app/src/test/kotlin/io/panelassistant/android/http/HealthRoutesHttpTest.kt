@@ -3,6 +3,7 @@ package io.panelassistant.android.http
 import io.panelassistant.android.config.SettingsRegistry
 import io.panelassistant.android.BuildConfig
 import io.panelassistant.android.Config
+import io.panelassistant.android.setupEverCompleted
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -16,6 +17,23 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class HealthRoutesHttpTest {
+    @Test fun `health reports first completion live and retains it during repair`() {
+        PaneldServerHttpFixture().use { fixture ->
+            initializeHealth(fixture)
+            testApplication {
+                application { fixture.mount(this) }
+                assertTrue(client.get("/health").bodyAsText().contains(" setup_complete=0 "))
+                fixture.config.setupEverCompleted = true
+                for (path in listOf("/health", "/api/v1/health")) {
+                    assertTrue(client.get(path).bodyAsText().contains(" setup_complete=1 "))
+                }
+                // Completion remains durable even with no working sign-in; permission reconciliation
+                // must not remove an established panel's screen-lock fallback during a repair.
+                assertTrue(fixture.config.setupEverCompleted)
+            }
+        }
+    }
+
     @Test fun `root and v1 health retain tokens and real root admission`() {
         PaneldServerHttpFixture().use { fixture ->
             initializeHealth(fixture)
