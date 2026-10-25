@@ -277,4 +277,31 @@ class WebViewUpdateTest {
         assertEquals("installed", owner.observe().getJSONObject("transaction").optString("state"))
         assertEquals(0, rebinds)
     }
+
+    @Test fun `live submission projects installing across server owners while disk retains unknown`() = runBlocking {
+        val fixture = Fixture()
+        fixture.reply = InstallOutcome.Retryable("reply lost", mayHaveCommitted = true)
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        fixture.afterInstall = {
+            entered.countDown()
+            check(release.await(5, TimeUnit.SECONDS))
+        }
+        val owner = fixture.owner(this)
+        owner.install("owner", fixture.spec.apkSha256)
+        try {
+            assertTrue(entered.await(5, TimeUnit.SECONDS))
+            assertEquals("submitted_unknown", fixture.durable?.optString("state"))
+            assertEquals("installing", owner.observe().getJSONObject("transaction").optString("state"))
+            val replacement = fixture.owner(this)
+            assertEquals("installing", replacement.observe().getJSONObject("transaction").optString("state"))
+            assertEquals("submitted_unknown", fixture.durable?.optString("state"))
+            release.countDown()
+            finishWork()
+            assertEquals("submitted_unknown", owner.observe().getJSONObject("transaction").optString("state"))
+            assertEquals("submitted_unknown", replacement.observe().getJSONObject("transaction").optString("state"))
+            replacement.observe()
+            assertEquals(1, fixture.submissions)
+        } finally { release.countDown() }
+    }
 }

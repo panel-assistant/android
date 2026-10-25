@@ -251,6 +251,12 @@ internal class WebViewUpdate(
         val selected = candidate()
         val spec = selected?.second
         val reason = refusal(observed, spec)
+        val transaction = receipt?.let { JSONObject(it.toString()) }
+        val progress = InstallProgress.presentationSnapshot()
+        // Disk stays uncertain before submission. Only the live shared owner can say it is still working.
+        if (transaction?.optString("state") == "submitted_unknown" && progress.running && progress.component == "WebView") {
+            transaction.put("state", "installing")
+        }
         return JSONObject().put("schema", 1).put("supported", true).put("eligible", reason == null)
             .put("reason", reason ?: JSONObject.NULL).put("profile_id", observed.profileId)
             .put("android_sdk", observed.sdk).put("supported_abis", JSONArray(observed.abis.toList()))
@@ -267,7 +273,7 @@ internal class WebViewUpdate(
                 .put("version_code", spec.versionCode).put("engine_version", spec.version).put("sha256", spec.apkSha256)
                 .put("signer_sha256", JSONArray(listOf(spec.certSha256))).put("abis", JSONArray(spec.abis.toList()))
                 .put("min_sdk", spec.minSdk).put("max_sdk", spec.maxSdk ?: JSONObject.NULL).put("size", spec.size).put("install_class", spec.installClass))
-            .put("transaction", receipt?.let { JSONObject(it.toString()) } ?: JSONObject.NULL)
+            .put("transaction", transaction ?: JSONObject.NULL)
     }
 
     private fun transaction(id: String, spec: WebViewSpec, process: String, state: String, reason: String? = null) = JSONObject()
