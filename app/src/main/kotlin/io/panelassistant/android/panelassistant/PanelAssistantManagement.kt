@@ -327,9 +327,11 @@ internal class PanelAssistantManagementRequests(
 
     /** End the session's requests; one still running is cancelled and never answered. */
     fun close() {
-        val ending = synchronized(lock) {
-            closed = true
-            relays.values.toList().also { relays.clear() }
+        val ending = io.panelassistant.android.control.RemoteDebugSecurityTransitionGate.withLock {
+            synchronized(lock) {
+                closed = true
+                relays.values.toList().also { relays.clear() }
+            }
         }
         // Every relayed connection ends with the session: its subscriptions stop and its commands fail.
         ending.forEach { relay ->

@@ -29,8 +29,8 @@ internal interface LocalAdbEndpoint {
     fun state(): LocalAdbState?
     fun arm(nonce: String): Boolean
     fun beat(nonce: String): Boolean
-    fun recover(nonce: String): Boolean
-    fun shell(command: ByteArray, timeoutMs: Int): JSONObject
+    fun recover(nonce: String, submit: (() -> Unit) -> Boolean = { it(); true }): Boolean?
+    fun shell(command: ByteArray, timeoutMs: Int, submit: (() -> Unit) -> Boolean): JSONObject?
 }
 
 /** Session authority stays here; the root daemon only trusts this app's UID, never a remote token. */
@@ -42,7 +42,8 @@ internal class LocalAdbRuntime(
     private val bootstrap: () -> Boolean,
     private val dispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.IO,
     private val securityTransition: (() -> Boolean) -> Boolean = { RemoteDebugSecurityTransitionGate.mutate(it) },
-    private val authorize: suspend (String, () -> Unit) -> String? = { _, _ -> "not_commandable" },
+    private val authorize: suspend (String, () -> Unit, () -> Boolean) -> io.panelassistant.android.http.DeferredSessionApproval =
+        { _, _, _ -> io.panelassistant.android.http.DeferredSessionApproval("not_commandable") },
     private val onClosed: () -> Unit = {},
     private val healthy: suspend () -> Boolean = { true },
 ) : PanelAssistantLocalAdb {
@@ -54,17 +55,20 @@ internal class LocalAdbRuntime(
     @Volatile private var compatibleHistory = false
 
     override fun session(token: String, granted: Boolean) {
-        val current = generation.incrementAndGet()
-        this.granted = granted
-        val retainExistingLease = !granted && compatibleHistory && nonce.isNotEmpty()
-        if (granted) compatibleHistory = true
-        val fresh = if (retainExistingLease) nonce else MessageDigest.getInstance("SHA-256").digest(UUID.randomUUID().toString().toByteArray()).joinToString("") { "%02x".format(it) }
-        nonce = fresh
+        val (current, fresh, retainExistingLease) = RemoteDebugSecurityTransitionGate.withLock {
+            val current = generation.incrementAndGet()
+            this.granted = granted
+            val retain = !granted && compatibleHistory && nonce.isNotEmpty()
+            if (granted) compatibleHistory = true
+            val fresh = if (retain) nonce else MessageDigest.getInstance("SHA-256").digest(UUID.randomUUID().toString().toByteArray()).joinToString("") { "%02x".format(it) }
+            nonce = fresh
+            Triple(current, fresh, retain)
+        }
         scope.launch(dispatcher) {
             try { effects.withLock {
                 if (generation.get() != current) return@withLock
                 if (!granted) {
-                    if (!hardened() && endpoint.state() != null) transition { generation.get() == current && !hardened() && endpoint.recover(fresh) }
+                    if (!hardened() && endpoint.state() != null) transition { generation.get() == current && !hardened() && endpoint.recover(fresh) == true }
                     publish()
                     return@withLock
                 }
@@ -107,44 +111,79 @@ internal class LocalAdbRuntime(
 
     override suspend fun request(op: String, args: JSONObject, admit: () -> Boolean, onPending: () -> Unit): PanelAssistantManageReply {
         fun refused(code: String = "invalid_value") = PanelAssistantManageReply("refused", code, null)
-        val current = generation.get()
+        val (current, requestNonce) = RemoteDebugSecurityTransitionGate.withLock { generation.get() to nonce }
         val command = if (op == "adb.shell") (args.opt("command") as? String)?.toByteArray(Charsets.UTF_8) else null
         val rawTimeout = args.opt("timeout_ms")
         val timeout = if (rawTimeout is Int || rawTimeout is Long) (rawTimeout as Number).toLong() else null
         if (op == "adb.shell" && (command == null || command.isEmpty() || command.size > 65_536 || command.contains(0) || timeout == null || timeout !in 1..180_000)) return refused()
-        if (!granted || generation.get() != current || !admit()) return refused("expired")
+        fun currentRequest() = granted && generation.get() == current && nonce == requestNonce && admit()
+        if (!currentRequest()) return refused("expired")
         if (op != "adb.shell" && args.length() != 0) return refused()
-        if (op in listOf("adb.shell", "adb.recover") && hardened()) {
-            val digest = MessageDigest.getInstance("SHA-256").digest(command ?: ByteArray(0)).joinToString("") { "%02x".format(it) }
-            val refusal = authorize("$op:$nonce:$timeout:$digest", onPending)
-            if (refusal != null) return refused(refusal)
-        }
         return withContext(dispatcher) {
-            if (op == "adb.shell") return@withContext shells.withLock {
-                if (!granted || generation.get() != current || !admit()) return@withLock refused("expired")
-                // Shell execution has its own serial queue. It must never hold healthy-app heartbeat
-                // renewal or replacement-session recovery behind a long Android framework command.
-                if (generation.get() != current || !admit()) return@withLock refused("expired")
+            if (op == "adb.shell" || op == "adb.recover") {
+                val digest = MessageDigest.getInstance("SHA-256").digest(command ?: ByteArray(0)).joinToString("") { "%02x".format(it) }
+                val payload = "$op:$requestNonce:$timeout:$digest"
+                var approval: io.panelassistant.android.http.DeferredSessionApproval? = null
+                var approvalEpoch = 0L
                 try {
-                    PanelAssistantManageReply("applied", null, endpoint.shell(requireNotNull(command), requireNotNull(timeout).toInt()))
-                } catch (_: Exception) {
-                    PanelAssistantManageReply("failed", "local_adb_unavailable", null)
+                    while (true) {
+                        var needsApproval = false
+                        var refusal = "expired"
+                        // Shell execution has its own serial queue. Approval waits and long shell
+                        // replies must not hold healthy-app heartbeat or recovery behind this gate.
+                        val reply = (if (op == "adb.shell") shells else effects).withLock {
+                            if (!currentRequest()) return@withLock refused("expired")
+                            val submit: (() -> Unit) -> Boolean = { write ->
+                                RemoteDebugSecurityTransitionGate.withLock {
+                                    when {
+                                        !currentRequest() -> false
+                                        hardened() && approval == null -> {
+                                            needsApproval = true
+                                            approvalEpoch = RemoteDebugSecurityTransitionGate.authorityEpoch()
+                                            false
+                                        }
+                                        hardened() && (approvalEpoch != RemoteDebugSecurityTransitionGate.authorityEpoch() || approval?.consume?.invoke() != true) -> {
+                                            refusal = "approval_timeout"
+                                            false
+                                        }
+                                        op == "adb.recover" -> transition { write(); true }
+                                        else -> { write(); true }
+                                    }
+                                }
+                            }
+                            try {
+                                if (op == "adb.shell") {
+                                    val result = endpoint.shell(requireNotNull(command), requireNotNull(timeout).toInt(), submit)
+                                    if (result != null) PanelAssistantManageReply("applied", null, result)
+                                    else if (needsApproval) null else refused(refusal)
+                                } else {
+                                    when (endpoint.recover(requestNonce, submit)) {
+                                        true -> { publish(); PanelAssistantManageReply("applied", null, JSONObject().put("enabled", true)) }
+                                        false -> PanelAssistantManageReply("failed", "local_adb_unavailable", null)
+                                        null -> if (needsApproval) null else refused(refusal)
+                                    }
+                                }
+                            } catch (_: Exception) {
+                                PanelAssistantManageReply("failed", "local_adb_unavailable", null)
+                            }
+                        }
+                        if (reply != null) return@withContext reply
+                        approval?.cancel?.invoke()
+                        approval = authorize(payload, onPending, ::currentRequest)
+                        approval.refusal?.let { return@withContext refused(it) }
+                    }
+                } finally {
+                    approval?.cancel?.invoke()
                 }
             }
             effects.withLock {
-                // A queued request cannot use a replacement session's authority.
-                if (!granted || generation.get() != current || !admit()) return@withLock refused("expired")
+                if (!currentRequest()) return@withLock refused("expired")
                 try {
                     val result = when (op) {
                         "adb.prepare" -> prepare()
                         "adb.ready" -> {
                             val state = publish()
                             JSONObject().put("ready", state != null).put("managed", state?.managed == true).put("recovery_hold", state?.recoveryHold == true).put("security_unverified", state?.securityUnverified == true)
-                        }
-                        "adb.recover" -> {
-                            if (!admit() || !transition { endpoint.recover(nonce) }) return@withLock PanelAssistantManageReply("failed", "local_adb_unavailable", null)
-                            publish()
-                            JSONObject().put("enabled", true)
                         }
                         else -> return@withLock refused("unknown_command")
                     }
@@ -167,10 +206,10 @@ internal class LocalAdbRuntime(
                     val hash = metadata.getString("sha256")
                     Su.runSingleAttempt(localAdbBootstrapProgram(path, hash), 15_000)
                 }
-            }, authorize = { payload, pending ->
-                io.panelassistant.android.http.authorizeSessionRequest(
-                    true, io.panelassistant.android.security.SensitiveOperation.LOCAL_ADB_MAINTENANCE,
-                    payload, "Run Panel Assistant maintenance", io.panelassistant.android.security.LocalApprovalBroker.instance, pending,
+            }, authorize = { payload, pending, admitted ->
+                io.panelassistant.android.http.awaitSessionApproval(
+                    io.panelassistant.android.security.SensitiveOperation.LOCAL_ADB_MAINTENANCE,
+                    payload, "Run Panel Assistant maintenance", io.panelassistant.android.security.LocalApprovalBroker.instance, pending, admitted = admitted,
                 )
             }, onClosed = { io.panelassistant.android.control.AdbController(context, config).resealManagedHardened() }, healthy = {
                 kotlinx.coroutines.withTimeoutOrNull(1_000L) {
@@ -243,10 +282,10 @@ internal fun localAdbBootstrapProgram(path: String, hash: String, filesystemRoot
 }
 
 internal class RootLocalAdbEndpoint : LocalAdbEndpoint {
-    private fun <T> exchange(timeoutMs: Int = 20_000, body: (java.io.InputStream, java.io.OutputStream) -> T): T =
+    private fun <T> exchange(timeoutMs: Int = 20_000, body: (android.net.LocalSocket) -> T): T =
         openRootAbstractSocket("hapaneld-adb-recovery").use { socket ->
             socket.soTimeout = timeoutMs
-            body(socket.inputStream, socket.outputStream)
+            body(socket)
         }
     private fun line(input: java.io.InputStream): String {
         val result = StringBuilder()
@@ -259,22 +298,50 @@ internal class RootLocalAdbEndpoint : LocalAdbEndpoint {
         }
         error("local adb header too long")
     }
-    private fun command(text: String): Boolean = exchange { input, output ->
-        output.write((text + "\n").toByteArray()); output.flush(); line(input) == "OK"
+    /** One absolute send deadline, including a root peer that stops reading midway through a payload. */
+    private fun writeRequest(socket: android.net.LocalSocket, bytes: ByteArray) {
+        val descriptor = socket.fileDescriptor
+        val flags = android.system.Os.fcntlInt(descriptor, android.system.OsConstants.F_GETFL, 0)
+        android.system.Os.fcntlInt(descriptor, android.system.OsConstants.F_SETFL, flags or android.system.OsConstants.O_NONBLOCK)
+        val deadline = android.os.SystemClock.elapsedRealtime() + 2_000L
+        var sent = 0
+        try {
+            while (sent < bytes.size) {
+                val remaining = deadline - android.os.SystemClock.elapsedRealtime()
+                check(remaining > 0) { "local adb submission timed out" }
+                try {
+                    val count = android.system.Os.write(descriptor, bytes, sent, bytes.size - sent)
+                    check(count > 0)
+                    sent += count
+                } catch (failure: android.system.ErrnoException) {
+                    if (failure.errno == android.system.OsConstants.EINTR) continue
+                    if (failure.errno != android.system.OsConstants.EAGAIN) throw failure
+                    val ready = android.system.StructPollfd().apply { fd = descriptor; events = android.system.OsConstants.POLLOUT.toShort() }
+                    android.system.Os.poll(arrayOf(ready), remaining.toInt())
+                }
+            }
+        } finally {
+            android.system.Os.fcntlInt(descriptor, android.system.OsConstants.F_SETFL, flags)
+        }
     }
+    private fun command(text: String, submit: (() -> Unit) -> Boolean = { it(); true }): Boolean? = exchange { socket ->
+        if (!submit { writeRequest(socket, (text + "\n").toByteArray()) }) null else line(socket.inputStream) == "OK"
+    }
+
     override fun state(): LocalAdbState? = runCatching {
-        exchange { input, output ->
-            output.write("STATUS\n".toByteArray()); output.flush()
-            val fields = line(input).split(' ')
+        exchange { socket ->
+            writeRequest(socket, "STATUS\n".toByteArray())
+            val fields = line(socket.inputStream).split(' ')
             check(fields.size == 6 && fields[0] == "READY" && fields[1] == "1" && fields[2].matches(Regex("[0-9a-f]{64}")) && fields[3] in listOf("0", "1") && fields[4] in listOf("0", "1") && fields[5] in listOf("0", "1"))
             LocalAdbState(fields[3] == "1", fields[4] == "1", fields[5] == "1")
         }
     }.getOrNull()
-    override fun arm(nonce: String): Boolean = command("ARM $nonce")
-    override fun beat(nonce: String): Boolean = command("BEAT $nonce")
-    override fun recover(nonce: String): Boolean = command("RECOVER $nonce")
-    override fun shell(command: ByteArray, timeoutMs: Int): JSONObject = exchange(timeoutMs + 5_000) { input, output ->
-        output.write("SHELL $timeoutMs ${command.size}\n".toByteArray()); output.write(command); output.flush()
+    override fun arm(nonce: String): Boolean = command("ARM $nonce") == true
+    override fun beat(nonce: String): Boolean = command("BEAT $nonce") == true
+    override fun recover(nonce: String, submit: (() -> Unit) -> Boolean): Boolean? = command("RECOVER $nonce", submit)
+    override fun shell(command: ByteArray, timeoutMs: Int, submit: (() -> Unit) -> Boolean): JSONObject? = exchange(timeoutMs + 5_000) { socket ->
+        val input = socket.inputStream
+        if (!submit { writeRequest(socket, "SHELL $timeoutMs ${command.size}\n".toByteArray() + command) }) return@exchange null
         val fields = line(input).split(' ')
         check(fields.size == 5 && fields[0] == "RESULT")
         val exit = fields[1].toInt(); val count = fields[4].toInt()
