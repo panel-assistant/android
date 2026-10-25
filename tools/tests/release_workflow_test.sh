@@ -1305,6 +1305,108 @@ else
   fail_test "the workflow publishes no installer, provisioner or standalone helper asset"
 fi
 
+# --- release catalogue publication -----------------------------------------------------------
+# Execute the workflow's actual shell with HTTP/Actions fixtures. The live JSON,
+# not dispatch acceptance, is the release flow's completion signal.
+publication_step="$TMP/publication-step.sh"
+extract_named_step "Publish the project release list" > "$publication_step"
+publication_bin="$TMP/publication-bin"
+mkdir -p "$publication_bin"
+cat > "$publication_bin/gh" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$CASE_DIR/actions.log"
+exit "${DISPATCH_STATUS:-0}"
+SH
+cat > "$publication_bin/curl" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$CASE_DIR/http.log"
+complete_catalogue() {
+  jq -n --arg mode "$HTTP_MODE" --arg tag "$RELEASE_TAG" '
+
+    "panel-assistant-\($tag)-manual-setup-required.apk.bin" as $apk |
+    "ha-paneld-\($tag)-install.json" as $descriptor |
+    "ha-paneld-\($tag)-protocol.json" as $protocol |
+    [$apk, ($apk+".idsig"), ($apk+".sha256"), ($apk+".sha256.sig"), $descriptor,
+     ($descriptor+".sig"), $protocol, ($protocol+".sig")] as $names |
+    {tag_name:$tag,draft:false,prerelease:($tag | contains("-")),assets:[$names[] |
+      {name:.,browser_download_url:("https://github.com/panel-assistant/android/releases/download/"+$tag+"/"+.)}]} as $row |
+    {schema:1,latest:(if $mode == "latest" then $row else null end),
+     releases:(if $mode == "latest" then [] else [$row] end)} |
+    if $mode == "incomplete" then .releases[0].assets |= .[:-1] else . end
+  ' > "$RUNNER_TEMP/release-list.json"
+}
+case "$HTTP_MODE" in
+  unavailable) exit 22 ;;
+  malformed) printf 'not json\n' > "$RUNNER_TEMP/release-list.json" ;;
+  stale) printf '{"schema":1,"latest":{"tag_name":"v0.9.11"},"releases":[]}\n' > "$RUNNER_TEMP/release-list.json" ;;
+  delayed)
+    if [ "$(wc -l < "$CASE_DIR/http.log")" -eq 1 ]; then
+      printf '{"schema":1,"latest":null,"releases":[]}\n' > "$RUNNER_TEMP/release-list.json"
+    else
+      complete_catalogue
+    fi ;;
+  latest|incomplete) complete_catalogue ;;
+esac
+SH
+cat > "$publication_bin/seq" <<'SH'
+#!/usr/bin/env bash
+printf '1\n2\n'
+SH
+cat > "$publication_bin/sleep" <<'SH'
+#!/usr/bin/env bash
+exit 0
+SH
+chmod +x "$publication_bin/"*
+run_publication() {
+  local mode="$1" token="$2" dispatch="$3" dir="$TMP/publication-$1-$3" tag=v1.0.0-rc2
+  if [ "$mode" = latest ]; then tag=v1.0.0; fi
+  mkdir -p "$dir"
+  CASE_DIR="$dir" RUNNER_TEMP="$dir" HTTP_MODE="$mode" GH_TOKEN="$token" \
+    DISPATCH_STATUS="$dispatch" RELEASE_TAG="$tag" PATH="$publication_bin:$PATH" \
+    bash "$publication_step" > "$dir/output.log" 2>&1
+}
+if [ -s "$publication_step" ] && run_publication delayed fixture 0 && \
+   [ "$(wc -l < "$TMP/publication-delayed-0/http.log")" -eq 2 ] && \
+   [ "$(cat "$TMP/publication-delayed-0/actions.log")" = 'workflow run ci.yml --repo panel-assistant/panel-assistant.io --ref main -f release_tag=v1.0.0-rc2' ]; then
+  pass "release publication dispatches the exact tag and waits for its static list"
+else
+  fail_test "release publication dispatches the exact tag and waits for its static list"
+fi
+if [ -s "$publication_step" ] && run_publication latest fixture 0; then
+  pass "release publication recognizes the latest stable independently of recent rows"
+else
+  fail_test "release publication recognizes the latest stable independently of recent rows"
+fi
+publication_fail_closed=1
+for mode in stale unavailable malformed incomplete; do
+  if run_publication "$mode" fixture 0; then publication_fail_closed=0; fi
+done
+if [ -s "$publication_step" ] && [ "$publication_fail_closed" -eq 1 ]; then
+  pass "release publication fails for a stale, missing, malformed or incomplete hosted list"
+else
+  fail_test "release publication fails for a stale, missing, malformed or incomplete hosted list"
+fi
+if [ -s "$publication_step" ] && ! run_publication missing-token '' 0 && \
+   [ ! -e "$TMP/publication-missing-token-0/actions.log" ] && \
+   ! run_publication dispatch-error fixture 1 && \
+   [ ! -e "$TMP/publication-dispatch-error-1/http.log" ]; then
+  pass "release publication fails before polling when credentials or dispatch fail"
+else
+  fail_test "release publication fails before polling when credentials or dispatch fail"
+fi
+# Source-text reason: GitHub controls step ordering and credential injection;
+# local shell execution above cannot run the hosted job scheduler.
+publication_env="$(extract_named_step_yaml 'Publish the project release list')"
+last_guard_line="$(grep -n '      - name: Verify shipped updaters' "$WORKFLOW" | cut -d: -f1)"
+publication_line="$(grep -n '      - name: Publish the project release list' "$WORKFLOW" | cut -d: -f1)"
+if [[ "$publication_env" == *'GH_TOKEN: ${{ secrets.RELEASE_WEBSITE_TOKEN }}'* ]] && \
+   [ -n "$last_guard_line" ] && [ -n "$publication_line" ] && \
+   [ "$publication_line" -gt "$last_guard_line" ]; then
+  pass "release catalogue dispatch follows published asset verification with its scoped credential"
+else
+  fail_test "release catalogue dispatch follows published asset verification with its scoped credential"
+fi
+
 printf '1..%d\n' "$((passes + failures))"
 if [ "$failures" -ne 0 ]; then
   printf '%d assertion(s) failed\n' "$failures" >&2
