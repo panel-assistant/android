@@ -6109,7 +6109,7 @@
       "state": "machine-cross-checked"
     },
     "install.backup.companion.include_login": {
-      "text": "Incluir la sesión de Home Assistant Companion",
+      "text": "Con sesión de Home Assistant Companion",
       "sourceHash": "80cdd425c53ed182ee00322c6c00ec352b456131019758e77ed61b60307b9c4f",
       "state": "machine-cross-checked"
     },
