@@ -252,7 +252,7 @@ browserTest('Install substitutes exact visible names for closed component parame
   }, 'fallback').text));
   assert.deepEqual(outcomes, [
     'Update Panel Assistant: 1 to 2 at https://example.invalid/release',
-    'Update HA Companion: 1 to 2 at https://example.invalid/release',
+    'Update Home Assistant Companion: 1 to 2 at https://example.invalid/release',
     'Update System WebView: 1 to 2 at https://example.invalid/release',
     'Update APK: 1 to 2 at https://example.invalid/release',
   ]);
