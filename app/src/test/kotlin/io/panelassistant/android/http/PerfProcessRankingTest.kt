@@ -102,6 +102,31 @@ class PerfProcessRankingTest {
         }
     }
 
+    @Test fun aKernelWorkerKeepsItsCpuDeltaWhenItsWorkqueueSuffixFlips() {
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Unconfined)
+        try {
+            PerfReader.stop()
+            PerfReader.startForTest(scope, rootAvailable = { false }, elapsedRealtime = { 1L },
+                pause = { kotlinx.coroutines.awaitCancellation() },
+                resolveNames = { pids -> pids.filter { it == 200 }.associateWith { "com.steady.app" } })
+            val s = Sampler(PerfReader.lifecycleGeneration())
+
+            // Linux 4.18+ shows a kernel worker's current workqueue after '+' (busy) or '-' (idle).
+            s.sample(400 to ("kworker/u8:2+events_unbound" to 10L), 200 to ("steady" to 10L))
+            s.sample(400 to ("kworker/u8:2-events_unbound" to 110L), 200 to ("steady" to 20L))
+            assertEquals("the same busy worker is still ranked", listOf("kworker/u8:2-events_unbound", "com.steady.app"), names("top"))
+            s.sample(400 to ("kworker/u8:2+events_unbound" to 210L), 200 to ("steady" to 30L))
+            assertEquals(listOf("kworker/u8:2+events_unbound", "com.steady.app"), names("top"))
+
+            // A different worker on the reused pid is still a different process.
+            s.sample(400 to ("kworker/u8:3+events_unbound" to 900L), 200 to ("steady" to 40L))
+            assertEquals(listOf("com.steady.app"), names("top"))
+        } finally {
+            PerfReader.stop()
+            scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
+        }
+    }
+
     @Test fun cpuRankingUsesPositiveIntervalDeltasWithStablePidTies() {
         val previous = mapOf(10 to 100L, 20 to 200L, 30 to 300L, 40 to 400L)
         val current = mapOf(10 to 130L, 20 to 200L, 30 to 350L, 40 to 450L, 50 to 999L)

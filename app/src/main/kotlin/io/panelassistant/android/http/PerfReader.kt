@@ -488,9 +488,10 @@ object PerfReader {
             dTotal = total - prevTopTotal
             // A pid that vanished or changed comm since the last sample is a different process: forget its
             // name, and give it no interval delta against the dead process's counter.
-            nameCache.keys.retainAll { comm[it] == prevComm[it] }
+            val sameProcess = { pid: Int -> comm[pid]?.let(::stableComm) == prevComm[pid]?.let(::stableComm) }
+            nameCache.keys.retainAll(sameProcess)
             cpuRanked = if (prevTopTotal != 0L && dTotal > 0) {
-                rankCpuProcesses(cur.filterKeys { comm[it] == prevComm[it] }, prevProc)
+                rankCpuProcesses(cur.filterKeys(sameProcess), prevProc)
             } else emptyList()
             ramRanked = rankRamProcesses(rssPages)
             probePct = if (kidsNow != null && prevSelf > 0L && dTotal > 0) {
@@ -578,6 +579,15 @@ object PerfReader {
 
     /** Shorten Android "package:process:classname" cmdlines to just the package component — the extra
      *  segments (Chromium sandbox class names, sub-process suffixes) add noise without aiding diagnosis. */
+    /** Since Linux 4.18 a kernel worker's comm carries its current workqueue after a '+' (busy) or '-'
+     *  (idle), e.g. `kworker/u8:2+events_unbound`. Drop that suffix so the same worker still matches itself
+     *  when it flips between samples. */
+    private fun stableComm(comm: String): String {
+        if (!comm.startsWith("kworker/")) return comm
+        val cut = comm.indexOfAny(charArrayOf('+', '-'), startIndex = "kworker/".length)
+        return if (cut < 0) comm else comm.substring(0, cut)
+    }
+
     private fun trimProcName(raw: String): String =
         if (raw.count { it == ':' } >= 2) raw.substringBefore(':') else raw
 
