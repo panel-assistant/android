@@ -48,7 +48,8 @@ int __wrap_unlinkat(int dir, const char *name, int flags) {
     }
     return __real_unlinkat(dir, name, flags);
 }
-#define CHECK(value, message) do { if (!(value)) { fprintf(stderr, "FAIL: %s\n", message); failures++; } } while (0)
+#define CHECK(value, ...) do { if (!(value)) { fprintf(stderr, "FAIL: "); \
+    fprintf(stderr, __VA_ARGS__); fputc('\n', stderr); failures++; } } while (0)
 static int remove_entry(const char *path, const struct stat *st, int type, struct FTW *walk) {
     (void)st; (void)type; (void)walk; return remove(path);
 }
@@ -148,7 +149,7 @@ static void absent(void) { rmdir(APP_DATA); rmdir(APP_USER_DATA); }
  * These payloads exercise that custody contract without claiming APK signature verification. */
 static const char *const retained[] = {
     "manifest.v1", "journal.v1", "a.apk", "b.apk", "settings.v2", "baseline.db",
-    "premigrate.db", "b-primary.db", "foreign",
+    "premigrate.db", "b-primary.db", "foreign", ".owner.lock",
 };
 enum { RETAINED_COUNT = sizeof retained / sizeof retained[0] };
 static char state[384];
@@ -170,13 +171,19 @@ static void record(const char *name, const char *body, char sha[65]) {
     if (size < 0 || (size_t)size >= sizeof bytes) abort();
     digest(bytes, (size_t)size, sha); retain(name, bytes, 0600);
 }
-static int retained_digest(const char *name, char sha[65]) {
+static int retained_digest(const char *name, char sha[65], struct stat *identity) {
     char path[512]; retained_path(name, path);
     int fd = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC); struct stat st;
     int ok = fd >= 0 && fstat(fd, &st) == 0 && S_ISREG(st.st_mode) &&
         hapaneld_sha256_fd(fd, (uint64_t)st.st_size, sha) == 0;
+    if (ok) *identity = st;
     if (fd >= 0) close(fd);
     return ok;
+}
+static int same_identity(const struct stat *a, const struct stat *b) {
+    return a->st_dev == b->st_dev && a->st_ino == b->st_ino && a->st_mode == b->st_mode &&
+        a->st_uid == b->st_uid && a->st_gid == b->st_gid && a->st_nlink == b->st_nlink &&
+        a->st_size == b->st_size;
 }
 static void finalized(int rollback) {
     static const char a[] = "exact-a-apk", b[] = "exact-b-apk-next";
@@ -259,7 +266,7 @@ static void test_finalized_retirement(void) {
             "supervisor loads canonical finalized custody before uninstall");
         uninstall_finalized();
         CHECK(wait_exit(0) && !exists(LIVE) && !exists(state) && !exists(STAGE) && !exists(LEASE),
-            "finalized success and rollback uninstall retire authenticated custody without live app evidence");
+            "finalized success and rollback uninstall retire authenticated custody without live app evidence [rollback=%d]", rollback);
     }
 }
 static void test_finalized_holds(void) {
@@ -273,16 +280,20 @@ static void test_finalized_holds(void) {
         if (damage == 3) { if (unlink(path) != 0) abort(); }
         else write_file(path, "corrupted retained bytes");
         char before[RETAINED_COUNT][65]; int present[RETAINED_COUNT];
-        for (size_t i = 0; i < RETAINED_COUNT; i++) present[i] = retained_digest(retained[i], before[i]);
+        struct stat identities[RETAINED_COUNT];
+        for (size_t i = 0; i < RETAINED_COUNT; i++)
+            present[i] = retained_digest(retained[i], before[i], &identities[i]);
         uninstall_finalized(); usleep(1200000);
         CHECK(kill(supervisor, 0) == 0 && exists(LIVE) && ready(),
-            "damaged finalized custody retains the supervisor and live recovery socket");
+            "damaged finalized custody retains the supervisor and live recovery socket [damage=%d]", damage);
         int unchanged = exists(state) && (damage != 2 || exists(path));
         for (size_t i = 0; i < RETAINED_COUNT; i++) {
-            char after[65]; int found = retained_digest(retained[i], after);
-            unchanged = unchanged && found == present[i] && (!found || !strcmp(before[i], after));
+            char after[65]; struct stat identity;
+            int found = retained_digest(retained[i], after, &identity);
+            unchanged = unchanged && found == present[i] && (!found ||
+                (!strcmp(before[i], after) && same_identity(&identities[i], &identity)));
         }
-        CHECK(unchanged, "finalized uninstall preserves every damaged or foreign custody record");
+        CHECK(unchanged, "finalized uninstall preserves every damaged or foreign custody record [damage=%d]", damage);
     }
 }
 static void test_retirement(void) {
