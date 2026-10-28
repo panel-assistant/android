@@ -38,25 +38,54 @@ class HaUrlHandoverTest {
 
     /* ---------------- the probe's discrimination ---------------- */
 
-    @Test fun `Home Assistant's own 401 is the only answer that verifies`() {
-        assertEquals(HaUrlHandover.Outcome.VERIFIED, HaUrlHandover.classifyStatus(401))
+    private val providers =
+        """{"providers":[{"name":"Home Assistant Local","id":null,"type":"homeassistant"}],"preselect_remember_me":true}"""
+
+    @Test fun `Home Assistant's provider list is the only answer that verifies`() {
+        assertEquals(
+            HaUrlHandover.Outcome.VERIFIED,
+            HaUrlHandover.classifyResponse(200, "application/json", providers),
+        )
+        assertEquals(
+            HaUrlHandover.Outcome.VERIFIED,
+            HaUrlHandover.classifyResponse(200, "application/json; charset=utf-8", providers),
+        )
     }
 
-    @Test fun `a 200 is a failure, not a weaker success`() {
-        // Measured against a live Home Assistant: an unauthenticated GET /api/ answers 401. A 200 there
-        // means something that is not Home Assistant holds the address — a captive portal or a
-        // permissive proxy — which is exactly the false positive a bare TCP connect would have taken.
-        assertEquals(HaUrlHandover.Outcome.NOT_HOME_ASSISTANT, HaUrlHandover.classifyStatus(200))
+    @Test fun `a 200 that is not the provider list is a failure, not a weaker success`() {
+        // A captive portal or permissive proxy answers 200 to any path, which is exactly the false
+        // positive a bare TCP connect would have taken.
+        listOf(
+            "text/html" to "<html></html>",
+            "application/json" to "{}",
+            "application/json" to "[]",
+            "application/json" to """{"providers":"none"}""",
+            "application/json" to "not json",
+            null to providers,
+        ).forEach { (type, body) ->
+            assertEquals(
+                "$type $body must not verify",
+                HaUrlHandover.Outcome.NOT_HOME_ASSISTANT,
+                HaUrlHandover.classifyResponse(200, type, body),
+            )
+        }
     }
 
-    @Test fun `every other status is refused too`() {
-        listOf(100, 201, 204, 301, 302, 400, 403, 404, 418, 500, 502, 503).forEach { status ->
+    @Test fun `every other status is refused, whatever the body`() {
+        listOf(100, 201, 204, 301, 302, 400, 401, 403, 404, 418, 500, 502, 503).forEach { status ->
             assertEquals(
                 "status $status must not verify",
                 HaUrlHandover.Outcome.NOT_HOME_ASSISTANT,
-                HaUrlHandover.classifyStatus(status),
+                HaUrlHandover.classifyResponse(status, "application/json", providers),
             )
         }
+    }
+
+    @Test fun `a body too large to read is refused`() {
+        assertEquals(
+            HaUrlHandover.Outcome.NOT_HOME_ASSISTANT,
+            HaUrlHandover.classifyResponse(200, "application/json", null),
+        )
     }
 
     @Test fun `each transport failure keeps its own reason`() {
@@ -121,10 +150,10 @@ class HaUrlHandoverTest {
     /* ---------------- the probe URL ---------------- */
 
     @Test fun `the probe path is appended with exactly one separator`() {
-        assertEquals("http://ha.local:8123/api/", HaUrlHandover.probeUrl("http://ha.local:8123"))
-        assertEquals("http://ha.local:8123/api/", HaUrlHandover.probeUrl("http://ha.local:8123/"))
-        assertEquals("http://ha.local:8123/api/", HaUrlHandover.probeUrl("  http://ha.local:8123//  "))
-        assertEquals("https://ha.example.com/api/", HaUrlHandover.probeUrl("https://ha.example.com"))
+        assertEquals("http://ha.local:8123/auth/providers", HaUrlHandover.probeUrl("http://ha.local:8123"))
+        assertEquals("http://ha.local:8123/auth/providers", HaUrlHandover.probeUrl("http://ha.local:8123/"))
+        assertEquals("http://ha.local:8123/auth/providers", HaUrlHandover.probeUrl("  http://ha.local:8123//  "))
+        assertEquals("https://ha.example.com/auth/providers", HaUrlHandover.probeUrl("https://ha.example.com"))
     }
 
     @Test fun `anything that is not an http origin has no probe URL`() {
@@ -136,7 +165,7 @@ class HaUrlHandoverTest {
     }
 
     @Test fun `the scheme test is case-insensitive but the URL is passed through unchanged`() {
-        assertEquals("HTTP://ha.local:8123/api/", HaUrlHandover.probeUrl("HTTP://ha.local:8123"))
+        assertEquals("HTTP://ha.local:8123/auth/providers", HaUrlHandover.probeUrl("HTTP://ha.local:8123"))
     }
 
     /* ---------------- acceptance case: handed over and reachable ---------------- */
