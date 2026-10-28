@@ -577,8 +577,6 @@ object PerfReader {
         }
     }
 
-    /** Shorten Android "package:process:classname" cmdlines to just the package component — the extra
-     *  segments (Chromium sandbox class names, sub-process suffixes) add noise without aiding diagnosis. */
     /** Since Linux 4.18 a kernel worker's comm carries its current workqueue after a '+' (busy) or '-'
      *  (idle), e.g. `kworker/u8:2+events_unbound`. Drop that suffix so the same worker still matches itself
      *  when it flips between samples. */
@@ -588,6 +586,8 @@ object PerfReader {
         return if (cut < 0) comm else comm.substring(0, cut)
     }
 
+    /** Shorten Android "package:process:classname" cmdlines to just the package component — the extra
+     *  segments (Chromium sandbox class names, sub-process suffixes) add noise without aiding diagnosis. */
     private fun trimProcName(raw: String): String =
         if (raw.count { it == ':' } >= 2) raw.substringBefore(':') else raw
 
