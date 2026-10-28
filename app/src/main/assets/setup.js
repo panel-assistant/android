@@ -472,7 +472,7 @@
       i18nText("setup.sign_in.lead", "The built-in dashboard needs permission to read your Home Assistant."), [
       browserRoute,
       panelRoute,
-      statusLine(inFlight ? i18nText("setup.sign_in.state.in_progress", "A sign-in is in progress… finish it here or on the panel.") :
+      statusLine(inFlight ? i18nText("setup.sign_in.state.in_progress", "The panel is showing a Home Assistant login. Sign in there, or use this browser.") :
         i18nText("setup.sign_in.state.waiting", "Choose an option above. This page updates by itself once you’ve signed in.")),
       el("p", { class: "muted", id: "wiz-err", role: "alert" }),
     ])], "signin");

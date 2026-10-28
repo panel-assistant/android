@@ -11849,8 +11849,8 @@
       "state": "machine-cross-checked"
     },
     "setup.sign_in.state.in_progress": {
-      "text": "Une connexion est en cours… terminez-la ici ou sur le panneau.",
-      "sourceHash": "4eca2929c8f06dc9d764f830e4aa3ea03cff84f3a3857487281d0d21d9fa25be",
+      "text": "Le panneau affiche une page de connexion Home Assistant. Connectez-vous dessus ou utilisez ce navigateur.",
+      "sourceHash": "036ad1c96e2d2814578a7aec0bc7526208edfed6775f97427f055a327914486c",
       "state": "machine-cross-checked"
     },
     "setup.sign_in.state.waiting": {

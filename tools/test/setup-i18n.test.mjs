@@ -205,6 +205,25 @@ for (const [engine, browserType] of [['Chromium', chromium], ['WebKit', webkit]]
   });
 }
 
+for (const [engine, browserType] of [['Chromium', chromium], ['WebKit', webkit]]) {
+  const run = existsSync(browserType === chromium ? chrome : browserType.executablePath()) ? test : test.skip;
+  // The panel opens its own Home Assistant login as soon as it has an address, and that login counts as a
+  // pending sign-in. The status must say so instead of implying the user already started one.
+  run(`Setup sign-in status says the panel is showing its login before a route is chosen in ${engine}`, async (t) => {
+    const catalogue = JSON.parse(await readFile(new URL('../../app/src/main/assets/i18n/en.json', import.meta.url), 'utf8'));
+    const expected = 'The panel is showing a Home Assistant login. Sign in there, or use this browser.';
+    for (const withHelper of [true, false]) {
+      const rig = await openRig(t, {
+        initialJourney: journey('ha_credentials', { statuses: { ha_credentials: { status: 'in_flight' } } }),
+        locale: 'en', withHelper,
+        translations: Object.fromEntries(Object.entries(catalogue.strings).map(([key, record]) => [key, record.text])),
+      }, '/', browserType);
+      assert.equal(await rig.page.locator('#wiz-live').textContent(), expected, `${engine} helper=${withHelper}`);
+      assert.equal(rig.state.requests.filter((r) => r.method === 'POST').length, 0, 'no route was chosen');
+    }
+  });
+}
+
 async function reloadJourney(rig, nextJourney, path = '/?lang=zh-Hans') {
   rig.state.current = nextJourney;
   await rig.page.goto(rig.url + path, { waitUntil: 'domcontentloaded', timeout: 5_000 });

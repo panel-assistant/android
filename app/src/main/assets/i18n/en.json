@@ -36196,8 +36196,8 @@
       "hardMaxChars": 40
     },
     "setup.sign_in.state.in_progress": {
-      "text": "A sign-in is in progress… finish it here or on the panel.",
-      "sourceHash": "4eca2929c8f06dc9d764f830e4aa3ea03cff84f3a3857487281d0d21d9fa25be",
+      "text": "The panel is showing a Home Assistant login. Sign in there, or use this browser.",
+      "sourceHash": "036ad1c96e2d2814578a7aec0bc7526208edfed6775f97427f055a327914486c",
       "surface": "setup",
       "context": "Setup wizard Home Assistant sign-in step; live status.",
       "risk": "ordinary",
@@ -36205,7 +36205,9 @@
         "setup.sign_in.state.waiting"
       ],
       "placeholders": [],
-      "frozen": [],
+      "frozen": [
+        "Home Assistant"
+      ],
       "softMaxChars": 100,
       "hardMaxChars": 140
     },

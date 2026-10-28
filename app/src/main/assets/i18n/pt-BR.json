@@ -11914,8 +11914,8 @@
       "state": "machine-cross-checked"
     },
     "setup.sign_in.state.in_progress": {
-      "text": "Um login está em andamento… conclua aqui ou no painel.",
-      "sourceHash": "4eca2929c8f06dc9d764f830e4aa3ea03cff84f3a3857487281d0d21d9fa25be",
+      "text": "O painel está mostrando um login do Home Assistant. Faça login nele ou use este navegador.",
+      "sourceHash": "036ad1c96e2d2814578a7aec0bc7526208edfed6775f97427f055a327914486c",
       "state": "machine-cross-checked"
     },
     "setup.sign_in.state.waiting": {

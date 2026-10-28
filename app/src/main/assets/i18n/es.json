@@ -11849,9 +11849,9 @@
       "text": "recomendado"
     },
     "setup.sign_in.state.in_progress": {
-      "sourceHash": "4eca2929c8f06dc9d764f830e4aa3ea03cff84f3a3857487281d0d21d9fa25be",
+      "sourceHash": "036ad1c96e2d2814578a7aec0bc7526208edfed6775f97427f055a327914486c",
       "state": "machine-cross-checked",
-      "text": "Hay un inicio de sesión en curso… termínalo aquí o en el panel."
+      "text": "El panel muestra un inicio de sesión de Home Assistant. Inicia sesión allí o usa este navegador."
     },
     "setup.sign_in.state.waiting": {
       "sourceHash": "d6dfb33f6411d1945de51bbd39f41ea4eac18e28b1050ff36036a809768fec9f",
