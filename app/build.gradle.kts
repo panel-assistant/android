@@ -621,7 +621,12 @@ afterEvaluate {
             else -> null
         }
     }
-    val callerOnlySelection = requestedTests.isNotEmpty() && requestedTests.all { it in callerClasses }
+    val ordinaryUnitTasks = setOf(":app:testDebugUnitTest", "testDebugUnitTest", ":app:testReleaseUnitTest", "testReleaseUnitTest")
+    val singleOrdinaryTask = requestedArgs.firstOrNull() in ordinaryUnitTasks && requestedArgs.drop(1).all {
+        it == "--tests" || it == "--rerun" || it in callerClasses ||
+            (it.startsWith("--tests=") && it.substringAfter('=') in callerClasses)
+    }
+    val callerOnlySelection = singleOrdinaryTask && requestedTests.isNotEmpty() && requestedTests.all { it in callerClasses }
     val webViewCallerTests = tasks.register<Test>("testWebViewCaller") {
         description = "Exercises native WebView admission and host-executable Android adapter paths."
         group = "verification"
