@@ -4,12 +4,14 @@ import io.panelassistant.android.config.ConfigBundle
 import io.panelassistant.android.config.SettingsRegistry
 import io.panelassistant.android.testsupport.PanelRuntimeRig
 import io.panelassistant.android.util.InstallProgress
+import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.testing.testApplication
 import org.json.JSONObject
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -85,6 +87,55 @@ internal class NavigationRestoreMigrationTest : PanelRuntimeRig() {
                 val body = response.bodyAsText()
                 assertEquals(body, HttpStatusCode.OK, response.status)
                 assertEquals("schema=$schema", schema >= 17, config.dashboardNativeKiosk)
+            }
+        }
+    }
+
+    @Test fun portableRestorePathsCannotReplaceOrExportTheChosenHttpPort() {
+        for (fleet in listOf(false, true)) withFullReadServer { config, fixture ->
+            config.httpPort = 14726
+            config.setRaw(requireNotNull(SettingsRegistry.spec(KEY)), "true")
+            testApplication {
+                application { fixture.mount(this) }
+                val exported = client.get("/api/v1/config/export")
+                assertEquals(HttpStatusCode.OK, exported.status)
+                val bundle = JSONObject(exported.bodyAsText())
+                assertTrue(bundle.toString(), bundle.has("values"))
+                assertFalse(bundle.toString(), bundle.getJSONObject("values").has("http_port"))
+                val imported = client.post("/api/v1/config/import" + if (fleet) "?mode=fleet" else "") {
+                    setBody(ConfigBundle.fromValues(mapOf(KEY to "false", "http_port" to "14727")).serialize())
+                }
+                val text = imported.bodyAsText()
+                assertEquals(text, HttpStatusCode.OK, imported.status)
+                assertTrue(text, JSONObject(text).optJSONArray("warnings").toString().contains("unknown key skipped: http_port"))
+                assertEquals(14726, config.httpPort)
+                assertFalse("The portable setting must still import", config.dashboardNativeKiosk)
+            }
+        }
+        for (injectPort in listOf(false, true)) withFullReadServer { config, fixture ->
+            config.httpPort = 14726
+            config.setRaw(requireNotNull(SettingsRegistry.spec(KEY)), "true")
+            testApplication {
+                application { fixture.mount(this) }
+                val settings = JSONObject().put(KEY, "false")
+                if (injectPort) settings.put("http_port", "14727")
+                val restored = client.post("/api/v1/restore") {
+                    setBody(JSONObject().put("kind", "ha-paneld-backup").put("schema", SettingsRegistry.SCHEMA)
+                        .put("config", settings).toString())
+                }
+                val text = restored.bodyAsText()
+                if (injectPort) {
+                    assertEquals(text, HttpStatusCode.UnprocessableEntity, restored.status)
+                    assertTrue(text, text.contains("http_port: unknown setting"))
+                    assertTrue("Rejected restore must leave portable settings unchanged", config.dashboardNativeKiosk)
+                } else {
+                    assertEquals(text, HttpStatusCode.OK, restored.status)
+                    assertTrue(awaitCondition { !InstallProgress.running })
+                    val result = JSONObject(InstallProgress.json()).optJSONObject("result")
+                    assertEquals(result.toString(), "succeeded", result?.optString("status"))
+                    assertFalse("The portable setting must still restore", config.dashboardNativeKiosk)
+                }
+                assertEquals(14726, config.httpPort)
             }
         }
     }

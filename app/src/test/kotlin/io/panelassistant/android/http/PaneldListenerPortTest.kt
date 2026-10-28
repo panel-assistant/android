@@ -30,7 +30,8 @@ class PaneldListenerPortTest {
                 routing { get("/") { call.respondText("ready") } }
             }
             try {
-                listener.start { ingressClosed = true }
+                val started = runCatching { listener.start { ingressClosed = true } }
+                assertTrue("An occupied default must still start HTTP: ${started.exceptionOrNull()}", started.isSuccess)
                 assertTrue(listener.bound())
                 assertEquals(1, published.size)
                 val actualPort = published.single()
