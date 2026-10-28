@@ -240,6 +240,29 @@ tasks.matching { it.name.startsWith("process") && it.name.endsWith("MainManifest
     inputs.property("databaseCompatibility", databaseCompatibilityContract)
 }
 
+// Execute the platform implementations behind provider receipts and package facts on the host.
+// Selected Android classes replace SDK stubs; tests use their host-executable paths without a framework runner or device.
+val providerAndroidRuntime = configurations.create("providerAndroidRuntime")
+val providerInstallSourceRuntime = configurations.create("providerInstallSourceRuntime")
+val providerAndroidRuntimeJar = tasks.register<Jar>("providerAndroidRuntimeJar") {
+    archiveFileName.set("provider-android-runtime.jar")
+    destinationDirectory.set(layout.buildDirectory.dir("provider-android-runtime"))
+    from(providerAndroidRuntime.elements.map { files -> files.map { zipTree(it.asFile) } }) {
+        include("android/util/AtomicFile*.class", "android/os/FileUtils*.class")
+        include("android/content/pm/Signature*.class", "android/content/pm/SigningInfo*.class")
+        include("android/content/pm/PackageInfo*.class", "android/content/pm/PackageParser\$SigningDetails*.class")
+        include("android/webkit/WebView.class", "android/webkit/WebView\$*.class")
+        include("android/webkit/WebViewFactory*.class", "android/webkit/WebViewProvider*.class")
+        include("android/view/ViewDebug\$HierarchyHandler.class", "com/android/internal/util/SizedInputStream.class")
+    }
+    from(providerInstallSourceRuntime.elements.map { files -> files.map { zipTree(it.asFile) } }) {
+        include("android/content/pm/InstallSourceInfo*.class")
+    }
+}
+val androidMockPackageManager = androidComponents.sdkComponents.bootClasspath.map { files ->
+    files.first { it.asFile.name == "android.jar" }.asFile.resolveSibling("optional/android.test.mock.jar")
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
@@ -273,7 +296,11 @@ dependencies {
     // QR code for the on-device config URL (pure-Java encoder; no Android transitive deps).
     implementation("com.google.zxing:core:3.5.4")
 
-    // JVM unit tests (no Android/emulator deps): pure-logic + coroutine serialization regression tests.
+    providerAndroidRuntime("org.robolectric:android-all:10-robolectric-5803371")
+    providerInstallSourceRuntime("org.robolectric:android-all:11-robolectric-6757853")
+    testImplementation(files(androidMockPackageManager))
+
+    // JVM unit tests: pure logic, coroutine serialization, and narrow host platform adapters.
     testImplementation(libs.junit)
     testImplementation(kotlin("test"))
     testImplementation(libs.kotlinx.coroutines.test)
@@ -575,5 +602,43 @@ tasks.withType<Test>().configureEach {
     providers.gradleProperty("autoSleepReplayOutput").orNull?.let {
         systemProperty("hapaneld.autoSleepReplay.output", it)
         inputs.property("autoSleepReplayOutputPath", it)
+    }
+}
+
+// Keep real platform classes in their own supported Test worker so unrelated JVM fixtures retain SDK stubs.
+afterEvaluate {
+    val debugTests = tasks.named<Test>("testDebugUnitTest")
+    val callerClasses = listOf(
+        "io.panelassistant.android.util.AndroidWebViewUpdateIoTest",
+        "io.panelassistant.android.http.PaneldServerWebViewApprovalTest",
+    )
+    // The repository selector emits exact class filters. Their proofs run in the dependency worker.
+    val requestedArgs = gradle.startParameter.taskRequests.flatMap { it.args }
+    val requestedTests = requestedArgs.mapIndexedNotNull { index, argument ->
+        when {
+            argument == "--tests" -> requestedArgs.getOrNull(index + 1)
+            argument.startsWith("--tests=") -> argument.substringAfter('=')
+            else -> null
+        }
+    }
+    val ordinaryUnitTasks = setOf(":app:testDebugUnitTest", "testDebugUnitTest", ":app:testReleaseUnitTest", "testReleaseUnitTest")
+    val singleOrdinaryTask = requestedArgs.firstOrNull() in ordinaryUnitTasks && requestedArgs.drop(1).all {
+        it == "--tests" || it == "--rerun" || it in callerClasses ||
+            (it.startsWith("--tests=") && it.substringAfter('=') in callerClasses)
+    }
+    val callerOnlySelection = singleOrdinaryTask && requestedTests.isNotEmpty() && requestedTests.all { it in callerClasses }
+    val webViewCallerTests = tasks.register<Test>("testWebViewCaller") {
+        description = "Exercises native WebView admission and host-executable Android adapter paths."
+        group = "verification"
+        dependsOn(providerAndroidRuntimeJar)
+        testClassesDirs = debugTests.get().testClassesDirs
+        classpath = files(providerAndroidRuntimeJar) + debugTests.get().classpath
+        useJUnit()
+        callerClasses.forEach { filter.includeTestsMatching(it) }
+    }
+    tasks.withType<Test>().matching { it.name.endsWith("UnitTest") }.configureEach {
+        dependsOn(webViewCallerTests)
+        callerClasses.forEach { filter.excludeTestsMatching(it) }
+        onlyIf("Exact caller class selections execute in the isolated worker") { !callerOnlySelection }
     }
 }
