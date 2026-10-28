@@ -323,7 +323,7 @@ class DashboardActivity : AppCompatActivity() {
     /** When the reconnecting cover first went up, for its "unreachable for" hero; 0 while it is down. */
     private var reconnectingSinceMs = 0L
     // The cover over the WebView: up only while the phase is reconnecting or latched (see [phase]).
-    private val webCover by lazy { DashboardWebCover(this, main) }
+    private val webCover by lazy { DashboardWebCover(this, main, screenAwake = { pacer.screenAwake }) }
     private fun showWebCover(fill: (StatusSurface) -> Unit) =
         webCover.show(swipe?.parent as? ViewGroup, StatusSurface.darkFor(this, activityConfig), fill)
     // The main-frame document the dashboard WebView is actually showing (onPageCommitVisible), or null
@@ -853,7 +853,7 @@ class DashboardActivity : AppCompatActivity() {
             embodiment.loadStarted(rendererValues { it == RendererApply.RELOAD })
             clearedThisLoad = false
         }
-        override fun screenChanged(awake: Boolean) { entityGate.onScreenChanged(awake) }
+        override fun screenChanged(awake: Boolean) { entityGate.onScreenChanged(awake); webCover.screenChanged(awake) }
         override fun woke() { lastTouchAt = SystemClock.elapsedRealtime() }
         override fun handshakeTimedOut(): Boolean = bridge.handshakeTimedOut()
         override fun blockHandshakeMissed() {
