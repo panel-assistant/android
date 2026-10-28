@@ -8,7 +8,7 @@
 
 ### Changed
 
-- Home Assistant's menu button is shown again by default on every panel, including existing panels, and the sidebar opens from it. You can hide it again with Hide Home Assistant navigation on the Configure page's Built-in renderer card.
+- Home Assistant's menu button is shown again by default on every panel, including existing panels, and the sidebar opens from it. You can hide it again with Hide Home Assistant navigation (native) on the Configure page's Built-in renderer card.
 
 - On a rooted panel, network ADB is switched off once Panel Assistant 1.0.0-rc2 is installed and connected, because Panel Assistant now sends its commands over the panel's own connection. The panel's ADB switch then shows it as managed by Panel Assistant.
 
