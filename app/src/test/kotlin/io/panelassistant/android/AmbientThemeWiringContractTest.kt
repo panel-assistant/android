@@ -1,7 +1,9 @@
 package io.panelassistant.android
 
+import io.panelassistant.android.control.BuiltinDashboard
 import io.panelassistant.android.testsupport.TestSources
 import io.panelassistant.android.util.DashboardTheme
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -46,26 +48,43 @@ class AmbientThemeWiringContractTest {
     }
 
     @Test fun `a dashboard returning to the front is checked again`() {
-        // Source-text reason: the service's display owner registers the listener while the service starts, which no JVM test can run.
+        // Source-text reason: a lifecycle registration. The service's display owner registers the listener in its
+        // start sequence and clears it in teardown; what reconciliation then does is pinned in AmbientThemeConsentTest.
         val service = source("ServiceDisplay.kt")
         val registration = slice(service, "BuiltinDashboard.setForegroundGainedListener {", "\n        }\n")
         assertTrue(registration.contains("reconcileAmbientTheme()"))
         assertTrue("teardown must clear it", service.contains("BuiltinDashboard.setForegroundGainedListener(null)"))
-        val reconcile = slice(service, "private fun reconcileAmbientTheme()", "\n    }\n")
-        assertTrue(reconcile.contains("if (applied == effective) ambientRebuildRequestedFor = null"))
-        assertTrue(reconcile.contains("alreadyRequested = ambientRebuildRequestedFor"))
-        val dashboard = source("control/BuiltinDashboard.kt")
-        assertTrue(dashboard.contains("if (changed && value) foregroundGainedListener?.invoke()"))
+    }
+
+    @Test fun `the return listener fires only when the dashboard comes to the front`() {
+        val owner = BuiltinDashboard.acquireActivityOwner()
+        var gained = 0
+        try {
+            BuiltinDashboard.setActivityForeground(owner, false)
+            BuiltinDashboard.setForegroundGainedListener { gained++ }
+            BuiltinDashboard.setActivityForeground(owner, true)
+            assertEquals("coming to the front fires once", 1, gained)
+            BuiltinDashboard.setActivityForeground(owner, true)
+            assertEquals("staying in front does not fire again", 1, gained)
+            BuiltinDashboard.setActivityForeground(owner, false)
+            assertEquals("leaving the front does not fire", 1, gained)
+            BuiltinDashboard.setActivityForeground(owner, true)
+            assertEquals("each return fires", 2, gained)
+            BuiltinDashboard.setForegroundGainedListener(null)
+            BuiltinDashboard.setActivityForeground(owner, false)
+            BuiltinDashboard.setActivityForeground(owner, true)
+            assertEquals("a cleared listener is not called", 2, gained)
+        } finally {
+            BuiltinDashboard.setForegroundGainedListener(null)
+            BuiltinDashboard.releaseActivityOwner(owner)
+        }
     }
 
     // --- source wiring ------------------------------------------------------------------------------
 
     @Test fun `the controller judges the model's own output on the room's own scale`() {
         val controller = source("control/AutoBrightnessController.kt")
-        assertTrue(controller.contains("private fun applyEvaluation(inputs: EvaluationInputs, estimate: BaselineEstimate): BrightnessWrite? {"))
-        val tick = controller
-            .substringAfter("private fun applyEvaluation(inputs: EvaluationInputs, estimate: BaselineEstimate): BrightnessWrite? {")
-            .substringBefore("/** Monitor held. Records a write only if nothing superseded its evaluation while it ran. */")
+        val tick = slice(controller, "private fun applyEvaluation(", "\n    }\n")
         assertTrue("the evaluation's next delay honours the dwell", tick.contains("nextDelayMs = ambientAwareDelay("))
         assertTrue(
             tick.contains(
@@ -73,7 +92,8 @@ class AmbientThemeWiringContractTest {
             ),
         )
         assertTrue(tick.contains("if (ambientTheme.observe(nowElapsed, lastAmbientLevel)) publishAmbientVerdict()"))
-        assertTrue("a pending change is judged when its dwell ends", tick.contains("ambientTheme.pendingDeadlineMs()"))
+        val delay = slice(controller, "private fun ambientAwareDelay(", "\n    }\n")
+        assertTrue("a pending change is judged when its dwell ends", delay.contains("ambientTheme.pendingDeadlineMs()"))
     }
 
     @Test fun `a verdict is persisted and handed to the service off the controller's lock`() {
