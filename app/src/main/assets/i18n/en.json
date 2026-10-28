@@ -26123,10 +26123,10 @@
       "hardMaxChars": 360
     },
     "profiles.issue.unknown-core-transfer": {
-      "text": "Unknown Panel Assistant transfer '{value}'.",
-      "sourceHash": "e4a1382e0e69c7a88620925541c3a63e0f2b4862decf182e24cb99b72eb00cb7",
+      "text": "Unknown Panel Assistant LED transfer function '{value}'.",
+      "sourceHash": "6a3e772e15e7b18ac0876316d778ec45d862e0f7d31346d2b0a1135f619507bd",
       "surface": "profiles",
-      "context": "profile API presentation fallback",
+      "context": "profile API presentation fallback; hardware.led.transfer names the LED transfer function (the curve that maps channel values), not a data transfer",
       "risk": "ordinary",
       "siblings": [
         "profiles.issue.unknown-core-driver",
@@ -26140,7 +26140,8 @@
       ],
       "frozen": [
         "{value}",
-        "Panel Assistant"
+        "Panel Assistant",
+        "LED"
       ],
       "softMaxChars": 180,
       "hardMaxChars": 360

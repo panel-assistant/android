@@ -8889,8 +8889,8 @@
       "state": "machine-cross-checked"
     },
     "profiles.issue.unknown-core-transfer": {
-      "text": "未知的 Panel Assistant 传递函数“{value}”。",
-      "sourceHash": "e4a1382e0e69c7a88620925541c3a63e0f2b4862decf182e24cb99b72eb00cb7",
+      "text": "未知的 Panel Assistant LED 传递函数“{value}”。",
+      "sourceHash": "6a3e772e15e7b18ac0876316d778ec45d862e0f7d31346d2b0a1135f619507bd",
       "state": "machine-cross-checked"
     },
     "profiles.issue.unknown-field": {
