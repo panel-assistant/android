@@ -16,6 +16,10 @@
 
 - UI layout checks use pinned browser images and split the test suite to reduce CI time.
 
+### Fixed
+
+- A panel no longer stays on its "Learning" screen without a dashboard. One updated from 0.9.11 could stop on "Building the filtered set" for good. If the panel has not finished preparing its entity filter after 90 seconds, for whatever reason, it now shows the dashboard unfiltered, keeps trying, and switches to the filtered dashboard once it can. Panel Assistant reports the panel while that lasts.
+
 ## v1.0.0-rc1 - 2026-10-25
 
 This is the first release candidate of the panel app's 1.0, the Android app that Panel Assistant installs on your panels. Please open an issue with the panel model and what you saw if something breaks. The story of 1.0 is that MQTT and the old app are gone for good, so this release only works with panels that Panel Assistant 0.9.0 has already moved. In exchange the panel and Panel Assistant now talk over one connection for everything, including the sidebar, updates and voice, and that is what makes most of the changes below possible. A lot changed; I have listed what you will notice rather than every commit.
