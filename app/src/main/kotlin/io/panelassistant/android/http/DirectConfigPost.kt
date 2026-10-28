@@ -433,7 +433,9 @@ internal class DirectConfigPost(
                 }
                     persisted
                 }
-                if (saved && !mutationPlan.isNoOp) {
+                // Admission can refuse before a plan exists; only committed saves have live effects.
+                if (!saved) return@synchronized false
+                if (!mutationPlan.isNoOp) {
                     // Keep equality planning, persistence and hardware admission in one request lane. A
                     // concurrent retry therefore observes this request's durable desired state as its baseline.
                     dispatchDirectConfigLiveSettings(mutationPlan.changedLive) { key, raw ->
