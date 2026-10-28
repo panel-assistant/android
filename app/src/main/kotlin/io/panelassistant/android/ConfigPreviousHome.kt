@@ -4,6 +4,12 @@ import io.panelassistant.android.config.TamePackagePolicy
 import io.panelassistant.android.platform.ActivityRef
 import io.panelassistant.android.util.AndroidInput
 
+private val HOME_CUSTODY_LOCK = Any()
+
+/** Order pending HOME acquisition against handback without blocking unrelated config writes.
+ *  Take this lock before any Config transaction; never wait for it while holding the Config lock. */
+internal fun <T> withHomeCustody(block: () -> T): T = synchronized(HOME_CUSTODY_LOCK, block)
+
 /** Local installation custody; kept in the canonical store across updates, never a user setting. */
 internal val Config.previousHomeComponent: String?
     get() = prefs.getString("device_local_previous_home_component", null)

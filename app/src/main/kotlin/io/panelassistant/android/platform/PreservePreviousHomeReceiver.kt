@@ -10,6 +10,7 @@ import io.panelassistant.android.preservePreviousHome
 import io.panelassistant.android.setupEverCompleted
 import io.panelassistant.android.migrateSetupQuestionsForExistingInstall
 import io.panelassistant.android.homeTakeoverPending
+import io.panelassistant.android.withHomeCustody
 import io.panelassistant.android.control.Su
 import io.panelassistant.android.control.SystemController
 import io.panelassistant.android.util.HelperClient
@@ -91,20 +92,20 @@ internal fun pendingHomeOperation(
     nativeAvailable: () -> Boolean,
     setHome: (String) -> Boolean,
 ): PendingHomeResult {
-    // Probing can block. The intent must be read again after it, inside the mutation transaction.
+    // Probing can block. The intent must be read again after it, under HOME custody.
     val native = nativeAvailable()
-    return config.synchronizedTransaction {
+    return withHomeCustody {
         if (!config.setupEverCompleted || !config.homeTakeoverPending) {
-            return@synchronizedTransaction PendingHomeResult.DEFERRED
+            return@withHomeCustody PendingHomeResult.DEFERRED
         }
-        if (!claim) return@synchronizedTransaction if (native) PendingHomeResult.DEFERRED else PendingHomeResult.SHELL
+        if (!claim) return@withHomeCustody if (native) PendingHomeResult.DEFERRED else PendingHomeResult.SHELL
         val target = env.homeActivities().singleOrNull {
             it.pkg == env.ownPackage && it.component == component
-        } ?: return@synchronizedTransaction PendingHomeResult.DEFERRED
+        } ?: return@withHomeCustody PendingHomeResult.DEFERRED
         // A rootless app cannot execute the ADB shell's HOME command. This receipt is deliberately
         // distinct; the shell rechecks it before each mutation, and never follows a failed native claim.
-        if (!native) return@synchronizedTransaction PendingHomeResult.SHELL
-        // Handback clears pending using the same Config lock: it either follows this actual mutation,
+        if (!native) return@withHomeCustody PendingHomeResult.SHELL
+        // Handback clears pending under the same HOME custody: it either follows this actual mutation,
         // or has already revoked it. An earlier eligibility reply cannot grant a later shell write.
         if (setHome(target.component) && config.confirmHomeTakeover(target, env.defaultHome())) {
             PendingHomeResult.CLAIMED

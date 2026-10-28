@@ -114,7 +114,7 @@ class PendingHomeOperationTest {
         val finishRoot = CountDownLatch(1)
         val handbackAtClear = CountDownLatch(1)
         val handbackReturned = CountDownLatch(1)
-        val workers = Executors.newFixedThreadPool(2)
+        val workers = Executors.newFixedThreadPool(3)
         panel.beforeRootWrite = {
             if (rootEntered.count > 0) {
                 rootEntered.countDown()
@@ -129,6 +129,9 @@ class PendingHomeOperationTest {
             }
             assertTrue(handbackAtClear.await(5, TimeUnit.SECONDS))
             assertFalse("handback cannot finish ahead of the admitted HOME write", handbackReturned.await(100, TimeUnit.MILLISECONDS))
+            val settings = workers.submit<Boolean> { panel.config.commitVoiceEnabled(true) }
+            assertTrue("unrelated settings remain writable while HOME is waiting", settings.get(1, TimeUnit.SECONDS))
+            assertTrue(panel.config.voiceEnabled)
             finishRoot.countDown()
             assertEquals(PendingHomeResult.CLAIMED, claim.get(5, TimeUnit.SECONDS))
             assertTrue(handback.get(5, TimeUnit.SECONDS).uninstallSafe)
