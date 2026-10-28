@@ -115,6 +115,8 @@ internal class DashboardEntityGate(
     private val host: Host,
     /** How the gate reads settings; JVM tests pass one over in-memory preferences. */
     private val readConfig: () -> Config = { Config(activity) },
+    /** How the bootstrap poll schedules its next tick: on [main]; JVM tests record it instead. */
+    private val scheduleBootstrapCheck: (Runnable, Long) -> Unit = { check, delayMs -> main.postDelayed(check, delayMs) },
 ) {
     interface Host {
         val activityOwner: Long
@@ -141,6 +143,8 @@ internal class DashboardEntityGate(
     /** When the pending entity-filter retry is due, so a redraw reschedules it rather than restarting it. */
     private var entityFilterRetryDueAtMs = 0L
     private var entityBootstrapBlockedCount = -1
+    /** A dashboard WebView was admitted after the last hold screen: a superseded poll has nothing to wait for. */
+    private var rendererAdmitted = false
     private var entityBootstrapMilestoneView: TextView? = null
     private var entityLearningLine: TextView? = null
     private var entityLearningTrack: NoticeTrack? = null
@@ -240,7 +244,7 @@ internal class DashboardEntityGate(
                 if (host.destroyed || !BuiltinDashboard.ownsActivity(host.activityOwner) || readEpoch != entityBootstrapReadEpoch) return
                 paintEntityLearning(milestone)
             }
-            main.postDelayed(entityBootstrapCheck, ENTITY_BOOTSTRAP_CHECK_MS)
+            scheduleBootstrapCheck(entityBootstrapCheck, ENTITY_BOOTSTRAP_CHECK_MS)
             return
         }
         entityBootstrapWatchdog.reset()
@@ -252,8 +256,18 @@ internal class DashboardEntityGate(
         entityFilterLease = null
         val filterEpoch = ++filterPreparationEpoch
         val prepared = prepareEntityFilter(config)
-        if (host.destroyed || !BuiltinDashboard.ownsActivity(host.activityOwner) ||
-            readEpoch != entityBootstrapReadEpoch || filterEpoch != filterPreparationEpoch) return
+        if (host.destroyed || !BuiltinDashboard.ownsActivity(host.activityOwner) || readEpoch != entityBootstrapReadEpoch) return
+        if (filterEpoch != filterPreparationEpoch) {
+            // A relaunch superseded this preparation. It builds only when it finds something to rebuild: a plain
+            // return to the foreground (Panel Assistant's post-update return, HOME, a kiosk return) leaves the hold
+            // screen to this poll. Returning for good here left an updated panel on the hold screen with a
+            // verified, applied set. Keep polling until a renderer is admitted.
+            if (!rendererAdmitted) {
+                main.removeCallbacks(entityBootstrapCheck)
+                scheduleBootstrapCheck(entityBootstrapCheck, ENTITY_BOOTSTRAP_CHECK_MS)
+            }
+            return
+        }
         configureEntityFilter(config, prepared)
         host.buildAndLoad(config)
     }
@@ -523,6 +537,7 @@ internal class DashboardEntityGate(
         statusScreens.cancelAdmissionAutoRetry()
         main.removeCallbacks(entityBootstrapCheck)
         host.teardownWeb()
+        rendererAdmitted = false
         val filterHold = entityFilterNativeHold
         // Past the watchdog's give-up deadline a formless hold PRESENTS as a synchronization problem so
         // the retry/disable buttons appear — the happy spinner must never be terminal.
@@ -557,7 +572,7 @@ internal class DashboardEntityGate(
         surface.setBody(activity.getString(kind.pill), *rows.toTypedArray())
         statusScreens.showStatusSurface(surface) { showWaitingForEntityBootstrap() }
         if (filterHold != null) scheduleEntityFilterRetry()
-        else main.postDelayed(entityBootstrapCheck, ENTITY_BOOTSTRAP_CHECK_MS)
+        else scheduleBootstrapCheck(entityBootstrapCheck, ENTITY_BOOTSTRAP_CHECK_MS)
         Log.i(TAG, if (filterHold != null) {
             "automatic entity filter held before WebView creation (${filterHold.error})"
         } else if (blockingIssues > 0) {
@@ -579,6 +594,7 @@ internal class DashboardEntityGate(
     fun onRendererAdmitted() {
         main.removeCallbacks(entityBootstrapCheck)
         entityBootstrapBlockedCount = -1
+        rendererAdmitted = true
     }
 
     fun stopLease() {
