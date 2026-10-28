@@ -83,8 +83,12 @@ object PerfReader {
     private var tickCount = 0
     private var prevTopTotal = 0L                 // /proc/stat aggregate jiffies at last top sample
     private var prevProc = HashMap<Int, Long>()   // pid -> utime+stime jiffies at last top sample
+    private var prevComm = HashMap<Int, String>() // pid -> comm at last top sample, to spot a reused pid
     private var prevSelf = 0L                     // own jiffies incl. reaped children at last top sample
-    private val nameCache = HashMap<Int, String>() // pid -> cmdline (fetched once; pids recycle rarely)
+    // pid -> cmdline, fetched once per process: dropped when the pid leaves the sample or its comm changes.
+    private val nameCache = HashMap<Int, String>()
+    // Resolves full names for ranked pids; tests install a stub through startForTest, reset on stop.
+    private var nameResolver: (List<Int>) -> Map<Int, String> = ::fullNames
 
     // Page-view gate. Instrumentation is the tool, not a tax: it must not be the panel's biggest CPU
     // consumer 24/7. So sampling runs only while the info page has been fetched within [ACTIVE_MS];
@@ -120,7 +124,8 @@ object PerfReader {
         pause: suspend (Long) -> Unit,
         ownPackage: String = "",
         initialTarget: RendererTarget? = null,
-    ) = startOwned(scope, ownPackage, initialTarget, rootAvailable, elapsedRealtime, pause)
+        resolveNames: ((List<Int>) -> Map<Int, String>)? = null,
+    ) = startOwned(scope, ownPackage, initialTarget, rootAvailable, elapsedRealtime, pause, resolveNames)
 
     /** Update the renderer-target snapshot at the applied-configuration boundary. Generation-guarded so a
      *  call before start or after stop is a no-op — a dead/rejected generation can never publish. */
@@ -141,10 +146,12 @@ object PerfReader {
         rootAvailable: () -> Boolean,
         elapsedRealtime: () -> Long,
         pause: suspend (Long) -> Unit,
+        resolveNames: ((List<Int>) -> Map<Int, String>)? = null,
     ) {
         val runGeneration = synchronized(lifecycleLock) {
             if (generation != 0L) return
             resetStateLocked()
+            resolveNames?.let { nameResolver = it }
             (++nextGeneration).also {
                 generation = it
                 // Install the identity snapshot as part of admission, so a rejected duplicate start
@@ -198,6 +205,7 @@ object PerfReader {
         rootOk = false
         tickCount = 0
         rendererIdentity = RendererIdentity()
+        nameResolver = ::fullNames
         resetLocalBaselines()
         synchronized(lock) {
             sink.clear()
@@ -227,7 +235,7 @@ object PerfReader {
      *  longer-window CPU% on the next read, never a bogus delta). */
     private fun resetLocalBaselines() {
         prevTopTotal = 0L; prevSelf = 0L
-        prevProc = HashMap(); prevRenderJiffies = HashMap(); prevRenderAt = 0L
+        prevProc = HashMap(); prevComm = HashMap(); prevRenderJiffies = HashMap(); prevRenderAt = 0L
         nameCache.clear()
     }
 
@@ -474,15 +482,24 @@ object PerfReader {
         var ramRanked = emptyList<Pair<Int, Long>>()
         var probePct: Double? = null
         var missing = emptyList<Int>()
+        var resolve = nameResolver
         ifCurrent(runGeneration) {
+            resolve = nameResolver
             dTotal = total - prevTopTotal
-            cpuRanked = if (prevTopTotal != 0L && dTotal > 0) rankCpuProcesses(cur, prevProc) else emptyList()
+            // A pid that vanished or changed comm since the last sample is a different process: forget its
+            // name, and give it no interval delta against the dead process's counter.
+            val sameProcess = { pid: Int -> comm[pid]?.let(::stableComm) == prevComm[pid]?.let(::stableComm) }
+            nameCache.keys.retainAll(sameProcess)
+            cpuRanked = if (prevTopTotal != 0L && dTotal > 0) {
+                rankCpuProcesses(cur.filterKeys(sameProcess), prevProc)
+            } else emptyList()
             ramRanked = rankRamProcesses(rssPages)
             probePct = if (kidsNow != null && prevSelf > 0L && dTotal > 0) {
                 Math.round((kidsNow - prevSelf) * 1000.0 / dTotal) / 10.0
             } else null
             prevTopTotal = total
             prevProc = HashMap(cur)
+            prevComm = HashMap(comm)
             kidsNow?.let { prevSelf = it }
             if (resolveFullNames) {
                 missing = (cpuRanked.asSequence() + ramRanked.asSequence())
@@ -491,7 +508,7 @@ object PerfReader {
         } ?: return
 
         // Full cmdlines only for ranked pids we haven't resolved before — usually zero extra su calls.
-        val resolvedNames = if (missing.isEmpty()) emptyMap() else fullNames(missing)
+        val resolvedNames = if (missing.isEmpty()) emptyMap() else resolve(missing)
         ifCurrent(runGeneration) {
             resolvedNames.forEach { (pid, name) -> nameCache[pid] = name }
             val attributionPkg = RendererResolver.attributionOf(identity.target, identity.ownPackage)
@@ -558,6 +575,15 @@ object PerfReader {
         } finally {
             cost.close()
         }
+    }
+
+    /** Since Linux 4.18 a kernel worker's comm carries its current workqueue after a '+' (busy) or '-'
+     *  (idle), e.g. `kworker/u8:2+events_unbound`. Drop that suffix so the same worker still matches itself
+     *  when it flips between samples. */
+    private fun stableComm(comm: String): String {
+        if (!comm.startsWith("kworker/")) return comm
+        val cut = comm.indexOfAny(charArrayOf('+', '-'), startIndex = "kworker/".length)
+        return if (cut < 0) comm else comm.substring(0, cut)
     }
 
     /** Shorten Android "package:process:classname" cmdlines to just the package component — the extra
