@@ -32,7 +32,7 @@ class LocalAdbRuntimeTest {
     }
     private open class Endpoint : LocalAdbEndpoint {
         var status: LocalAdbState? = LocalAdbState(false, false)
-        val effects = mutableListOf<String>()
+        val effects: MutableList<String> = java.util.concurrent.CopyOnWriteArrayList()
         override fun state() = status
         override fun arm(nonce: String): Boolean { effects += "arm"; status = LocalAdbState(true, false); return true }
         override fun beat(nonce: String): Boolean { effects += "beat"; return true }
