@@ -810,6 +810,8 @@ for (const [engine, browserType] of [['Chromium', chromium], ['WebKit', webkit]]
     assert.equal(await steps.textContent(), 'Update steps for Sonoff NSPanel Pro');
     assert.match(await warning.textContent(), /Keep this page open/);
     assert.doesNotMatch(await warning.textContent(), /Google Play/);
+    // The warning names the component the guide, Home Assistant and the :8888 banner call WebView.
+    assert.match(await warning.innerText(), /browser engine \(Android System WebView\) has Chromium 107/);
     rig.state.current = { ...webViewJourney(), complete: true, next: null };
     await eventually(() => rig.page.locator('.card h2').textContent(), (text) => text.includes('set up'), 8_000);
     const text = await rig.page.locator('#wiz-step').textContent();

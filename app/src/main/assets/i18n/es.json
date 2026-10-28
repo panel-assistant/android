@@ -11874,8 +11874,8 @@
       "state": "machine-cross-checked"
     },
     "setup.webview.found": {
-      "text": "Este panel tiene Chromium {found}. Un panel de control actual de Home Assistant necesita Chromium {needed} o posterior.",
-      "sourceHash": "29d3bc49a5e9bbc77f2874fe03a9d53e6e7a5a21fbdcb54fd075343a6ccc98ee",
+      "text": "El motor del navegador de este panel (Android System WebView) tiene Chromium {found}. Un panel de control actual de Home Assistant necesita Chromium {needed} o posterior.",
+      "sourceHash": "94f19a9509ec35ea05bdd385b4659b229ef687b0b6d5d64beb724232c01f4400",
       "state": "machine-cross-checked"
     },
     "setup.webview.play": {

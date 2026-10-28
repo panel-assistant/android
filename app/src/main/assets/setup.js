@@ -260,7 +260,7 @@
       // so this page stays open to carry on.
       var wv = journey.webview;
       var lines = [];
-      if (wv.found && wv.needed) lines.push(i18nText("setup.webview.found", "This panel has Chromium {found}. A current Home Assistant dashboard needs Chromium {needed} or newer.",
+      if (wv.found && wv.needed) lines.push(i18nText("setup.webview.found", "This panel’s browser engine (Android System WebView) has Chromium {found}. A current Home Assistant dashboard needs Chromium {needed} or newer.",
         { found: String(wv.found), needed: String(wv.needed) }));
       if (wv.play) lines.push(i18nText("setup.webview.play", "This panel updates its engine through Google Play: on the panel, open the Play Store and update Android System WebView."));
       // The note promises the page moves on to the Home Assistant address, true only up to that step.
