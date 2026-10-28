@@ -105,8 +105,10 @@ jobs:
             adb install app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk;
             log="$RUNNER_TEMP/core-instrumentation.log";
             status=0;
+            adb logcat -c;
             adb shell am instrument -w -e annotation io.panelassistant.android.CoreInstrumentation io.panelassistant.android.test/androidx.test.runner.AndroidJUnitRunner > "$log" 2>&1 || status=$?;
             cat "$log";
+            if [ "$status" -ne 0 ] || grep -Eq "FAILURES!!!|Process crashed|INSTRUMENTATION_FAILED|shortMsg=|No tests found" "$log"; then adb logcat -d -b main,crash,system | tail -n 3000; fi;
             test "$status" -eq 0;
             if grep -Eq "FAILURES!!!|Process crashed|INSTRUMENTATION_FAILED|shortMsg=|No tests found" "$log"; then exit 1; fi;
             grep -Eq "^OK \\([1-9][0-9]* tests?\\)[[:space:]]*$" "$log"'
