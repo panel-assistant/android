@@ -36,7 +36,7 @@ jobs:
   suite:
     runs-on: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.actor != 'dependabot[bot]' && vars.CI_RUNNER == 'blacksmith' && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04' }}
     container:
-      image: mcr.microsoft.com/playwright:v1.64.0-noble@sha256:06a9939e57531807f8d5fd76ce44b53165ffb7d7501d87ab10e285c20b1e971f
+      image: mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea
       options: --ipc=host
     timeout-minutes: 10
     strategy:
@@ -80,7 +80,7 @@ jobs:
   layout:
     runs-on: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.actor != 'dependabot[bot]' && vars.CI_RUNNER == 'blacksmith' && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04' }}
     container:
-      image: mcr.microsoft.com/playwright:v1.64.0-noble@sha256:06a9939e57531807f8d5fd76ce44b53165ffb7d7501d87ab10e285c20b1e971f
+      image: mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea
       options: --ipc=host
     timeout-minutes: 10
     strategy:
