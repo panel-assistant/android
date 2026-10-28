@@ -726,10 +726,10 @@ class PaneldService : Service() {
 
         displayPower.buildControllers()
         voiceAudio.buildAnnouncements()
-        // The Home Assistant links and their health, built once in this order on the configuration above.
         haLinks = ServiceHaLinks(
             this, scope, config, teardownBoundary, panelAssistantReporter, panelAssistantCommands,
             voiceAudio.panelAssistantVoice, voiceAudio.voiceStream, { runtime }, { server },
+            panelAssistantLogs = io.panelassistant.android.panelassistant.PanelAssistantLogs(config, logCaptureApp, logCaptureSystem, logShipper::setPanelAssistantForwarding),
         )
         displayPower.bindHaAmbient()
         controls.buildLighting()

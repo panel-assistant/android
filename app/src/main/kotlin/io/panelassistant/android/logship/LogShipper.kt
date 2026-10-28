@@ -265,12 +265,13 @@ class LogShipper internal constructor(
 
     private val lock = Any()
     private var run: LogShipRun? = null
+    private var panelAssistantForwarding = false
     private val rfc3339 = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
         .apply { timeZone = TimeZone.getTimeZone("UTC") }
 
     /** Start shipping if enabled and a host is set. Idempotent and serialized with reconfiguration. */
     fun start() = synchronized(lock) {
-        if (run != null) return@synchronized
+        if (run != null || panelAssistantForwarding) return@synchronized
         val target = configSnapshot().targetOrNull()
         if (target == null) {
             Log.i(TAG, "disabled (no sink configured)")
@@ -281,11 +282,18 @@ class LogShipper internal constructor(
 
     /** Replace the complete run when enablement, target, protocol, or panel identity changes. */
     fun reconfigure() = synchronized(lock) {
-        val target = configSnapshot().targetOrNull()
+        val target = if (panelAssistantForwarding) null else configSnapshot().targetOrNull()
         if (run?.target == target || (run == null && target == null)) return@synchronized
         run?.close()
         run = null
         if (target != null) startLocked(target)
+    }
+
+    /** The bound Panel Assistant grant takes precedence while preserving direct-sink preferences. */
+    fun setPanelAssistantForwarding(active: Boolean) = synchronized(lock) {
+        if (panelAssistantForwarding == active) return@synchronized
+        panelAssistantForwarding = active
+        reconfigure()
     }
 
     /** Terminally detach and close the current generation. Idempotent. */

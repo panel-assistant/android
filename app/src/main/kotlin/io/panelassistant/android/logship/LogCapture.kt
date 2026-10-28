@@ -15,12 +15,24 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
 import java.io.IOException
+import java.time.Instant
+import java.time.LocalDateTime
+import java.util.TimeZone
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 import kotlin.math.min
+
+/** One redacted native log event, retaining the device's event time and Android priority. */
+data class LogCaptureRecord(
+    val timestamp: String,
+    val priority: Int,
+    val tag: String,
+    val pid: Int,
+    val message: String,
+)
 
 /**
  * Shared, demand-driven logcat capture. ONE subprocess and ONE redaction pass feed every consumer —
@@ -62,6 +74,8 @@ class LogCapture(
     private val longLogcatRecords: Boolean = false,
     /** Only system capture uses this to choose the root process or the helper at each restart. */
     private val processAvailable: () -> Boolean = { true },
+    private val wallMillis: () -> Long = System::currentTimeMillis,
+    private val timeZone: () -> TimeZone = TimeZone::getDefault,
 ) {
     init {
         require(maxViewers > 0) { "maxViewers must be positive" }
@@ -166,6 +180,41 @@ class LogCapture(
             }
         }
     }
+
+    /** Structured events from the same capture and redaction pass as the raw viewer and shipper.
+     * Banners, malformed headers and standalone continuation lines have no native event metadata. */
+    fun subscribeRecords(listener: (LogCaptureRecord) -> Unit): AutoCloseable = subscribe { line ->
+        parseRecord(line)?.let(listener)
+    }
+
+    private fun parseRecord(line: String): LogCaptureRecord? = runCatching {
+        if (longLogcatRecords) {
+            val headerEnd = line.indexOf('\n')
+            if (headerEnd < 0) return null
+            val match = LONG_HEADER.matchEntire(line.substring(0, headerEnd)) ?: return null
+            val (seconds, fraction, pid, priority, tag) = match.destructured
+            LogCaptureRecord(
+                Instant.ofEpochSecond(seconds.toLong(), fraction.padEnd(9, '0').toLong()).toString(),
+                priorityValue(priority), tag.trim(), pid.toInt(), line.substring(headerEnd + 1),
+            )
+        } else {
+            val match = THREADTIME.matchEntire(line) ?: return null
+            val (month, day, hour, minute, second, fraction, pid, priority, tag, message) = match.destructured
+            val now = Instant.ofEpochMilli(wallMillis())
+            val zone = timeZone().toZoneId()
+            val year = now.atZone(zone).year
+            // Threadtime omits the year. Capture can straddle midnight on New Year's Eve, so choose
+            // the valid adjacent-year date nearest capture time in the device's timezone.
+            val timestamp = (year - 1..year + 1).mapNotNull { candidate ->
+                runCatching {
+                    LocalDateTime.of(candidate, month.toInt(), day.toInt(), hour.toInt(),
+                        minute.toInt(), second.toInt(), fraction.padEnd(9, '0').toInt())
+                        .atZone(zone).toInstant()
+                }.getOrNull()
+            }.minByOrNull { kotlin.math.abs(it.toEpochMilli() - now.toEpochMilli()) } ?: return null
+            LogCaptureRecord(timestamp.toString(), priorityValue(priority), tag.trim(), pid.toInt(), message)
+        }
+    }.getOrNull()
 
     /** The buffered recent lines (already redacted) — instant backlog while capture is running. */
     fun snapshot(): List<String> = synchronized(ring) { ring.toList() }
@@ -398,6 +447,10 @@ class LogCapture(
     }
 
     companion object {
+        private val THREADTIME = Regex("""^(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})\.(\d{1,9})\s+(\d+)\s+\d+\s+([VDIWEF])\s+([^:]+): ?(.*)$""", RegexOption.DOT_MATCHES_ALL)
+        private val LONG_HEADER = Regex("""^\[\s*(\d+)\.(\d{1,9})\s+(\d+):\s*\d+\s+([VDIWEF])/([^\]]+)\s*]$""")
+        private fun priorityValue(letter: String): Int = "VDIWEF".indexOf(letter) + 2
+
         private const val TAG = "ha-paneld/logcap"
         private const val RING_CAP = 400
         private const val DUMP_LINES = 300

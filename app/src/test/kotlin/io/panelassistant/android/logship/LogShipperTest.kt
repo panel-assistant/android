@@ -23,6 +23,44 @@ import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
 class LogShipperTest {
+    @Test fun panelAssistantGrantRetiresDirectSinkAndRestoresLatestSettingsWhenRemoved() {
+        val executor = Executors.newSingleThreadExecutor()
+        val dispatcher = executor.asCoroutineDispatcher()
+        val scope = CoroutineScope(SupervisorJob() + dispatcher)
+        val config = AtomicReference(snapshot())
+        val capture = FakeCapture()
+        val targets = CopyOnWriteArrayList<LogShipTarget>()
+        val sinks = CopyOnWriteArrayList<RecordingSink>()
+        val shipper = LogShipper(
+            configSnapshot = config::get, scope = scope, subscribeCapture = capture::subscribe,
+            sinkFactory = LogSinkFactory { target, _ ->
+                targets += target
+                RecordingSink().also(sinks::add)
+            },
+        )
+        try {
+            shipper.start()
+            await { sinks.firstOrNull()?.connected?.count == 0L }
+            shipper.setPanelAssistantForwarding(true)
+            assertTrue(sinks.first().closed.get())
+            assertEquals(1, capture.closes.get())
+            config.set(snapshot(host = "replacement"))
+            shipper.reconfigure()
+            shipper.start()
+            assertEquals(1, capture.subscriptions.get())
+            shipper.setPanelAssistantForwarding(false)
+            await { sinks.size == 2 && sinks.last().connected.count == 0L }
+            capture.emit("resumed")
+            await { sinks.last().lines.contains("resumed") }
+            assertEquals(listOf("first", "replacement"), targets.map { it.host })
+        } finally {
+            shipper.stop()
+            scope.cancel()
+            dispatcher.close()
+            executor.shutdownNow()
+        }
+    }
+
     @Test fun trafficSummaryNamesPositivePluralAndMultiDropCounts() {
         assertEquals("2 records sent · 3 dropped", logShipTrafficText(sent = 2, dropped = 3))
         assertEquals("1 record sent", logShipTrafficText(sent = 1, dropped = 0))

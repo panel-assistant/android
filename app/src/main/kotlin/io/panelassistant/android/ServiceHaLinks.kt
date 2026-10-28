@@ -8,6 +8,7 @@ import io.panelassistant.android.http.PaneldServer
 import io.panelassistant.android.panelassistant.KtorPanelAssistantTransportConnector
 import io.panelassistant.android.panelassistant.PanelAssistantCommandSink
 import io.panelassistant.android.panelassistant.PanelAssistantHelloIdentity
+import io.panelassistant.android.panelassistant.PanelAssistantLogs
 import io.panelassistant.android.panelassistant.PanelAssistantStateReporter
 import io.panelassistant.android.panelassistant.PanelAssistantTransportDemand
 import io.panelassistant.android.panelassistant.PanelAssistantTransportOwner
@@ -51,6 +52,7 @@ internal class ServiceHaLinks(
     voiceStream: PanelAssistantVoiceStream,
     private val runtime: () -> ServiceRuntimeOwner<PaneldService.NetworkRuntime>,
     private val server: () -> PaneldServer,
+    panelAssistantLogs: PanelAssistantLogs? = null,
 ) {
     val haSocketClock: () -> Long = { android.os.SystemClock.elapsedRealtime() }
     val haSessionAuthority: DashboardHaApiSessionProvider
@@ -133,6 +135,7 @@ internal class ServiceHaLinks(
             },
             voice = panelAssistantVoice,
             voiceStream = voiceStream,
+            logs = panelAssistantLogs,
             onTransportFailure = { route -> HaConnectionRoutes.failed(config, route) },
             onConnection = { session, accepted ->
                 val route = session.route

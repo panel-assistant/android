@@ -1022,9 +1022,12 @@ class PanelAssistantTransportOwnerTest {
         val shadow = Shadow(listOf("relay1"))
         shadow.sink("relay1", "ON")
         val release = CompletableDeferred<Unit>()
-        val first = FakeConnection(Ha.accepting(capabilities = listOf("state"))).apply { holdReadAfterCancel = release }
-        val second = FakeConnection(Ha.accepting(capabilities = listOf("state")))
-        val harness = harness(first, second, shadow = shadow.reporter)
+        val forwarding = mutableListOf<Boolean>()
+        val logs = PanelAssistantLogs(emptyMap(), forwarding::add, { JSONObject() })
+        val sources = JSONObject().put("app", 5)
+        val first = FakeConnection(Ha.accepting(capabilities = listOf("state", "logs"), logs = sources)).apply { holdReadAfterCancel = release }
+        val second = FakeConnection(Ha.accepting(capabilities = listOf("state", "logs"), logs = sources))
+        val harness = harness(first, second, shadow = shadow.reporter, logs = logs)
         harness.owner.replaceDemand(DEMAND)
         runCurrent()
         assertEquals(listOf("panel_assistant/hello", "full_begin", "full_end"), first.sent.map(::kind))
@@ -1033,8 +1036,10 @@ class PanelAssistantTransportOwnerTest {
         harness.owner.replaceDemand(DEMAND.copy(identity = IDENTITY.copy(appVersionCode = 791)))
         runCurrent()
         assertFalse(first.closed)
+        assertEquals("retiring the session resumes direct logs before socket cleanup finishes", listOf(true, false), forwarding)
         release.complete(Unit)
         runCurrent()
+        assertTrue("the replacement session takes log routing authority", forwarding.last())
         shadow.sink("relay1", "OFF")
         runCurrent()
 
@@ -1780,6 +1785,7 @@ class PanelAssistantTransportOwnerTest {
         onConnection: (HaApiSession, PanelAssistantSession) -> Boolean = { _, _ -> true },
         checkPreferred: suspend () -> Boolean = { false },
         onTransportFailure: (io.panelassistant.android.HaConnectionRoute) -> Unit = {},
+        logs: PanelAssistantLogs? = null,
     ): Harness {
         val connector = FakeConnector(this, script.toMutableList(), repeating, repeatingFailure)
         val forces = mutableListOf<Boolean>()
@@ -1809,6 +1815,7 @@ class PanelAssistantTransportOwnerTest {
             onLifecycleAuthenticated = onLifecycleAuthenticated,
             onLifecycleDisconnected = onLifecycleDisconnected,
             onLifecycleRetired = onLifecycleRetired,
+            logs = logs,
         )
         harness = Harness(owner, connector, forces)
         return harness
@@ -1884,6 +1891,7 @@ class PanelAssistantTransportOwnerTest {
             updatePolicy: PanelAssistantUpdatePolicy? = null,
             /** Leave the `full_end` request unanswered; the test injects [reportAcknowledged] itself. */
             holdFullEnd: Boolean = false,
+            logs: JSONObject? = null,
         ): (JSONObject, FakeConnection) -> Unit = { frame, connection ->
             when (frame.getString("type")) {
                 "panel_assistant/hello" -> connection.inbound.trySend(
@@ -1900,6 +1908,7 @@ class PanelAssistantTransportOwnerTest {
                                 .put("integration", JSONObject().put("version", "0.3.0"))
                                 .put("channels", JSONObject().put("accepted", 0).put("unknown", JSONArray()))
                                 .apply { if (voiceStream != null) put("voice_stream_session", voiceStream) }
+                                .apply { if (logs != null) put("logs", JSONObject().put("sources", logs)) }
                                 .apply { if (lifecycle != null) put("lifecycle", lifecycle) }
                                 .apply { if (expectedEntityCount != null) put("expected_entity_count", expectedEntityCount) }
                                 .apply {

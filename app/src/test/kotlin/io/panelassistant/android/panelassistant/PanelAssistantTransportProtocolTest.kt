@@ -71,7 +71,7 @@ class PanelAssistantTransportProtocolTest {
         assertEquals(5, hello.getJSONObject("protocol").getInt("min"))
         assertEquals(5, hello.getJSONObject("protocol").getInt("max"))
         assertTrue(Regex("^[0-9a-f]{64}$").matches(hello.getString("contract_digest")))
-        assertEquals(listOf("state", "commands", "approval", "voice", "media", "voice_stream_session", "management", "local_adb", "ui_subscribe", "ui_bundle", "rest_retired", "unknown_state"), hello.getJSONArray("capabilities").let { (0 until it.length()).map(it::getString) })
+        assertEquals(listOf("state", "commands", "approval", "voice", "media", "voice_stream_session", "management", "local_adb", "ui_subscribe", "ui_bundle", "rest_retired", "unknown_state", "logs"), hello.getJSONArray("capabilities").let { (0 until it.length()).map(it::getString) })
         val relay = hello.getJSONArray("channels").getJSONObject(0)
         assertEquals(listOf("relay3", "switch", "relay", "relay3", "relay", "3"), listOf("channel", "platform", "translation_key", "unique_suffix", "family", "index").map { relay.get(it).toString() })
     }
@@ -88,7 +88,7 @@ class PanelAssistantTransportProtocolTest {
         // Pinned as a literal: a digest derived from JSON serialisation could differ between the
         // device's org.json and the JVM's, and the integration records whatever the panel sends.
         assertEquals(
-            "1d5a0f44ca89d587636daa954f29b9831fa3e09e7cff4b1820b5aa4dba0cd9ea",
+            "5249411f85bec0c5e36d549851cea2ee4a6bc02e684e05f9f03fb5d7ef9154a6",
             PanelAssistantTransportProtocol.CONTRACT_DIGEST,
         )
     }
@@ -210,6 +210,57 @@ class PanelAssistantTransportProtocolTest {
         assertFalse(offering.has("voice_stream"))
         assertFalse(JSONObject(PanelAssistantTransportProtocol.hello(1L, IDENTITY, listOf("voice"), voiceStreamClientId = id)).has("voice_stream_session"))
         assertFalse(JSONObject(PanelAssistantTransportProtocol.hello(1L, IDENTITY, listOf("voice_stream_session"))).has("voice_stream_session"))
+    }
+
+    @Test fun `hello advertises saved log destination and package only when logs is offered`() {
+        val saved = JSONObject().put("saved_sink", JSONObject().put("enabled", true).put("system_enabled", false)
+            .put("host", "logs.example").put("port", 514).put("protocol", "udp"))
+        val offered = JSONObject(PanelAssistantTransportProtocol.hello(1L, IDENTITY, listOf("logs"), logs = saved))
+        assertEquals(saved.toString(), offered.getJSONObject("logs").toString())
+        assertEquals(io.panelassistant.android.BuildConfig.APPLICATION_ID, offered.getJSONObject("app").getString("package"))
+        val absent = JSONObject(PanelAssistantTransportProtocol.hello(1L, IDENTITY, logs = saved))
+        assertFalse(absent.has("logs"))
+        assertFalse(absent.getJSONObject("app").has("package"))
+    }
+
+    @Test fun `log source grants are optional and an empty grant leaves all sources off`() {
+        assertNull(session(accepted()).logs)
+        assertNull(session(accepted().apply { getJSONObject("result").put("logs", "ignored without capability") }).logs)
+        val empty = accepted().granting("logs").apply {
+            getJSONObject("result").put("logs", JSONObject().put("sources", JSONObject()))
+        }
+        assertEquals(emptyMap<String, Int>(), session(empty).logs)
+        for (priority in 2..7) {
+            val frame = accepted().granting("logs").apply {
+                getJSONObject("result").put("logs", JSONObject().put("sources", JSONObject().put("app", priority)))
+            }
+            assertEquals(mapOf("app" to priority), session(frame).logs)
+        }
+        val both = accepted().granting("logs").apply {
+            getJSONObject("result").put("logs", JSONObject().put("sources", JSONObject().put("app", 5).put("system", 7)))
+        }
+        assertEquals(mapOf("app" to 5, "system" to 7), session(both).logs)
+    }
+
+    @Test fun `granting logs rejects missing malformed or unauthorised source priorities`() {
+        val malformed = listOf<Any?>(
+            null, JSONObject.NULL, "logs", JSONObject(), JSONObject().put("sources", JSONArray()),
+            JSONObject().put("sources", JSONObject.NULL),
+        ) + listOf<Any>(1, 8, 5.0, "5", true, JSONObject.NULL).map { priority ->
+            JSONObject().put("sources", JSONObject().put("app", priority))
+        } + JSONObject().put("sources", JSONObject().put("webview", 5))
+        malformed.forEachIndexed { index, grant ->
+            val frame = accepted().granting("logs").apply {
+                if (grant != null) getJSONObject("result").put("logs", grant)
+            }
+            assertTrue("invalid log grant $index must reject hello", runCatching { session(frame) }.exceptionOrNull() is PanelAssistantProtocolException)
+        }
+        val unoffered = accepted().granting("logs").apply {
+            getJSONObject("result").put("logs", JSONObject().put("sources", JSONObject()))
+        }
+        assertTrue(runCatching {
+            PanelAssistantTransportProtocol.helloOutcome(unoffered, 1L, offered = emptyList())
+        }.exceptionOrNull() is PanelAssistantProtocolException)
     }
 
     @Test fun `granting voice_stream_session makes a usable pairing grant required`() {
