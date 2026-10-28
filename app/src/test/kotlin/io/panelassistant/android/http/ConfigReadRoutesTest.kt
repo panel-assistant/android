@@ -1,5 +1,7 @@
 package io.panelassistant.android.http
 
+import io.panelassistant.android.Config
+import io.panelassistant.android.fakePreferences
 import io.panelassistant.android.i18n.CatalogueLoader
 import io.panelassistant.android.i18n.Strings
 import io.panelassistant.android.i18n.sourceHash
@@ -55,18 +57,17 @@ class ConfigReadRoutesTest {
         application {
             routing {
                 route("/api/v1") {
+                    // The overload PaneldServer registers, with its request locale negotiation.
                     configReadRoutes(
-                        currentConfigJson = { "{}" },
-                        localizedSchema = { call ->
-                            localizedConfigSchema(
-                                call = call,
-                                persistedLanguage = persisted,
-                                deviceLanguageTag = device,
-                                allowPseudo = false,
-                                catalogueLoader = loader,
-                                render = ::renderSyntheticSchema,
-                            )
+                        config = Config(fakePreferences().instance),
+                        values = { error("the schema read must not project config values") },
+                        requestStrings = { call ->
+                            resolvedRequestStrings(call, persisted, device, allowPseudo = false, catalogueLoader = loader)
                         },
+                        schemaJson = ::renderSyntheticSchema,
+                        homeDashboards = { error("the schema read must not query home dashboards") },
+                        discover = { error("the schema read must not run discovery") },
+                        rememberDiscovery = { error("the schema read must not record discovery") },
                     )
                 }
             }
