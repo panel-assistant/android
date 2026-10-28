@@ -35,6 +35,8 @@ internal class PaneldListener(
     private val onBound: (Int) -> Unit = {},
     private val retryInitialMs: Long = 500,
     private val retryMaxMs: Long = 30_000,
+    /** How long [rebind] keeps retrying the port it was bound to before it may move to another one. */
+    private val holdPortMs: Long = 5_000,
     private val module: Application.() -> Unit,
 ) {
     private var stopEngine: (() -> Unit)? = null
@@ -52,12 +54,14 @@ internal class PaneldListener(
 
     private var boundPort: Int? = null
 
-    private fun bind(closeIngress: () -> Unit) {
+    /** Bind the preferred port, then, when [scan] allows, the next free one in 1024..32767. */
+    private fun bind(closeIngress: () -> Unit, scan: Boolean = true) {
         val mode = hardened()
         val preferred = boundPort ?: port()
         // Bind the real engine directly: probing with a temporary socket leaves a reservation race.
         val candidates = sequence {
             yield(preferred)
+            if (!scan) return@sequence
             val first = if (preferred in 1024 until 32767) preferred + 1 else 1024
             for (offset in 0 until (32768 - 1024)) {
                 val candidate = 1024 + (first - 1024 + offset) % (32768 - 1024)
@@ -102,9 +106,11 @@ internal class PaneldListener(
 
     /**
      * Bind again when the security mode moved; true once bound for the new mode, false when nothing needed
-     * doing or [stop] ran first. Without a listener the panel's own WebView cannot sign in, so a bind that fails
-     * (the old socket may hold the port for a while) is retried with backoff until it succeeds; meanwhile the
-     * listener records itself unbound. Blocks its caller, which runs it off the main thread.
+     * doing or [stop] ran first. The old socket may hold the port for a moment after it stops, so for
+     * [holdPortMs] each attempt binds only the port the listener was bound to, retried with backoff. After that
+     * window an attempt may move to the next free port, as [start] does, for a port something else keeps.
+     * Without a listener the panel's own WebView cannot sign in, so failed attempts go on with backoff until one
+     * succeeds; meanwhile the listener records itself unbound. Blocks its caller, which runs it off the main thread.
      */
     fun rebind(): Boolean {
         synchronized(this) {
@@ -114,19 +120,22 @@ internal class PaneldListener(
             stopEngine = null
             boundHardened = null
         }
+        val holdUntil = System.nanoTime() + holdPortMs * 1_000_000
         var waitMs = retryInitialMs
         while (true) {
+            val remainingHoldMs = (holdUntil - System.nanoTime()) / 1_000_000
             synchronized(this) {
                 if (stopped) return false
                 if (stopEngine != null) return true
                 try {
-                    bind(closeIngress = {})
+                    bind(closeIngress = {}, scan = remainingHoldMs <= 0)
                     return true
                 } catch (failure: Exception) {
                     onBindFailure(failure)
                 }
             }
-            Thread.sleep(waitMs)
+            // The first attempt after the hold window may scan, so do not sleep past its end.
+            Thread.sleep(if (remainingHoldMs > 0) minOf(waitMs, remainingHoldMs) else waitMs)
             waitMs = minOf(waitMs * 2, retryMaxMs)
         }
     }
