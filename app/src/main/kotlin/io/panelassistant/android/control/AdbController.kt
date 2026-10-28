@@ -128,7 +128,7 @@ class AdbController internal constructor(
             if (!config.setNetworkAdbEnabled(true)) return@mutate ControlApplyOutcome.FAILED
             return@mutate if (apply()) ControlApplyOutcome.APPLIED else ControlApplyOutcome.FAILED
         }
-        if (ManagedNetworkAdb.managed) {
+        if (ManagedNetworkAdb.ownsRuntime()) {
             closeWebViewDebugging()
             return@mutate if (config.setNetworkAdbEnabled(false)) ControlApplyOutcome.APPLIED else ControlApplyOutcome.FAILED
         }
