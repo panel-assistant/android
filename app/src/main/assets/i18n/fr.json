@@ -909,7 +909,7 @@
       "state": "machine-cross-checked"
     },
     "configure.display.recommend_prefix": {
-      "text": " Utilisation recommandée : ",
+      "text": " Nous recommandons d’utiliser ",
       "sourceHash": "bb4092e4aa49fd4b03f535cf50837666df1548c5c1e9956fc0623e809fb24c93",
       "state": "machine-cross-checked"
     },
@@ -6109,7 +6109,7 @@
       "state": "machine-cross-checked"
     },
     "install.backup.companion.include_login": {
-      "text": "Inclure l’accès Home Assistant Companion",
+      "text": "Inclure la connexion à Home Assistant Companion",
       "sourceHash": "80cdd425c53ed182ee00322c6c00ec352b456131019758e77ed61b60307b9c4f",
       "state": "machine-cross-checked"
     },
@@ -6679,7 +6679,7 @@
       "state": "machine-cross-checked"
     },
     "install.presentation.backup_companion_too_large": {
-      "text": "sauvegarde Home Assistant Companion trop volumineuse",
+      "text": "Sauvegarde Home Assistant Companion trop volumineuse",
       "sourceHash": "39e579ff3fd5d203d3e1ecd4b5b5d85aad3fd6d79ed419a3b0af680f4d07cde1",
       "state": "machine-cross-checked"
     },
@@ -6779,7 +6779,7 @@
       "state": "machine-cross-checked"
     },
     "install.presentation.companion_unsupported_package": {
-      "text": "le paquet Home Assistant Companion n’est pas un paquet installé pris en charge",
+      "text": "Le paquet Home Assistant Companion n’est pas un paquet installé pris en charge",
       "sourceHash": "694829453e4d803a7de90e7a57066f8182d07c0c6c4413de8b92c1292e6f0fbc",
       "state": "machine-cross-checked"
     },
@@ -6964,7 +6964,7 @@
       "state": "machine-cross-checked"
     },
     "install.presentation.restore_companion_helper_required": {
-      "text": "la restauration de Home Assistant Companion nécessite l’auxiliaire Panel Assistant actuel",
+      "text": "La restauration de Home Assistant Companion nécessite l’auxiliaire Panel Assistant actuel",
       "sourceHash": "932c4287bebca40b7cae8f9ecf2b5db268265d60232ddbcb7fae7f630924f6ed",
       "state": "machine-cross-checked"
     },

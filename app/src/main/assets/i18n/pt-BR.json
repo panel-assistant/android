@@ -6694,7 +6694,7 @@
       "state": "machine-cross-checked"
     },
     "install.presentation.backup_companion_too_large": {
-      "text": "backup do Home Assistant Companion grande demais",
+      "text": "Backup do Home Assistant Companion grande demais",
       "sourceHash": "39e579ff3fd5d203d3e1ecd4b5b5d85aad3fd6d79ed419a3b0af680f4d07cde1",
       "state": "machine-cross-checked"
     },
@@ -6794,7 +6794,7 @@
       "state": "machine-cross-checked"
     },
     "install.presentation.companion_unsupported_package": {
-      "text": "o pacote do Home Assistant Companion não é um pacote instalado compatível",
+      "text": "O pacote do Home Assistant Companion não é um pacote instalado compatível",
       "sourceHash": "694829453e4d803a7de90e7a57066f8182d07c0c6c4413de8b92c1292e6f0fbc",
       "state": "machine-cross-checked"
     },
@@ -6979,7 +6979,7 @@
       "state": "machine-cross-checked"
     },
     "install.presentation.restore_companion_helper_required": {
-      "text": "restaurar o Home Assistant Companion exige o auxiliar atual do Panel Assistant",
+      "text": "Restaurar o Home Assistant Companion exige o auxiliar atual do Panel Assistant",
       "sourceHash": "932c4287bebca40b7cae8f9ecf2b5db268265d60232ddbcb7fae7f630924f6ed",
       "state": "machine-cross-checked"
     },

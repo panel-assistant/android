@@ -6109,7 +6109,7 @@
       "state": "machine-cross-checked"
     },
     "install.backup.companion.include_login": {
-      "text": "Con accesso a Home Assistant Companion",
+      "text": "Includi l’accesso di Home Assistant Companion",
       "sourceHash": "80cdd425c53ed182ee00322c6c00ec352b456131019758e77ed61b60307b9c4f",
       "state": "machine-cross-checked"
     },
@@ -11089,7 +11089,7 @@
       "text": "La posizione del pannello. Home Assistant usa le aree per creare automaticamente le plance."
     },
     "setup.area.label": {
-      "text": "Imposta l’Area Home Assistant del pannello",
+      "text": "Imposta l’Area di Home Assistant in cui si trova il pannello",
       "sourceHash": "ef635d42d225f07e8c46e025d1b2d6c0f51452563b5ae156732bc0d6aae20b74",
       "state": "machine-cross-checked"
     },

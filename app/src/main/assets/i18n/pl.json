@@ -2014,7 +2014,7 @@
    "state": "machine-cross-checked"
   },
   "dashboard.banner.schema_rollback.or_restore": {
-   "text": "Lub przywróć kopię zapasową na stronie",
+   "text": "Lub przywróć kopię zapasową za pomocą",
    "sourceHash": "2b2290df7a635839bac57df93c4ed886c38b5b7da37ee0e6b672d4c9f7be80e1",
    "state": "machine-cross-checked"
   },
@@ -7759,7 +7759,7 @@
    "state": "machine-cross-checked"
   },
   "profiles.issue.unknown-core-transfer": {
-   "text": "Nieznana funkcja przenoszenia Panel Assistant '{value}'.",
+   "text": "Nieznany transfer Panel Assistant '{value}'.",
    "sourceHash": "e4a1382e0e69c7a88620925541c3a63e0f2b4862decf182e24cb99b72eb00cb7",
    "state": "machine-cross-checked"
   },
@@ -9489,7 +9489,7 @@
    "state": "machine-cross-checked"
   },
   "settings.log_ship_enabled.help": {
-   "text": "Przekazuj własny dziennik procesu Panel Assistant — nie pełny dziennik systemowy — do centralnego odbiornika (LAN-only; tokeny i hasła są maskowane).",
+   "text": "Przekazuj własny dziennik procesu Panel Assistant — nie pełny dziennik systemowy — do centralnego kolektora logów (LAN-only; tokeny i hasła są maskowane).",
    "sourceHash": "8df33e7d8c2821dd9e70fd2ac3723c8be878bce9105bdd332732f4f6bea21421",
    "state": "machine-cross-checked"
   },
@@ -9529,7 +9529,7 @@
    "state": "machine-cross-checked"
   },
   "settings.log_ship_protocol.help": {
-   "text": "TCP jest ustawieniem domyślnym, bo zgłasza odbiornik, który odrzuca połączenie lub jest niedostępny; UDP tego nie potrafi, więc błędne ustawienie w tym przypadku zawodzi bez żadnego komunikatu. Port 514 obsługuje oba.",
+   "text": "TCP jest ustawieniem domyślnym, bo zgłasza kolektor logów, który odrzuca połączenie lub jest niedostępny; UDP tego nie potrafi, więc błędne ustawienie w tym przypadku zawodzi bez żadnego komunikatu. Port 514 obsługuje oba.",
    "sourceHash": "da7a0fd613d1904e5f6c2e7502bf4f1949584eb8f4326de2e56ee51d49397b1a",
    "state": "machine-cross-checked"
   },
@@ -9544,7 +9544,7 @@
    "state": "machine-cross-checked"
   },
   "settings.log_ship_system_enabled.help": {
-   "text": "Przekazuj logi systemu Android do tego samego odbiornika, gdy włączone jest wysyłanie logów.\n\n- Domyślnie wyłączone.\n- Wymaga TCP lub HTTP oraz uprawnień roota lub zainstalowanego pomocnika.\n- Wpisy są maskowane; przy dużym natężeniu mogą zostać odrzucone.",
+   "text": "Przekazuj logi systemu Android do tego samego kolektora logów, gdy włączone jest wysyłanie logów.\n\n- Domyślnie wyłączone.\n- Wymaga TCP lub HTTP oraz uprawnień roota lub zainstalowanego pomocnika.\n- Wpisy są maskowane; przy dużym natężeniu mogą zostać odrzucone.",
    "sourceHash": "51072217eb6ba0f7ad594b0903524921774b8437d14b20c5c12894c59d3bef42",
    "state": "machine-cross-checked"
   },
@@ -11234,7 +11234,7 @@
    "state": "machine-cross-checked"
   },
   "install.backup.companion.include_login": {
-   "text": "Z logowaniem Home Assistant Companion",
+   "text": "Uwzględnij logowanie Home Assistant Companion",
    "sourceHash": "80cdd425c53ed182ee00322c6c00ec352b456131019758e77ed61b60307b9c4f",
    "state": "machine-cross-checked"
   },

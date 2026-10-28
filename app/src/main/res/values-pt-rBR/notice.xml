@@ -11,7 +11,7 @@
     <string name="notice_hero_version_check">Verif. de versão</string>
     <string name="notice_hero_finding_dashboards">Buscando dashboards</string>
     <string name="notice_hero_upgrade_ha">Atualizar HA</string>
-    <string name="notice_hero_ancient_webview">WebView jurássico</string>
+    <string name="notice_hero_ancient_webview">WebView muito antigo</string>
     <string name="notice_hero_filter_failed">Filtro falhou</string>
     <string name="notice_hero_filter_refused">Filtro recusado</string>
     <string name="notice_hero_reading">Lendo</string>

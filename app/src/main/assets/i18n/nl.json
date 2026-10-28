@@ -6339,7 +6339,7 @@
    "state": "machine-cross-checked"
   },
   "install.presentation.restore_profile_restore_unavailable": {
-   "text": "Het herstellen van de profielcatalogus is niet beschikbaar",
+   "text": "het herstellen van de profielcatalogus is niet beschikbaar",
    "sourceHash": "0f27fddeaa5f28c4b5edcdf0cd89ab5839b42eb8eeb1f5d6d354930eb6966da1",
    "state": "machine-cross-checked"
   },

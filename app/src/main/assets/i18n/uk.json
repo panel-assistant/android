@@ -2014,7 +2014,7 @@
    "state": "machine-cross-checked"
   },
   "dashboard.banner.schema_rollback.or_restore": {
-   "text": "Або відновіть резервну копію на сторінці",
+   "text": "Або відновіть резервну копію через",
    "sourceHash": "2b2290df7a635839bac57df93c4ed886c38b5b7da37ee0e6b672d4c9f7be80e1",
    "state": "machine-cross-checked"
   },
@@ -6339,7 +6339,7 @@
    "state": "machine-cross-checked"
   },
   "install.presentation.restore_profile_restore_unavailable": {
-   "text": "Відновлення каталогу профілів недоступне",
+   "text": "відновлення каталогу профілів недоступне",
    "sourceHash": "0f27fddeaa5f28c4b5edcdf0cd89ab5839b42eb8eeb1f5d6d354930eb6966da1",
    "state": "machine-cross-checked"
   },
@@ -7759,7 +7759,7 @@
    "state": "machine-cross-checked"
   },
   "profiles.issue.unknown-core-transfer": {
-   "text": "Невідома функція передачі Panel Assistant '{value}'.",
+   "text": "Невідома передача Panel Assistant '{value}'.",
    "sourceHash": "e4a1382e0e69c7a88620925541c3a63e0f2b4862decf182e24cb99b72eb00cb7",
    "state": "machine-cross-checked"
   },

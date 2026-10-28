@@ -2354,7 +2354,7 @@
       "text": "此版本的数据库架构较旧，因此打开了全新的状态存储；部分设置可能已重置。此前的数据库仍保留在面板上，可用于恢复。"
     },
     "dashboard.banner.schema_rollback.or_restore": {
-      "text": "或使用以下页面恢复备份：",
+      "text": "或使用以下方式恢复备份：",
       "sourceHash": "2b2290df7a635839bac57df93c4ed886c38b5b7da37ee0e6b672d4c9f7be80e1",
       "state": "machine-cross-checked"
     },
@@ -10634,7 +10634,7 @@
       "state": "machine-cross-checked"
     },
     "settings.log_ship_enabled.help": {
-      "text": "将 Panel Assistant 自身的进程日志（而非完整系统日志）转发到中央收集器（LAN-only，令牌和密码会被隐去）。",
+      "text": "将 Panel Assistant 自身的进程日志（而非完整系统日志）转发到中央日志收集器（LAN-only，令牌和密码会被隐去）。",
       "sourceHash": "8df33e7d8c2821dd9e70fd2ac3723c8be878bce9105bdd332732f4f6bea21421",
       "state": "machine-cross-checked"
     },
