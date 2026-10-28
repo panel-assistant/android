@@ -73,25 +73,6 @@ internal fun unfinishedSetupLocation(lang: String?, haLang: String?, allowPseudo
     return if (query.isEmpty()) "/setup" else "/setup?${query.joinToString("&")}"
 }
 
-/** Production locale negotiation and catalogue selection for the dynamic Configure schema. */
-internal fun localizedConfigSchema(
-    call: OpCall,
-    persistedLanguage: String?,
-    deviceLanguageTag: String?,
-    allowPseudo: Boolean,
-    catalogueLoader: CatalogueLoader,
-    render: (Strings) -> String,
-): LocalizedConfigSchema {
-    val strings = resolvedRequestStrings(
-        call = call,
-        persistedLanguage = persistedLanguage,
-        deviceLanguageTag = deviceLanguageTag,
-        allowPseudo = allowPseudo,
-        catalogueLoader = catalogueLoader,
-    )
-    return LocalizedConfigSchema(render(strings), strings.languages(setOf("settings.")))
-}
-
 /** Production Configure reads and discovery metadata; no configuration or discovery state is retained here. */
 internal fun Route.configReadRoutes(
     config: Config,
