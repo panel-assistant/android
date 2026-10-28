@@ -69,9 +69,14 @@ class DashboardEntityBootstrapRelaunchRaceTest {
                 override val screenAwake get() = true
                 override fun buildAndLoad(config: Config) { built += config }
                 override fun teardownWeb() = Unit
+                override fun reconcile() = Unit
             },
             readConfig = { config },
-            scheduleBootstrapCheck = { check, _ -> scheduled += check },
+            timers = object : EntityHoldTimers {
+                override fun now() = 0L
+                override fun post(task: Runnable, delayMs: Long) { scheduled += task }
+                override fun cancel(task: Runnable) { scheduled.remove(task) }
+            },
         ).also { this.gate = it; relaunchTarget = it }
         assertTrue("held until the startup sync confirms Auto", shouldHoldRendererForEntityBootstrap(config))
 

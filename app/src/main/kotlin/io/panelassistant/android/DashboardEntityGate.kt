@@ -12,6 +12,8 @@ import io.panelassistant.android.dashboard.EntityBootstrapProblem
 import io.panelassistant.android.dashboard.EntityFilterProtocol
 import io.panelassistant.android.dashboard.EntityFilterTelemetry
 import io.panelassistant.android.dashboard.EntityLearningRuntime
+import io.panelassistant.android.dashboard.RendererEntityHold
+import io.panelassistant.android.dashboard.entityLearningHold
 import io.panelassistant.android.dashboard.shouldHoldRendererForEntityBootstrap
 import io.panelassistant.android.dashboard.shouldInstallDashboardTrafficObserver
 import kotlinx.coroutines.CoroutineScope
@@ -61,7 +63,8 @@ internal suspend fun prepareEntityFilterOffMain(
 
 internal enum class EntityFilterFailureDisposition { HOLD_NATIVE, ALLOW_DIRECT }
 
-/** Automatic learning must never turn an interceptor failure into a full, unfiltered HA stream. */
+/** Automatic learning turns an interceptor failure into a native hold rather than a full, unfiltered HA
+ *  stream; the hold's time limit ([RendererEntityHold]) decides when the dashboard opens unfiltered anyway. */
 internal fun entityFilterFailureDisposition(
     automaticLearningEnabled: Boolean,
     filterConfigured: Boolean,
@@ -100,10 +103,43 @@ internal class EntityFilterRetryPolicy(
     fun reset() { attempts = 0 }
 }
 
+/** The clock and timers an entity hold runs on: the activity's Handler, or a JVM test's virtual clock. */
+internal interface EntityHoldTimers {
+    fun now(): Long
+    fun post(task: Runnable, delayMs: Long)
+    fun cancel(task: Runnable)
+}
+
+private class HandlerEntityHoldTimers(private val main: Handler) : EntityHoldTimers {
+    override fun now(): Long = SystemClock.elapsedRealtime()
+    override fun post(task: Runnable, delayMs: Long) { main.postDelayed(task, delayMs) }
+    override fun cancel(task: Runnable) = main.removeCallbacks(task)
+}
+
+/** What an entity hold reads from the service-owned learner; JVM tests supply each kind's state. */
+internal interface EntityHoldLearner {
+    fun blockingIssueCount(): Int = EntityLearningRuntime.blockingIssueCount()
+    fun bootstrapProblem(): EntityBootstrapProblem? = EntityLearningRuntime.bootstrapProblem()
+    fun canIgnoreBlockingIssues(): Boolean = EntityLearningRuntime.canIgnoreBlockingIssues()
+    fun bootstrapMilestoneState(): EntityLearningRuntime.BootstrapMilestone? = EntityLearningRuntime.bootstrapMilestoneState()
+    fun syncRunning(): Boolean = EntityLearningRuntime.syncRunning()
+    fun retryBootstrap(): Boolean = EntityLearningRuntime.retryBootstrap()
+    fun probeDashboardChange(): Boolean = EntityLearningRuntime.probeDashboardChange()
+}
+
+private object RuntimeEntityHoldLearner : EntityHoldLearner
+
+/** Paints one entity hold's screen, returning the first scan's live views when it shows them. */
+internal fun interface EntityHoldPainter {
+    fun paint(kind: EntityHoldKind, blockingIssues: Int, filterHold: EntityFilterNativeHold?): EntityLearningViews?
+}
+
 /**
  * The entity-filter gate in front of the dashboard WebView: it prepares the document-start allow-list,
  * decides whether automatic filtering must hold the renderer behind a native screen, keeps that hold and
  * its retry and bootstrap poll, and installs the interceptor on the WebView once the renderer may open.
+ * Every hold is time-limited ([RendererEntityHold]): past its bound the dashboard opens unfiltered while
+ * learning keeps retrying, and is rebuilt filtered once the cause clears.
  * [DashboardActivity] decides when to build and calls back here; every timer posts on the activity's own
  * [main] Handler, so the activity's `removeCallbacksAndMessages(null)` at destroy still clears all of them.
  */
@@ -115,8 +151,12 @@ internal class DashboardEntityGate(
     private val host: Host,
     /** How the gate reads settings; JVM tests pass one over in-memory preferences. */
     private val readConfig: () -> Config = { Config(activity) },
-    /** How the bootstrap poll schedules its next tick: on [main]; JVM tests record it instead. */
-    private val scheduleBootstrapCheck: (Runnable, Long) -> Unit = { check, delayMs -> main.postDelayed(check, delayMs) },
+    /** The clock and timers: [main] and the elapsed-realtime clock; JVM tests run a virtual clock. */
+    private val timers: EntityHoldTimers = HandlerEntityHoldTimers(main),
+    /** The learner's state; JVM tests supply each hold kind's. */
+    private val learner: EntityHoldLearner = RuntimeEntityHoldLearner,
+    /** How a hold screen is painted; JVM tests record the kind instead. */
+    holdPainter: EntityHoldPainter? = null,
 ) {
     interface Host {
         val activityOwner: Long
@@ -124,7 +164,11 @@ internal class DashboardEntityGate(
         val screenAwake: Boolean
         fun buildAndLoad(config: Config)
         fun teardownWeb()
+        /** Reconcile the live renderer with the settings, rebuilding what no longer matches. */
+        fun reconcile()
     }
+
+    private val painter = holdPainter ?: EntityHoldPainter(::paintHoldScreen)
 
     var entityFilterSignature = "disabled"
         private set
@@ -145,14 +189,15 @@ internal class DashboardEntityGate(
     private var entityBootstrapBlockedCount = -1
     /** A dashboard WebView was admitted after the last hold screen: a superseded poll has nothing to wait for. */
     private var rendererAdmitted = false
+    /** The hold kind on screen, until a renderer is admitted; what the time limit releases. */
+    private var holdShown: EntityHoldKind? = null
     private var entityBootstrapMilestoneView: TextView? = null
     private var entityLearningLine: TextView? = null
     private var entityLearningTrack: NoticeTrack? = null
-    /** Owns every deadline of the hold: resync ladder, give-up, and the decision-hold probe cadence. */
+    /** Owns the hold's retry clocks: the resync ladder and the decision-hold probe cadence. */
     private val entityBootstrapWatchdog = EntityBootstrapWatchdog(
         retryMs = BOOTSTRAP_WATCHDOG_RETRY_MS,
         retryCeilingMs = BOOTSTRAP_WATCHDOG_RETRY_CEILING_MS,
-        problemMs = BOOTSTRAP_WATCHDOG_PROBLEM_MS,
         probeMs = BOOTSTRAP_WATCHDOG_PROBE_MS,
         probeCeilingMs = BOOTSTRAP_WATCHDOG_PROBE_CEILING_MS,
     )
@@ -161,8 +206,9 @@ internal class DashboardEntityGate(
     private var entityBootstrapProblem: EntityBootstrapProblem? = null
     private var entityBootstrapReadEpoch = 0L
     // A fresh automatic learner has no safe document-start allow-list yet. Keep a native screen in
-    // front instead of ever loading HA unfiltered; this poll is a backstop for a missed/blocked service
-    // relaunch when synchronization commits the first set.
+    // front rather than load HA unfiltered on a whim; this poll is a backstop for a missed/blocked service
+    // relaunch when synchronization commits the first set. The hold's time limit is a separate timer
+    // ([entityHoldDeadline]), so a poll that stops can never make the hold permanent.
     private val entityBootstrapCheck = object : Runnable {
         override fun run() {
             if (host.destroyed || !BuiltinDashboard.ownsActivity(host.activityOwner)) return
@@ -178,14 +224,13 @@ internal class DashboardEntityGate(
         if (shouldHoldRendererForEntityBootstrap(config)) {
             // The hold is structurally forbidden from being terminal. The enable-time sync has died
             // silently on hardware more than once, each time leaving a happy spinner over a dead
-            // process until a human intervened. Two deadlines: at 30 seconds fire the same recovery
-            // the manual sync endpoint provides; at 90 seconds stop impersonating progress and show
-            // the problem screen, whose retry/disable buttons already exist.
+            // process until a human intervened. At 30 seconds fire the same recovery the manual sync
+            // endpoint provides; the hold's time limit ([entityHoldDeadline]) is a separate timer.
             //
             // Firing the recovery once was not enough. The commonest reason the scan cannot answer is
             // that Home Assistant is not up yet — a power cut brings the panel back first — and a
-            // one-shot retry means the panel is still holding, or already on the problem screen, long
-            // after HA returned. Nothing else re-drives it: the periodic sync skips a freshly-synced
+            // one-shot retry means the panel is still holding, or already showing its dashboard unfiltered,
+            // long after HA returned. Nothing else re-drives it: the periodic sync skips a freshly-synced
             // catalogue and skips again while the screen is awake, and no HA-reconnect trigger exists.
             // So keep retrying on a widening interval, capped, for as long as the hold lasts.
             //
@@ -194,15 +239,15 @@ internal class DashboardEntityGate(
             // somebody to walk up to it. There the watchdog asks Home Assistant, on a much wider
             // cadence, whether the dashboard itself changed, and otherwise stays quiet. The state
             // machine owns every clock; see EntityBootstrapWatchdog.
-            val now = SystemClock.elapsedRealtime()
-            val blocking = EntityLearningRuntime.blockingIssueCount()
-            val problem = readActivityStateOffMain { EntityLearningRuntime.bootstrapProblem() }
+            val now = timers.now()
+            val blocking = learner.blockingIssueCount()
+            val problem = readActivityStateOffMain { learner.bootstrapProblem() }
             if (host.destroyed || !BuiltinDashboard.ownsActivity(host.activityOwner) || readEpoch != entityBootstrapReadEpoch) return
             val action = entityBootstrapWatchdog.tick(
                 nowMs = now,
                 blockingIssues = blocking,
                 problem = problem,
-                syncRunning = EntityLearningRuntime.syncRunning(),
+                syncRunning = learner.syncRunning(),
             )
             if (entityBootstrapWatchdog.heldOnDecision && !entityBootstrapDecisionLogged) {
                 entityBootstrapDecisionLogged = true
@@ -220,15 +265,11 @@ internal class DashboardEntityGate(
                         TAG,
                         "entity bootstrap held — watchdog resync ${entityBootstrapWatchdog.resyncs}",
                     )
-                    scope.launch(Dispatchers.IO) { EntityLearningRuntime.retryBootstrap() }
+                    scope.launch(Dispatchers.IO) { learner.retryBootstrap() }
                 }
                 EntityBootstrapWatchdogAction.PROBE -> {
                     Log.i(TAG, "entity bootstrap held on a decision — dashboard change probe ${entityBootstrapWatchdog.probes}")
-                    scope.launch(Dispatchers.IO) { EntityLearningRuntime.probeDashboardChange() }
-                }
-                EntityBootstrapWatchdogAction.PRESENT_PROBLEM -> {
-                    showWaitingForEntityBootstrap()
-                    return
+                    scope.launch(Dispatchers.IO) { learner.probeDashboardChange() }
                 }
                 EntityBootstrapWatchdogAction.IDLE -> Unit
             }
@@ -240,11 +281,11 @@ internal class DashboardEntityGate(
             entityBootstrapMilestoneView?.takeIf { it.isAttachedToWindow }?.let {
                 // Still on screen: the learning notice counts from when it was last seen, not first.
                 BuiltinDashboard.restartAnnouncements.learningNoticeShown(now)
-                val milestone = readActivityStateOffMain { EntityLearningRuntime.bootstrapMilestoneState() }
+                val milestone = readActivityStateOffMain { learner.bootstrapMilestoneState() }
                 if (host.destroyed || !BuiltinDashboard.ownsActivity(host.activityOwner) || readEpoch != entityBootstrapReadEpoch) return
                 paintEntityLearning(milestone)
             }
-            scheduleBootstrapCheck(entityBootstrapCheck, ENTITY_BOOTSTRAP_CHECK_MS)
+            timers.post(entityBootstrapCheck, ENTITY_BOOTSTRAP_CHECK_MS)
             return
         }
         entityBootstrapWatchdog.reset()
@@ -263,8 +304,8 @@ internal class DashboardEntityGate(
             // screen to this poll. Returning for good here left an updated panel on the hold screen with a
             // verified, applied set. Keep polling until a renderer is admitted.
             if (!rendererAdmitted) {
-                main.removeCallbacks(entityBootstrapCheck)
-                scheduleBootstrapCheck(entityBootstrapCheck, ENTITY_BOOTSTRAP_CHECK_MS)
+                timers.cancel(entityBootstrapCheck)
+                timers.post(entityBootstrapCheck, ENTITY_BOOTSTRAP_CHECK_MS)
             }
             return
         }
@@ -308,7 +349,8 @@ internal class DashboardEntityGate(
     }
 
     suspend fun prepareEntityFilter(config: Config): PreparedEntityFilter = prepareEntityFilterOffMain(read = {
-        val enabled = config.dashboardEntityFilterEnabled
+        // A released hold opens the dashboard unfiltered; its own clearing rebuilds it filtered.
+        val enabled = config.dashboardEntityFilterEnabled && RendererEntityHold.released == null
         val haUrl = config.haEffectiveUrl
         EntityFilterPreparationInput(
             enabled = enabled,
@@ -394,7 +436,7 @@ internal class DashboardEntityGate(
     }
 
     private fun retryEntityFilter(config: Config) {
-        main.removeCallbacks(entityFilterRetry)
+        timers.cancel(entityFilterRetry)
         val filterEpoch = ++filterPreparationEpoch
         scope.launch {
             val prepared = prepareEntityFilter(config)
@@ -411,8 +453,8 @@ internal class DashboardEntityGate(
         // theme write or a rotation triggers, and re-posting at the FULL delay each time means a rung
         // measured in minutes never elapses on a panel whose theme is being written. The same defect was
         // fixed for the admission timer; it was not fixed here.
-        main.removeCallbacks(entityFilterRetry)
-        val now = SystemClock.elapsedRealtime()
+        timers.cancel(entityFilterRetry)
+        val now = timers.now()
         val remaining = entityFilterRetryDueAtMs - now
         val delay = if (entityFilterRetryDueAtMs > 0L && remaining > 0L) {
             remaining
@@ -421,11 +463,9 @@ internal class DashboardEntityGate(
             entityFilterRetryDueAtMs = now + fresh
             fresh
         }
-        main.postDelayed(entityFilterRetry, delay)
+        timers.post(entityFilterRetry, delay)
     }
 
-    /** Native hold screen used while the learner derives its first minimal subscription. No WebView is
-     * created here, making it impossible for an activity/watchdog/HOME race to open the full HA stream. */
     /**
      * Answer the filter question from the panel itself, declining the filter.
      *
@@ -485,9 +525,9 @@ internal class DashboardEntityGate(
         override fun retryScan() {
             // A user-driven retry restores hope: the watchdog clock restarts and the screen returns to the
             // progress presentation until the new deadline.
-            entityBootstrapWatchdog.restart(SystemClock.elapsedRealtime())
+            entityBootstrapWatchdog.restart(timers.now())
             scope.launch {
-                val started = withContext(Dispatchers.IO) { EntityLearningRuntime.retryBootstrap() }
+                val started = withContext(Dispatchers.IO) { learner.retryBootstrap() }
                 if (started && !host.destroyed) showWaitingForEntityBootstrap()
             }
         }
@@ -515,12 +555,12 @@ internal class DashboardEntityGate(
     fun showWaitingForEntityBootstrap() {
         val readEpoch = ++entityBootstrapReadEpoch
         scope.launch {
-            val blockingIssues = EntityLearningRuntime.blockingIssueCount()
+            val blockingIssues = learner.blockingIssueCount()
             val read = readActivityStateOffMain {
                 Triple(
-                    EntityLearningRuntime.bootstrapProblem(),
-                    blockingIssues > 0 && EntityLearningRuntime.canIgnoreBlockingIssues(),
-                    EntityLearningRuntime.bootstrapMilestoneState(),
+                    learner.bootstrapProblem(),
+                    blockingIssues > 0 && learner.canIgnoreBlockingIssues(),
+                    learner.bootstrapMilestoneState(),
                 )
             }
             if (host.destroyed || !BuiltinDashboard.ownsActivity(host.activityOwner) || readEpoch != entityBootstrapReadEpoch) return@launch
@@ -534,31 +574,22 @@ internal class DashboardEntityGate(
         canIgnoreBlockingIssues: Boolean,
         milestone: EntityLearningRuntime.BootstrapMilestone?,
     ) {
-        statusScreens.cancelAdmissionAutoRetry()
-        main.removeCallbacks(entityBootstrapCheck)
+        timers.cancel(entityBootstrapCheck)
         host.teardownWeb()
         rendererAdmitted = false
         val filterHold = entityFilterNativeHold
-        // Past the watchdog's give-up deadline a formless hold PRESENTS as a synchronization problem so
-        // the retry/disable buttons appear — the happy spinner must never be terminal.
-        val bootstrapProblem = problem
-            ?: if (entityBootstrapWatchdog.gaveUp) EntityBootstrapProblem.SYNCHRONIZATION else null
         entityBootstrapBlockedCount = blockingIssues
-        entityBootstrapProblem = bootstrapProblem
-        val surface = statusScreens.statusSurface()
-        val notice = surface.notice
-        val kind = entityHoldKind(blockingIssues, filterHold != null, bootstrapProblem, canIgnoreBlockingIssues)
+        entityBootstrapProblem = problem
+        val kind = entityHoldKind(blockingIssues, filterHold != null, problem, canIgnoreBlockingIssues)
+        holdShown = kind
         entityBootstrapMilestoneView = null
         entityLearningLine = null
         entityLearningTrack = null
-        val (rows, learning) = entityHoldRows(
-            activity, notice, kind, blockingIssues, filterHold?.let(::localizedEntityFilterHoldDetail),
-            scope, alive = { !host.destroyed }, actions = entityHoldActions,
-        )
+        val learning = painter.paint(kind, blockingIssues, filterHold)
         if (learning != null) {
             // This screen says, before the burst starts, that the dashboard may reload while the panel learns;
             // the reloads that follow it stay quiet rather than each announcing a restart.
-            BuiltinDashboard.restartAnnouncements.learningNoticeShown(SystemClock.elapsedRealtime())
+            BuiltinDashboard.restartAnnouncements.learningNoticeShown(timers.now())
             entityBootstrapMilestoneView = learning.hero
             entityLearningLine = learning.line
             entityLearningTrack = learning.track
@@ -569,10 +600,9 @@ internal class DashboardEntityGate(
                 if (!host.destroyed && learning.hint.isAttachedToWindow) learning.hint.text = activity.getString(R.string.entity_scan_taking_longer, BOOTSTRAP_HOLD_HONESTY_MS / 1_000L)
             }, BOOTSTRAP_HOLD_HONESTY_MS)
         }
-        surface.setBody(activity.getString(kind.pill), *rows.toTypedArray())
-        statusScreens.showStatusSurface(surface) { showWaitingForEntityBootstrap() }
+        armEntityHoldDeadline(kind)
         if (filterHold != null) scheduleEntityFilterRetry()
-        else scheduleBootstrapCheck(entityBootstrapCheck, ENTITY_BOOTSTRAP_CHECK_MS)
+        else timers.post(entityBootstrapCheck, ENTITY_BOOTSTRAP_CHECK_MS)
         Log.i(TAG, if (filterHold != null) {
             "automatic entity filter held before WebView creation (${filterHold.error})"
         } else if (blockingIssues > 0) {
@@ -581,6 +611,116 @@ internal class DashboardEntityGate(
             "automatic entity set not ready — holding renderer before WebView creation"
         })
     }
+
+    /** The production hold screen: the Notice for [kind], with its actions and the first scan's live views. */
+    private fun paintHoldScreen(kind: EntityHoldKind, blockingIssues: Int, filterHold: EntityFilterNativeHold?): EntityLearningViews? {
+        statusScreens.cancelAdmissionAutoRetry()
+        val surface = statusScreens.statusSurface()
+        val (rows, learning) = entityHoldRows(
+            activity, surface.notice, kind, blockingIssues, filterHold?.let(::localizedEntityFilterHoldDetail),
+            scope, alive = { !host.destroyed }, actions = entityHoldActions,
+        )
+        surface.setBody(activity.getString(kind.pill), *rows.toTypedArray())
+        statusScreens.showStatusSurface(surface) { showWaitingForEntityBootstrap() }
+        return learning
+    }
+
+    /**
+     * Every hold has one deadline, [RendererEntityHold.BOUND_MS] after it was first shown. It is its own
+     * timer rather than a rung of the bootstrap poll, because each way a hold has stuck on hardware was a
+     * retry that stopped: the poll superseded by a relaunch, the filter retry's finite ladder, a retry
+     * suspended while dark. It carries its due time, so a redraw or a recreated activity never restarts it,
+     * and it runs while the panel is dark, as the release build does.
+     */
+    private fun armEntityHoldDeadline(kind: EntityHoldKind) {
+        val now = timers.now()
+        val dueAt = RendererEntityHold.holding(kind.wire, now) + RendererEntityHold.BOUND_MS
+        timers.cancel(entityHoldDeadline)
+        timers.post(entityHoldDeadline, (dueAt - now).coerceAtLeast(0L))
+    }
+
+    private val entityHoldDeadline = Runnable {
+        if (host.destroyed || !BuiltinDashboard.ownsActivity(host.activityOwner) || holdShown == null) return@Runnable
+        scope.launch { releaseEntityHold() }
+    }
+
+    /**
+     * The hold's time limit passed: open the dashboard. A hold whose cause cleared while nothing noticed
+     * builds as it is; one still standing is released, so the renderer opens unfiltered and learning keeps
+     * retrying behind it ([pollReleasedEntityHold]).
+     */
+    internal suspend fun releaseEntityHold() {
+        val kind = holdShown ?: return
+        val config = readActivityStateOffMain { readConfig() }
+        if (host.destroyed || !BuiltinDashboard.ownsActivity(host.activityOwner) || holdShown == null) return
+        timers.cancel(entityBootstrapCheck)
+        timers.cancel(entityFilterRetry)
+        ++entityBootstrapReadEpoch // a poll still in flight belongs to the hold being ended
+        if (holdsRenderer(config)) {
+            RendererEntityHold.release(kind.wire, timers.now(), entityFilterKey(config))
+            Log.w(
+                TAG,
+                "entity hold ${kind.wire} stood ${RendererEntityHold.BOUND_MS / 1_000L} s — opening the dashboard " +
+                    "unfiltered while learning keeps retrying",
+            )
+        } else {
+            Log.w(TAG, "entity hold ${kind.wire} outlived its cause — building the dashboard")
+        }
+        stopLease()
+        val filterEpoch = ++filterPreparationEpoch
+        val prepared = prepareEntityFilter(config)
+        if (host.destroyed || !BuiltinDashboard.ownsActivity(host.activityOwner)) return
+        if (filterEpoch != filterPreparationEpoch) {
+            // Superseded by a relaunch, which builds only when it finds something to rebuild: try again.
+            if (!rendererAdmitted) timers.post(entityHoldDeadline, ENTITY_BOOTSTRAP_CHECK_MS)
+            return
+        }
+        configureEntityFilter(config, prepared)
+        host.buildAndLoad(config)
+    }
+
+    /** While a hold stands released, learning keeps retrying it, and its clearing rebuilds the dashboard filtered. */
+    private val releasedEntityHoldCheck = Runnable {
+        if (host.destroyed || !BuiltinDashboard.ownsActivity(host.activityOwner)) return@Runnable
+        scope.launch { pollReleasedEntityHold() }
+    }
+
+    internal suspend fun pollReleasedEntityHold() {
+        val released = RendererEntityHold.released ?: return
+        val config = readActivityStateOffMain { readConfig() }
+        if (host.destroyed || !BuiltinDashboard.ownsActivity(host.activityOwner)) return
+        // A filter hold failed on one allow-list, so only another list, or none, can clear it; a learning hold
+        // clears when learning has a list it can vouch for.
+        val cleared = if (released.kind == EntityHoldKind.FILTER_HOLD.wire) {
+            entityFilterKey(config) != released.key
+        } else {
+            !entityLearningHold(config)
+        }
+        if (cleared) {
+            RendererEntityHold.ended()
+            entityBootstrapWatchdog.reset()
+            Log.i(TAG, "entity hold ${released.kind} cleared — rebuilding the dashboard filtered")
+            host.reconcile()
+            return
+        }
+        if (entityLearningHold(config)) {
+            val blocking = learner.blockingIssueCount()
+            val problem = readActivityStateOffMain { learner.bootstrapProblem() }
+            when (entityBootstrapWatchdog.tick(timers.now(), blocking, problem, learner.syncRunning())) {
+                EntityBootstrapWatchdogAction.RESYNC -> {
+                    Log.w(TAG, "entity hold released — watchdog resync ${entityBootstrapWatchdog.resyncs}")
+                    scope.launch(Dispatchers.IO) { learner.retryBootstrap() }
+                }
+                EntityBootstrapWatchdogAction.PROBE -> scope.launch(Dispatchers.IO) { learner.probeDashboardChange() }
+                EntityBootstrapWatchdogAction.IDLE -> Unit
+            }
+        }
+        timers.post(releasedEntityHoldCheck, RELEASED_HOLD_CHECK_MS)
+    }
+
+    /** What a filter hold failed on: the filter settings, without preparing them. */
+    private fun entityFilterKey(config: Config): String =
+        "${config.dashboardEntityLearningEnabled}:${config.dashboardEntityFilterEnabled}:${config.dashboardEntityFilterIds.hashCode()}"
 
     /** A relaunch began: a filter preparation still in flight belongs to the superseded intent. */
     fun supersedePreparation() {
@@ -592,9 +732,17 @@ internal class DashboardEntityGate(
 
     /** Admission let a dashboard WebView be built: the bootstrap poll has nothing left to wait for. */
     fun onRendererAdmitted() {
-        main.removeCallbacks(entityBootstrapCheck)
+        timers.cancel(entityBootstrapCheck)
+        timers.cancel(entityHoldDeadline)
         entityBootstrapBlockedCount = -1
         rendererAdmitted = true
+        holdShown = null
+        if (RendererEntityHold.released != null) {
+            timers.cancel(releasedEntityHoldCheck)
+            timers.post(releasedEntityHoldCheck, RELEASED_HOLD_CHECK_MS)
+        } else {
+            RendererEntityHold.ended()
+        }
     }
 
     fun stopLease() {
@@ -605,7 +753,7 @@ internal class DashboardEntityGate(
     /** A dark panel spends no retry; a wake resumes the pending one. */
     fun onScreenChanged(awake: Boolean) {
         if (awake && entityFilterNativeHold != null) scheduleEntityFilterRetry()
-        if (!awake) main.removeCallbacks(entityFilterRetry)
+        if (!awake) timers.cancel(entityFilterRetry)
     }
 
     /**
@@ -657,7 +805,6 @@ internal class DashboardEntityGate(
         // assumes seconds are normal and anything past twenty is a fault.
         const val BOOTSTRAP_HOLD_HONESTY_MS = 20_000L
         const val BOOTSTRAP_WATCHDOG_RETRY_MS = 30_000L
-        const val BOOTSTRAP_WATCHDOG_PROBLEM_MS = 90_000L
         /** The widening retry never idles longer than this, so a panel converges once HA answers. */
         const val BOOTSTRAP_WATCHDOG_RETRY_CEILING_MS = 300_000L
         // While the hold waits on a person's decision, the only useful question is whether the dashboard
@@ -665,6 +812,8 @@ internal class DashboardEntityGate(
         const val BOOTSTRAP_WATCHDOG_PROBE_MS = 300_000L
         const val BOOTSTRAP_WATCHDOG_PROBE_CEILING_MS = 3_600_000L
         const val ENTITY_BOOTSTRAP_CHECK_MS = 1_000L    // missed-relaunch backstop; no network work
+        // Behind a released hold: settings and the learner's state are local reads; resyncs keep the watchdog's ladder.
+        const val RELEASED_HOLD_CHECK_MS = 5_000L
         // Backstop only: answering normally relaunches the renderer from the server. This catches the case
         // where that relaunch is missed, so the panel still proceeds on its own. Local pref read, no network.
         const val ENTITY_FILTER_ANSWER_CHECK_MS = 1_500L

@@ -50,6 +50,7 @@ internal class DashboardRendererRig(
             override val screenAwake get() = pacer.screenAwake
             override fun buildAndLoad(config: Config) = error("no rebuild expected")
             override fun teardownWeb() = error("no teardown expected")
+            override fun reconcile() = error("no reconcile expected")
         },
         readConfig = { config },
     )

@@ -81,6 +81,10 @@ internal enum class EntityHoldKind(
     FILTER_HOLD(R.string.notice_pill_action_needed, R.string.notice_hero_filter_failed, R.string.optimized_subscription_unavailable),
     SCAN_REFUSED(R.string.notice_pill_sign_in, R.string.notice_hero_filter_refused, R.string.ha_refused_entity_scan),
     SCAN_FAILED(R.string.notice_pill_action_needed, R.string.notice_hero_filter_failed, R.string.dashboard_scan_failed),
+    ;
+
+    /** The kind as status reports it to Panel Assistant. */
+    val wire: String get() = name.lowercase()
 }
 
 internal fun entityHoldKind(

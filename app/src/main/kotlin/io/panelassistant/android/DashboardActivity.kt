@@ -299,6 +299,7 @@ class DashboardActivity : AppCompatActivity() {
         override val screenAwake get() = pacer.screenAwake
         override fun buildAndLoad(config: Config) = this@DashboardActivity.buildAndLoad(config)
         override fun teardownWeb() = this@DashboardActivity.teardownWeb()
+        override fun reconcile() = this@DashboardActivity.reconcileConfiguration()
     })
 
     /** Endpoint the on-panel Home Assistant sign-in is currently showing, so a relaunch does not restart it. */
