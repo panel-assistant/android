@@ -36,11 +36,11 @@ internal class DirectConfigOnboarding(private val config: Config) {
         }
 
     /**
-     * One bounded unauthenticated `GET {url}/api/` from the panel itself.
+     * One bounded unauthenticated `GET {url}/auth/providers` from the panel itself.
      *
-     * Home Assistant answers that with 401; anything else answering means something that is not Home
-     * Assistant holds the address. See [HaUrlHandover] for why a 200 there is a failure rather than a
-     * weaker success.
+     * Home Assistant answers that with its login provider list and never with 401, so the check raises
+     * no "Login attempt failed" notification. See [HaUrlHandover] for why anything else answering,
+     * including a bare 200, is a failure.
      */
     private fun verifyHandedOverHaUrl(url: String): HaUrlHandover.Outcome {
         val probe = HaUrlHandover.probeUrl(url) ?: return HaUrlHandover.Outcome.INVALID
@@ -52,11 +52,32 @@ internal class DirectConfigOnboarding(private val config: Config) {
                 connection.readTimeout = HaUrlHandover.READ_TIMEOUT_MS
                 connection.instanceFollowRedirects = false
                 connection.setRequestProperty("Accept", "application/json")
-                HaUrlHandover.classifyStatus(connection.responseCode).also { connection.closeBody() }
+                val status = connection.responseCode
+                val contentType = connection.contentType
+                if (HaUrlHandover.mayBeHomeAssistant(status, contentType)) {
+                    val body = connection.inputStream.use { readBoundedBody(it) }
+                    HaUrlHandover.classifyResponse(status, contentType, body)
+                } else {
+                    connection.closeBody()
+                    HaUrlHandover.classifyResponse(status, contentType, null)
+                }
             } finally {
                 connection.disconnect()
             }
         }.getOrElse(HaUrlHandover::classifyFailure)
+    }
+
+    /** The body as UTF-8, or null when it exceeds [HaUrlHandover.MAX_BODY_BYTES]. */
+    private fun readBoundedBody(input: java.io.InputStream): String? {
+        val out = java.io.ByteArrayOutputStream()
+        val buffer = ByteArray(4096)
+        while (true) {
+            val read = input.read(buffer)
+            if (read < 0) break
+            if (out.size() + read > HaUrlHandover.MAX_BODY_BYTES) return null
+            out.write(buffer, 0, read)
+        }
+        return out.toString("UTF-8")
     }
 
     private companion object {
