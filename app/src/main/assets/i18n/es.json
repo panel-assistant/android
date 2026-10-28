@@ -2354,7 +2354,7 @@
       "text": "esta compilación abrió un almacén de estado nuevo porque su esquema es más antiguo; es posible que se hayan restablecido algunos ajustes. La base de datos anterior se conserva en el panel para poder recuperarla."
     },
     "dashboard.banner.schema_rollback.or_restore": {
-      "text": "O restaura una copia de seguridad desde",
+      "text": "O restaura una copia de seguridad con",
       "sourceHash": "2b2290df7a635839bac57df93c4ed886c38b5b7da37ee0e6b672d4c9f7be80e1",
       "state": "machine-cross-checked"
     },
@@ -8889,7 +8889,7 @@
       "state": "machine-cross-checked"
     },
     "profiles.issue.unknown-core-transfer": {
-      "text": "Se desconoce la función de transferencia de Panel Assistant '{value}'.",
+      "text": "Se desconoce la transferencia de Panel Assistant '{value}'.",
       "sourceHash": "e4a1382e0e69c7a88620925541c3a63e0f2b4862decf182e24cb99b72eb00cb7",
       "state": "machine-cross-checked"
     },
@@ -10689,7 +10689,7 @@
       "state": "machine-cross-checked"
     },
     "settings.log_ship_system_enabled.help": {
-      "text": "Reenvía los registros del sistema Android al mismo recopilador si «Enviar registros» está activo.\n\n- Desactivado por defecto.\n- Requiere TCP o HTTP, y root o el auxiliar instalado.\n- Las entradas se censuran; con mucho volumen pueden descartarse.",
+      "text": "Reenvía los registros del sistema Android al mismo recopilador si «Enviar registros» está activo.\n\n- Desactivado por defecto.\n- Requiere TCP o HTTP, y root o el auxiliar instalado.\n- Los datos sensibles de las entradas se ocultan; con mucho volumen pueden descartarse.",
       "sourceHash": "51072217eb6ba0f7ad594b0903524921774b8437d14b20c5c12894c59d3bef42",
       "state": "machine-cross-checked"
     },

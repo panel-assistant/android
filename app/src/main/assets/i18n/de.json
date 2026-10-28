@@ -909,7 +909,7 @@
       "state": "machine-cross-checked"
     },
     "configure.display.recommend_prefix": {
-      "text": " Empfohlen: ",
+      "text": " Wir empfehlen ",
       "sourceHash": "bb4092e4aa49fd4b03f535cf50837666df1548c5c1e9956fc0623e809fb24c93",
       "state": "machine-cross-checked"
     },
@@ -8889,7 +8889,7 @@
       "state": "machine-cross-checked"
     },
     "profiles.issue.unknown-core-transfer": {
-      "text": "Unbekannte Panel Assistant-Übertragungsfunktion '{value}'.",
+      "text": "Unbekannte Panel Assistant-Übertragung '{value}'.",
       "sourceHash": "e4a1382e0e69c7a88620925541c3a63e0f2b4862decf182e24cb99b72eb00cb7",
       "state": "machine-cross-checked"
     },
@@ -10689,7 +10689,7 @@
       "state": "machine-cross-checked"
     },
     "settings.log_ship_system_enabled.help": {
-      "text": "Android-Systemprotokolle an dasselbe Ziel weiterleiten, wenn „Protokolle senden“ aktiv ist.\n\n- Standardmäßig aus.\n- Erfordert TCP oder HTTP sowie Root oder den installierten Helfer.\n- Einträge werden geschwärzt; bei hohem Aufkommen können sie verworfen werden.",
+      "text": "Android-Systemprotokolle an denselben Protokollsammler weiterleiten, wenn „Protokolle senden“ aktiv ist.\n\n- Standardmäßig aus.\n- Erfordert TCP oder HTTP sowie Root oder den installierten Helfer.\n- Einträge werden geschwärzt; bei hohem Aufkommen können sie verworfen werden.",
       "sourceHash": "51072217eb6ba0f7ad594b0903524921774b8437d14b20c5c12894c59d3bef42",
       "state": "machine-cross-checked"
     },
