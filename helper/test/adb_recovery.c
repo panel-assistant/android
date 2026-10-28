@@ -40,7 +40,8 @@ static int fixture_execve(const char *path, char *const arguments[], char *const
 #define ADB_RECOVERY_TCP6 fixture_path("tcp6")
 #define ADB_RECOVERY_FENCE_PARENT fixture_path("no_backup")
 #define ADB_RECOVERY_SOCKET "hapaneld-adb-recovery-test"
-#define ADB_RECOVERY_LEASE_MS 600
+static unsigned fixture_lease_ms=600;
+#define ADB_RECOVERY_LEASE_MS fixture_lease_ms
 #include "../src/adb_recovery.c"
 #undef openat
 #undef unlinkat
@@ -180,8 +181,10 @@ int main(int argc,char **argv) {
     }
     CHECK(rearmed,"healthy app can rearm the same session after recovery finishes");
     CHECK(network_is("stopped"),"healthy app can rearm after automatic recovery without a new websocket");
-    stop();start();arm();kill(guardian,SIGKILL);waitpid(guardian,NULL,0);guardian=-1;
-    CHECK(wait_network("running"),"guardian death reopens network ADB");stop();
+    stop();fixture_lease_ms=60000;start();arm();
+    kill(guardian,SIGKILL);waitpid(guardian,NULL,0);guardian=-1;
+    CHECK(wait_network("running"),"guardian death reopens before lease expiry");
+    stop();fixture_lease_ms=600;
     start();arm();
     int pending=connect_owner();
     const char *late="touch /tmp/.hapaneld-adb-orphan-executed";
