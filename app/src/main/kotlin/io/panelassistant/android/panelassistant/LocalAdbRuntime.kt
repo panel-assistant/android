@@ -300,28 +300,26 @@ internal class RootLocalAdbEndpoint : LocalAdbEndpoint {
     }
     /** One absolute send deadline, including a root peer that stops reading midway through a payload. */
     private fun writeRequest(socket: android.net.LocalSocket, bytes: ByteArray) {
+        // Wait for POLLOUT under the deadline, then write a chunk small enough to fit the free space POLLOUT promises
+        // (an AF_UNIX socket reports writable only while at most a quarter of its send buffer is in use).
         val descriptor = socket.fileDescriptor
-        val flags = android.system.Os.fcntlInt(descriptor, android.system.OsConstants.F_GETFL, 0)
-        android.system.Os.fcntlInt(descriptor, android.system.OsConstants.F_SETFL, flags or android.system.OsConstants.O_NONBLOCK)
+        val chunk = (socket.sendBufferSize / 8).coerceIn(1, 1_024)
+        val output = socket.outputStream
         val deadline = android.os.SystemClock.elapsedRealtime() + 2_000L
         var sent = 0
-        try {
-            while (sent < bytes.size) {
-                val remaining = deadline - android.os.SystemClock.elapsedRealtime()
-                check(remaining > 0) { "local adb submission timed out" }
-                try {
-                    val count = android.system.Os.write(descriptor, bytes, sent, bytes.size - sent)
-                    check(count > 0)
-                    sent += count
-                } catch (failure: android.system.ErrnoException) {
-                    if (failure.errno == android.system.OsConstants.EINTR) continue
-                    if (failure.errno != android.system.OsConstants.EAGAIN) throw failure
-                    val ready = android.system.StructPollfd().apply { fd = descriptor; events = android.system.OsConstants.POLLOUT.toShort() }
-                    android.system.Os.poll(arrayOf(ready), remaining.toInt())
-                }
+        while (sent < bytes.size) {
+            val remaining = deadline - android.os.SystemClock.elapsedRealtime()
+            check(remaining > 0) { "local adb submission timed out" }
+            val ready = android.system.StructPollfd().apply { fd = descriptor; events = android.system.OsConstants.POLLOUT.toShort() }
+            try {
+                if (android.system.Os.poll(arrayOf(ready), remaining.toInt()) <= 0) continue
+            } catch (failure: android.system.ErrnoException) {
+                if (failure.errno == android.system.OsConstants.EINTR) continue
+                throw failure
             }
-        } finally {
-            android.system.Os.fcntlInt(descriptor, android.system.OsConstants.F_SETFL, flags)
+            val count = minOf(chunk, bytes.size - sent)
+            output.write(bytes, sent, count)
+            sent += count
         }
     }
     private fun command(text: String, submit: (() -> Unit) -> Boolean = { it(); true }): Boolean? = exchange { socket ->
