@@ -417,7 +417,17 @@ class PaneldService : Service() {
     // the active profile's.
     private val panelAssistantReporter = PanelAssistantStateReporter(describe = { wire ->
         if (wire == "button" && ::profile.isInitialized) {
-            io.panelassistant.android.panelassistant.PanelAssistantChannelCatalog.buttonDescriptor(profile.evdevButtons.mapTo(linkedSetOf()) { it.eventType })
+            // Each evdev button advertises its base event type; a button that opts in with release=true
+            // also advertises its <base>_RELEASED type, so Home Assistant discovers only the release edges
+            // that are actually emitted.
+            val types = profile.evdevButtons.flatMapTo(linkedSetOf()) { button ->
+                if (button.release) {
+                    listOf(button.eventType, button.eventType + io.panelassistant.android.input.EvdevStreamSession.RELEASED_SUFFIX)
+                } else {
+                    listOf(button.eventType)
+                }
+            }
+            io.panelassistant.android.panelassistant.PanelAssistantChannelCatalog.buttonDescriptor(types)
         } else io.panelassistant.android.panelassistant.PanelAssistantChannelCatalog.describe(wire)
     })
 

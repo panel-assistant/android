@@ -289,6 +289,9 @@ data class ProfileEvdevButton(
     val grab: Boolean,
     val eventType: String,
     val sw: Boolean = false,
+    /** When true, the up edge is reported too, as a distinct `<event_type>_RELEASED` event. Off by
+     *  default, so a button stays press-only unless its profile opts in. */
+    val release: Boolean = false,
 )
 
 data class ProfileCpu(val governors: Map<String, String>? = null)

@@ -1,6 +1,6 @@
 schema: 2
 id: s9e
-version: 2.1.0
+version: 2.2.0
 display_name: Smatek S9E
 soc_class: rk3566
 soc:
@@ -29,6 +29,7 @@ requires:
   min_core_version: 0.9.5-rc1
   drivers:
     - access.android-su
+    - input.evdev
     - relay.gpio-button-led
     - relay.sysfs
     - screen.su-blpower
@@ -96,7 +97,31 @@ identity:
   model: S9E
   model_label_strategy: display-name
 input:
-  evdev_buttons: []
+  # The adc-keys node carries only F1-F4, so grabbing it takes those four keys off the Android input
+  # pipeline (the accessibility path never sees them) and reads them through the root helper instead,
+  # which avoids double-reporting. release: true adds the up edge as <event_type>_RELEASED so automations
+  # can do press-and-hold. Codes are Linux KEY_F1..KEY_F4 (59-62).
+  evdev_buttons:
+    - node: /dev/input/event3
+      code: 59
+      grab: true
+      event_type: KEYCODE_F1
+      release: true
+    - node: /dev/input/event3
+      code: 60
+      grab: true
+      event_type: KEYCODE_F2
+      release: true
+    - node: /dev/input/event3
+      code: 61
+      grab: true
+      event_type: KEYCODE_F3
+      release: true
+    - node: /dev/input/event3
+      code: 62
+      grab: true
+      event_type: KEYCODE_F4
+      release: true
 cpu:
   governors:
     Performance: performance
