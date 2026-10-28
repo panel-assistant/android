@@ -114,6 +114,7 @@
       "name": "hello",
       "message": {
         "app": {
+          "package": "io.panelassistant.android",
           "version_code": 801,
           "version": "0.9.8-rc2"
         },
@@ -133,7 +134,8 @@
           "ui_subscribe",
           "ui_bundle",
           "rest_retired",
-          "unknown_state"
+          "unknown_state",
+          "logs"
         ],
         "unsupported": [
           "camera_snapshot",
@@ -163,7 +165,7 @@
           "family": "relay",
           "force_update": false
         }],
-        "contract_digest": "1d5a0f44ca89d587636daa954f29b9831fa3e09e7cff4b1820b5aa4dba0cd9ea",
+        "contract_digest": "5249411f85bec0c5e36d549851cea2ee4a6bc02e684e05f9f03fb5d7ef9154a6",
         "id": 1,
         "type": "panel_assistant/hello",
         "did": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
@@ -225,7 +227,7 @@
       }
     }
   ],
-  "sourceRevision": "8bd2e6d40a11ec3eba7fd07649cdd23bb41ce124",
+  "sourceRevision": "40e71cb7e29bd74c67b3ce1f5a1a46ae0b9b7e74",
   "channelDescriptors": [
     {
       "entity_category": null,
