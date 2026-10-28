@@ -568,7 +568,6 @@ val unitTestForks = providers.gradleProperty("hapaneld.testForks").map { it.toIn
     .orElse((Runtime.getRuntime().availableProcessors() / 2).coerceIn(1, 6))
 
 tasks.withType<Test>().configureEach {
-    dependsOn(providerAndroidRuntimeJar)
     maxParallelForks = unitTestForks.get()
     // PicklesPageFixtureTest writes the localized pages the browser tests render. Declaring the
     // directory as an output makes a build-cache hit restore that fixture instead of leaving it absent.
@@ -606,9 +605,35 @@ tasks.withType<Test>().configureEach {
     }
 }
 
-// AGP assigns the unit-test classpath after task registration; prepend the selected platform implementations afterwards.
+// Keep real platform classes in their own supported Test worker so unrelated JVM fixtures retain SDK stubs.
 afterEvaluate {
-    tasks.withType<Test>().configureEach {
-        classpath = files(providerAndroidRuntimeJar) + classpath
+    val debugTests = tasks.named<Test>("testDebugUnitTest")
+    val callerClasses = listOf(
+        "io.panelassistant.android.util.AndroidWebViewUpdateIoTest",
+        "io.panelassistant.android.http.PaneldServerWebViewApprovalTest",
+    )
+    // The repository selector emits exact class filters. Their proofs run in the dependency worker.
+    val requestedArgs = gradle.startParameter.taskRequests.flatMap { it.args }
+    val requestedTests = requestedArgs.mapIndexedNotNull { index, argument ->
+        when {
+            argument == "--tests" -> requestedArgs.getOrNull(index + 1)
+            argument.startsWith("--tests=") -> argument.substringAfter('=')
+            else -> null
+        }
+    }
+    val callerOnlySelection = requestedTests.isNotEmpty() && requestedTests.all { it in callerClasses }
+    val webViewCallerTests = tasks.register<Test>("testWebViewCaller") {
+        description = "Exercises native WebView admission and host-executable Android adapter paths."
+        group = "verification"
+        dependsOn(providerAndroidRuntimeJar)
+        testClassesDirs = debugTests.get().testClassesDirs
+        classpath = files(providerAndroidRuntimeJar) + debugTests.get().classpath
+        useJUnit()
+        callerClasses.forEach { filter.includeTestsMatching(it) }
+    }
+    tasks.withType<Test>().matching { it.name.endsWith("UnitTest") }.configureEach {
+        dependsOn(webViewCallerTests)
+        callerClasses.forEach { filter.excludeTestsMatching(it) }
+        onlyIf("Exact caller class selections execute in the isolated worker") { !callerOnlySelection }
     }
 }
