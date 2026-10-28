@@ -10723,14 +10723,34 @@
    "sourceHash": "23e39291d6135814ed7c936e278974544b0df5fbf0eb0427b6700979b7472a93",
    "state": "machine-cross-checked"
   },
+  "setup.webview.after_update": {
+   "text": "Після оновлення панель перезапустить свій застосунок. Залиште цю сторінку відкритою: вона сама перейде до адреси Home Assistant.",
+   "sourceHash": "9ea7a503304638a49a546bcfb1bed7aadfd5fa80c58ac23e4ec88e51240cda80",
+   "state": "machine-cross-checked"
+  },
   "setup.webview.found": {
    "text": "Ця панель має Chromium {found}. Поточна інформаційна панель Home Assistant потребує Chromium {needed} або новішої версії.",
    "sourceHash": "29d3bc49a5e9bbc77f2874fe03a9d53e6e7a5a21fbdcb54fd075343a6ccc98ee",
    "state": "machine-cross-checked"
   },
+  "setup.webview.play": {
+   "text": "Ця панель оновлює свій рушій через Google Play: на панелі відкрийте Play Store й оновіть Android System WebView.",
+   "sourceHash": "1ee78fca20a49f0b9757b8d2b68b22a61696137734987c922834e800836ee73c",
+   "state": "machine-cross-checked"
+  },
   "setup.webview.title": {
    "text": "Браузерний рушій панелі потрібно оновити",
    "sourceHash": "c408def35c0373230b7dd6da75056046236ddd96415495d4935697de526844fa",
+   "state": "machine-cross-checked"
+  },
+  "setup.webview.update_steps": {
+   "text": "Кроки оновлення: {model}",
+   "sourceHash": "2ede37fa8d53dcf6214ad13dd7b37b3007f234da7cef240307e8592c1bb23a54",
+   "state": "machine-cross-checked"
+  },
+  "setup.webview.update_steps_any": {
+   "text": "Кроки оновлення WebView",
+   "sourceHash": "50ceb4e2fa12f7618c726863fafc21b7e17cd0b94259447bd92afc25e517300f",
    "state": "machine-cross-checked"
   },
   "shell.action.reload": {

@@ -36251,6 +36251,26 @@
       "softMaxChars": 24,
       "hardMaxChars": 40
     },
+    "setup.webview.after_update": {
+      "text": "After the update the panel restarts its app. Keep this page open: it carries on to the Home Assistant address by itself.",
+      "sourceHash": "9ea7a503304638a49a546bcfb1bed7aadfd5fa80c58ac23e4ec88e51240cda80",
+      "surface": "setup",
+      "context": "Setup wizard WebView compatibility blocker; tells the owner to come back to this page after updating, because it moves on by itself.",
+      "risk": "setup",
+      "siblings": [
+        "setup.webview.found",
+        "setup.webview.play",
+        "setup.webview.title",
+        "setup.webview.update_steps",
+        "setup.webview.update_steps_any"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "Home Assistant"
+      ],
+      "softMaxChars": 170,
+      "hardMaxChars": 240
+    },
     "setup.webview.found": {
       "text": "This panel has Chromium {found}. A current Home Assistant dashboard needs Chromium {needed} or newer.",
       "sourceHash": "29d3bc49a5e9bbc77f2874fe03a9d53e6e7a5a21fbdcb54fd075343a6ccc98ee",
@@ -36258,7 +36278,11 @@
       "context": "Setup wizard WebView compatibility blocker; the engine version found on this panel and the minimum needed. {found} and {needed} are Chromium major version numbers.",
       "risk": "setup",
       "siblings": [
-        "setup.webview.title"
+        "setup.webview.after_update",
+        "setup.webview.play",
+        "setup.webview.title",
+        "setup.webview.update_steps",
+        "setup.webview.update_steps_any"
       ],
       "placeholders": [
         "{found}",
@@ -36271,6 +36295,28 @@
       "softMaxChars": 150,
       "hardMaxChars": 210
     },
+    "setup.webview.play": {
+      "text": "This panel updates its engine through Google Play: on the panel, open the Play Store and update Android System WebView.",
+      "sourceHash": "1ee78fca20a49f0b9757b8d2b68b22a61696137734987c922834e800836ee73c",
+      "surface": "setup",
+      "context": "Setup wizard WebView compatibility blocker; shown only on panels whose WebView comes from Google Play. Android System WebView is the app's name in the Play Store.",
+      "risk": "setup",
+      "siblings": [
+        "setup.webview.after_update",
+        "setup.webview.found",
+        "setup.webview.title",
+        "setup.webview.update_steps",
+        "setup.webview.update_steps_any"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "Google Play",
+        "Play Store",
+        "Android System WebView"
+      ],
+      "softMaxChars": 170,
+      "hardMaxChars": 240
+    },
     "setup.webview.title": {
       "text": "The panel’s browser engine needs updating",
       "sourceHash": "c408def35c0373230b7dd6da75056046236ddd96415495d4935697de526844fa",
@@ -36278,12 +36324,56 @@
       "context": "Setup wizard WebView compatibility blocker; heading.",
       "risk": "setup",
       "siblings": [
-        "setup.webview.found"
+        "setup.webview.after_update",
+        "setup.webview.found",
+        "setup.webview.play",
+        "setup.webview.update_steps",
+        "setup.webview.update_steps_any"
       ],
       "placeholders": [],
       "frozen": [],
       "softMaxChars": 62,
       "hardMaxChars": 89
+    },
+    "setup.webview.update_steps": {
+      "text": "Update steps for {model}",
+      "sourceHash": "2ede37fa8d53dcf6214ad13dd7b37b3007f234da7cef240307e8592c1bb23a54",
+      "surface": "setup",
+      "context": "Setup wizard WebView compatibility blocker; button opening the website's WebView update steps for this panel's model in a new tab. {model} is a product name such as Sonoff NSPanel Pro.",
+      "risk": "setup",
+      "siblings": [
+        "setup.webview.after_update",
+        "setup.webview.found",
+        "setup.webview.play",
+        "setup.webview.title",
+        "setup.webview.update_steps_any"
+      ],
+      "placeholders": [
+        "{model}"
+      ],
+      "frozen": [],
+      "softMaxChars": 40,
+      "hardMaxChars": 64
+    },
+    "setup.webview.update_steps_any": {
+      "text": "WebView update steps",
+      "sourceHash": "50ceb4e2fa12f7618c726863fafc21b7e17cd0b94259447bd92afc25e517300f",
+      "surface": "setup",
+      "context": "Setup wizard WebView compatibility blocker; button opening the website's WebView update steps in a new tab, when the panel's model is unknown.",
+      "risk": "setup",
+      "siblings": [
+        "setup.webview.after_update",
+        "setup.webview.found",
+        "setup.webview.play",
+        "setup.webview.title",
+        "setup.webview.update_steps"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "WebView"
+      ],
+      "softMaxChars": 30,
+      "hardMaxChars": 48
     },
     "shell.action.reload": {
       "text": "reload",

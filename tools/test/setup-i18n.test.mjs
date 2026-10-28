@@ -802,13 +802,37 @@ for (const [engine, browserType] of [['Chromium', chromium], ['WebKit', webkit]]
     await rig.page.locator('#wiz-ha_url').waitFor();
     assert.match(await rig.page.locator('#wiz-step').textContent(), /浏览器引擎需要更新/);
     assert.match(await rig.page.locator('#wiz-step').textContent(), /Chromium 107/);
-    assert.equal(await rig.page.locator(`a[href="${WEBVIEW_STEPS}"]`).count(), 0);
+    const warning = rig.page.locator('#wiz-step .notice[data-severity="warning"]');
+    const steps = warning.locator('a');
+    assert.equal(await steps.count(), 1);
+    assert.equal(await steps.getAttribute('href'), WEBVIEW_STEPS);
+    assert.equal(await steps.getAttribute('target'), '_blank');
+    assert.equal(await steps.textContent(), 'Update steps for Sonoff NSPanel Pro');
+    assert.match(await warning.textContent(), /Keep this page open/);
+    assert.doesNotMatch(await warning.textContent(), /Google Play/);
     rig.state.current = { ...webViewJourney(), complete: true, next: null };
     await eventually(() => rig.page.locator('.card h2').textContent(), (text) => text.includes('set up'), 8_000);
     const text = await rig.page.locator('#wiz-step').textContent();
     assert.match(text, /浏览器引擎需要更新/);
     assert.doesNotMatch(text, /Home Assistant is rendering|Dashboard confirmed by you/);
     assert.equal(await rig.page.locator('a[href="/configure"]').count() > 0, true);
+    assert.equal(await warning.locator(`a[href="${WEBVIEW_STEPS}"]`).count(), 1);
+    // The finished screen has no Home Assistant address left to carry on to.
+    assert.doesNotMatch(await warning.textContent(), /Keep this page open/);
+  });
+
+  run(`Setup's engine warning shows the Play hint only for a Play-managed engine and no link without steps in ${engine}`, async (t) => {
+    const play = await openRig(t, { initialJourney: webViewJourney({ play: true, model: '' }) }, '/', browserType);
+    await play.page.locator('#wiz-ha_url').waitFor();
+    const playWarning = play.page.locator('#wiz-step .notice[data-severity="warning"]');
+    assert.match(await playWarning.textContent(), /through Google Play: on the panel, open the Play Store/);
+    assert.equal(await playWarning.locator('a').textContent(), 'WebView update steps');
+
+    const bare = await openRig(t, { initialJourney: webViewJourney({ steps: '' }) }, '/', browserType);
+    await bare.page.locator('#wiz-ha_url').waitFor();
+    const bareWarning = bare.page.locator('#wiz-step .notice[data-severity="warning"]');
+    assert.match(await bareWarning.textContent(), /Chromium 107/);
+    assert.equal(await bareWarning.locator('a').count(), 0);
   });
 }
 
