@@ -1084,10 +1084,10 @@ class BundledProfileParityTest {
             "shelly-wall-display-v2.yaml" to "68520dc16295d169039c61f02df9aa38a39c28f47da6cefe7cb01b9d3caa117b",
             "shelly-wall-display-x2i.yaml" to "64c39b0945d815395acb99467c4efa82ee630626eeea6871ff3a3a39aae50c9f",
             "shelly-wall-display.yaml" to "67a9ba15bbed9156e564a7dd543f92102499d156d34cea7edd018dfe6979a62b",
-            "smt1019.yaml" to "44d3bf0865d9cb731fd2dbebc224ac3b84f5dedc8064a3f20231a12ca1f1fa53",
+            "smt1019.yaml" to "ccf23e819f3e5eea79a5f7efab3bfd38331cedfd40b6185f3ced915b4ac845a1",
             "tpa10.yaml" to "077ff9cb33f483e6497c149d2dc01ba6db49d85f4c4ac0965d7087a58577aa3a",
             "wf1589t.yaml" to "2b69edb225307146d597a5edea488525932403f9d894474e27612fd30516451a",
-            "zx-smt156.yaml" to "42f01e4e61e61dbbc284b1292df6979e856c1e9d99d540e938fc9eb75aba5605",
+            "zx-smt156.yaml" to "8c5fe65c26eaefb964899dfaf596adf6df485285a94ce0eeecd65b2d833a389e",
         )
         val EXPECTED_UNOFFICIAL_IDS = setOf(
             "community.cronos-lineageos18",

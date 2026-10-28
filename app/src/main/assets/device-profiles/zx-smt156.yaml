@@ -1,6 +1,6 @@
 schema: 2
 id: zx-smt156
-version: 3.1.2
+version: 3.1.3
 display_name: ZX-SMT156 / RK3566_T
 soc_class: Rockchip rk3566
 soc:
@@ -57,7 +57,7 @@ match:
             - rk3566_t
 platform:
   # These are reported app-install hints, not a claim that USB or vendor root/unlock routes are absent.
-  # Runtime authority probes remain decisive; optional enhanced routes use the helper or fixed Shizuku operations.
+  # Runtime authority probes remain decisive; optional enhanced routes use the helper.
   su_form: none
   app_can_su: false
   has_recents: true
@@ -80,8 +80,6 @@ input:
 cpu: {}
 display: {}
 provisioning:
-  access:
-    shizuku: optional
   software: {}
   display: {}
   packages: []
