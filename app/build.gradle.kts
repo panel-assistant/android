@@ -240,6 +240,29 @@ tasks.matching { it.name.startsWith("process") && it.name.endsWith("MainManifest
     inputs.property("databaseCompatibility", databaseCompatibilityContract)
 }
 
+// Execute the platform implementations behind provider receipts and package facts on the host.
+// Selected Android classes replace SDK stubs; tests use their host-executable paths without a framework runner or device.
+val providerAndroidRuntime = configurations.create("providerAndroidRuntime")
+val providerInstallSourceRuntime = configurations.create("providerInstallSourceRuntime")
+val providerAndroidRuntimeJar = tasks.register<Jar>("providerAndroidRuntimeJar") {
+    archiveFileName.set("provider-android-runtime.jar")
+    destinationDirectory.set(layout.buildDirectory.dir("provider-android-runtime"))
+    from(providerAndroidRuntime.elements.map { files -> files.map { zipTree(it.asFile) } }) {
+        include("android/util/AtomicFile*.class", "android/os/FileUtils*.class")
+        include("android/content/pm/Signature*.class", "android/content/pm/SigningInfo*.class")
+        include("android/content/pm/PackageInfo*.class", "android/content/pm/PackageParser\$SigningDetails*.class")
+        include("android/webkit/WebView.class", "android/webkit/WebView\$*.class")
+        include("android/webkit/WebViewFactory*.class", "android/webkit/WebViewProvider*.class")
+        include("android/view/ViewDebug\$HierarchyHandler.class", "com/android/internal/util/SizedInputStream.class")
+    }
+    from(providerInstallSourceRuntime.elements.map { files -> files.map { zipTree(it.asFile) } }) {
+        include("android/content/pm/InstallSourceInfo*.class")
+    }
+}
+val androidMockPackageManager = androidComponents.sdkComponents.bootClasspath.map { files ->
+    files.first { it.asFile.name == "android.jar" }.asFile.resolveSibling("optional/android.test.mock.jar")
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
@@ -273,7 +296,11 @@ dependencies {
     // QR code for the on-device config URL (pure-Java encoder; no Android transitive deps).
     implementation("com.google.zxing:core:3.5.4")
 
-    // JVM unit tests (no Android/emulator deps): pure-logic + coroutine serialization regression tests.
+    providerAndroidRuntime("org.robolectric:android-all:10-robolectric-5803371")
+    providerInstallSourceRuntime("org.robolectric:android-all:11-robolectric-6757853")
+    testImplementation(files(androidMockPackageManager))
+
+    // JVM unit tests: pure logic, coroutine serialization, and narrow host platform adapters.
     testImplementation(libs.junit)
     testImplementation(kotlin("test"))
     testImplementation(libs.kotlinx.coroutines.test)
@@ -541,6 +568,7 @@ val unitTestForks = providers.gradleProperty("hapaneld.testForks").map { it.toIn
     .orElse((Runtime.getRuntime().availableProcessors() / 2).coerceIn(1, 6))
 
 tasks.withType<Test>().configureEach {
+    dependsOn(providerAndroidRuntimeJar)
     maxParallelForks = unitTestForks.get()
     // PicklesPageFixtureTest writes the localized pages the browser tests render. Declaring the
     // directory as an output makes a build-cache hit restore that fixture instead of leaving it absent.
@@ -575,5 +603,12 @@ tasks.withType<Test>().configureEach {
     providers.gradleProperty("autoSleepReplayOutput").orNull?.let {
         systemProperty("hapaneld.autoSleepReplay.output", it)
         inputs.property("autoSleepReplayOutputPath", it)
+    }
+}
+
+// AGP assigns the unit-test classpath after task registration; prepend the selected platform implementations afterwards.
+afterEvaluate {
+    tasks.withType<Test>().configureEach {
+        classpath = files(providerAndroidRuntimeJar) + classpath
     }
 }
