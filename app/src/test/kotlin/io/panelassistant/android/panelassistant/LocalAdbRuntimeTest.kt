@@ -46,6 +46,57 @@ class LocalAdbRuntimeTest {
         }
     }
 
+    @Test fun aGrantedSessionReplacesAStaleBuildBeforeArmingItsSuccessor() = runTest {
+        val endpoint = Endpoint().apply { status = LocalAdbState(true, false, buildId = "0".repeat(64)) }
+        var bootstraps = 0
+        val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, {
+            bootstraps++
+            assertTrue("replacement must still observe the stale owner", endpoint.status!!.managed)
+            endpoint.status = LocalAdbState(false, false)
+            true
+        }, StandardTestDispatcher(testScheduler), { it() })
+        runtime.session("granted", true); runCurrent()
+        assertEquals(1, bootstraps)
+        assertEquals(listOf("arm"), endpoint.effects)
+        val ready = runtime.request("adb.ready", JSONObject(), { true }).result as JSONObject
+        assertEquals(io.panelassistant.android.BuildConfig.HELPER_BUILD_ID, ready.getString("build_id"))
+        assertTrue(ready.getBoolean("managed"))
+    }
+
+    @Test fun aMatchingBuildIsArmedWithoutReplacingItsDaemon() = runTest {
+        val endpoint = Endpoint()
+        var bootstraps = 0
+        val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, {
+            bootstraps++; false
+        }, StandardTestDispatcher(testScheduler), { it() })
+        runtime.session("granted", true); runCurrent()
+        assertEquals(0, bootstraps)
+        assertEquals(listOf("arm"), endpoint.effects)
+        val ready = runtime.request("adb.ready", JSONObject(), { true }).result as JSONObject
+        assertEquals(io.panelassistant.android.BuildConfig.HELPER_BUILD_ID, ready.getString("build_id"))
+    }
+
+    @Test fun aFailedReplacementNeverArmsOrRenewsTheStaleDaemonAndRetriesOnTheHeartbeat() = runTest {
+        val endpoint = Endpoint().apply { status = LocalAdbState(true, false, buildId = "0".repeat(64)) }
+        var bootstraps = 0
+        val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, {
+            bootstraps++
+            if (bootstraps > 2) endpoint.status = LocalAdbState(false, false)
+            bootstraps > 2
+        }, StandardTestDispatcher(testScheduler), { it() })
+        runtime.session("granted", true); runCurrent()
+        assertEquals(1, bootstraps)
+        assertTrue(endpoint.effects.isEmpty())
+        val ready = runtime.request("adb.ready", JSONObject(), { true }).result as JSONObject
+        assertEquals("0".repeat(64), ready.getString("build_id"))
+        advanceTimeBy(30_001); runCurrent()
+        assertEquals(2, bootstraps)
+        assertTrue("a failed heartbeat replacement must not renew the old lease", endpoint.effects.isEmpty())
+        advanceTimeBy(30_000); runCurrent()
+        assertEquals(3, bootstraps)
+        assertEquals(listOf("arm"), endpoint.effects)
+    }
+
     @Test fun capabilityRollbackReopensInsteadOfRenewingManagedClosure() = runTest {
         val endpoint = Endpoint()
         val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), { it() })

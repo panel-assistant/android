@@ -24,7 +24,7 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.resume
 
-internal data class LocalAdbState(val managed: Boolean, val recoveryHold: Boolean, val securityUnverified: Boolean = false)
+internal data class LocalAdbState(val managed: Boolean, val recoveryHold: Boolean, val securityUnverified: Boolean = false, val buildId: String = BuildConfig.HELPER_BUILD_ID)
 internal interface LocalAdbEndpoint {
     fun state(): LocalAdbState?
     fun arm(nonce: String): Boolean
@@ -78,8 +78,8 @@ internal class LocalAdbRuntime(
                     publish()
                     return@withLock
                 }
-                if (endpoint.state() == null) bootstrap()
-                if (generation.get() == current && endpoint.state() != null && healthy()) {
+                val state = currentDaemon()
+                if (generation.get() == current && state != null && healthy()) {
                     transition { generation.get() == current && endpoint.arm(fresh) }
                     publish()
                     onClosed()
@@ -92,8 +92,7 @@ internal class LocalAdbRuntime(
                     if (!healthy()) continue
                     try { effects.withLock {
                         if (generation.get() == current) {
-                            var state = endpoint.state()
-                            if (state == null && granted) { bootstrap(); state = endpoint.state() }
+                            val state = if (granted) currentDaemon() else endpoint.state()
                             if (state != null && !state.managed && !state.recoveryHold && granted) {
                                 transition { generation.get() == current && endpoint.arm(fresh) }
                                 publish()
@@ -107,6 +106,17 @@ internal class LocalAdbRuntime(
                 }
             }
         }
+    }
+
+    /** Startup proves an open recovery route before retiring a different-build owner. */
+    private fun currentDaemon(): LocalAdbState? {
+        var state = endpoint.state()
+        if (state == null || state.buildId != BuildConfig.HELPER_BUILD_ID) {
+            bootstrap()
+            state = endpoint.state()
+        }
+        // A failed bootstrap must never ARM or renew the stale owner as if replacement succeeded.
+        return state?.takeIf { it.buildId == BuildConfig.HELPER_BUILD_ID }
     }
 
     private fun transition(action: () -> Boolean): Boolean = securityTransition(action)
@@ -189,7 +199,7 @@ internal class LocalAdbRuntime(
                         "adb.prepare" -> prepare()
                         "adb.ready" -> {
                             val state = publish()
-                            JSONObject().put("ready", state != null).put("managed", state?.managed == true).put("recovery_hold", state?.recoveryHold == true).put("security_unverified", state?.securityUnverified == true)
+                            JSONObject().put("ready", state != null).put("managed", state?.managed == true).put("recovery_hold", state?.recoveryHold == true).put("security_unverified", state?.securityUnverified == true).put("build_id", state?.buildId ?: JSONObject.NULL)
                         }
                         else -> return@withLock refused("unknown_command")
                     }
@@ -337,7 +347,7 @@ internal class RootLocalAdbEndpoint : LocalAdbEndpoint {
             writeRequest(socket, "STATUS\n".toByteArray())
             val fields = line(socket.inputStream).split(' ')
             check(fields.size == 6 && fields[0] == "READY" && fields[1] == "1" && fields[2].matches(Regex("[0-9a-f]{64}")) && fields[3] in listOf("0", "1") && fields[4] in listOf("0", "1") && fields[5] in listOf("0", "1"))
-            LocalAdbState(fields[3] == "1", fields[4] == "1", fields[5] == "1")
+            LocalAdbState(fields[3] == "1", fields[4] == "1", fields[5] == "1", fields[2])
         }
     }.getOrNull()
     override fun arm(nonce: String): Boolean = command("ARM $nonce") == true

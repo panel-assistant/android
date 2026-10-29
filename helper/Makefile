@@ -48,6 +48,7 @@ test:
 
 test-units: $(TEST_BINS)
 	$(MAKE) adb-recovery-retirement-test
+	$(MAKE) adb-recovery-replacement-test
 	$(BUILD)/adb-recovery
 	$(BUILD)/uninstall-supervisor
 	$(BUILD)/unit
@@ -183,5 +184,13 @@ adb-recovery-test: $(BUILD)/adb-recovery
 adb-recovery-retirement-test: $(BUILD)/adb-recovery-retirement
 	$(BUILD)/adb-recovery-retirement
 $(BUILD)/adb-recovery-retirement: test/adb_recovery_retirement.py | $(BUILD)
+	cp $< $@
+	chmod +x $@
+
+# Runtime stale-build replacement through the shipped daemon entry.
+.PHONY: adb-recovery-replacement-test
+adb-recovery-replacement-test: $(BUILD)/adb-recovery-replacement
+	$(BUILD)/adb-recovery-replacement
+$(BUILD)/adb-recovery-replacement: test/adb_recovery_replacement.py test/adb_recovery_replacement_cuts.c | $(BUILD)
 	cp $< $@
 	chmod +x $@
