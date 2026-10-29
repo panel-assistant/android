@@ -2029,6 +2029,7 @@ class DashboardActivity : AppCompatActivity() {
             fallbackToLauncher()
             return
         }
+        entityGate.onRendererCreated()
         web = w
         builtAuthOwner = config.haAuthSnapshot().stableOwner()
         shownPage.forget()

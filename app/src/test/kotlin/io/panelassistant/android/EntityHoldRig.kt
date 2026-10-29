@@ -1,6 +1,7 @@
 package io.panelassistant.android
 
 import android.os.Handler
+import android.webkit.WebView
 import androidx.appcompat.app.AppCompatActivity
 import io.panelassistant.android.control.BuiltinDashboard
 import io.panelassistant.android.dashboard.AutoScopeVerification
@@ -25,6 +26,8 @@ internal class EntityHoldRig(
     var screenAwake: Boolean = true,
     /** Where the virtual clock starts; a recreated activity shares its predecessor's. */
     startAt: Long = 1_000_000L,
+    /** Whether the web viewer offers document-start scripts; the JVM's never installs one, so creation throws. */
+    documentStartSupported: Boolean = false,
 ) : AutoCloseable {
     val owner = BuiltinDashboard.acquireActivityOwner()
     private val work = Job()
@@ -37,7 +40,7 @@ internal class EntityHoldRig(
     val retries = mutableListOf<Long>()
     val probes = mutableListOf<Long>()
 
-    /** Every hold screen painted, in order, and every renderer admitted, by its filter signature. */
+    /** Every hold screen painted, in order, and every dashboard WebView created, by its filter signature. */
     val shown = mutableListOf<EntityHoldKind>()
     val admitted = mutableListOf<String>()
     var reconciles = 0
@@ -61,14 +64,7 @@ internal class EntityHoldRig(
             override val activityOwner get() = owner
             override val destroyed get() = false
             override val screenAwake get() = this@EntityHoldRig.screenAwake
-            override fun buildAndLoad(config: Config) {
-                if (gate.holdsRenderer(config)) {
-                    gate.showWaitingForEntityBootstrap()
-                } else {
-                    admitted += gate.entityFilterSignature
-                    gate.onRendererAdmitted()
-                }
-            }
+            override fun buildAndLoad(config: Config) = build(config)
             override fun teardownWeb() = Unit
             override fun reconcile() { reconciles++ }
         },
@@ -84,14 +80,34 @@ internal class EntityHoldRig(
             override fun probeDashboardChange(): Boolean = true.also { probes += now }
         },
         holdPainter = { kind, _, _ -> shown += kind; null },
+        documentStartSupported = { documentStartSupported },
     )
+
+    /**
+     * What [DashboardActivity.buildAndLoad] and `buildCompatibleAndLoad` do with the gate: a held renderer goes
+     * back to the hold screen; an admitted one creates its WebView, installing the filter, and a filter that
+     * cannot be installed there paints the hold again.
+     */
+    private fun build(config: Config) {
+        if (gate.holdsRenderer(config)) {
+            gate.showWaitingForEntityBootstrap()
+            return
+        }
+        gate.onRendererAdmitted()
+        try {
+            gate.installDocumentStartFilter(allocate(WebView::class.java), config, setOf("http://ha.local:8123"))
+        } catch (_: EntityFilterInterceptorUnavailable) {
+            gate.showWaitingForEntityBootstrap()
+            return
+        }
+        admitted += gate.entityFilterSignature
+        gate.onRendererCreated()
+    }
 
     /** The activity's first build, as onCreate runs it: prepare the allow-list, then build. */
     fun start() {
         runBlocking { gate.configureEntityFilter(config, gate.prepareEntityFilter(config)) }
-        gate.holdsRenderer(config).let { held ->
-            if (held) gate.showWaitingForEntityBootstrap() else { admitted += gate.entityFilterSignature; gate.onRendererAdmitted() }
-        }
+        build(config)
         settle()
     }
 
@@ -109,7 +125,8 @@ internal class EntityHoldRig(
         now = until
     }
 
-    private fun settle() = runBlocking { work.children.forEach { it.join() } }
+    /** Wait for every launched coroutine, including those a finishing one launched off the main thread. */
+    private fun settle() = runBlocking { while (work.children.any { it.isActive }) work.children.forEach { it.join() } }
 
     override fun close() {
         gate.stopLease()

@@ -44,6 +44,24 @@ class EntityHoldBoundTest {
         // interceptor is missing (the JVM's web viewer supports no document-start script).
         assertBounded(EntityHoldKind.FILTER_HOLD, EntityHoldRig.learned(homeDashboard = "lovelace")) {}
 
+    @Test fun `a filter that fails to install at creation is bounded from its first hold, whatever its retries`() {
+        // The web viewer offers document-start scripts, so admission builds; installing the filter on the new
+        // WebView then fails every time, which paints the hold again, and its retry ladder rebuilds at 30 s.
+        val rig = EntityHoldRig(EntityHoldRig.learned(homeDashboard = "lovelace"), documentStartSupported = true).also { rig = it }
+        rig.start()
+        assertEquals("the failed install holds the renderer", EntityHoldKind.FILTER_HOLD, rig.shown.lastOrNull())
+        assertTrue(rig.admitted.isEmpty())
+
+        rig.advance(RendererEntityHold.BOUND_MS - 1_000L)
+        assertTrue("the 30 s retry held again: ${rig.shown}", rig.shown.size >= 2)
+        assertTrue("still held just inside the bound", rig.admitted.isEmpty())
+
+        rig.advance(2_000L)
+        assertEquals("the bound counts from the first hold, not the latest retry", 1, rig.admitted.size)
+        assertTrue("unfiltered: ${rig.admitted.single()}", rig.admitted.single().startsWith("disabled"))
+        assertEquals(true, RendererEntityHold.snapshot()?.released)
+    }
+
     @Test fun `a filter hold on a dark panel is still bounded`() =
         assertBounded(EntityHoldKind.FILTER_HOLD, EntityHoldRig.learned(homeDashboard = "lovelace"), awake = false) {}
 

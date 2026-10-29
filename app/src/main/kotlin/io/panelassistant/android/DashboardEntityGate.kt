@@ -157,6 +157,10 @@ internal class DashboardEntityGate(
     private val learner: EntityHoldLearner = RuntimeEntityHoldLearner,
     /** How a hold screen is painted; JVM tests record the kind instead. */
     holdPainter: EntityHoldPainter? = null,
+    /** Whether this panel's web viewer runs document-start scripts; JVM tests choose. */
+    private val documentStartSupported: () -> Boolean = {
+        webViewFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)
+    },
 ) {
     interface Host {
         val activityOwner: Long
@@ -392,7 +396,7 @@ internal class DashboardEntityGate(
         val ids = prepared.ids
         val lease = EntityFilterTelemetry.started(ids, prepared.hash)
         entityFilterLease = lease
-        if (!webViewFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
+        if (!documentStartSupported()) {
             Log.w(TAG, "entity filter unavailable: document-start script unsupported")
             if (entityFilterFailureDisposition(
                     automaticLearningEnabled = config.dashboardEntityLearningEnabled,
@@ -730,7 +734,11 @@ internal class DashboardEntityGate(
     /** The renderer must stay behind a native hold screen rather than open Home Assistant. */
     fun holdsRenderer(config: Config): Boolean = shouldHoldRendererForEntityBootstrap(config) || entityFilterNativeHold != null
 
-    /** Admission let a dashboard WebView be built: the bootstrap poll has nothing left to wait for. */
+    /**
+     * Admission let a dashboard WebView be built: the bootstrap poll has nothing left to wait for. The hold's
+     * clock keeps running until the WebView exists ([onRendererCreated]): a filter that fails to install at
+     * creation paints the hold again, and its retries must not buy a fresh time limit each round.
+     */
     fun onRendererAdmitted() {
         timers.cancel(entityBootstrapCheck)
         timers.cancel(entityHoldDeadline)
@@ -740,9 +748,12 @@ internal class DashboardEntityGate(
         if (RendererEntityHold.released != null) {
             timers.cancel(releasedEntityHoldCheck)
             timers.post(releasedEntityHoldCheck, RELEASED_HOLD_CHECK_MS)
-        } else {
-            RendererEntityHold.ended()
         }
+    }
+
+    /** The dashboard WebView was created with whatever filter it carries: an unreleased hold has ended. */
+    fun onRendererCreated() {
+        if (RendererEntityHold.released == null) RendererEntityHold.ended()
     }
 
     fun stopLease() {
@@ -788,7 +799,7 @@ internal class DashboardEntityGate(
                 filterLeasePresent = filterLease != null,
             )
         ) runCatching {
-            if (webViewFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            if (documentStartSupported()) {
                 androidx.webkit.WebViewCompat.addDocumentStartJavaScript(
                     view,
                     EntityFilterProtocol.trafficObserverDocumentStartScript(config.haEffectiveUrl, documentStartOrigins),
