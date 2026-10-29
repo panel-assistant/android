@@ -20,6 +20,7 @@
 #include <sys/stat.h>
 #include <sys/un.h>
 #include <sys/wait.h>
+#include <sys/syscall.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -345,25 +346,69 @@ static pid_t start_guardian(int server) {
 #ifndef ADB_RECOVERY_DIRECTORY
 #define ADB_RECOVERY_DIRECTORY "/data/local/panel-assistant-adb-recovery"
 #endif
-/* Unlink only our running inode: an upgrade may already have replaced the pathname. */
+/* Capture the pathname before inspecting its inode. A bootstrap may replace "helper" at
+ * any time; only the privately named captured inode belongs to this retirement. */
+static int move_exclusive(int directory, const char *from, const char *to) {
+#ifdef SYS_renameat2
+    return (int)syscall(SYS_renameat2, directory, from, directory, to, 1 /* RENAME_NOREPLACE */);
+#else
+    (void)directory; (void)from; (void)to; errno = ENOSYS; return -1;
+#endif
+}
+static int restore_executable(int directory, int executable, const char *custody) {
+    if (!move_exclusive(directory, custody, "helper") || errno == EEXIST) return 0;
+    if (errno != ENOENT) return -1;
+    int output = openat(directory, "helper", O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0700);
+    if (output < 0) return errno == EEXIST ? 0 : -1;
+    int result = 0;
+    char bytes[8192]; ssize_t count;
+    if (lseek(executable, 0, SEEK_SET) < 0) result = -1;
+    while (!result && (count = read(executable, bytes, sizeof bytes)) != 0) {
+        if (count < 0) { if (errno == EINTR) continue; result = -1; break; }
+        ssize_t used = 0;
+        while (used < count) {
+            ssize_t written = write(output, bytes + used, (size_t)(count - used));
+            if (written < 0 && errno == EINTR) continue;
+            if (written <= 0) { result = -1; break; }
+            used += written;
+        }
+    }
+    if (fsync(output)) result = -1;
+    close(output);
+    if (result) (void)unlinkat(directory, "helper", 0);
+    return result;
+}
 static int retire_files(void) {
     int directory = open(ADB_RECOVERY_DIRECTORY, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
     if (directory < 0) return errno == ENOENT ? 0 : -1;
+    int executable = open("/proc/self/exe", O_RDONLY | O_CLOEXEC);
+    if (executable < 0) { close(directory); return -1; }
+    char custody[64];
+    snprintf(custody, sizeof custody, ".retiring-%ld", (long)getpid());
+    int result = -1, captured = 0, removed = 0;
     struct stat self, installed;
-    int result = -1;
-    if (!helper_app_data_absent()) { close(directory); return -1; }
-    if (!fstatat(directory, "helper", &installed, AT_SYMLINK_NOFOLLOW)) {
-        if (stat("/proc/self/exe", &self) || !S_ISREG(installed.st_mode) ||
-            installed.st_dev != self.st_dev || installed.st_ino != self.st_ino) {
-            close(directory); return -1;
-        }
-        if (!helper_app_data_absent() || unlinkat(directory, "helper", 0)) {
-            close(directory); return -1;
-        }
-    } else if (errno != ENOENT) { close(directory); return -1; }
-    if (!helper_app_data_absent()) { close(directory); return -1; }
-    if (!rmdir(ADB_RECOVERY_DIRECTORY) || errno == ENOENT) result = 0;
-    close(directory); return result;
+    if (!helper_app_data_absent() || move_exclusive(directory, "helper", custody)) goto done;
+    captured = 1;
+    if (fstat(executable, &self) || fstatat(directory, custody, &installed, AT_SYMLINK_NOFOLLOW) ||
+        !S_ISREG(installed.st_mode) || installed.st_dev != self.st_dev || installed.st_ino != self.st_ino ||
+        !helper_app_data_absent()) goto done;
+    if (unlinkat(directory, custody, 0)) goto done;
+    removed = 1;
+    if (!helper_app_data_absent()) goto done;
+    if (rmdir(ADB_RECOVERY_DIRECTORY) && errno != ENOENT) goto done;
+    if (helper_app_data_absent()) result = 0;
+    else {
+        if (mkdir(ADB_RECOVERY_DIRECTORY, 0700) && errno != EEXIST) goto done;
+        close(directory);
+        directory = open(ADB_RECOVERY_DIRECTORY, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+        if (directory < 0) { close(executable); return -1; }
+    }
+ done:
+    if (result && captured) {
+        if (removed) (void)restore_executable(directory, executable, custody);
+        else (void)move_exclusive(directory, custody, "helper");
+    }
+    close(executable); close(directory); return result;
 }
 static int owner_actuator(void) {
     int expected = 0;
