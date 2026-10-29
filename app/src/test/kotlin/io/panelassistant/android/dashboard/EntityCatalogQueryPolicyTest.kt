@@ -34,24 +34,20 @@ class EntityCatalogQueryPolicyTest {
             row("sensor.a", 7, 2.5, "runtime", 100, "pinned"),
             row("sensor.m", 2, 9.0, "dashboard", 300, "excluded"),
         )
-        for (key in listOf("entity_id", "access_1h", "rate_1h_bps", "reasons", "last_access_at", "override")) {
-            for (direction in listOf("asc", "desc")) {
+        val expected = mapOf(
+            "entity_id" to (listOf("sensor.a", "sensor.m", "sensor.z") to listOf("sensor.z", "sensor.m", "sensor.a")),
+            "access_1h" to (listOf("sensor.m", "sensor.a", "sensor.z") to listOf("sensor.a", "sensor.z", "sensor.m")),
+            "rate_1h_bps" to (listOf("sensor.a", "sensor.z", "sensor.m") to listOf("sensor.m", "sensor.a", "sensor.z")),
+            "reasons" to (listOf("sensor.m", "sensor.a", "sensor.z") to listOf("sensor.a", "sensor.z", "sensor.m")),
+            "last_access_at" to (listOf("sensor.a", "sensor.z", "sensor.m") to listOf("sensor.m", "sensor.a", "sensor.z")),
+            "override" to (listOf("sensor.m", "sensor.a", "sensor.z") to listOf("sensor.a", "sensor.z", "sensor.m")),
+        )
+        for ((key, orders) in expected) {
+            for ((direction, order) in listOf("asc" to orders.first, "desc" to orders.second)) {
                 val sorted = rows.sortedWith(EntityCatalogSorting.comparator(key, direction) { it })
-                // Equal primary values are stable across refreshes/pages regardless of primary direction.
-                if (key != "entity_id") assertTrue(sorted.indexOfFirst { it.entityId == "sensor.a" } < sorted.indexOfFirst { it.entityId == "sensor.z" })
-                assertEquals(rows.toSet(), sorted.toSet())
+                assertEquals("$key $direction including the ascending entity tie break", order, sorted.map { it.entityId })
             }
         }
-    }
-
-    @Test fun paginationIsAppliedAfterGlobalSort() {
-        val rows = (0 until 250).map { row("sensor.%03d".format(it), access = ((it * 37) % 91).toLong()) }
-        val globallySorted = rows.sortedWith(EntityCatalogSorting.comparator("access_1h", "desc") { it })
-
-        val secondPage = globallySorted.drop(100).take(100)
-
-        assertEquals(globallySorted.subList(100, 200), secondPage)
-        assertTrue(secondPage.first() !in globallySorted.take(100))
     }
 
     @Test fun percentileTrackingRemainsConstantSpaceAtCatalogScale() {

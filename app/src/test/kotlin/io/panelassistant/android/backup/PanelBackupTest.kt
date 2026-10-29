@@ -17,8 +17,9 @@ import org.junit.rules.TemporaryFolder
 
 class PanelBackupTest {
     @Test fun sealedEnvelopeReservationMatchesTheWireOverhead() {
-        assertEquals(48L, PanelBackup.SEALED_OVERHEAD_BYTES)
-        assertEquals(952L, PanelBackup.maxSealablePlaintextBytes(1_000L))
+        val capacity = PanelBackup.maxSealablePlaintextBytes(1_000L)
+        val bundle = PanelBackup.seal(ByteArray(capacity.toInt()), "pw")
+        assertEquals("the reserved plaintext must fill the actual sealed envelope", 1_000, bundle.size)
         assertEquals(0L, PanelBackup.maxSealablePlaintextBytes(47L))
     }
 

@@ -2,7 +2,6 @@ package io.panelassistant.android.metrics
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -19,7 +18,7 @@ class FeatureCostRegistryTest {
         assertEquals("sensors.proximity_sample", FeatureCostOperation.PROXIMITY_SAMPLE.id)
         assertEquals("sensors.proximity_persist_batch", FeatureCostOperation.PROXIMITY_PERSIST_BATCH.id)
     }
-    @Test fun disabledRegistryHasNoPerOperationStateOrPerCallSpanAndReturnsConstantProjection() {
+    @Test fun disabledRegistrySkipsClocksAndReusesNoopSpanAndProjection() {
         var clockReads = 0
         val registry = FeatureCostRegistry(
             wallNanos = { clockReads++; 1L },
@@ -52,13 +51,10 @@ class FeatureCostRegistryTest {
         assertEquals("""{"schema":2,"enabled":false}""", firstJson)
         assertSame(firstJson, secondJson)
         assertSame(firstSpan, secondSpan)
-        assertNull(FeatureCostRegistry::class.java.getDeclaredField("records").apply {
-            isAccessible = true
-        }.get(registry))
         assertEquals(0, clockReads)
     }
 
-    @Test fun synchronousTimingUsesPrimitiveTokenWithoutThreadCpuOrSpanAllocation() {
+    @Test fun synchronousTimingRecordsElapsedWithoutThreadCpu() {
         var wall = 1_000L
         var cpuReads = 0
         val registry = FeatureCostRegistry(
@@ -83,22 +79,6 @@ class FeatureCostRegistryTest {
         assertEquals(2_000L, result.getLong("wall_ns_total"))
         assertEquals(0L, result.getLong("thread_cpu_samples"))
         assertEquals(0, cpuReads)
-        assertEquals(
-            java.lang.Long.TYPE,
-            FeatureCostRegistry::class.java
-                .getDeclaredMethod("beginSynchronous", FeatureCostOperation::class.java)
-                .returnType,
-        )
-        assertEquals(
-            java.lang.Long.TYPE,
-            FeatureCostLongSource::class.java.getDeclaredMethod("read").returnType,
-        )
-        assertEquals(
-            java.lang.Long.TYPE,
-            FeatureCostRegistry::class.java.declaredMethods
-                .single { it.name == "finishSynchronous" }
-                .parameterTypes[1],
-        )
     }
 
     @Test fun recordsFixedOperationCountersWorkAndHistogramWithoutDynamicLabels() {

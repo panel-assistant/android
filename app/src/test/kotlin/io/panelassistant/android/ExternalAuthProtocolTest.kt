@@ -3,6 +3,7 @@ package io.panelassistant.android
 import io.panelassistant.android.testsupport.Node
 import io.panelassistant.android.testsupport.PageScript
 import org.json.JSONArray
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -95,13 +96,53 @@ class ExternalAuthProtocolTest {
 
     @Test
     fun `panel defaults seed forces the panel-appropriate prefs behind a sentinel`() {
-        val js = ExternalAuthProtocol.panelDefaultsJs()
-        assertTrue("only the top HA document should receive panel defaults", js.contains("if(window.top&&window.top!==window)return"))
-        assertTrue("self-gated so it runs once", js.contains("__hapaneld_panel_defaults"))
-        assertTrue("hide the sidebar", js.contains("dockedSidebar") && js.contains("always_hidden"))
-        assertTrue("keep the background connection", js.contains("suspendWhenHidden"))
-        assertTrue("no haptics", js.contains("vibrate"))
-        assertTrue("values JSON-stringified to match ha-pref-storage", js.contains("JSON.stringify"))
+        Node.assumeAvailable()
+        val script = JSONObject.quote(ExternalAuthProtocol.panelDefaultsJs())
+        val result = Node.run(stdin = """
+            const vm = require('vm');
+            function run(initial = {}, child = false, blocked = false, repeat = false) {
+                const store = new Map(Object.entries(initial));
+                const page = {};
+                page.window = page;
+                page.top = child ? {} : page;
+                page.localStorage = {
+                    getItem: key => { if (blocked) throw new Error('denied'); return store.get(key) ?? null; },
+                    setItem: (key, value) => store.set(key, String(value))
+                };
+                let error = null;
+                try {
+                    vm.runInNewContext($script, page);
+                    if (repeat) {
+                        store.set('dockedSidebar', JSON.stringify('auto'));
+                        store.set('suspendWhenHidden', JSON.stringify(true));
+                        store.set('vibrate', JSON.stringify(true));
+                        vm.runInNewContext($script, page);
+                    }
+                } catch (caught) { error = String(caught); }
+                return {store: Object.fromEntries(store), error};
+            }
+            process.stdout.write(JSON.stringify({
+                fresh: run({unrelated: 'keep'}), repeat: run({}, false, false, true),
+                child: run({}, true), blocked: run({}, false, true)
+            }));
+        """.trimIndent())
+        assertEquals(result.output, 0, result.exitCode)
+        val outcomes = JSONObject(result.output)
+        for (name in listOf("fresh", "repeat", "child", "blocked")) {
+            assertTrue("$name must not abort the page", outcomes.getJSONObject(name).isNull("error"))
+        }
+        val fresh = outcomes.getJSONObject("fresh").getJSONObject("store")
+        assertEquals("\"always_hidden\"", fresh.getString("dockedSidebar"))
+        assertEquals("false", fresh.getString("suspendWhenHidden"))
+        assertEquals("false", fresh.getString("vibrate"))
+        assertEquals("1", fresh.getString("__hapaneld_panel_defaults"))
+        assertEquals("keep", fresh.getString("unrelated"))
+        val repeat = outcomes.getJSONObject("repeat").getJSONObject("store")
+        assertEquals("\"auto\"", repeat.getString("dockedSidebar"))
+        assertEquals("true", repeat.getString("suspendWhenHidden"))
+        assertEquals("true", repeat.getString("vibrate"))
+        assertEquals(0, outcomes.getJSONObject("child").getJSONObject("store").length())
+        assertEquals(0, outcomes.getJSONObject("blocked").getJSONObject("store").length())
     }
 
     // --- dashboardUrl -----------------------------------------------------------------------------
@@ -144,28 +185,6 @@ class ExternalAuthProtocolTest {
         )
     }
 
-    // --- selectedThemeJs: the HA per-device theme store is the ONLY lever that re-renders HA ---
-
-    @Test fun themeSeedOnlyWritesWhenAbsent() {
-        val js = ExternalAuthProtocol.selectedThemeJs(dark = true, onlyIfAbsent = true)
-        assertTrue("only the top HA document should receive the theme seed", js.contains("if(window.top&&window.top!==window)return"))
-        // Guarded on the RAW stored string, not on its parse: an entry ha-paneld cannot read still
-        // belongs to the user, and overwriting it would be stomping rather than seeding.
-        assertTrue("guarded on absence — must not stomp a user-picked HA theme", js.contains("if(r)return;"))
-        assertTrue("the guard must test the value the script just read", js.indexOf("getItem") < js.indexOf("if(r)return;"))
-        assertTrue("only the dark field is ha-paneld's to write", js.contains("o.dark=true;"))
-        assertTrue("localStorage can throw on data: URLs — must be try/caught", js.contains("try{"))
-    }
-
-    @Test fun themeToggleOverridesTheDarkFieldWithoutDiscardingTheRest() {
-        val js = ExternalAuthProtocol.selectedThemeJs(dark = false, onlyIfAbsent = false)
-        assertTrue("a deliberate toggle overrides like HA's own radio, rather than seeding", !js.contains("if(r)return;"))
-        // HA's radio spreads the existing ThemeSettings and sets one field. Stringifying a fresh
-        // {dark:false} instead would silently discard the user's named theme and custom colours —
-        // invisibly, since the frontend falls back to default_theme when `theme` is absent.
-        assertTrue("the toggle must read the stored object before writing", js.contains("JSON.parse(r)"))
-        assertTrue("only the dark field is written", js.contains("o.dark=false;localStorage.setItem"))
-        assertTrue("the read object is what gets re-stringified", js.contains("JSON.stringify(o)"))
-        assertTrue("a freshly built theme object would drop theme/primaryColor/accentColor", !js.contains("{dark:"))
-    }
+    // The selectedThemeJs seed and toggle storage behavior is exercised by
+    // dashboard.DashboardThemePolicyScriptTest against the emitted scripts.
 }

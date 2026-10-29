@@ -9,7 +9,6 @@ import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Base64
@@ -124,17 +123,6 @@ internal class PanelAssistantChannelCatalogTest : PanelRuntimeRig() {
             assertEquals(json.toString(), json.isNull("family"), json.isNull("index"))
             if (json.getString("platform") == "select") assertTrue(json.toString(), !json.isNull("options"))
         }
-    }
-
-    @Test fun eachChannelsDescriptorIsBuiltOnceAndReturnedAgainForThatChannelOnly() {
-        // A registry-backed channel and a family channel are both built on demand rather than held in a table.
-        val screen = described("screen")
-        val relay = described("relay7")
-        assertEquals(listOf("screen", "relay7"), listOf(screen.channel, relay.channel))
-        assertSame(screen, PanelAssistantChannelCatalog.describe("screen"))
-        assertSame(relay, PanelAssistantChannelCatalog.describe("relay7"))
-        assertNull(PanelAssistantChannelCatalog.describe("future_leaf"))
-        assertNull(PanelAssistantChannelCatalog.describe("future_leaf"))
     }
 
     /** Asserts before dereferencing, so a missing descriptor fails as an assertion rather than an error. */

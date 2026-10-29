@@ -1212,9 +1212,11 @@ class PanelAssistantTransportOwnerTest {
 
     @Test fun aSnapshotStillBuildingNeverHoldsTheReconnectAfterTheSessionEnds() = runTest {
         val building = CompletableDeferred<Unit>()
+        var snapshotCalls = 0
         val management = object : PanelAssistantManagement by FakeManagement() {
             // Blocking work, as the status build is: cancellation cannot interrupt it.
             override suspend fun snapshot(): PanelAssistantManagementSnapshot {
+                snapshotCalls++
                 withContext(NonCancellable) { building.await() }
                 return PanelAssistantManagementSnapshot("", "")
             }
@@ -1225,6 +1227,7 @@ class PanelAssistantTransportOwnerTest {
         runCurrent()
         first.inbound.trySend(Ha.manage("m1", "snapshot"))
         runCurrent()
+        assertEquals("snapshot work must start before its session ends", 1, snapshotCalls)
         first.inbound.trySend(Ha.sessionClosed("entry_unloaded"))
         advanceTimeBy(5_000)
         runCurrent()

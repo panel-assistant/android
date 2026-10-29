@@ -34,7 +34,7 @@ import org.junit.Test
  * directory, or write them in one of the recognised shapes.
  */
 class RuntimeReadInputsContractTest {
-    // Source-text reason: scans test sources and the build script to keep Gradle Test inputs complete; pins no app code.
+    // Source-text reason: scans test sources for undeclared runtime reads; declared paths come from the running Gradle Test task.
     private val declaredDirectories = declared("hapaneld.test.runtimeReadDirectories")
     private val declaredFiles = declared("hapaneld.test.runtimeReadFiles")
     // File-name globs inside the assets directory, not paths, so they bypass the path normalization.
@@ -77,21 +77,6 @@ class RuntimeReadInputsContractTest {
             emptyList<String>(),
             uncovered,
         )
-    }
-
-    @Test fun `the build script wires the declared lists as normalized Test inputs`() {
-        val build = TestSources.appFile("build.gradle.kts").readText()
-        for (needle in listOf(
-            "val unitTestRuntimeReadDirectories = listOf(",
-            "val unitTestRuntimeReadFiles = listOf(",
-            "val unitTestGeneratedAssetExcludes = listOf(",
-            "withPathSensitivity(PathSensitivity.RELATIVE)",
-            "systemProperty(\"hapaneld.test.runtimeReadDirectories\"",
-            "systemProperty(\"hapaneld.test.runtimeReadFiles\"",
-            "systemProperty(\"hapaneld.test.runtimeReadAssetExcludes\"",
-        )) {
-            assertTrue("build.gradle.kts must contain: $needle", build.contains(needle))
-        }
     }
 
     // ---- scanning ----

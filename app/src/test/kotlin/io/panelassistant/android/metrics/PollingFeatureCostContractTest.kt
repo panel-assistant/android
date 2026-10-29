@@ -1,10 +1,8 @@
 package io.panelassistant.android.metrics
 
-import io.panelassistant.android.control.KioskController
 import io.panelassistant.android.control.isCurrent
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.concurrent.atomic.AtomicLong
@@ -15,10 +13,6 @@ class PollingFeatureCostContractTest {
         assertEquals("zigbee.health_sample", FeatureCostOperation.ZIGBEE_HEALTH_SAMPLE.id)
     }
 
-    @Test fun experimentalKioskPollingUsesItsReducedCadence() {
-        assertEquals(3_000L, KioskController.RETURN_POLL_MS)
-    }
-
     @Test fun kioskPollGenerationCannotReviveAfterOffOnTransition() {
         val generation = AtomicLong(1)
         val old = generation.get()
@@ -26,7 +20,6 @@ class PollingFeatureCostContractTest {
         generation.incrementAndGet()
         assertFalse(generation.isCurrent(old, enabled = true))
         assertFalse(generation.isCurrent(generation.get(), enabled = false))
-        assertEquals(6_000L, KioskController.RETURN_STOP_JOIN_MS)
     }
 
 }

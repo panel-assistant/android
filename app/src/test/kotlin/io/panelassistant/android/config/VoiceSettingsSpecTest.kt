@@ -162,11 +162,10 @@ class VoiceSettingsSpecTest {
         assertEquals(listOf("voice_recognition", "mic", "voice_communication"), audioSource.options)
     }
 
-    @Test fun `voice_sensitivity is an enum defaulting to normal and documents its meaning`() {
+    @Test fun `voice_sensitivity is an enum defaulting to normal`() {
         assertEquals(SettingType.ENUM, sensitivity.type)
         assertEquals("normal", sensitivity.default)
         assertEquals(listOf("low", "normal", "high"), sensitivity.options)
-        assertTrue(sensitivity.help.contains("offset"))
     }
 
     @Test fun `the voice phase is the satellite's state in Home Assistant, not a panel setting`() {

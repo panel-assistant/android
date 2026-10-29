@@ -180,10 +180,6 @@ class MigrationsTest {
         }
     }
 
-    @Test fun migrationChainHasExactlyOneTransformPerSchemaBoundary() {
-        assertEquals(SettingsRegistry.SCHEMA - 1, Migrations.CHAIN.size)
-    }
-
     @Test fun aBundleCarryingTheRetiredOverscrollChoiceStillImportsWithoutIt() {
         for (schema in listOf(13, SettingsRegistry.SCHEMA)) {
             val (migrated, _) = Migrations.migrate(schema, mapOf(

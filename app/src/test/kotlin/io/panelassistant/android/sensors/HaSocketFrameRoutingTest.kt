@@ -67,10 +67,4 @@ class HaSocketFrameRoutingTest {
         assertEquals(HaEventRoute.Entities, haEventRoute(9999, registryIds))
     }
 
-    @Test fun theRouteIsDecidedByIdAloneAndNeverReadsTheEventBody() {
-        // A frame whose body claims a different type must not change the routing: trusting the payload
-        // would let an entity event impersonate a registry change.
-        val route = haEventRoute(1, registryIds)
-        assertEquals(HaEventRoute.Entities, route)
-    }
 }

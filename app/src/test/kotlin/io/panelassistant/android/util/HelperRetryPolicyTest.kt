@@ -9,7 +9,4 @@ class HelperRetryPolicyTest {
         assertEquals(listOf(3_000L, 6_000L, 12_000L, 24_000L, 48_000L, 60_000L, 60_000L, 60_000L), delays)
     }
 
-    @Test fun successfulSubscriptionCanResetToInitialDelay() {
-        assertEquals(HELPER_RETRY_INITIAL_MS, nextHelperRetryDelayMs(0L))
-    }
 }

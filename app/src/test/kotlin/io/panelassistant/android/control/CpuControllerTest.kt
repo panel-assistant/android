@@ -1,6 +1,10 @@
 package io.panelassistant.android.control
 
 import io.panelassistant.android.metrics.PanelMetrics
+import io.panelassistant.android.platform.RootShell
+import io.panelassistant.android.testsupport.scratchDirectory
+import java.io.File
+import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -146,14 +150,49 @@ class CpuControllerTest {
         assertTrue(h.root.ran.isNotEmpty())
     }
 
-    @Test fun rootWriteRequiresEveryGovernorNode() {
-        val h = controller(avail = "performance")
-        assertTrue(h.cpu.setTier(CpuController.PERFORMANCE))
-        val cmd = h.root.ran.single()
-        assertTrue(cmd.contains("failed=0"))
-        assertTrue(cmd.contains("|| failed=1"))
-        assertTrue(cmd.contains("[ \"\$found\" -eq 1 ]"))
-        assertTrue(cmd.contains("[ \"\$failed\" -eq 0 ]"))
+    @Test fun rootWriteChangesEveryGovernorNodeAndReportsPartialFailure() {
+        val directory = scratchDirectory("cpu-governor-write").toFile()
+        try {
+            val first = File(directory, "cpu0/cpufreq/scaling_governor").apply {
+                parentFile.mkdirs()
+                writeText("powersave\n")
+            }
+            val second = File(directory, "cpu1/cpufreq/scaling_governor").apply {
+                parentFile.mkdirs()
+                writeText("powersave\n")
+            }
+            val root = object : RootShell by FakeRootShell() {
+                override fun run(cmd: String): Boolean {
+                    // Execute the controller's actual shell program, redirecting only its sysfs root.
+                    val command = cmd.replace("/sys/devices/system/cpu/", directory.path + "/")
+                    val process = ProcessBuilder("sh", "-c", command).redirectErrorStream(true).start()
+                    return try {
+                        assertTrue("governor write finished", process.waitFor(5, TimeUnit.SECONDS))
+                        process.exitValue() == 0
+                    } finally {
+                        process.destroyForcibly()
+                    }
+                }
+            }
+            val cpu = CpuController(
+                fakeProfile(appCanSu = true), root, FakeDaemon(),
+                PanelMetrics(FakeMetricSource(availableGovernors = "performance")),
+            )
+
+            assertTrue(cpu.setTier(CpuController.PERFORMANCE))
+            assertEquals("performance\n", first.readText())
+            assertEquals("performance\n", second.readText())
+
+            // A directory refuses redirection even when the test is run as root. The other core
+            // remains writable, so this distinguishes partial success from a wholly failed command.
+            assertTrue(second.delete())
+            assertTrue(second.mkdir())
+            first.writeText("powersave\n")
+            assertFalse("one refused core must fail the operation", cpu.setTier(CpuController.PERFORMANCE))
+            assertEquals("performance\n", first.readText())
+        } finally {
+            directory.deleteRecursively()
+        }
     }
 
     @Test fun invalidRuntimeGovernorNeverCrossesPrivilegeBoundary() {

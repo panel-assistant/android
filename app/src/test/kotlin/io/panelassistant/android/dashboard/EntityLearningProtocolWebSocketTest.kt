@@ -6,56 +6,52 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class EntityLearningProtocolWebSocketTest {
-    @Test fun disabledFeatureCostArmOmitsBrowserTimingAndCostEnvelope() {
-        val script = EntityLearningProtocol.documentStartScript(
-            "https://ha.example",
-            featureCostsEnabled = false,
-        )
 
-        assertTrue(!script.contains("performance.now"))
-        assertTrue(!script.contains("__ha_paneld_observer"))
-        assertTrue(!script.contains("parse_us"))
-        assertTrue(script.contains("function measuredParse(value){return JSON.parse(value)}"))
-    }
-
-    @Test fun learningScriptTargetsTheExactReverseProxyWebsocket() {
-        val script = EntityLearningProtocol.documentStartScript("https://HA.EXAMPLE:443/ha/")
-
-        assertTrue(script.contains("targetWsOrigins=[\"wss://ha.example\"]"))
-        assertTrue(script.contains("targetWsPath=\"/ha/api/websocket\""))
-        assertTrue(script.contains("targetWsOrigins.includes(u.origin)&&u.pathname===targetWsPath"))
-    }
-
-    @Test fun reverseProxySocketProducesLearningMetrics() {
+    @Test fun learningBatchesHydrationAndChangesWithoutMeasuringWhenCostsAreDisabled() {
         Node.assumeAvailable()
-        val script = EntityLearningProtocol.documentStartScript("https://ha.example/ha")
-        val harness = """
-            global.window=globalThis;
-            global.location={href:'https://ha.example/ha/dashboard'};
-            global.document={querySelector(){return null;}};
-            const timers=[];
-            global.setInterval=(fn)=>{timers.push(fn);return timers.length;};
-            const metricBatches=[];
-            global.haPaneldV2={postMessage(raw){const message=JSON.parse(raw);if(message.type==='entityLearningMetrics')metricBatches.push(message.payload);}};
-            function Native(url,protocols){this.url=String(url);this.protocols=protocols;this.sent=[];this.listeners={};}
-            Native.prototype.send=function(data){this.sent.push(data);};
-            Native.prototype.addEventListener=function(type,listener){this.listeners[type]=listener;};
-            Native.prototype.emit=function(type,event){const listener=this.listeners[type];if(listener)listener(event);};
-            Native.CONNECTING=0;Native.OPEN=1;Native.CLOSING=2;Native.CLOSED=3;
-            global.WebSocket=Native;
-            $script
-            const primary=new WebSocket('wss://ha.example/ha/api/websocket');
-            const wrongPath=new WebSocket('wss://ha.example/api/websocket');
-            primary.send('{"id":7,"type":"subscribe_entities"}');
-            primary.emit('message',{data:'{"id":7,"type":"event","event":{"c":{"sensor.temperature":{"s":"21"}}}}'});
-            timers[1]();
-            if(!primary.listeners.message)throw Error('reverse-proxy socket was not observed');
-            if(wrongPath.listeners.message)throw Error('wrong websocket path was observed');
-            if(metricBatches.length!==1)throw Error('wrong metric batch count: '+metricBatches.length);
-            if(metricBatches[0]['sensor.temperature'][0]!==1)throw Error('update was not counted');
-        """.trimIndent()
-        val (code, output) = Node.run(stdin = harness)
-        assertEquals(output, 0, code)
+        for (costsEnabled in listOf(false, true)) {
+            val script = EntityLearningProtocol.documentStartScript("https://ha.example/ha", featureCostsEnabled = costsEnabled)
+            val harness = """
+                const assert=require('node:assert/strict');
+                global.window=globalThis;
+                global.location={href:'https://ha.example/ha/dashboard'};
+                global.document={querySelector(){return null;}};
+                let clockCalls=0;global.performance={now(){return ++clockCalls;}};
+                const timers=[];
+                global.setInterval=(fn,ms)=>{timers.push([fn,ms]);return timers.length;};
+                const metricBatches=[];
+                global.haPaneldV2={postMessage(raw){const message=JSON.parse(raw);if(message.type==='entityLearningMetrics')metricBatches.push(message.payload);}};
+                function Native(url,protocols){this.url=String(url);this.protocols=protocols;this.sent=[];this.listeners={};}
+                Native.prototype.send=function(data){this.sent.push(data);};
+                Native.prototype.addEventListener=function(type,listener){this.listeners[type]=listener;};
+                Native.prototype.emit=function(type,event){const listener=this.listeners[type];if(listener)listener(event);};
+                Native.CONNECTING=0;Native.OPEN=1;Native.CLOSING=2;Native.CLOSED=3;
+                global.WebSocket=Native;
+                $script
+                const socket=new WebSocket('wss://ha.example/ha/api/websocket');
+                const request='{"id":7,"type":"subscribe_entities"}';
+                socket.send(request);
+                const hydration={id:7,type:'event',event:{a:{'sensor.temperature':{s:'20'}}}};
+                socket.emit('message',{data:JSON.stringify(hydration)});
+                socket.emit('message',{data:JSON.stringify(hydration)});
+                socket.emit('message',{data:JSON.stringify([
+                  {id:99,type:'event',event:{c:{'sensor.other':{s:'99'}}}},
+                  {id:7,type:'event',event:{c:{'sensor.temperature':{s:'21'}}}}
+                ])});
+                assert.equal(metricBatches.length,0,'metrics must wait for the bounded flush');
+                const flush=timers.find(([,ms])=>ms===5000);
+                assert.ok(flush,'metrics must be flushed at five seconds');flush[0]();
+                assert.equal(socket.sent[0],request,'learning must preserve the subscription');
+                assert.equal(metricBatches.length,1,'one bridge batch per flush');
+                assert.deepEqual(metricBatches[0]['sensor.temperature'],[2,20],'initial hydration counted once plus one change');
+                assert.equal(metricBatches[0]['sensor.other'],undefined,'another subscription is ignored');
+                assert.equal('__ha_paneld_observer' in metricBatches[0],$costsEnabled,'cost envelope follows the measurement setting');
+                assert.equal(clockCalls>0,$costsEnabled,'disabled measurement does no browser timing');
+                flush[0]();assert.equal(metricBatches.length,1,'flushing drains the entity metrics');
+            """.trimIndent()
+            val (code, output) = Node.run(stdin = harness)
+            assertEquals("costsEnabled=$costsEnabled: $output", 0, code)
+        }
     }
 
     @Test fun observerBoundsUniqueIdFloodBeforeSerializingBridgePayloads() {

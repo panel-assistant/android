@@ -1,5 +1,8 @@
 package io.panelassistant.android
 
+import android.app.Activity
+import android.content.res.Configuration
+import android.content.res.Resources
 import io.panelassistant.android.control.BuiltinDashboard
 import io.panelassistant.android.testsupport.TestSources
 import io.panelassistant.android.util.DashboardTheme
@@ -109,9 +112,27 @@ class AmbientThemeWiringContractTest {
         assertTrue(reconcile.contains("appliedSignature = applied,"))
     }
 
-    @Test fun `native screens follow the effective theme too`() {
-        val darkFor = source("StatusSurface.kt").substringAfter("fun darkFor(").substringBefore("\n        )\n")
-        assertTrue(darkFor.contains("DashboardTheme.forcedDark(config.dashboardThemeEffective)"))
+    @Test fun `native screens follow the ambient verdict over a contrary Home Assistant preference`() {
+        val resources = object : Resources(null, null, null) {
+            override fun getConfiguration(): Configuration = Configuration().apply {
+                uiMode = Configuration.UI_MODE_NIGHT_NO
+            }
+        }
+        val activity = object : Activity() {
+            override fun getPackageName(): String = "io.panelassistant.android"
+            override fun getResources(): Resources = resources
+        }
+        for (roomDark in listOf(true, false)) {
+            val prefs = fakePreferences(initial = mapOf(
+                "dashboard_theme" to DashboardTheme.AMBIENT,
+                "auto_brightness" to true,
+                "dashboard_theme_ambient_dark" to roomDark,
+                "dashboard_theme_dark" to !roomDark,
+            ))
+            assertEquals("native surface follows the room", roomDark, StatusSurface.darkFor(activity, Config(prefs.instance)))
+            prefs.values["auto_brightness"] = false
+            assertEquals("without the ambient model it follows Home Assistant", !roomDark, StatusSurface.darkFor(activity, Config(prefs.instance)))
+        }
     }
 
     @Test fun `the ambient verdict and auto-brightness redraw the status surfaces`() {

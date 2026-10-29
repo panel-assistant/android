@@ -1,7 +1,6 @@
 package io.panelassistant.android.util
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -29,12 +28,6 @@ class CompanionPackageSetTest {
             listOf(CompanionInstaller.FULL_PKG, CompanionInstaller.MINIMAL_PKG),
             CompanionInstaller.SUPPORTED_PACKAGES,
         )
-    }
-
-    @Test fun membershipMatchesTheRecognizedSet() {
-        assertTrue(CompanionInstaller.FULL_PKG in CompanionInstaller.SUPPORTED_PACKAGES)
-        assertTrue(CompanionInstaller.MINIMAL_PKG in CompanionInstaller.SUPPORTED_PACKAGES)
-        assertEquals(2, CompanionInstaller.SUPPORTED_PACKAGES.size)
     }
 
     @Test fun installedPackageProbeChecksBothVariantsAfterAnIndividualFailure() {

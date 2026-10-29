@@ -9,6 +9,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import org.junit.Test
+import org.json.JSONObject
 
 class DashboardThemeTest {
 
@@ -89,21 +90,21 @@ class DashboardThemeTest {
     }
 
     @Test
-    fun `the public api documents the same three choices the registry declares`() {
-        // OpenAPI is hand-maintained here, so nothing but a test keeps it from drifting away from the
-        // registry. Follows the navbar_mode precedent, which pins its enum the same way.
+    fun `the public API dashboard theme property documents the registry choices and default`() {
         // Source-text reason: the shipped OpenAPI schema is the public API wire format.
-        val openApi = TestSources.appFileOrNull("src/main/assets/openapi.json")
-            ?.readText()
-        assertTrue(openApi != null, "openapi.json not found")
-        assertTrue(
-            openApi!!.contains("\"enum\": [\"Follow Home Assistant\", \"Dark\", \"Light\", \"Ambient\"]"),
-            "openapi.json must declare the dashboard_theme choices",
+        val openApi = JSONObject(TestSources.appFile("src/main/assets/openapi.json").readText())
+        val theme = listOf(
+            "paths", "/api/v1/config", "post", "requestBody", "content",
+            "application/x-www-form-urlencoded", "schema", "properties", "dashboard_theme",
+        ).fold(openApi as JSONObject?) { node, key -> node?.optJSONObject(key) }
+        assertTrue(theme != null, "the config POST must document its dashboard_theme property")
+        val options = theme!!.optJSONArray("enum")
+        assertEquals(
+            DashboardTheme.OPTIONS,
+            options?.let { (0 until it.length()).map(it::optString) },
+            "dashboard_theme must document the registry choices",
         )
-        assertTrue(
-            openApi.contains("\"dashboard_theme\"") && openApi.contains("\"default\": \"Follow Home Assistant\""),
-            "openapi.json must declare the same default the registry does",
-        )
+        assertEquals(DashboardTheme.DEFAULT, theme.optString("default"))
     }
 
     @Test
