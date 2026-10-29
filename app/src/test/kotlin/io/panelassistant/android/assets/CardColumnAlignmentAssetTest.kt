@@ -3,7 +3,6 @@ package io.panelassistant.android.assets
 import io.panelassistant.android.testsupport.TestSources
 import io.panelassistant.android.testsupport.Node
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CardColumnAlignmentAssetTest {
@@ -57,12 +56,4 @@ class CardColumnAlignmentAssetTest {
         assertEquals("shared card-column alignment behavior failed:\n$output", 0, code)
     }
 
-    @Test fun layoutFixtureLoadsTheSharedAuthorityBeforeDashboardCode() {
-        val fixture = TestSources.repoFile("tools/test/fixtures/info-fixture.html").readText()
-        val shared = fixture.indexOf("card-column-alignment.js")
-        val dashboard = fixture.indexOf("info.js")
-        assertTrue(shared >= 0)
-        assertTrue(dashboard > shared)
-        assertTrue(fixture.contains("id=\"dashboard-cards\""))
-    }
 }

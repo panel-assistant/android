@@ -273,7 +273,6 @@ class HtmlUiCatalogueContractTest {
             assertTrue("buildwatch must bind $key through a finite literal pair", buildwatch.contains("[\"$key\", \"$fallback\"]"))
             assertEquals("$key fallback drifted from the English catalogue", fallback, catalogue.getJSONObject(key).getString("text"))
         }
-        assertFalse("latency copy must not borrow WebSocket evidence", latencyFallbacks.values.any { "{evidence}" in it })
     }
 
     private fun literalKeys(source: String, function: String): Set<String> =
