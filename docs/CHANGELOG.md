@@ -2,11 +2,11 @@
 
 ## v1.0.0-rc2
 
-This is the second release candidate of the panel app's 1.0. It pairs with Panel Assistant 1.0.0-rc2, so update Panel Assistant first: the WebView installs, the new connection for rooted panels and panel log routing below all need it. If you use network ADB on a rooted panel yourself, note that Panel Assistant 1.0.0-rc2 switches it off; removing the panel from Panel Assistant turns it back on.
+This is the second release candidate of the panel app's 1.0. It pairs with Panel Assistant 1.0.0-rc2, so update Panel Assistant first: the WebView installs, the new connection for rooted panels and panel log routing below all need it. If you use network ADB on a rooted panel yourself, note that it is switched off once this panel app is connected to Panel Assistant 1.0.0-rc2; removing the panel from Panel Assistant turns it back on.
 
 ### New
 
-- **Panel Assistant can update a panel's WebView.** During installation or through a Repair you start, Panel Assistant 1.0.0-rc2 installs the newest known-good Android System WebView for that panel model and checks it before use. A too-old browser engine no longer stops setup, so pairing can finish first and the update can follow. It never downgrades the WebView or replaces one the Play Store keeps up to date.
+- **Panel Assistant can update a panel's WebView.** During installation, during a panel app update you start in Home Assistant, or through a Repair you start, Panel Assistant 1.0.0-rc2 installs the newest known-good Android System WebView for that panel model and checks it before use. A too-old browser engine no longer stops setup, so pairing can finish first and the update can follow. It never downgrades the WebView or replaces one the Play Store keeps up to date.
 - **Rooted panels are managed over their own connection.** On a rooted panel, Panel Assistant 1.0.0-rc2 now sends its update and maintenance commands over the panel's own connection to Panel Assistant, so Panel Assistant no longer needs network ADB to reach it. Network ADB is switched off while Panel Assistant manages the panel, and the ADB switch on the Configure page says so. Removing the panel from Panel Assistant turns ADB back on.
 - **Panel logs through Panel Assistant.** When you choose a log destination under Panel Assistant 1.0.0-rc2's Panel logs option, every panel sends its logs there through its connection to Home Assistant, and goes back to its own log settings when that connection ends.
 - **A Meta Portal takes the panel's name.** The name you give the panel now also becomes the Portal's own device name, set through Meta's normal name editor and checked after saving.
