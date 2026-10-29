@@ -68,7 +68,7 @@
     <string name="panel_not_set_up">Ce panneau n’est pas encore configuré.</string>
     <string name="panel_not_set_up_hint">Scannez le code avec votre téléphone — cela prend environ deux minutes. Vous pouvez aussi toucher %1$s pour le faire sur cet écran.</string>
     <string name="browser_engine_too_old">Le moteur de navigateur de ce panneau est trop ancien.</string>
-    <string name="browser_engine_too_old_hint">Les tableaux de bord Home Assistant en nécessitent un plus récent. Corrigez cela sur la page de configuration dans un navigateur.</string>
+    <string name="browser_engine_too_old_hint">La configuration peut quand même se terminer, mais les tableaux de bord Home Assistant en nécessitent un plus récent. La page de configuration dans un navigateur explique comment le mettre à jour.</string>
     <string name="choose_dashboard_app">Choisissez une application de tableau de bord.</string>
     <string name="continue_setup_browser">Continuez sur la page de configuration dans un navigateur.</string>
     <string name="connected_next_ha_address">Connexion établie. Étape suivante : l’adresse de Home Assistant.</string>

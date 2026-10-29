@@ -68,7 +68,7 @@
     <string name="panel_not_set_up">Este panel aún no está configurado.</string>
     <string name="panel_not_set_up_hint">Escanea el código con tu teléfono; tardarás unos dos minutos. También puedes tocar %1$s para hacerlo en esta pantalla.</string>
     <string name="browser_engine_too_old">El motor del navegador de este panel es demasiado antiguo.</string>
-    <string name="browser_engine_too_old_hint">Los paneles de control de Home Assistant necesitan uno más reciente. Corrígelo en la página de configuración desde un navegador.</string>
+    <string name="browser_engine_too_old_hint">La configuración puede terminarse igualmente, pero los paneles de control de Home Assistant necesitan uno más reciente. La página de configuración en un navegador explica cómo actualizarlo.</string>
     <string name="choose_dashboard_app">Elige una aplicación de panel de control.</string>
     <string name="continue_setup_browser">Continúa en la página de configuración desde un navegador.</string>
     <string name="connected_next_ha_address">Conectado. Siguiente paso: la dirección de Home Assistant.</string>

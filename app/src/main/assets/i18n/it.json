@@ -1218,6 +1218,11 @@
       "state": "machine-cross-checked",
       "text": "Caricamento…"
     },
+    "configure.network_adb.managed": {
+      "text": "Panel Assistant gestisce ADB su questo pannello e lo mantiene disattivato. Rimuovendo il pannello da Panel Assistant, ADB viene riattivato.",
+      "sourceHash": "1a7a2f8db70c54fc9bacab8eae1395b666d9ceb583101692b453e1d55e40ed55",
+      "state": "machine-cross-checked"
+    },
     "configure.oauth.browser_recommended": {
       "sourceHash": "cf970982eab16b244e4b741429787443be4627c11c694862e71bd2b3981661b5",
       "state": "machine-cross-checked",
@@ -11849,9 +11854,9 @@
       "text": "consigliato"
     },
     "setup.sign_in.state.in_progress": {
-      "sourceHash": "4eca2929c8f06dc9d764f830e4aa3ea03cff84f3a3857487281d0d21d9fa25be",
+      "sourceHash": "036ad1c96e2d2814578a7aec0bc7526208edfed6775f97427f055a327914486c",
       "state": "machine-cross-checked",
-      "text": "Accesso in corso… completalo qui o sul pannello."
+      "text": "Il pannello mostra un accesso a Home Assistant. Accedi lì oppure usa questo browser."
     },
     "setup.sign_in.state.waiting": {
       "sourceHash": "d6dfb33f6411d1945de51bbd39f41ea4eac18e28b1050ff36036a809768fec9f",
@@ -11874,8 +11879,8 @@
       "state": "machine-cross-checked"
     },
     "setup.webview.found": {
-      "text": "Questo pannello ha Chromium {found}. Una plancia Home Assistant attuale richiede Chromium {needed} o successivo.",
-      "sourceHash": "29d3bc49a5e9bbc77f2874fe03a9d53e6e7a5a21fbdcb54fd075343a6ccc98ee",
+      "text": "Il motore browser di questo pannello (Android System WebView) ha Chromium {found}. Una plancia Home Assistant attuale richiede Chromium {needed} o successivo.",
+      "sourceHash": "94f19a9509ec35ea05bdd385b4659b229ef687b0b6d5d64beb724232c01f4400",
       "state": "machine-cross-checked"
     },
     "setup.webview.play": {

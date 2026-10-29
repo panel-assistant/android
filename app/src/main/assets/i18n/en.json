@@ -3329,6 +3329,21 @@
       "softMaxChars": 24,
       "hardMaxChars": 40
     },
+    "configure.network_adb.managed": {
+      "text": "Panel Assistant manages ADB on this panel and keeps it off. Removing the panel from Panel Assistant turns ADB back on.",
+      "sourceHash": "1a7a2f8db70c54fc9bacab8eae1395b666d9ceb583101692b453e1d55e40ed55",
+      "surface": "configure",
+      "context": "Configure > System > Network ADB: shown under the switch while Panel Assistant keeps network ADB off on this panel; the switch is disabled and says how ADB comes back.",
+      "risk": "consequential",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [
+        "Panel Assistant",
+        "ADB"
+      ],
+      "softMaxChars": 150,
+      "hardMaxChars": 215
+    },
     "configure.oauth.browser_recommended": {
       "text": "Browser sign-in is recommended; the long-lived token remains available as an advanced fallback.",
       "sourceHash": "cf970982eab16b244e4b741429787443be4627c11c694862e71bd2b3981661b5",
@@ -36196,8 +36211,8 @@
       "hardMaxChars": 40
     },
     "setup.sign_in.state.in_progress": {
-      "text": "A sign-in is in progress… finish it here or on the panel.",
-      "sourceHash": "4eca2929c8f06dc9d764f830e4aa3ea03cff84f3a3857487281d0d21d9fa25be",
+      "text": "The panel is showing a Home Assistant login. Sign in there, or use this browser.",
+      "sourceHash": "036ad1c96e2d2814578a7aec0bc7526208edfed6775f97427f055a327914486c",
       "surface": "setup",
       "context": "Setup wizard Home Assistant sign-in step; live status.",
       "risk": "ordinary",
@@ -36205,7 +36220,9 @@
         "setup.sign_in.state.waiting"
       ],
       "placeholders": [],
-      "frozen": [],
+      "frozen": [
+        "Home Assistant"
+      ],
       "softMaxChars": 100,
       "hardMaxChars": 140
     },
@@ -36273,10 +36290,10 @@
       "hardMaxChars": 240
     },
     "setup.webview.found": {
-      "text": "This panel has Chromium {found}. A current Home Assistant dashboard needs Chromium {needed} or newer.",
-      "sourceHash": "29d3bc49a5e9bbc77f2874fe03a9d53e6e7a5a21fbdcb54fd075343a6ccc98ee",
+      "text": "This panel’s browser engine (Android System WebView) has Chromium {found}. A current Home Assistant dashboard needs Chromium {needed} or newer.",
+      "sourceHash": "94f19a9509ec35ea05bdd385b4659b229ef687b0b6d5d64beb724232c01f4400",
       "surface": "setup",
-      "context": "Setup wizard WebView compatibility blocker; the engine version found on this panel and the minimum needed. {found} and {needed} are Chromium major version numbers.",
+      "context": "Setup wizard WebView compatibility blocker; the engine version found on this panel and the minimum needed. {found} and {needed} are Chromium major version numbers. Android System WebView is the component's name in Android settings and the Play Store; keep it in English.",
       "risk": "setup",
       "siblings": [
         "setup.webview.after_update",
@@ -36291,10 +36308,11 @@
       ],
       "frozen": [
         "Chromium",
-        "Home Assistant"
+        "Home Assistant",
+        "Android System WebView"
       ],
-      "softMaxChars": 150,
-      "hardMaxChars": 210
+      "softMaxChars": 170,
+      "hardMaxChars": 240
     },
     "setup.webview.play": {
       "text": "This panel updates its engine through Google Play: on the panel, open the Play Store and update Android System WebView.",

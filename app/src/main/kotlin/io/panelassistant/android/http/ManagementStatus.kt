@@ -53,6 +53,8 @@ internal fun managementStatusJson(
     panelAssistantTransport: PanelAssistantTransportFacts? = null,
     /** The capability rows' wire text is English, from the same catalogue the dashboard reads. */
     english: AppStrings,
+    /** The panel profile id, read only to link a WebView-too-old warning to that model's update steps. */
+    profileId: () -> String,
     webView: (() -> String)? = null,
 ): String {
     // Engine-aware WebView age check (a Cromite swap reports the stale OEM package version). Same finding
@@ -107,7 +109,7 @@ internal fun managementStatusJson(
     findings.forEach { finding ->
         addWarning(
             statusWarningSeverity(finding),
-            statusWarning(finding),
+            statusWarning(finding, profileId),
             HealthAudit.presentation(
                 finding,
                 targetChromium = PanelHealth.MIN_CHROMIUM,
@@ -199,10 +201,10 @@ private fun statusWarningSeverity(f: HealthAudit.Finding): NoticeSeverity = when
     HealthAudit.Kind.UPDATE -> NoticeSeverity.UPDATE
 }
 
-private fun statusWarning(f: HealthAudit.Finding): String = when (f.kind) {
+private fun statusWarning(f: HealthAudit.Finding, profileId: () -> String): String = when (f.kind) {
     HealthAudit.Kind.WEBVIEW_OLD ->
         "⚠ <b>System WebView is too old</b> (${esc(f.detail)}) — the Home Assistant dashboard may render blank. " +
-            "<a href=\"$WEBVIEW_DOC\" target=\"_blank\" rel=\"noopener\">How &amp; why to update</a> (target Chromium ${PanelHealth.MIN_CHROMIUM}+)."
+            "<a href=\"${webViewUpdateSteps(profileId())}\" target=\"_blank\" rel=\"noopener\">How &amp; why to update</a> (target Chromium ${PanelHealth.MIN_CHROMIUM}+)."
     HealthAudit.Kind.NO_RENDERER ->
         "ℹ <b>Next: choose a dashboard renderer.</b> Select Panel Assistant's built-in renderer, install the Home Assistant Companion app, or configure another dashboard package."
     HealthAudit.Kind.UPDATE -> f.update!!.let { u ->

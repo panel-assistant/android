@@ -214,7 +214,7 @@ function bannersHtml(s) {
   const t = s.t;
   return [
     noticeRow(s, 'action_needed', t('dashboard.banner.webview_old.title'),
-      `(Chromium 68) ${t('dashboard.banner.webview_old.explanation')} ${t('dashboard.banner.webview_old.target', { version: 87 })}. <small>${t('dashboard.banner.webview_old.engine_note')}</small> <a href="${href(s, 'install')}">${t('dashboard.banner.manage_install')}</a>`,
+      `(Chromium 68) ${t('dashboard.banner.webview_old.explanation')} ${t('dashboard.banner.webview_old.target', { version: 87 })}. <a href="${href(s, 'install')}">${t('dashboard.banner.manage_install')}</a>`,
       `<a href="https://example.invalid/webview" target="_blank" rel="noopener">${t('dashboard.banner.webview_old.update_action')}</a>`),
     noticeRow(s, 'update', 'Home Assistant Companion',
       `${t('dashboard.banner.update.available', { latest: '2024.10.1', current: '2024.9.1' })} — <a href="${href(s, 'install')}">${t('dashboard.banner.manage_install')}</a>`,

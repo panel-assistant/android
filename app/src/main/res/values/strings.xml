@@ -70,7 +70,7 @@
     <string name="panel_not_set_up">This panel isn’t set up yet.</string>
     <string name="panel_not_set_up_hint">Scan the code with your phone — it takes about two minutes. Or tap %1$s to do it on this screen.</string>
     <string name="browser_engine_too_old">This panel’s browser engine is too old.</string>
-    <string name="browser_engine_too_old_hint">Home Assistant dashboards need a newer one. Fix it on the setup page in a browser.</string>
+    <string name="browser_engine_too_old_hint">Setup can still finish, but Home Assistant dashboards need a newer one. The setup page in a browser shows how to update it.</string>
     <string name="choose_dashboard_app">Choose a dashboard app.</string>
     <string name="continue_setup_browser">Continue on the setup page in a browser.</string>
     <string name="connected_next_ha_address">Connected. Next: the Home Assistant address.</string>

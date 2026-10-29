@@ -129,9 +129,9 @@ internal data class SetupStageLine(@androidx.annotation.StringRes val line: Int,
 internal fun setupStageLine(complete: Boolean, next: String, rendererDetail: String): SetupStageLine? = when {
     complete -> null // the launcher's own auto-return takes over; show the pre-wizard screen
     next == "identity" -> SetupStageLine(R.string.panel_not_set_up, R.string.panel_not_set_up_hint)
-    // A too-old engine is the one renderer problem a passer-by cannot act on here, so name it as the
-    // panel's own fault rather than asking for a choice that would not help.
-    next == "renderer" && rendererDetail.startsWith("webview_too_old") ->
+    // A too-old engine is advisory, so it is never itself the next stage: name it at every later stage,
+    // or a panel below the floor would never say so on its own screen.
+    rendererDetail.startsWith("webview_too_old") ->
         SetupStageLine(R.string.browser_engine_too_old, R.string.browser_engine_too_old_hint)
     next == "renderer" -> SetupStageLine(R.string.choose_dashboard_app, R.string.continue_setup_browser)
     next == "ha_url" -> SetupStageLine(R.string.connected_next_ha_address, R.string.continue_setup_browser)

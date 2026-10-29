@@ -28,6 +28,8 @@ internal class ConfigValueProjection(
     private val proximityJson: () -> String,
     private val powerSafetyJson: () -> String,
     private val haAreaCatalogJson: () -> String?,
+    // Panel Assistant keeps network ADB off on this panel and the app cannot turn it on (AdbController.set).
+    private val networkAdbManaged: () -> Boolean = { io.panelassistant.android.control.ManagedNetworkAdb.managed },
 ) {
     fun liveValues(): Map<String, String> = configLiveValues()
 
@@ -66,12 +68,16 @@ internal class ConfigValueProjection(
     private fun haAuthJson(): String =
         "{\"configured\":${config.haToken.isNotEmpty() || config.haRefreshToken.isNotEmpty()},\"oauth\":${config.haRefreshToken.isNotEmpty()}}"
 
-    /** `"apply_pending":{…},"apply_stalled":[…]`: the live settings saved but not yet applied, and those stuck. */
+    /** `"apply_pending":{…},"apply_stalled":[…],"network_adb_managed":…`: the live settings saved but not yet
+     *  applied, those stuck, and whether Panel Assistant manages network ADB. While it does, a desired
+     *  network_adb value cannot apply, so the row shows the management instead of a value waiting forever. */
     private fun applyStateJson(): String {
-        val pending = pendingLiveSettings()
+        val managed = networkAdbManaged()
+        val pending = pendingLiveSettings().let { all -> if (managed) all - "network_adb" else all }
         val pendingDesired = pending.entries.joinToString(",") { (key, value) -> "${Json.str(key)}:${Json.str(value)}" }
         return "\"apply_pending\":{$pendingDesired}," +
-            "\"apply_stalled\":${jarr(stalledApplyKeys(pending.keys, stalledLiveSettings()))}"
+            "\"apply_stalled\":${jarr(stalledApplyKeys(pending.keys, stalledLiveSettings()))}," +
+            "\"network_adb_managed\":$managed"
     }
 
     /**
@@ -135,7 +141,8 @@ internal class ConfigValueProjection(
         io.panelassistant.android.config.ConfigHash.of(configConcurrencyValues(values))
 
     /** Full config as JSON for fleet management. No credential is ever emitted: secret settings read
-     *  blank. `http_port` is read-only (changing it needs a restart). */
+     *  blank. `http_port` is the port listening now; a POST can only ask for the default back, which
+     *  takes effect the next time the HTTP server starts. */
     fun configJson(
         mutationStatus: String? = null,
         applied: List<String> = emptyList(),

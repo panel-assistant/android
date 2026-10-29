@@ -359,7 +359,7 @@ internal class PanelAssistantTransportOwner(
                                 PanelAssistantTransportProtocol.CAPABILITY_UNKNOWN_STATE,
                                 -> reporter != null
                                 PanelAssistantTransportProtocol.CAPABILITY_VOICE_STREAM_SESSION -> streamClientId != null
-                                PanelAssistantTransportProtocol.CAPABILITY_LOCAL_ADB -> management?.localAdb != null
+                                PanelAssistantTransportProtocol.CAPABILITY_LOCAL_ADB -> management?.localAdb?.offered() == true
                                 // The sidebar relay, its subscriptions and the bundle ride the management requests.
                                 PanelAssistantTransportProtocol.CAPABILITY_MANAGEMENT,
                                 PanelAssistantTransportProtocol.CAPABILITY_UI_SUBSCRIBE,

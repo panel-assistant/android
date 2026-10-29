@@ -362,23 +362,28 @@ class DashboardActivity : AppCompatActivity() {
         // DashboardActivity. Route an actual HOME intent according to the explicit Launcher app policy;
         // the app's own starts (component-explicit, or its marked HOME intent) foreground the dashboard.
         activityScope.launch {
-            val config = readActivityStateOffMain {
-                Config(this@DashboardActivity).also { config ->
-                    // Android may launch this HOME activity directly after a package replacement,
-                    // bypassing MainActivity. Repair HOME before the service can crash.
-                    runCatching {
-                        SystemController(AndroidSystemEnv(this@DashboardActivity)).applyLauncherHomePolicy(
-                            config.launcherPackage, config.dashboardPackage, config.builtInRendererReady(),
-                        )
-                    }.onFailure { Log.w(TAG, "dashboard HOME policy apply failed", it) }
-                }
-            }
+            val config = readActivityStateOffMain { prepareStartupConfig(Config(this@DashboardActivity)) }
             if (!destroyed && !isFinishing) {
                 // This visible start avoids arming Oreo's foreground deadline during cold class loading.
                 PaneldService.start(this@DashboardActivity, fromVisibleActivity = true)
                 initializeRenderer(config)
             }
         }
+    }
+
+    /** The settings the first page opens with, read off the main thread before the renderer starts. */
+    private fun prepareStartupConfig(config: Config): Config {
+        // After an app update Android 8.1 starts this HOME activity before the service, so the first page
+        // would read a store the service has not yet migrated. The migration is lock-guarded and idempotent.
+        config.migrateLiveStore()
+        // Android may launch this HOME activity directly after a package replacement,
+        // bypassing MainActivity. Repair HOME before the service can crash.
+        runCatching {
+            SystemController(AndroidSystemEnv(this)).applyLauncherHomePolicy(
+                config.launcherPackage, config.dashboardPackage, config.builtInRendererReady(),
+            )
+        }.onFailure { Log.w(TAG, "dashboard HOME policy apply failed", it) }
+        return config
     }
 
     private suspend fun initializeRenderer(config: Config) {

@@ -202,9 +202,17 @@ internal class DashboardV2CompatibilityProbe(
      *  screen it cannot clear even though a later retry succeeds with the same credential. */
     private fun blockedBy(session: HaApiSession): DashboardV2ProbeResult? = when {
         session.rejected -> DashboardV2ProbeResult.AuthenticationFailed
-        requiresProvenRoute() && session.route == null -> DashboardV2ProbeResult.Unavailable(
-            "Home Assistant connection is not verified", allowCachedVersion = false,
-        )
+        // No learned route verified: stay blocked, but keep the session's classified failure (refused,
+        // timeout, DNS) and name the address tried. NONE stays NONE only when nothing was attempted.
+        requiresProvenRoute() && session.route == null -> unavailable(
+            "Home Assistant connection is not verified" +
+                session.baseUrl.takeIf(String::isNotBlank)?.let { " at $it" }.orEmpty(),
+            when {
+                session.transientEvidence.fault != HaTransportFault.NONE -> session.transientEvidence
+                session.notAttempted && session.transientDetail == null -> HaTransportEvidence.NONE
+                else -> HaTransportEvidence.UNKNOWN
+            },
+        ).copy(allowCachedVersion = false)
         !session.accessToken.isNullOrBlank() -> null
         // A session reporting a transient detail HAS failed in transport, so its evidence can never
         // be `NONE` here however it was constructed — an unclassified failure degrades to UNKNOWN.

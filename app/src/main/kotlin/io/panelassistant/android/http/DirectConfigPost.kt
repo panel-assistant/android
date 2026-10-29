@@ -346,6 +346,8 @@ internal class DirectConfigPost(
                     p["auto_brightness_minimum_percent"]?.toInt()?.let(config::setAutoBrightnessMinimumPercent)
                     p["auto_brightness_maximum_percent"]?.toInt()?.let(config::setAutoBrightnessMaximumPercent)
                     p["http_allowed_hosts"]?.let { config.setHttpAllowedHosts(it) }
+                    // Saved for the next start of the HTTP server; the running listener keeps its port.
+                    p["http_port"]?.toInt()?.let { port -> config.setHttpPortRequest(port.takeIf { it != config.httpPort }) }
                     // The handover trio persists here for the same reason `http_allowed_hosts` does:
                     // they are bespoke config keys with no SettingsRegistry spec, so the generic
                     // registry writer never sees them. The reason is only ever appended by this
@@ -543,6 +545,8 @@ internal class DirectConfigPost(
         val reconfigureKeys = ordinaryOutcomes.applied.toCollection(linkedSetOf()).apply {
             if ("home_dashboard" in liveApplied || "home_dashboard" in livePending) add("home_dashboard")
             addAll(livePending)
+            // Nothing changes until the HTTP server next starts, so nothing republishes the port now.
+            remove("http_port")
         }
         if (reconfigureKeys.isNotEmpty()) onReconfigure(reconfigureKeys)
         rendererFailure?.let {
@@ -589,13 +593,16 @@ internal class DirectConfigPost(
                     "(${outcome.reason}). Setup will ask for the address instead."
             }
         }
+        val portMessage = config.httpPortRequest?.takeIf { "http_port" in liveApplied }?.let {
+            "Settings saved. The panel moves to port $it the next time its HTTP server starts."
+        }
         respondConfigMutation(
             call,
             if (livePending.isEmpty()) "saved" else "saved-apply-pending",
             liveApplied,
             livePending,
             emptyList(),
-            pendingMessage ?: handoverMessage,
+            pendingMessage ?: handoverMessage ?: portMessage,
             if (livePending.isEmpty()) HttpStatusCode.OK else HttpStatusCode.Accepted,
         )
         } finally {

@@ -2,8 +2,6 @@ package io.panelassistant.android.http
 
 import io.panelassistant.android.i18n.Strings as AppStrings
 
-internal const val WEBVIEW_DOC = "https://panel-assistant.io/go/docs?page=hardware/readme"
-
 /** The WebView update steps for a panel model, keyed by profile id. The TPA10 (signature-locked, needs the
  *  root swap) and the original Shelly Wall Display (Shelly's own update ZIP) have their own sections; every
  *  other panel, Play-managed ones included, is a row of the update guide's table above its sideload steps. */
@@ -18,8 +16,9 @@ internal fun installWarning(
     f: HealthAudit.Finding,
     canInstallCompanion: Boolean,
     strings: AppStrings,
+    profileId: () -> String,
 ): String = when (f.kind) {
-    HealthAudit.Kind.WEBVIEW_OLD -> webviewOldNotice(f.detail, strings, manageInstall = false)
+    HealthAudit.Kind.WEBVIEW_OLD -> webviewOldNotice(f.detail, strings, manageInstall = false, profileId = profileId())
     HealthAudit.Kind.NO_RENDERER -> noRendererNotice(
         strings,
         action = if (canInstallCompanion) """<button class="pbtn"${hardenedApprovalAttrs(strings = strings)} onclick="installComp('companion','update',this)">${esc(strings.get("install.warning.no_renderer.install_companion"))}</button> <span class="muted">${esc(strings.get("install.warning.no_renderer.progress"))}</span>""" else "",

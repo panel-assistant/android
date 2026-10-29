@@ -134,7 +134,7 @@ function warnings(s, b) {
     `<button class="pbtn"${b.approval()} onclick="repairCompUrl(this)">${s.t('dashboard.banner.companion_url.repair')}</button> <span id="cu-fix" class="muted"></span>`);
   // installWarning(WEBVIEW_OLD) → webviewOldNotice(manageInstall = false)
   const webview = noticeRow(s, 'action_needed', s.t('dashboard.banner.webview_old.title'),
-    `(Chromium 95.0.4638.74) ${s.t('dashboard.banner.webview_old.explanation')} ${s.t('dashboard.banner.webview_old.target', { version: 120 })}. <small>${s.t('dashboard.banner.webview_old.engine_note')}</small>`,
+    `(Chromium 95.0.4638.74) ${s.t('dashboard.banner.webview_old.explanation')} ${s.t('dashboard.banner.webview_old.target', { version: 120 })}.`,
     `<a href="https://example.invalid/webview" target="_blank" rel="noopener">${s.t('dashboard.banner.webview_old.update_action')}</a>`);
   return powerBanner(s) + companion + webview;
 }

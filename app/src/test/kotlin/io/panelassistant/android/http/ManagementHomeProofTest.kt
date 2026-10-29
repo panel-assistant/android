@@ -64,6 +64,7 @@ class ManagementHomeProofTest {
                                             homeUiProofJson("ready", "dashboard_foreground", "builtin_lifecycle")
                                         }) else null,
                                         english = englishCatalogue,
+                                        profileId = { "generic" },
                                     )
                                 },
                             )
