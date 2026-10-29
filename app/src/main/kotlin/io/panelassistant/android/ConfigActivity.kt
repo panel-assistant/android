@@ -1,5 +1,6 @@
 package io.panelassistant.android
 
+import android.app.Dialog
 import android.content.res.Configuration
 import android.content.Intent
 import android.os.Bundle
@@ -36,6 +37,24 @@ import kotlinx.coroutines.withContext
 internal suspend fun <T> readActivityStateOffMain(read: () -> T): T =
     withContext(Dispatchers.IO) { read() }
 
+/** Main-thread ownership of result windows that may be requested after asynchronous work. */
+internal class ActivityResultDialog {
+    private var destroyed = false
+    private var dialog: Dialog? = null
+
+    fun show(activityUnavailable: Boolean, create: () -> Dialog) {
+        if (destroyed || activityUnavailable) return
+        dialog?.dismiss()
+        dialog = create().also { it.show() }
+    }
+
+    fun destroy() {
+        destroyed = true
+        dialog?.dismiss()
+        dialog = null
+    }
+}
+
 /**
  * In-app config screen: a WebView onto the local config page (127.0.0.1:8888). Panels are usually
  * kiosks with no browser installed, so an `ACTION_VIEW http://…` intent finds no handler and silently
@@ -47,6 +66,7 @@ internal suspend fun <T> readActivityStateOffMain(read: () -> T): T =
  */
 class ConfigActivity : AppCompatActivity() {
 
+    private val resultDialog = ActivityResultDialog()
     private val maintenanceFence = GuardDbActivityMaintenanceFence()
     private lateinit var web: WebView
     private lateinit var readinessPanel: LinearLayout
@@ -224,42 +244,32 @@ class ConfigActivity : AppCompatActivity() {
                 }
             }
             if (transition == VerifiedRelayTransition.VERIFICATION_FAILED) {
-                AlertDialog.Builder(this@ConfigActivity)
-                    .setTitle(R.string.unable_stop_remote_debugging)
-                    .setMessage(R.string.unable_stop_remote_debugging_detail)
-                    .setPositiveButton(R.string.ok, null)
-                    .show()
+                showHardenedModeResult(R.string.unable_stop_remote_debugging, R.string.unable_stop_remote_debugging_detail)
             } else when (networkAdbAdmission) {
                 HardenedNetworkAdbAdmission.DISABLE_FAILED -> {
-                    AlertDialog.Builder(this@ConfigActivity)
-                        .setTitle(R.string.unable_stop_remote_adb)
-                        .setMessage(R.string.unable_stop_remote_adb_detail)
-                        .setPositiveButton(R.string.ok, null)
-                        .show()
+                    showHardenedModeResult(R.string.unable_stop_remote_adb, R.string.unable_stop_remote_adb_detail)
                 }
                 HardenedNetworkAdbAdmission.UNVERIFIED -> {
-                    AlertDialog.Builder(this@ConfigActivity)
-                        .setTitle(R.string.unable_verify_remote_adb)
-                        .setMessage(R.string.unable_verify_remote_adb_detail)
-                        .setPositiveButton(R.string.ok, null)
-                        .show()
+                    showHardenedModeResult(R.string.unable_verify_remote_adb, R.string.unable_verify_remote_adb_detail)
                 }
                 HardenedNetworkAdbAdmission.ACTIVE -> {
-                    AlertDialog.Builder(this@ConfigActivity)
-                        .setTitle(R.string.turn_off_remote_adb_first)
-                        .setMessage(R.string.turn_off_remote_adb_first_detail)
-                        .setPositiveButton(R.string.ok, null)
-                        .show()
+                    showHardenedModeResult(R.string.turn_off_remote_adb_first, R.string.turn_off_remote_adb_first_detail)
                 }
                 HardenedNetworkAdbAdmission.COMMIT_FAILED -> {
-                    AlertDialog.Builder(this@ConfigActivity)
-                        .setTitle(R.string.unable_enable_hardened_mode)
-                        .setMessage(R.string.unable_enable_hardened_mode_detail)
-                        .setPositiveButton(R.string.ok, null)
-                        .show()
+                    showHardenedModeResult(R.string.unable_enable_hardened_mode, R.string.unable_enable_hardened_mode_detail)
                 }
                 HardenedNetworkAdbAdmission.APPLIED -> Unit
             }
+        }
+    }
+
+    private fun showHardenedModeResult(title: Int, message: Int) {
+        resultDialog.show(isFinishing || isDestroyed) {
+            AlertDialog.Builder(this)
+                .setTitle(title)
+                .setMessage(message)
+                .setPositiveButton(R.string.ok, null)
+                .create()
         }
     }
 
@@ -324,6 +334,7 @@ class ConfigActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        resultDialog.destroy()
         KioskAdminUi.setVisible(this, false)
         readinessJob?.cancel()
         activityScope.cancel()
