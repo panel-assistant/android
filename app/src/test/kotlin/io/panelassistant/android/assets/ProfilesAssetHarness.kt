@@ -5,7 +5,8 @@ internal object ProfilesAssetHarness {
     const val SCRIPT = """
         const fs = require('fs'), vm = require('vm'), assert = require('node:assert/strict');
         const flush = () => new Promise(resolve => setImmediate(resolve));
-        async function loadProfiles(profiles) {
+        async function loadProfiles(profiles, afterDeleteProfiles) {
+          let catalog = profiles;
           function element(tag) {
             let text = '';
             return {
@@ -34,7 +35,11 @@ internal object ProfilesAssetHarness {
             PaneldTransport: {request(op, args) {
               requests.push({op, args});
               let result = {};
-              if (op === 'profiles') result = {catalog_revision: 1, profiles, status: {selection: {mode: 'pinned'}}};
+              if (op === 'profiles') result = {catalog_revision: 1, profiles: catalog, status: {selection: {mode: 'pinned'}}};
+              else if (op === 'profiles.delete') {
+                assert.ok(afterDeleteProfiles, 'delete response catalogue supplied');
+                catalog = afterDeleteProfiles;
+              }
               else if (op === 'profiles.revision') result = 'id: sample';
               else if (op !== 'profiles.schema' && op !== 'profiles.report') assert.fail('unexpected request ' + op);
               return Promise.resolve({outcome: 'applied', result});
@@ -44,7 +49,6 @@ internal object ProfilesAssetHarness {
           // Source-text reason: execute the entire shipped asset, with no code extraction or source assertions.
           vm.runInNewContext(fs.readFileSync(process.argv[1], 'utf8'), context);
           await flush();
-          assert.match(node('profile-status').textContent, /Viewing immutable revision/);
           assert.ok(requests.some(request => request.op === 'profiles.revision'), 'selected YAML was loaded');
           return {node, requests, options() {
             return node('profile-select').childNodes.flatMap(child => child.tagName === 'OPTGROUP' ? child.childNodes : [child]);

@@ -122,6 +122,33 @@ class ProfileCatalogCollapseDomContractTest {
             assert.equal(options.length, 1, "orphaned selection did not collapse to one entry");
             assert.equal(select.value, refKey(orphanNew.ref), "fallback assigned an option that was never rendered");
 
+            // Deleting the selected revision reloads the catalogue while the page still remembers
+            // its old ref. Both the picker and the next YAML load must move to a rendered revision.
+            const deleted = revision("e3".repeat(32), 1757500000000);
+            rig = await loadProfiles([orphanOld, orphanNew, deleted], [orphanOld, orphanNew]);
+            select = rig.node('profile-select');
+            assert.equal(select.value, refKey(deleted.ref), 'delete starts from the selected newest revision');
+            assert.equal(rig.node('profile-delete').disabled, false, 'selected inactive revision can be deleted');
+            const beforeDelete = rig.requests.length;
+            rig.node('profile-delete').dispatch('click');
+            assert.equal(rig.node('profile-modal').hidden, false, 'delete confirmation is shown');
+            rig.node('profile-modal-confirm').onclick();
+            await flush();
+            assert.equal(rig.node('profile-modal').hidden, true, 'delete confirmation closed');
+            assert.deepEqual(rig.options().map(option => option.value), [refKey(orphanNew.ref)],
+              'reload offers only the newest surviving representative');
+            assert.equal(select.value, refKey(orphanNew.ref), 'deleted selection falls back to a rendered revision');
+            const deleteRequests = rig.requests.slice(beforeDelete);
+            const deleteRequest = deleteRequests.find(request => request.op === 'profiles.delete');
+            assert.ok(deleteRequest, 'confirmation sends a delete request');
+            assert.equal(refKey(deleteRequest.args), refKey(deleted.ref), 'the selected revision was deleted');
+            const reloadIndex = deleteRequests.findIndex(request => request.op === 'profiles');
+            assert.ok(reloadIndex >= 0, 'delete reloads the catalogue');
+            const nextRevision = deleteRequests.slice(reloadIndex + 1).find(request => request.op === 'profiles.revision');
+            assert.ok(nextRevision, 'reloaded selection requests its YAML');
+            assert.equal(refKey(nextRevision.args), refKey(orphanNew.ref),
+              'the next YAML request names the surviving picker revision');
+
             // A bundled id can list a retired copy beside its successor so that a pinned revision
             // stays resolvable across a core upgrade. Collapsing those would hide a rollback
             // destination, so bundled groups are left whole whatever the toggle says.
