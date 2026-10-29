@@ -726,6 +726,7 @@ class PaneldServer internal constructor(
                 homeUiProofJson(proof.state, proof.reason, proof.evidence)
             }) else null,
             english = catalogueLoader.strings(AppLocale.ENGLISH),
+            profileId = { profile.id },
             webView = { webViewUpdate.observe().toString() },
         )
     }
@@ -780,6 +781,7 @@ class PaneldServer internal constructor(
         radioStatus = radioStatus,
         dashboardRecoveryState = pageHealth::dashboardRecoveryState,
         appSizingReady = density::appSizingReady,
+        profileId = { profile.id },
     )
 
     private fun dashboardPageHandler() = DashboardPageHandler(

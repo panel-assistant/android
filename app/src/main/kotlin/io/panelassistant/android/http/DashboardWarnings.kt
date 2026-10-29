@@ -141,14 +141,14 @@ internal fun powerSafetyBanner(advisory: PowerSafetyAdvisory, inlineRepair: Bool
 internal fun storageBanner(storage: HealthAudit.StoragePresentation, strings: AppStrings): String =
     storageNotice(storage, strings)?.html(strings).orEmpty()
 
-internal fun webviewOldNotice(detail: String, strings: AppStrings, manageInstall: Boolean): String = notice(
+/** The WebView-too-old notice; its action opens this panel model's update steps ([webViewUpdateSteps]). */
+internal fun webviewOldNotice(detail: String, strings: AppStrings, manageInstall: Boolean, profileId: String): String = notice(
     NoticeSeverity.ACTION_NEEDED, strings,
     title = esc(strings.get("dashboard.banner.webview_old.title")),
     detail = """(${esc(detail)}) ${esc(strings.get("dashboard.banner.webview_old.explanation"))} """ +
-        """${esc(formattedString(strings, "dashboard.banner.webview_old.target", "version" to PanelHealth.MIN_CHROMIUM.toString()))}. """ +
-        """<small>${esc(strings.get("dashboard.banner.webview_old.engine_note"))}</small>""" +
+        """${esc(formattedString(strings, "dashboard.banner.webview_old.target", "version" to PanelHealth.MIN_CHROMIUM.toString()))}.""" +
         (if (manageInstall) """ <a href="${localizedHref("install", strings)}">${esc(strings.get("dashboard.banner.manage_install"))}</a>""" else ""),
-    action = """<a href="$WEBVIEW_DOC" target="_blank" rel="noopener">${esc(strings.get("dashboard.banner.webview_old.update_action"))}</a>""",
+    action = """<a href="${webViewUpdateSteps(profileId)}" target="_blank" rel="noopener">${esc(strings.get("dashboard.banner.webview_old.update_action"))}</a>""",
 )
 
 internal fun noRendererNotice(strings: AppStrings, action: String = ""): String = notice(
@@ -170,8 +170,8 @@ internal fun schemaRollbackNotice(detail: String, strings: AppStrings): String =
 /** One dashboard banner for a health finding. Update findings link to the Install tab (where the user
  *  manages versions) and carry an "Ignore this version" button — a per-version dismissal that stays
  *  hidden until a newer release ships (see Config.ignoreUpdate / UpdateChecker.visible). */
-internal fun bannerFor(f: HealthAudit.Finding, strings: AppStrings): String = when (f.kind) {
-    HealthAudit.Kind.WEBVIEW_OLD -> webviewOldNotice(f.detail, strings, manageInstall = true)
+internal fun bannerFor(f: HealthAudit.Finding, strings: AppStrings, profileId: () -> String): String = when (f.kind) {
+    HealthAudit.Kind.WEBVIEW_OLD -> webviewOldNotice(f.detail, strings, manageInstall = true, profileId = profileId())
     HealthAudit.Kind.NO_RENDERER -> noRendererNotice(strings)
     HealthAudit.Kind.UPDATE -> {
         val u = f.update!!
