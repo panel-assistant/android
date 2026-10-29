@@ -29,6 +29,30 @@ FILE *__wrap_fopen(const char *path, const char *mode) {
 
 int __real_usleep(useconds_t duration);
 int __wrap_usleep(useconds_t duration) {
+    const char *block = getenv("RECOVERY_REPLACEMENT_GUARDIAN_BLOCK");
+    if (duration == 200000 && block) {
+        char marker[4096];
+        if (snprintf(marker, sizeof marker, "%s.entered", block) >= (int)sizeof marker) abort();
+        FILE *file = fopen(marker, "w");
+        if (!file) abort();
+        fclose(file);
+        while (!access(block, F_OK)) __real_usleep(20000);
+    }
     /* Model a slow old guardian after owner death without changing the shipped source. */
     return __real_usleep(duration == 200000 && getenv("RECOVERY_REPLACEMENT_SLOW_GUARDIAN") ? 1000000 : duration);
+}
+
+int __real_fsync(int descriptor);
+int __wrap_fsync(int descriptor) {
+    if (getenv("RECOVERY_REPLACEMENT_RECEIPT_SYNC_ERROR")) {
+        char path[64], target[4096];
+        snprintf(path, sizeof path, "/proc/self/fd/%d", descriptor);
+        ssize_t n = readlink(path, target, sizeof target - 1);
+        if (n >= 0) {
+            target[n] = 0;
+            const char *name = strrchr(target, '/');
+            if (name && !strcmp(name, "/.replacement-retiring")) { errno = EIO; return -1; }
+        }
+    }
+    return __real_fsync(descriptor);
 }

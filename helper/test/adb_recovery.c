@@ -97,6 +97,7 @@ static void start(void) {
     unlink(fixture_path("unfenced-reopen"));
     put("init.svc.adbd","running");put("persist.adb.tcp.port","");put("service.adb.tcp.port","5555");
     put("tcp","0: 00000000:15B3 00000000:0000 0A\n");put("tcp6","");
+    if (mkdir(ADB_RECOVERY_DIRECTORY,0700) && errno != EEXIST) abort();
     owner=fork();if(!owner)_exit(adb_recovery_main());
     char response[160];int ready=0;
     for(int i=0;i<100;i++){if(!request("STATUS\n",response,sizeof response)){ready=1;break;}usleep(10000);}

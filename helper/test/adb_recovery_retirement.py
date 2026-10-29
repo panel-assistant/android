@@ -67,7 +67,7 @@ else:
             except OSError: return False
         cases = ('armed', 'never-armed', 'reappeared', 'replaced', 'late-return', 'directory-return', 'replacement-race', 'network-fails', 'running-worker', 'already-open', 'foreign-stage', 'return-again', 'retirement-fails')
         for case in os.environ.get('RECOVERY_CASES', ','.join(cases)).split(','):
-            app.mkdir(); user.mkdir(); live.mkdir()
+            app.mkdir(); user.mkdir(); live.mkdir(mode=0o700)
             exe=live/'helper'; shutil.copyfile(binary,exe); exe.chmod(0o700)
             (p/'tcp').write_text('0: 00000000:15B3 00000000:0000 0A\n')
             (p/'tcp6').write_text(''); (p/'init.svc.adbd').write_text('running')

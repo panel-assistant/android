@@ -18,6 +18,7 @@
 #include <sys/mman.h>
 #include <stdatomic.h>
 #include <stdint.h>
+#include <inttypes.h>
 #include <pthread.h>
 #include <sys/stat.h>
 #include <sys/un.h>
@@ -525,8 +526,74 @@ static int stale_processes(const struct stat *old) {
     }
     closedir(proc); return found;
 }
+#define REPLACEMENT_RETIRING ".replacement-retiring"
+/* This is only the inode still owed a drain, not a process id or permission to signal.
+ * A durable receipt prevents a failed launcher from losing custody after its owner exits. */
+static int retiring_inode(int directory, struct stat *old, struct stat *receipt) {
+    int fd = openat(directory, REPLACEMENT_RETIRING, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC);
+    if (fd < 0) return errno == ENOENT ? 0 : -1;
+    struct stat metadata;
+    char text[128], expected[128]; uintmax_t device, inode; char extra;
+    if (fstat(fd, &metadata) || !S_ISREG(metadata.st_mode) || metadata.st_uid || metadata.st_gid ||
+        metadata.st_nlink != 1 || (metadata.st_mode & 07777) != 0600) { close(fd); return -1; }
+    ssize_t n = read(fd, text, sizeof text - 1);
+    close(fd);
+    if (n <= 0 || metadata.st_size != n) return -1;
+    text[n] = 0;
+    if (sscanf(text, "RETIRING 1 %ju %ju%c", &device, &inode, &extra) != 3 || extra != '\n' || !inode) return -1;
+    int count = snprintf(expected, sizeof expected, "RETIRING 1 %ju %ju\n", device, inode);
+    if (count != n || memcmp(text, expected, (size_t)n) ||
+        (uintmax_t)(dev_t)device != device || (uintmax_t)(ino_t)inode != inode) return -1;
+    struct stat named;
+    if (fstatat(directory, REPLACEMENT_RETIRING, &named, AT_SYMLINK_NOFOLLOW) ||
+        named.st_dev != metadata.st_dev || named.st_ino != metadata.st_ino) return -1;
+    memset(old, 0, sizeof *old); old->st_dev = (dev_t)device; old->st_ino = (ino_t)inode;
+    if (receipt) *receipt = metadata;
+    return 1;
+}
+static int record_retiring_inode(int directory, const struct stat *old) {
+    struct stat recorded, receipt;
+    int existing = retiring_inode(directory, &recorded, &receipt);
+    if (existing < 0 || (existing && (recorded.st_dev != old->st_dev || recorded.st_ino != old->st_ino))) return -1;
+    if (existing) {
+        int fd = openat(directory, REPLACEMENT_RETIRING, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC);
+        struct stat metadata;
+        int failed = fd < 0 || fstat(fd, &metadata) || metadata.st_dev != receipt.st_dev ||
+            metadata.st_ino != receipt.st_ino || fsync(fd);
+        if (fd >= 0 && close(fd)) failed = 1;
+        return failed || fsync(directory) ? -1 : 0;
+    }
+    int fd = openat(directory, REPLACEMENT_RETIRING, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
+    if (fd < 0) return -1;
+    struct stat metadata;
+    char text[128];
+    int count = snprintf(text, sizeof text, "RETIRING 1 %ju %ju\n", (uintmax_t)old->st_dev, (uintmax_t)old->st_ino);
+    int failed = fstat(fd, &metadata) || !S_ISREG(metadata.st_mode) || metadata.st_uid || metadata.st_gid ||
+        metadata.st_nlink != 1 || (metadata.st_mode & 07777) != 0600 ||
+        write(fd, text, (size_t)count) != count || fsync(fd);
+    if (close(fd)) failed = 1;
+    return failed || fsync(directory) ? -1 : 0;
+}
+static int drain_retiring_inode(int directory, const struct stat *old) {
+    struct stat recorded, receipt, current;
+    if (retiring_inode(directory, &recorded, &receipt) != 1 ||
+        recorded.st_dev != old->st_dev || recorded.st_ino != old->st_ino) return -1;
+    int result = -1;
+    long long until = now_ms() + 6000;
+    while (now_ms() < until) {
+        int remaining = stale_processes(old);
+        if (!remaining) { result = 0; break; }
+        if (remaining < 0) break;
+        usleep(20000);
+    }
+    if (!result && (retiring_inode(directory, &recorded, &current) != 1 ||
+        current.st_dev != receipt.st_dev || current.st_ino != receipt.st_ino ||
+        recorded.st_dev != old->st_dev || recorded.st_ino != old->st_ino ||
+        unlinkat(directory, REPLACEMENT_RETIRING, 0) || fsync(directory))) result = -1;
+    return result;
+}
 /* 1: already current; 0: safely retired; -1: refuse. RECOVER is supported by shipped daemons. */
-static int replace_incumbent(const struct sockaddr_un *address, socklen_t length) {
+static int replace_incumbent(const struct sockaddr_un *address, socklen_t length, int directory) {
     int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0), process = -1, result = -1;
     if (fd < 0) return -1;
     if (connect(fd, (const struct sockaddr *)address, length)) goto done;
@@ -568,17 +635,12 @@ static int replace_incumbent(const struct sockaddr_un *address, socklen_t length
     if (property("init.svc.adbd", service, sizeof service) || strcmp(service, "running") || tcp_listener(1) != 1) goto done;
     /* Older Android kernels lack pidfd. Recheck retained /proc identity and executable
      * immediately before signalling, as in the ordinary helper replacement discipline. */
+    if (record_retiring_inode(directory, &old)) goto done;
     struct stat pinned, reached;
     if (fstat(process, &pinned) || stat(path, &reached) || pinned.st_dev != reached.st_dev || pinned.st_ino != reached.st_ino ||
         fstatat(process, "exe", &current, 0) || current.st_dev != old.st_dev || current.st_ino != old.st_ino ||
         process_state(process, &state, &checked) || checked != started || state == 'Z' || kill(owner, SIGTERM)) goto done;
-    long long until = now_ms() + 6000;
-    while (now_ms() < until) {
-        int remaining = stale_processes(&old);
-        if (!remaining) { result = 0; break; }
-        if (remaining < 0) break;
-        usleep(20000);
-    }
+    result = drain_retiring_inode(directory, &old);
  done:
     if (process >= 0) close(process);
     if (fd >= 0) close(fd);
@@ -594,18 +656,30 @@ int adb_recovery_main(void) {
     memcpy(address.sun_path + 1, ADB_RECOVERY_SOCKET, socket_length);
     socklen_t address_length = offsetof(struct sockaddr_un, sun_path) + 1 + socket_length;
     if (server < 0) return 1;
+    int directory = replacement_directory();
+    if (directory < 0) { close(server); return 1; }
+    struct stat retiring;
+    int pending = retiring_inode(directory, &retiring, NULL);
+    if (pending < 0) { close(directory); close(server); return 1; }
+    if (pending) {
+        /* A previous launcher may have died before signalling its owner, or while its
+         * guardian drained. Resume either case before even trying an uncontended bind. */
+        (void)replace_incumbent(&address, address_length, directory);
+        pending = retiring_inode(directory, &retiring, NULL);
+        if (pending < 0 || (pending && drain_retiring_inode(directory, &retiring))) {
+            close(directory); close(server); return 1;
+        }
+    }
     if (bind(server, (struct sockaddr *)&address, address_length)) {
-        if (errno != EADDRINUSE) { close(server); return 1; }
-        int directory = replacement_directory();
-        if (directory < 0) { close(server); return 1; }
-        int replaced = replace_incumbent(&address, address_length);
+        if (errno != EADDRINUSE) { close(directory); close(server); return 1; }
+        int replaced = replace_incumbent(&address, address_length, directory);
         if (replaced || bind(server, (struct sockaddr *)&address, address_length)) {
             close(directory); close(server); return replaced == 1 ? 0 : 1;
         }
-        /* Keep custody until listen publishes the successor to waiting launchers. */
-        if (listen(server, 8)) { close(directory); close(server); return 1; }
-        close(directory);
-    } else if (listen(server, 8)) { close(server); return 1; }
+    }
+    /* Every launcher, including a currently free bind, retains custody through publication. */
+    if (listen(server, 8)) { close(directory); close(server); return 1; }
+    close(directory);
     lease = mmap(NULL, sizeof *lease, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
     if (lease == MAP_FAILED) { close(server); return 1; }
     memset(lease, 0, sizeof *lease);
