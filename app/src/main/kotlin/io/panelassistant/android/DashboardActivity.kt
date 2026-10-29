@@ -292,7 +292,7 @@ class DashboardActivity : AppCompatActivity() {
         override fun redrawCoverPage() {
             if (authLatched) renderAuthLatchPage() else if (interstitialShown) reissueReconnecting()
         }
-    })
+    }, screenAwake = { pacer.screenAwake })
     private val entityGate = DashboardEntityGate(this, main, activityScope, statusScreens, object : DashboardEntityGate.Host {
         override val activityOwner get() = this@DashboardActivity.activityOwner
         override val destroyed get() = this@DashboardActivity.destroyed
@@ -859,7 +859,7 @@ class DashboardActivity : AppCompatActivity() {
             embodiment.loadStarted(rendererValues { it == RendererApply.RELOAD })
             clearedThisLoad = false
         }
-        override fun screenChanged(awake: Boolean) { entityGate.onScreenChanged(awake); webCover.screenChanged(awake) }
+        override fun screenChanged(awake: Boolean) { entityGate.onScreenChanged(awake); webCover.screenChanged(awake); statusScreens.screenChanged(awake) }
         override fun woke() { lastTouchAt = SystemClock.elapsedRealtime() }
         override fun handshakeTimedOut(): Boolean = bridge.handshakeTimedOut()
         override fun blockHandshakeMissed() {
