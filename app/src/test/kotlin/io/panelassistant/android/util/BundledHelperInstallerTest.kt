@@ -668,6 +668,8 @@ class BundledHelperInstallerTest {
                 val process = ProcessBuilder("bash", "-c", command).redirectErrorStream(true).start()
                 val output = process.inputStream.bufferedReader().readText()
                 assertEquals(output, 1, process.waitFor())
+                val deadline = System.nanoTime() + 5_000_000_000L
+                while ((!pidFile.isFile || pidFile.readText().isBlank()) && System.nanoTime() < deadline) Thread.sleep(10)
                 val pid = pidFile.readText().trim().toLong()
                 assertTrue(
                     "rollback killed the unrelated owner of the candidate's pid",
