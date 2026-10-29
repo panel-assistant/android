@@ -559,7 +559,6 @@ static int run_supervisor(char **argv, const char *replacement_nonce) {
                         pending_work, start_result == -2
                             ? GUARD_EXEC_WAIT_LOST : GUARD_EXEC_NOT_STARTED, 0);
                     pending_work = next > 0 ? (enum guard_supervisor_work)next : GUARD_WORK_NONE;
-                    continue;
                 }
             }
         }

@@ -191,6 +191,7 @@ enum guard_capture_state {
     GUARD_CAPTURE_STOP_ATTEMPTED,
     GUARD_CAPTURE_FAILED_LAUNCHING,
     GUARD_CAPTURE_FAILED_NO_MUTATION,
+    GUARD_CAPTURE_FAILED_LAUNCH_ATTEMPTED,
     GUARD_CAPTURE_CANCEL_INTENT,
 };
 
@@ -734,7 +735,7 @@ static int deserialize_journal(char *record, size_t length, guard_journal *journ
 static const char *capture_state_name(enum guard_capture_state state) {
     static const char *const names[] = {
         "INTENT", "STOP_ATTEMPTED", "FAILED_LAUNCHING", "FAILED_NO_MUTATION",
-        "CANCEL_INTENT",
+        "FAILED_LAUNCH_ATTEMPTED", "CANCEL_INTENT",
     };
     return state >= GUARD_CAPTURE_INTENT && state <= GUARD_CAPTURE_CANCEL_INTENT
         ? names[(unsigned)state] : "INVALID";
@@ -4160,6 +4161,24 @@ void cmd_guardaction(conn_ctx *ctx, const char *args) {
     ok_reply(ctx, "GUARDACTION", journal.generation, journal.phase);
 }
 
+/* Only this exact pre-manifest tuple can authorize recovery of the stopped incumbent.
+ * Loading it without a deadline permits settlement after expiry, never a late launch. */
+static int load_failed_capture_at(int dir, guard_plan *plan, guard_capture *capture) {
+    return load_plan_at(dir, GUARD_DRAFT, plan) == 1 &&
+        namespace_has_only_known_names(dir) && plan_boot_is_current(plan) &&
+        load_capture_at(dir, capture) == 1 && capture_matches_draft(capture, plan) &&
+        (capture->state == GUARD_CAPTURE_FAILED_LAUNCHING ||
+         capture->state == GUARD_CAPTURE_FAILED_LAUNCH_ATTEMPTED ||
+         capture->state == GUARD_CAPTURE_FAILED_NO_MUTATION);
+}
+
+/* No install/restore was admitted. Settle even a failed or expired recovery attempt;
+ * this state records no maintenance mutation, not evidence of app health. */
+static int settle_failed_capture_at(int dir, guard_capture *capture) {
+    capture->state = GUARD_CAPTURE_FAILED_NO_MUTATION;
+    return store_capture_at(dir, capture) == GUARD_PUBLISH_COMMITTED ? 0 : -1;
+}
+
 int guard_maintenance_supervisor_tick(void) {
     if (!guard_maintenance_supervisor_authoritative() || !guard_initialized) return -1;
     pthread_mutex_lock(&guard_lock);
@@ -4176,6 +4195,21 @@ int guard_maintenance_supervisor_tick(void) {
     if (loaded == 0) {
         guard_plan draft;
         guard_capture capture;
+        if (dir >= 0 && load_failed_capture_at(dir, &draft, &capture)) {
+            uint64_t now = monotonic_ms();
+            int work = GUARD_WORK_NONE;
+            if (capture.state != GUARD_CAPTURE_FAILED_NO_MUTATION) {
+                if (capture.state == GUARD_CAPTURE_FAILED_LAUNCHING && now != 0 &&
+                    now < draft.overall_deadline_ms &&
+                    load_draft_reconciled(dir, &draft) == 1 &&
+                    installed_apk_stable_exact(draft.package, &draft.a) == 0)
+                    work = GUARD_WORK_LAUNCH_A;
+                else if (settle_failed_capture_at(dir, &capture) != 0) work = -1;
+            }
+            close(dir);
+            pthread_mutex_unlock(&guard_lock);
+            return work;
+        }
         int draft_state = dir >= 0 ? load_draft_reconciled(dir, &draft) : -1;
         int capture_state = dir >= 0 ? load_capture_at(dir, &capture) : -1;
         if (capture_state == 0 && draft_state >= 0) {
@@ -4188,16 +4222,6 @@ int guard_maintenance_supervisor_tick(void) {
             if (dir >= 0) close(dir);
             pthread_mutex_unlock(&guard_lock);
             return -1;
-        }
-        if (capture.state == GUARD_CAPTURE_FAILED_NO_MUTATION) {
-            close(dir);
-            pthread_mutex_unlock(&guard_lock);
-            return GUARD_WORK_NONE;
-        }
-        if (capture.state == GUARD_CAPTURE_FAILED_LAUNCHING) {
-            close(dir);
-            pthread_mutex_unlock(&guard_lock);
-            return GUARD_WORK_LAUNCH_A;
         }
         int completed = complete_capture_locked(dir, &draft, &capture);
         if (completed == 0) {
@@ -4496,6 +4520,14 @@ int guard_maintenance_supervisor_work_deadline(enum guard_supervisor_work work,
                 break;
         }
     }
+    if (loaded == 0 && work == GUARD_WORK_LAUNCH_A) {
+        guard_capture capture;
+        expected = load_failed_capture_at(dir, &plan, &capture) &&
+            capture.state == GUARD_CAPTURE_FAILED_LAUNCHING &&
+            load_draft_reconciled(dir, &plan) == 1 &&
+            installed_apk_stable_exact(plan.package, &plan.a) == 0;
+        if (expected) deadline = plan.overall_deadline_ms;
+    }
     uint64_t now = monotonic_ms();
     if (dir >= 0) close(dir);
     pthread_mutex_unlock(&guard_lock);
@@ -4504,12 +4536,26 @@ int guard_maintenance_supervisor_work_deadline(enum guard_supervisor_work work,
     return 0;
 }
 
-static int guard_plan_package_now(char package[GUARD_PACKAGE_BYTES]) {
+static int guard_plan_package_now(enum guard_supervisor_work work,
+                                  char package[GUARD_PACKAGE_BYTES]) {
     pthread_mutex_lock(&guard_lock);
     int dir = open_guard_dir();
     guard_plan plan;
     guard_journal journal;
     int loaded = dir >= 0 ? load_manifest_reconciled(dir, &plan, &journal, 0) : -1;
+    if (loaded == 0 && work == GUARD_WORK_LAUNCH_A) {
+        guard_capture capture;
+        uint64_t now = monotonic_ms();
+        if (load_failed_capture_at(dir, &plan, &capture) &&
+            capture.state == GUARD_CAPTURE_FAILED_LAUNCHING &&
+            load_draft_reconciled(dir, &plan) == 1 &&
+            installed_apk_stable_exact(plan.package, &plan.a) == 0 &&
+            (now = monotonic_ms()) != 0 && now < plan.overall_deadline_ms) {
+            /* Consume before spawn: a crash or uncertain exec must never replay this launch. */
+            capture.state = GUARD_CAPTURE_FAILED_LAUNCH_ATTEMPTED;
+            if (store_capture_at(dir, &capture) == GUARD_PUBLISH_COMMITTED) loaded = 1;
+        }
+    }
     if (loaded == 1) snprintf(package, GUARD_PACKAGE_BYTES, "%s", plan.package);
     if (dir >= 0) close(dir);
     pthread_mutex_unlock(&guard_lock);
@@ -4529,14 +4575,14 @@ int guard_maintenance_supervisor_start_work(enum guard_supervisor_work work, pid
         "pm", "install", "-r", "-d", GUARD_B_APK_PATH, NULL,
     };
     /* The launch target is the package the plan is bound to.  The supervisor has no caller, so it
-     * reads the durable record; work_deadline above already required a loadable manifest. */
+     * reads the durable manifest or consumes the exact failed-capture recovery authority. */
     char package[GUARD_PACKAGE_BYTES];
     const char *launch[7];
     int package_work = 1;
     if (work == GUARD_WORK_INSTALL_A) { path = "/system/bin/pm"; argv = install_a; }
     else if (work == GUARD_WORK_INSTALL_B) { path = "/system/bin/pm"; argv = install_b; }
     else if (work == GUARD_WORK_LAUNCH_A || work == GUARD_WORK_LAUNCH_B) {
-        if (guard_plan_package_now(package) != 0) return -1;
+        if (guard_plan_package_now(work, package) != 0) return -1;
         launch[0] = "monkey";
         launch[1] = "-p";
         launch[2] = package;
@@ -4595,15 +4641,8 @@ int guard_maintenance_supervisor_complete(enum guard_supervisor_work work,
         if (loaded == 0 && work == GUARD_WORK_LAUNCH_A && dir >= 0) {
             guard_plan draft;
             guard_capture capture;
-            int draft_state = load_draft_reconciled(dir, &draft);
-            int capture_state = load_capture_at(dir, &capture);
-            if (draft_state == 1 && capture_state == 1 &&
-                capture_matches_draft(&capture, &draft) &&
-                capture.state == GUARD_CAPTURE_FAILED_LAUNCHING &&
-                result == GUARD_EXEC_REAPED && WIFEXITED(wait_status) &&
-                WEXITSTATUS(wait_status) == 0 && installed_apk_stable_exact(draft.package, &draft.a) == 0) {
-                capture.state = GUARD_CAPTURE_FAILED_NO_MUTATION;
-                int stored = store_capture_at(dir, &capture);
+            if (load_failed_capture_at(dir, &draft, &capture)) {
+                int stored = settle_failed_capture_at(dir, &capture);
                 close(dir);
                 pthread_mutex_unlock(&guard_lock);
                 return stored == 0 ? GUARD_WORK_NONE : -1;
