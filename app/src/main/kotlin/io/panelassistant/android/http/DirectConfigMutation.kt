@@ -190,6 +190,7 @@ internal fun directConfigOrdinaryOutcomes(
                 config.haExposed(exposed.key, exposed.haExposedByDefault).toString()
             }
             key == "http_allowed_hosts" -> config.httpAllowedHostsRaw
+            key == "http_port" -> (config.httpPortRequest ?: config.httpPort).toString()
             // Bespoke keys with no spec, read back from their own accessors so a handover is reported
             // applied on the evidence of what was stored rather than of what was planned.
             key == "ha_setup_handover" -> config.haSetupHandover.toString()

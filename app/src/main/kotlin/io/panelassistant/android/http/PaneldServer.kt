@@ -405,9 +405,12 @@ class PaneldServer internal constructor(
         stopping = false
         pendingApks.open()
         val listener = PaneldListener(
-            scope, { config.httpPort }, { listenerOffLan(config) },
+            // A requested port is tried first at this start only; a later rebind keeps the bound port.
+            scope, { config.httpPortRequest ?: config.httpPort }, { listenerOffLan(config) },
             onBindFailure = { Log.e(TAG, "HTTP bind on :${config.httpPort} failed", it) },
             onBound = { port ->
+                // Consumed by this start whether it got the requested port or fell back from it.
+                if (this.listener == null && config.httpPortRequest != null) config.setHttpPortRequest(null)
                 if (config.httpPort != port) {
                     config.httpPort = port
                     if (this.listener != null) onReconfigure(setOf("http_port"))

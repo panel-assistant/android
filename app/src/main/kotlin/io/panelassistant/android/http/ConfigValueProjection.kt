@@ -135,7 +135,8 @@ internal class ConfigValueProjection(
         io.panelassistant.android.config.ConfigHash.of(configConcurrencyValues(values))
 
     /** Full config as JSON for fleet management. No credential is ever emitted: secret settings read
-     *  blank. `http_port` is read-only (changing it needs a restart). */
+     *  blank. `http_port` is the port listening now; a POST can only ask for the default back, which
+     *  takes effect the next time the HTTP server starts. */
     fun configJson(
         mutationStatus: String? = null,
         applied: List<String> = emptyList(),
