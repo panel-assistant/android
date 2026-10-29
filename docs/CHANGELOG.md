@@ -2,23 +2,38 @@
 
 ## v1.0.0-rc2
 
+This is the second release candidate of the panel app's 1.0. It pairs with Panel Assistant 1.0.0-rc2, so update Panel Assistant first: the WebView installs, the new connection for rooted panels and panel log routing below all need it. If you use network ADB on a rooted panel yourself, note that it is switched off once this panel app is connected to Panel Assistant 1.0.0-rc2; removing the panel from Panel Assistant turns it back on.
+
 ### New
 
-- Panel Assistant can install a compatible, verified WebView during setup or through an owner-started Repair. An old browser engine is advisory during setup, so pairing can finish before a retry. Updates never downgrade or replace a Play-managed provider.
+- **Panel Assistant can update a panel's WebView.** During installation, during a panel app update you start in Home Assistant, or through a Repair you start, Panel Assistant 1.0.0-rc2 installs the newest known-good Android System WebView for that panel model and checks it before use. A too-old browser engine no longer stops setup, so pairing can finish first and the update can follow. It never downgrades the WebView or replaces one the Play Store keeps up to date.
+- **Rooted panels are managed over their own connection.** On a rooted panel, Panel Assistant 1.0.0-rc2 now sends its update and maintenance commands over the panel's own connection to Panel Assistant, so Panel Assistant no longer needs network ADB to reach it. Network ADB is switched off while Panel Assistant manages the panel, and the ADB switch on the Configure page says so. Removing the panel from Panel Assistant turns ADB back on.
+- **Panel logs through Panel Assistant.** When you choose a log destination under Panel Assistant 1.0.0-rc2's Panel logs option, every panel sends its logs there through its connection to Home Assistant, and goes back to its own log settings when that connection ends.
+- **A Meta Portal takes the panel's name.** The name you give the panel now also becomes the Portal's own device name, set through Meta's normal name editor and checked after saving.
 
 ### Changed
 
-- Home Assistant's menu button is shown again by default on every panel, including existing panels, and the sidebar opens from it. You can hide it again with Hide Home Assistant navigation (native) on the Configure page's Built-in renderer card.
-
-- On a rooted panel, network ADB is switched off once Panel Assistant 1.0.0-rc2 is installed and connected, because Panel Assistant now sends its commands over the panel's own connection. The panel's ADB switch then shows it as managed by Panel Assistant.
-
-- The panel's local web page moves to a free port if another app already uses 8888.
-
-- UI layout checks use pinned browser images and split the test suite to reduce CI time.
+- **Home Assistant's menu button is back on every panel.** It is shown again by default on every panel, including existing panels where it had been hidden, and the sidebar opens from it. You can hide it again with Hide Home Assistant navigation (native) on the Configure page's Built-in renderer card, and that choice is kept from now on.
+- **The panel app becomes the home screen only once setup is finished.** Until then the panel keeps its own launcher, and an abandoned setup hands the home screen back and can be uninstalled from Android Settings. Removing the panel app returns the panel to the home screen it had before, and on a rooted panel also stops and removes the app's root helper.
+- **The panel's web page finds a free port.** It moves to a free port if another app already uses 8888, and Panel Assistant follows it there.
+- **Consistent wording.** Interface wording is consistent across the panel's pages, using Home Assistant's own terms and British English, with every language updated to match.
 
 ### Fixed
 
-- A panel no longer stays on its "Learning" screen without a dashboard. One updated from 0.9.11 could stop on "Building the filtered set" for good. If the panel has not finished preparing its entity filter after 90 seconds, for whatever reason, it now shows the dashboard unfiltered, keeps trying, and switches to the filtered dashboard once it can. Panel Assistant reports the panel while that lasts.
+- **A panel no longer stays on its "Learning" screen without a dashboard.** One updated from 0.9.11 could stop on "Building the filtered set" for good. If the panel has not finished preparing its entity filter after 90 seconds, for whatever reason, it now shows the dashboard unfiltered, keeps trying, and switches to the filtered dashboard once it can. Panel Assistant 1.0.0-rc2 reports the panel with a Repair while that lasts.
+- **No more "Login attempt failed" on every install.** Checking the Home Assistant address during installation made Home Assistant show a failed-login notification naming the panel and count it towards an IP ban. The check now uses a request Home Assistant answers without a login.
+- **The panel says why it cannot reach Home Assistant.** When no connection works, the blocked screen now names the cause, such as refused, timed out or a name that does not resolve, and the address it tried.
+- **Too-old WebView warnings point to the fix.** The setup page in a browser names Android System WebView and links the update steps for your panel model, and the System WebView warning on the Dashboard and Install pages now opens those same steps instead of a general hardware page. The panel's own setup screen now says its browser engine is too old at every step of setup, that setup can still finish, and that the setup page in a browser shows how to update it.
+- **Dark and Light on older Android.** The dashboard follows the panel's Dark or Light choice on panels running Android 9 or older, such as the Sonoff NSPanel Pro.
+- **A refused fallback address no longer ends sign-in.** A panel whose sign-in is refused on one of its fallback addresses, such as a cloud address for a Home Assistant user who may only sign in locally, no longer stops at "Home Assistant sign-in rejected". It rules that address out and goes back to its other addresses, including the one you configured. This pairs with Panel Assistant 1.0.0-rc2, which no longer hands a local-only user's panel the external or Home Assistant Cloud (Nabu Casa) address.
+- **Clearer sign-in step.** The setup page's sign-in step says the panel is showing a Home Assistant login and that you can sign in there or in the browser, instead of claiming a sign-in was already in progress.
+- **No more refusal to start after a fresh install.** A freshly installed panel app no longer refuses to start now and then, reporting its new settings database as too old.
+- **The Info page's process lists show the right processes.** The CPU and memory lists no longer show a newly started process under the name and usage of one that has already ended, and busy system processes no longer go missing from them.
+- **Translation corrections** in every shipped language, including labels that wrapped in the sidebar.
+
+### Thanks
+
+- **Thank you, @merdok.** The Smatek S9E room temperature and humidity reading arrived in rc1 and I missed it in those notes. Both S9E changes in rc1 came from @merdok: "feat(climate): read S9E room temperature + humidity via direct i2c path" and "fix(profile): S9E screen-off uses su-blpower for a true backlight-off".
 
 ## v1.0.0-rc1 - 2026-10-25
 
