@@ -18,6 +18,9 @@
 #define APP_ROOT "/tmp/.hapaneld-guard-app-test"
 #define DB_DIR APP_ROOT "/data/user/0/io.panelassistant.android/databases"
 #define DB DB_DIR "/ha-paneld.db"
+#define COMPANION_ROOT "/tmp/.hapaneld-companion-test"
+#define COMPANION_DATA COMPANION_ROOT "/data/user/0/io.homeassistant.companion.android"
+#define COMPANION_ROLLBACK COMPANION_DATA "/databases/.HomeAssistantDB.hapaneld-rollback"
 #define INSTALLED "/tmp/.hapaneld-guard-installed"
 #define SESSION "1111111111111111111111111111111111111111111111111111111111111111"
 #define SIGNER "2222222222222222222222222222222222222222222222222222222222222222"
@@ -25,6 +28,7 @@ static char fixture[256];
 static pid_t supervisor = -1;
 static int failures;
 static int boot_owned;
+static int companion_owned;
 int __real_unlinkat(int dir, const char *name, int flags);
 int __real_lstat(const char *path, struct stat *st);
 int __wrap_lstat(const char *path, struct stat *st) {
@@ -59,6 +63,10 @@ static void cleanup(void) {
     for (int i = 0; i < 20; i++) {
         while (waitpid(-1, NULL, WNOHANG) > 0) { }
         usleep(1000);
+    }
+    if (companion_owned) {
+        nftw(COMPANION_DATA, remove_entry, 16, FTW_DEPTH | FTW_PHYS);
+        companion_owned = 0;
     }
     unlink(LIVE); unlink(LIVE ".new"); unlink(LIVE ".old");
     nftw(STAGE, remove_entry, 16, FTW_DEPTH | FTW_PHYS);
@@ -316,12 +324,26 @@ static void test_retirement(void) {
         "uninstall deletes its binary, staging and both owned state compartments");
 }
 static void test_holds(void) {
-    for (size_t i = 0; i < 6; i++) {
+    for (size_t i = 0; i < 7; i++) {
         prepare();
         char held[384];
         if (i == 5) {
             snprintf(held, sizeof held, "%s/io-error", fixture); write_file(held, "error");
             setenv("HAPANELD_RETIRE_STAT_ERROR", held, 1);
+        }
+        if (i == 6) {
+            const char *parents[] = { COMPANION_ROOT, COMPANION_ROOT "/data",
+                COMPANION_ROOT "/data/user", COMPANION_ROOT "/data/user/0" };
+            for (size_t d = 0; d < sizeof parents / sizeof parents[0]; d++)
+                if (mkdir(parents[d], 0700) != 0 && errno != EEXIST) abort();
+            if (mkdir(COMPANION_DATA, 0700) != 0) abort();
+            companion_owned = 1;
+            if (mkdir(COMPANION_DATA "/databases", 0700) != 0 ||
+                mkdir(COMPANION_DATA "/shared_prefs", 0700) != 0) abort();
+            snprintf(held, sizeof held, COMPANION_ROLLBACK);
+            write_file(held, "interrupted Companion restore");
+            if (mkdir(STAGE, 0700) != 0) abort();
+            write_file(STAGE "/companion-db.payload", "private backup");
         }
         start(); CHECK(ready(), "hold fixture starts the production supervisor");
         if (i == 0) snprintf(held, sizeof held, "%s/.hapaneld-guard-db-test/inflight", fixture);
@@ -341,6 +363,8 @@ static void test_holds(void) {
         usleep(220000);
         CHECK(kill(supervisor, 0) == 0 && exists(LIVE),
             "in-progress custody, lease or unproven absence retains the helper");
+        if (i == 6) CHECK(exists(held) && exists(STAGE "/companion-db.payload") && ping(),
+            "Companion rollback without a stage marker retains payloads and a serving helper");
         if (i == 1) CHECK(held_status_available(),
             "a held retirement keeps the socket available for recovery status");
         if (i < 3) { CHECK(exists(held), "retirement preserves the pending transaction record"); unlink(held); if (i == 2) rmdir(LEASE); }
@@ -351,8 +375,11 @@ static void test_holds(void) {
                 return;
             }
         }
-        else { unlink(held); unsetenv("HAPANELD_RETIRE_STAT_ERROR"); }
+        else if (i == 5) { unlink(held); unsetenv("HAPANELD_RETIRE_STAT_ERROR"); }
+        else unlink(held);
         CHECK(wait_exit(0), "supervisor retries retirement after the hold clears");
+        if (i == 6) CHECK(!exists(LIVE) && !exists(STAGE),
+            "clearing the Companion rollback releases helper and payload retirement");
     }
 }
 static void test_interruption(void) {
