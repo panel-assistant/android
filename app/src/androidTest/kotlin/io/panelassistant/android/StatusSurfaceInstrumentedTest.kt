@@ -259,7 +259,11 @@ class StatusSurfaceInstrumentedTest {
             activity.settle()
             val panelBottom = activity.findViewById<View>(android.R.id.content).height
             assertEquals("the frame must fill the panel", panelHeightPx, panelBottom)
-            ((rows[2] as ViewGroup).let { group -> (0 until group.childCount).map(group::getChildAt) }).filterIsInstance<Button>().forEach { action ->
+            val actions = (rows[2] as ViewGroup).let { group ->
+                (0 until group.childCount).map(group::getChildAt).filterIsInstance<Button>()
+            }
+            assertEquals("all three requested actions must actually be attached", 3, actions.size)
+            actions.forEach { action ->
                 assertTrue("fixture sanity: an action must be laid out", action.height > 0)
                 assertTrue(
                     "an action ends at ${action.bottomInWindow()} on a ${panelBottom}px panel",
