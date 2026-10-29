@@ -47,6 +47,7 @@ test:
 	$(MAKE) test-units
 
 test-units: $(TEST_BINS)
+	$(MAKE) adb-recovery-retirement-test
 	$(BUILD)/adb-recovery
 	$(BUILD)/uninstall-supervisor
 	$(BUILD)/unit
@@ -176,3 +177,11 @@ $(BUILD)/adb-recovery: test/adb_recovery.c $(SRC_DIR)/adb_recovery.c $(SRC_DIR)/
 	$(CC) $(CFLAGS) -DAPP_DATA='"/proc/self"' -DAPP_USER_DATA='"/proc/self"' -DHAPANELD_BUILD_ID='"$(TEST_BUILD_ID)"' -I$(SRC_DIR) test/adb_recovery.c $(SRC_DIR)/identity.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c $(LDLIBS) -o $@
 adb-recovery-test: $(BUILD)/adb-recovery
 	$(BUILD)/adb-recovery
+
+# Process/filesystem proof through the production command-line entry.
+.PHONY: adb-recovery-retirement-test
+adb-recovery-retirement-test: $(BUILD)/adb-recovery-retirement
+	$(BUILD)/adb-recovery-retirement
+$(BUILD)/adb-recovery-retirement: test/adb_recovery_retirement.py | $(BUILD)
+	cp $< $@
+	chmod +x $@
