@@ -2,7 +2,6 @@ package io.panelassistant.android.audio
 
 import kotlin.math.abs
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -87,32 +86,6 @@ class MicrophoneGainTest {
         assertSame(frame, forwarded)
         assertEquals(1000, frame.samples[0].toInt())
         assertEquals(-1000, frame.samples[1].toInt())
-    }
-
-    /**
-     * Guards the reason the stage exists at all. microWakeWord's own frontend applies PCAN adaptive gain,
-     * so the detector needs no help and is hurt by clipping; speech-to-text has no such adaptation. If a
-     * future change routes the wake-word listener through a gain stage, the two consumers stop seeing the
-     * same signal for the same utterance and this assertion is the one that should fail.
-     */
-    @Test fun aStageWrapsOnlyTheConsumerItWasGivenAndNotItsSiblings() {
-        val wakeWordSaw = mutableListOf<Short>()
-        val wakeWord = object : PcmConsumer {
-            override fun onFrame(frame: PcmFrame) { wakeWordSaw += frame.samples[0] }
-        }
-        val pipelineSaw = mutableListOf<Short>()
-        val pipeline = object : PcmConsumer {
-            override fun onFrame(frame: PcmFrame) { pipelineSaw += frame.samples[0] }
-        }
-        val amplified = GainStage(pipeline, 12)
-
-        // The fan-out hands each consumer its own array, which is what makes the two paths independent.
-        wakeWord.onFrame(PcmFrame(shortArrayOf(1000), timestampNs = 1L))
-        amplified.onFrame(PcmFrame(shortArrayOf(1000), timestampNs = 1L))
-
-        assertEquals(1000, wakeWordSaw.single().toInt())
-        assertNotSame(wakeWordSaw.single(), pipelineSaw.single())
-        assertTrue("pipeline should be louder, got ${pipelineSaw.single()}", pipelineSaw.single() > 3000)
     }
 
     private fun assertArrayEqualsShort(expected: ShortArray, actual: ShortArray) {

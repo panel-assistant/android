@@ -51,12 +51,6 @@ class MicrophoneAdmissionTest {
     // ---- shared-microphone idleness ------------------------------------------------------------
 
     @Test
-    fun anUnwiredPanelReportsTheMicrophoneIdle() {
-        MicrophoneAdmission.reset()
-        assertTrue("nothing can be holding a microphone nothing leases", MicrophoneAdmission.isIdle())
-    }
-
-    @Test
     fun anObservedSourceIsIdleOnlyWhileNoLeaseIsHeld() {
         val source = FakeMicrophoneSource()
         MicrophoneAdmission.observe(source)

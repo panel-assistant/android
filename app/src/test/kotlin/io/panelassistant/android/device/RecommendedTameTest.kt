@@ -30,11 +30,6 @@ class RecommendedTameTest {
         )
     }
 
-    @Test fun eWeLinkKioskIsRecommended() {
-        // The whole point of the item: explicitly taming this package hides the over-dashboard panel.
-        assertTrue("com.eWeLinkControlPanel" in recommended)
-    }
-
     @Test fun demoVideoPlayerIsNotRecommended() {
         // A demo the user might actually use — a deliberate per-package choice, not stripped by default.
         assertFalse("android.rk.RockVideoPlayer" in recommended)

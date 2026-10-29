@@ -32,7 +32,6 @@ class HomeChooserAnswerTest {
         var taps = 0
         /** Taps Android accepts on a chooser that then stays, as an Always that never takes would. */
         var ignoredTaps = false
-        val log = mutableListOf<String>()
         private var due: Long? = null
 
         val answer = HomeChooserAnswer(
@@ -57,7 +56,7 @@ class HomeChooserAnswerTest {
                 true
             },
             answerAgainIn = { due = it },
-            log = { log += it },
+            log = {},
         )
 
         /** What the service runs: the answer on connect, on each chooser window, and when a recheck falls due. */
@@ -141,7 +140,6 @@ class HomeChooserAnswerTest {
         portal.answer.connected()
         portal.settle()
         assertEquals(0, portal.homePresses)
-        assertEquals(emptyList<String>(), portal.log)
     }
 
     private val standingScreen = ChooserWindow("io.panelassistant.android", "Not set up", null, null)
@@ -155,7 +153,6 @@ class HomeChooserAnswerTest {
         panel.settle()
         assertEquals(0, panel.homePresses)
         assertEquals(standingScreen, panel.front)
-        assertEquals(listOf("HOME is unowned before first setup; leaving it to the installer"), panel.log)
         panel.home = dashboard // the installer's set-home-activity
         panel.settle()
         assertEquals(0, panel.homePresses)

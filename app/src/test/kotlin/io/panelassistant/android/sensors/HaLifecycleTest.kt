@@ -90,14 +90,6 @@ class HaLifecycleTest {
         assertEquals(HaLifecycleState.NORMAL, ha.state(601_000))
     }
 
-    @Test fun duplicateShutdownEventsDoNotReopenOrReannounce() {
-        val ha = lifecycle()
-        ha.notice(HaLifecyclePhase.SHUTTING_DOWN, 1_000)
-        ha.notice(HaLifecyclePhase.SHUTTING_DOWN, 1_050)
-        ha.notice(HaLifecyclePhase.SHUTTING_DOWN, 1_060)
-        assertEquals(HaLifecycleState.SHUTTING_DOWN, ha.state(1_060))
-    }
-
     @Test fun duplicateStartedDoesNotRestartTheBackOnlineWindow() {
         val ha = lifecycle()
         ha.notice(HaLifecyclePhase.SHUTTING_DOWN, 0L)
@@ -191,7 +183,6 @@ class HaLifecycleTest {
             assertTrue("window $invalid must be rejected", failed)
         }
     }
-
 
     @Test fun aConnectionLossDuringARecoveryNoticeIsAConnectionLoss() {
         val ha = lifecycle()

@@ -2,7 +2,6 @@ package io.panelassistant.android.config
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -11,8 +10,6 @@ import org.junit.Test
  *  panels that have the OS control follow it and hide the toggle. */
 class DarkModeSpecTest {
     private val spec = SettingsRegistry.spec("dark_mode")
-
-    @Test fun registered() = assertNotNull("dark_mode must stay in the registry (persist/export/import)", spec)
 
     @Test fun defaultsDarkBoolOnDisplayCard() {
         assertEquals(SettingType.BOOL, spec!!.type)

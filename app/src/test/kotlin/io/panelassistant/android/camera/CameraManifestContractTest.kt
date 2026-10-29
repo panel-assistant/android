@@ -1,6 +1,8 @@
 package io.panelassistant.android.camera
 
 import java.io.File
+import javax.xml.parsers.DocumentBuilderFactory
+import org.w3c.dom.Element
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -20,22 +22,28 @@ import org.junit.Test
 class CameraManifestContractTest {
 
     // Source-text reason: the shipped manifest's permissions, optional features and service types are the install contract.
-    private val manifest = File("src/main/AndroidManifest.xml").readText()
+    private val manifest = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
+        .newDocumentBuilder().parse(File("src/main/AndroidManifest.xml"))
 
-    private fun declares(permission: String): Boolean =
-        Regex("""<uses-permission\s+android:name="android\.permission\.$permission"""").containsMatchIn(manifest)
+    private fun elements(tag: String): List<Element> {
+        val nodes = manifest.getElementsByTagName(tag)
+        return (0 until nodes.length).map { nodes.item(it) as Element }
+    }
 
-    /** Every service that declares a foreground-service type, mapped to the types it declares. */
-    private val serviceTypeDeclarations: Map<String, List<String>> =
-        Regex("""<service\s+android:name="([^"]+)"[^>]*?foregroundServiceType="([^"]+)"""")
-            .findAll(manifest)
-            .associate { it.groupValues[1] to it.groupValues[2].split("|") }
+    private fun Element.androidAttribute(name: String): String =
+        getAttributeNS("http://schemas.android.com/apk/res/android", name)
+
+    private fun declares(permission: String): Boolean = elements("uses-permission")
+        .any { it.androidAttribute("name") == "android.permission.$permission" }
 
     /** Empty rather than throwing, so a missing declaration fails an assertion instead of erroring. */
-    private fun serviceTypes(service: String): List<String> = serviceTypeDeclarations[service] ?: emptyList()
+    private fun serviceTypes(service: String): List<String> = elements("service")
+        .firstOrNull { it.androidAttribute("name") == service }
+        ?.androidAttribute("foregroundServiceType")?.split("|") ?: emptyList()
 
-    private fun servicesDeclaringType(type: String): List<String> =
-        serviceTypeDeclarations.filterValues { it.contains(type) }.keys.sorted()
+    private fun servicesDeclaringType(type: String): List<String> = elements("service")
+        .filter { type in it.androidAttribute("foregroundServiceType").split("|") }
+        .map { it.androidAttribute("name") }.sorted()
 
     @Test fun theCameraAndMicrophonePermissionsAreBothDeclared() {
         assertTrue("the camera trial needs the camera permission", declares("CAMERA"))
@@ -53,8 +61,9 @@ class CameraManifestContractTest {
         listOf("android.hardware.camera", "android.hardware.camera.any", "android.hardware.camera.autofocus").forEach { feature ->
             assertTrue(
                 "$feature must be declared optional",
-                Regex("""<uses-feature\s+android:name="${Regex.escape(feature)}"\s+android:required="false"""")
-                    .containsMatchIn(manifest),
+                elements("uses-feature").any {
+                    it.androidAttribute("name") == feature && it.androidAttribute("required") == "false"
+                },
             )
         }
     }
@@ -83,12 +92,9 @@ class CameraManifestContractTest {
     }
 
     @Test fun theCameraServiceIsDedicatedAndUnexported() {
-        assertTrue(
-            manifest.contains(
-                """android:name="io.panelassistant.android.camera.CameraForegroundService"
-            android:exported="false"""",
-            ),
-        )
+        val services = elements("service").filter { it.androidAttribute("name") == CAMERA_SERVICE }
+        assertEquals("one dedicated camera service is declared", 1, services.size)
+        assertEquals("the camera service cannot be started by other apps", "false", services[0].androidAttribute("exported"))
     }
 
     private companion object {

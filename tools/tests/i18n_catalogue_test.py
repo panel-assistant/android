@@ -1,4 +1,3 @@
-import ast
 import importlib.util
 import hashlib
 import io
@@ -187,46 +186,37 @@ class CatalogueTest(unittest.TestCase):
                 with self.subTest(name), self.assertRaisesRegex(i18n.CatalogueError, "changed markup|unsafe control"):
                     target(text)
 
-    def test_target_script_policy_is_unique_complete_and_mutation_sensitive(self):
-        tree = ast.parse(SCRIPT.read_text(encoding="utf-8"))
-        assignment = next(
-            node for node in tree.body
-            if isinstance(node, ast.Assign)
-            and any(
-                isinstance(target, ast.Name) and target.id == "TARGET_SCRIPT_POLICIES"
-                for target in node.targets
-            )
-        )
-        self.assertIsInstance(assignment.value, ast.Dict)
-        literal_keys = [ast.literal_eval(key) for key in assignment.value.keys]
-        self.assertEqual(
-            len(literal_keys), len(set(literal_keys)), "script policy has duplicate locale keys"
-        )
-        self.assertSetEqual(set(literal_keys), i18n.LOCALES)
+    def test_target_validation_requires_complete_supported_script_policies(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source_path, target_path = root / "en.json", root / "de.json"
+            self.write(source_path, self.source())
+            source = i18n.validate_source(source_path)
+            target = {
+                "schema": 1, "locale": "de", "sourceRevision": source["sourceRevision"],
+                "strings": {"settings.example.help": {
+                    "text": "Behalte {name} auf HTTP.",
+                    "sourceHash": source["strings"]["settings.example.help"]["sourceHash"],
+                    "state": "machine-draft",
+                }},
+            }
+            self.write(target_path, target)
+            self.assertEqual(target, i18n.validate_target(target_path, source))
 
-        source_record = {"text": "Example", "placeholders": [], "frozen": []}
-        selected = sorted(i18n.LOCALES)[0]
-        for mutation in (
-            {
-                key: value
-                for key, value in i18n.TARGET_SCRIPT_POLICIES.items()
-                if key != selected
-            },
-            {**i18n.TARGET_SCRIPT_POLICIES, "extra-locale": "latin"},
-        ):
-            with (
-                self.subTest(mutation=mutation),
-                mock.patch.object(i18n, "TARGET_SCRIPT_POLICIES", mutation),
-                self.assertRaisesRegex(i18n.CatalogueError, "must exactly cover"),
+            # A policy defect anywhere must close target validation, even when the
+            # current file uses another locale with an otherwise valid policy.
+            for policies, message in (
+                ({key: value for key, value in i18n.TARGET_SCRIPT_POLICIES.items()
+                  if key != "cs"}, "must exactly cover"),
+                ({**i18n.TARGET_SCRIPT_POLICIES, "extra-locale": "latin"}, "must exactly cover"),
+                ({**i18n.TARGET_SCRIPT_POLICIES, "cs": "unsupported"}, "policy is invalid"),
             ):
-                i18n.validate_target_language(
-                    "settings.example.label", "Beispiel", selected, source_record
-                )
-        with (
-            mock.patch.dict(i18n.TARGET_SCRIPT_POLICIES, {selected: "unsupported"}),
-            self.assertRaisesRegex(i18n.CatalogueError, "policy is invalid"),
-        ):
-            i18n.validate_target_script_policies()
+                with (
+                    self.subTest(policies=policies),
+                    mock.patch.object(i18n, "TARGET_SCRIPT_POLICIES", policies),
+                    self.assertRaisesRegex(i18n.CatalogueError, message),
+                ):
+                    i18n.validate_target(target_path, source)
 
     def test_uk_registration_requires_the_reserved_cyrillic_policy(self):
         # Ukrainian is now a registered release locale, so this exercises the reserved-policy

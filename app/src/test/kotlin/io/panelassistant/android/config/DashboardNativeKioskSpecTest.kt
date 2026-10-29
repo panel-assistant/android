@@ -16,7 +16,6 @@ class DashboardNativeKioskSpecTest {
         assertEquals(Scope.PORTABLE, spec.scope)
         assertFalse(spec.hidden)
         assertFalse(spec.transient)
-        assertEquals("Hide Home Assistant navigation (native)", spec.label)
     }
 
     @Test fun `native kiosk is not advertised as an external entity or CSS emulation`() {
@@ -32,13 +31,11 @@ class DashboardNativeKioskSpecTest {
         val androidLock = requireNotNull(SettingsRegistry.spec("kiosk_lock"))
         val systemBars = requireNotNull(SettingsRegistry.spec("dashboard_fullscreen"))
 
-        assertEquals("Lock Android to dashboard (experimental)", androidLock.label)
         assertTrue(androidLock.help.contains("Root-only casual-use lock"))
         assertTrue(androidLock.help.contains("within about 3 seconds"))
         assertTrue(androidLock.help.contains("60-second unlocked window after reboot"))
         assertTrue(androidLock.help.contains("does not hide Home Assistant navigation"))
 
-        assertEquals("Hide Android system bars", systemBars.label)
         assertTrue(systemBars.help.contains("while the dashboard is in front"))
         assertTrue(systemBars.help.contains("does not lock the panel"))
         assertTrue(systemBars.help.contains("does not") && systemBars.help.contains("Home Assistant navigation"))

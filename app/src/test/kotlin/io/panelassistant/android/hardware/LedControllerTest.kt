@@ -3,7 +3,6 @@ package io.panelassistant.android.hardware
 import io.panelassistant.android.control.FakeDaemon
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -26,13 +25,16 @@ class LedControllerTest {
 
     @Test fun ioctlFallbackKeepsADeclaredCurveAndDropsOnlyTheStub() {
         val curve = LedTransfer.curved(TransferCurve.Gamma(2.2))
-        assertSame(curve, LedFactory.fallbackTransfer(curve))
-        assertSame(LedTransfer.Identity, LedFactory.fallbackTransfer(LedTransfer.Rk3576FourBit))
-        assertSame(LedTransfer.Identity, LedFactory.fallbackTransfer(LedTransfer.Identity))
+        val levels = listOf(-1, 0, 64, 128, 255, 999)
+        assertEquals(listOf(0, 0, 12, 56, 255, 255), levels.map(LedFactory.fallbackTransfer(curve)::toHardware))
+        for (transfer in listOf(LedTransfer.Rk3576FourBit, LedTransfer.Identity)) {
+            assertEquals(listOf(0, 0, 64, 128, 255, 255), levels.map(LedFactory.fallbackTransfer(transfer)::toHardware))
+        }
     }
 
     @Test fun theIdentityCurveIsThePassthrough() {
-        assertSame(LedTransfer.Identity, LedTransfer.curved(TransferCurve.Identity))
+        val transfer = LedTransfer.curved(TransferCurve.Identity)
+        assertEquals(listOf(0, 0, 128, 255, 255), listOf(-1, 0, 128, 255, 999).map(transfer::toHardware))
     }
 
     @Test fun socketProbeDistinguishesAbsentAndLegacyHelpers() {

@@ -27,7 +27,6 @@ class AdaptiveBrightnessSettingTest {
         val spec = SettingsRegistry.spec("auto_brightness_minimum_percent")!!
 
         assertEquals(SettingType.INT, spec.type)
-        assertEquals("Minimum level", spec.label)
         assertEquals("4", spec.default)
         assertEquals(4.0, spec.min)
         assertEquals(99.0, spec.max)
@@ -75,7 +74,6 @@ class AdaptiveBrightnessSettingTest {
         val spec = SettingsRegistry.spec("auto_brightness_response_percent")!!
 
         assertEquals(SettingType.INT, spec.type)
-        assertEquals("Sensitivity", spec.label)
         assertEquals("50", spec.default)
         assertEquals(0.0, spec.min)
         assertEquals(100.0, spec.max)

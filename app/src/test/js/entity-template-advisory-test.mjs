@@ -6,28 +6,18 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import { loadTransport } from './page-transport.mjs';
+import { loadTransport, textElement } from './page-transport.mjs';
 
 const source = fs.readFileSync(process.argv[2], 'utf8');
 const focused = [];
 const scrolled = [];
 
 function element(name = '') {
-  const listeners = new Map();
-  return {
-    name,
-    dataset: {}, className: '', textContent: '', innerHTML: '', checked: false, disabled: false,
-    value: '', children: [], hidden: false,
-    classList: { toggle() {}, remove() {}, add() {} },
-    addEventListener(type, listener) { listeners.set(type, listener); },
-    appendChild(child) { this.children.push(child); return child; },
-    querySelector() { return null; }, querySelectorAll() { return []; },
-    matches() { return false; }, closest() { return null; },
-    focus() { focused.push(this.name); },
-    getBoundingClientRect() { return { top: 4000, bottom: 4400 }; },
-    scrollIntoView() { scrolled.push(this.name); },
-    async fire(type, event = {}) { const listener = listeners.get(type); return listener && listener.call(this, event); },
-  };
+  const node = textElement(name);
+  node.focus = () => { focused.push(name); };
+  node.getBoundingClientRect = () => ({ top: 4000, bottom: 4400 });
+  node.scrollIntoView = () => { scrolled.push(name); };
+  return node;
 }
 
 const ids = {};
@@ -45,6 +35,7 @@ global.document = {
   querySelector: () => null,
   querySelectorAll: () => [],
   createElement: (tag) => element(tag),
+  createTextNode: (text) => { const node = element('#text'); node.textContent = text; return node; },
 };
 global.setInterval = () => 0;
 global.confirm = () => false;
@@ -92,34 +83,30 @@ const rows = ids['entity-issues-list'].children;
 assert.equal(rows.length, 2, 'both advisory rows render');
 const [blockingRow, gapRow] = rows;
 
-// The template-specific explanation reaches the reader, and nothing from the template does.
-assert.match(blockingRow.innerHTML, /does not evaluate templates/);
-assert.match(blockingRow.innerHTML, /delivered outside this filter/);
-assert.match(blockingRow.innerHTML, /they need nothing/);
-assert.ok(!blockingRow.innerHTML.includes('{%'), 'no template text may reach the row');
-assert.ok(!blockingRow.innerHTML.includes('hourly_tick'), 'no entity from inside a template may reach the row');
+// The template-specific explanation reaches the reader through the browser DOM renderer.
+assert.match(blockingRow.textContent, /does not evaluate templates/);
+assert.match(blockingRow.textContent, /delivered outside this filter/);
+assert.match(blockingRow.textContent, /they need nothing/);
 
 // What Allow does is stated where Allow is offered, not buried.
-assert.match(blockingRow.innerHTML, /Allowing this check never adds entities/);
-assert.match(blockingRow.innerHTML, /set it to <b>Pinned<\/b>/);
-assert.match(blockingRow.innerHTML, /a manual pin is kept until you remove it/);
-assert.match(blockingRow.innerHTML, /Search the entity catalogue/);
+assert.match(blockingRow.textContent, /Allowing this check never adds entities/);
+assert.match(blockingRow.textContent, /set it to Pinned/);
+assert.match(blockingRow.textContent, /a manual pin is kept until you remove it/);
+assert.match(blockingRow.textContent, /Search the entity catalogue/);
 
 // A row that offers no Allow makes no claim about it.
-assert.ok(!gapRow.innerHTML.includes('Allowing this check'), 'a non-ignorable row must not offer allow copy');
-assert.ok(!gapRow.innerHTML.includes('Search the entity catalogue'));
-assert.equal(gapRow.children.length, 0, 'a non-ignorable row appends no control');
+assert.ok(!gapRow.textContent.includes('Allowing this check'), 'a non-ignorable row must not offer allow copy');
+assert.ok(!gapRow.textContent.includes('Search the entity catalogue'));
+assert.equal(gapRow.querySelectorAll('button').length, 0, 'a non-ignorable row offers no control');
 
-// The toggle is still the appended control, so the existing severity contracts keep holding.
-assert.equal(blockingRow.children.length, 1);
-assert.equal(blockingRow.children[0].className, 'pbtn entity-issue-toggle');
-assert.equal(blockingRow.children[0].textContent, 'Ignore potential entities and continue');
-
-// The route actually goes somewhere: it focuses the catalogue search box, which is sticky and so in view.
-await ids['entity-issues-list'].fire('click', {
-  target: { closest: (selector) => (selector === '.entity-issue-search' ? element('route') : null) },
-});
-assert.deepEqual(focused, ['entity-search'], 'the route focuses the catalogue search box');
+// Both controls exist in the rendered row; follow the actual catalogue action a reader can click.
+const buttons = blockingRow.querySelectorAll('button');
+assert.equal(buttons.length, 2);
+const route = buttons.find(button => button.textContent === 'Search the entity catalogue');
+assert.ok(route, 'the advisory offers a catalogue search action');
+assert.ok(buttons.some(button => button.textContent === 'Ignore potential entities and continue'));
+await ids['entity-issues-list'].fire('click', { target: route });
+assert.deepEqual(focused, ['entity-search'], 'the rendered route focuses the catalogue search box');
 
 // An unrelated click inside the issues card does nothing.
 focused.length = 0;

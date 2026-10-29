@@ -180,7 +180,7 @@ internal class ServiceVoiceAudio(
             foregroundMicrophone = ::setMicrophoneForegroundActive,
             state = voiceStateAuthority,
             engineFactory = io.panelassistant.android.assist.MicroWakeWordEngineFactory(
-                wakeWordCatalog,
+                wakeWordCatalog::load,
                 log = { Log.i(TAG, it) },
                 sensitivity = { config().voiceSensitivity },
             ),

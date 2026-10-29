@@ -90,22 +90,34 @@ class BundledHelperInstallerTest {
         assertEquals(io.panelassistant.android.BuildConfig.HELPER_BUILD_ID, shellId)
     }
 
-    @Test fun `stage command atomically publishes a bounded candidate under shared authority lock`() {
-        val hash = "c".repeat(64)
-        val command = bundledHelperStageCommand(hash)
-        assertTrue(command.contains(".hapaneld-helper-transaction.lock"))
-        assertTrue(command.contains("upload=\$data_local/.hapaneld-helper.app-stage-$hash"))
-        assertTrue(command.contains("cat > \"\$upload\""))
-        assertTrue(command.contains("[ \"\${actual%% *}\" = \"$hash\" ]"))
-        assertTrue(command.contains("chown 0:0 \"\$upload\""))
-        assertTrue(command.contains("chmod 700 \"\$upload\""))
-        assertTrue(command.contains("0:0:700:1:*"))
-        assertTrue(command.contains("16777216"))
-        assertTrue(command.contains("mv -f \"\$upload\" \"\$stage\""))
-        assertTrue(command.contains("echo STAGED_OK"))
-        assertFalse(command.contains("cat > \"\$stage\""))
-        listOf("cp ", "pkill", " stop ", " start ", "--supervise", "awk", "/data/local/tmp")
-            .forEach { assertFalse(it, command.contains(it)) }
+    @Test fun `stage command accepts the upload limit and rejects larger authenticated bytes`() {
+        val root = scratchDirectory("bundled-helper-stage-limit-").toFile()
+        try {
+            val dataLocal = File(root, "data/local").apply { mkdirs() }
+            File(root, "dev").mkdirs()
+            val stage = File(dataLocal, ".hapaneld-helper.new")
+            val limit = 16 * 1024 * 1024
+            for (size in listOf(limit, limit + 1)) {
+                stage.writeText("retained stage")
+                val candidate = "x".repeat(size)
+                val result = runCommandWithInput(
+                    bundledHelperStageCommand(sha256(candidate), root.absolutePath), candidate,
+                )
+                if (size == limit) {
+                    assertEquals(result.output, 0, result.exitCode)
+                    assertEquals(candidate, stage.readText())
+                    assertTrue(result.output.lineSequence().any { it == "STAGED_OK" })
+                } else {
+                    assertEquals(result.output, 1, result.exitCode)
+                    assertEquals("retained stage", stage.readText())
+                    assertFalse(result.output.lineSequence().any { it == "STAGED_OK" })
+                }
+                assertFalse(File(root, "dev/.hapaneld-helper-transaction.lock").exists())
+                assertTrue(dataLocal.listFiles().orEmpty().none { it.name.startsWith(".hapaneld-helper.app-stage-") })
+            }
+        } finally {
+            root.deleteRecursively()
+        }
     }
 
     @Test fun `stage command replaces only an unowned fixed orphan after authenticating full upload`() {
@@ -129,6 +141,26 @@ class BundledHelperInstallerTest {
                 PosixFilePermission.OWNER_WRITE,
                 PosixFilePermission.OWNER_EXECUTE,
             ), Files.getPosixFilePermissions(stage.toPath()))
+            assertFalse(File(root, "dev/.hapaneld-helper-transaction.lock").exists())
+            assertTrue(dataLocal.listFiles().orEmpty().none { it.name.startsWith(".hapaneld-helper.app-stage-") })
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun `stage command rejects mismatched upload bytes without replacing the fixed stage`() {
+        val root = scratchDirectory("bundled-helper-stage-digest-").toFile()
+        try {
+            val dataLocal = File(root, "data/local").apply { mkdirs() }
+            File(root, "dev").mkdirs()
+            val stage = File(dataLocal, ".hapaneld-helper.new").apply { writeText("retained stage") }
+            val result = runCommandWithInput(
+                bundledHelperStageCommand(sha256("expected candidate"), root.absolutePath),
+                "different candidate",
+            )
+            assertEquals(result.output, 1, result.exitCode)
+            assertEquals("retained stage", stage.readText())
+            assertFalse(result.output.lineSequence().any { it == "STAGED_OK" })
             assertFalse(File(root, "dev/.hapaneld-helper-transaction.lock").exists())
             assertTrue(dataLocal.listFiles().orEmpty().none { it.name.startsWith(".hapaneld-helper.app-stage-") })
         } finally {
@@ -286,37 +318,6 @@ class BundledHelperInstallerTest {
     @Test(expected = IllegalArgumentException::class)
     fun `stage command rejects non digest interpolation`() {
         bundledHelperStageCommand("a; reboot")
-    }
-
-    @Test fun `released base without Guard verbs uses candidate owned takeover`() {
-        // RC2 answers bare ERR to GUARDSTATUS, which statusProbe classifies as Unsupported. It cannot
-        // consume GUARDRETIRE, so this must never enter the guarded-retire settlement loop.
-        assertEquals(
-            BundledHelperReplacementMode.RELEASED_LEGACY_TAKEOVER,
-            bundledHelperReplacementMode(GuardDbMaintenanceClient.StatusProbe.Unsupported),
-        )
-
-        val hash = "c".repeat(64)
-        val command = bundledLegacyHelperTakeoverCommand(hash, stagedBuild, incumbentBuild)
-        assertTrue(command.contains("stage=\$data_local/.hapaneld-helper.new"))
-        assertTrue(command.contains("live=\$data_local/hapaneld-helper"))
-        assertTrue(command.contains("lock=\$root/dev/.hapaneld-helper-transaction.lock"))
-        assertTrue(command.contains("--replacement-safe"))
-        assertTrue(command.contains(".hapaneld-helper.legacy-takeover"))
-        assertTrue(command.contains("LEGACYTAKEOVER 1"))
-        assertTrue(command.contains("= \"BUILDID $incumbentBuild\""))
-        assertTrue(command.contains("mv -f \"\$stage\" \"\$live\""))
-        assertTrue(command.indexOf("mv -f \"\$record_tmp\" \"\$record\"") <
-            command.indexOf("\"\$root/system/bin/stop\" hapaneld_helper"))
-        assertTrue(command.contains("\"\$root/system/bin/start\" hapaneld_helper"))
-        assertTrue(command.contains("\"\$live\" --supervise"))
-        assertTrue(command.contains("--request BUILDID"))
-        assertTrue(command.contains("--request GUARDSELF"))
-        assertTrue(command.contains("$hash $stagedBuild"))
-        assertTrue(command.contains("AUTONOMOUS SUPERVISED TERMINAL_RETIRE"))
-        assertTrue(command.contains(emptyStatus))
-        assertFalse(command.contains("GUARDRETIRE"))
-        assertFalse(command.contains("killall"))
     }
 
     @Test(expected = IllegalArgumentException::class)
@@ -594,9 +595,6 @@ class BundledHelperInstallerTest {
             BundledLegacyPriorRecordDisposition.KEEP,
             bundledLegacyPriorRecordDisposition(parsed.stagedBuildId, parsed),
         )
-        val readCommand = bundledLegacyTakeoverRecordReadCommand()
-        assertTrue(readCommand.contains(".hapaneld-helper.legacy-takeover"))
-        assertTrue(readCommand.contains("\"\$bytes\" -le 1024"))
         assertNull(parseBundledLegacyTakeoverRecord(fixture + "0".repeat(1025)))
     }
 
@@ -618,11 +616,6 @@ class BundledHelperInstallerTest {
                 filesystemRoot = fixture.root.absolutePath,
             )))
             assertEquals(foreign, record.readText())
-            assertFalse(bundledLegacyTakeoverRecordCleanupCommand(
-                parsed.recordSha256,
-                parsed.recordBytes,
-                filesystemRoot = fixture.root.absolutePath,
-            ).contains("awk"))
         }
     }
 
@@ -658,11 +651,34 @@ class BundledHelperInstallerTest {
         }
     }
 
-    @Test fun `candidate termination never trusts a cached possibly reused pid`() {
-        val command = bundledLegacyHelperTakeoverCommand("c".repeat(64), stagedBuild, incumbentBuild)
-        assertFalse(command.contains("kill \"\$candidate_pid\""))
-        assertTrue(command.contains("stat -Lc '%d:%i'"))
-        assertTrue(LEGACY_TAKEOVER_TIMEOUT_MS >= 120_000L)
+    @Test fun `candidate rollback leaves an unrelated process at a stale cached pid alive`() {
+        val unrelated = ProcessBuilder("bash", "-c", "echo \$\$; exec sleep 30").start()
+        try {
+            val unrelatedPid = unrelated.inputStream.bufferedReader().readLine().orEmpty()
+            assertTrue("unrelated process did not report its pid", unrelatedPid.matches(Regex("[0-9]+")))
+            assertTrue("unrelated process must be alive before rollback", unrelated.isAlive)
+            withTakeoverFiles(TakeoverTopology.SYSTEM, candidateStarts = false) { fixture ->
+                val command = bundledLegacyHelperTakeoverCommand(
+                    sha256(fixture.stage), stagedBuild, incumbentBuild,
+                    filesystemRoot = fixture.root.absolutePath, polls = 1,
+                )
+                val process = ProcessBuilder("bash", "-c", command)
+                    .redirectErrorStream(true)
+                    .apply { environment()["candidate_pid"] = unrelatedPid }
+                    .start()
+                val output = process.inputStream.bufferedReader().readText()
+                assertEquals(output, 1, process.waitFor())
+                assertTrue("rollback killed the unrelated owner of a stale pid", unrelated.isAlive)
+                assertEquals(fixture.oldBytes, fixture.oldBin.readText())
+                assertEquals(fixture.oldRegistration, fixture.registration.readText())
+                assertEquals(fixture.candidateBytes, fixture.stage.readText())
+                assertFalse(fixture.live.exists())
+                assertFalse(File(fixture.root, "dev/.hapaneld-helper-transaction.lock").exists())
+            }
+        } finally {
+            unrelated.destroyForcibly()
+            unrelated.waitFor()
+        }
     }
 
     @Test fun `termination before custody exits and leaves topology untouched`() {

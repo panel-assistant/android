@@ -1,6 +1,8 @@
 package io.panelassistant.android.assist.wakeword
 
-import org.junit.Assert.assertEquals
+import io.panelassistant.android.assist.MicroWakeWordEngineFactory
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -32,43 +34,48 @@ class WakeWordLoadFailureTest {
         tensorArenaSize = 0,
     )
 
-    /**
-     * Mirrors the production loop: build each model in turn, and on any failure close whatever was
-     * already built before letting the failure out.
-     */
-    private fun loadOrClose(ids: List<String>, build: (String) -> WakeWordScorer): List<LoadedWakeWordModel> {
-        val loaded = ArrayList<LoadedWakeWordModel>()
-        try {
-            for (id in ids) loaded += LoadedWakeWordModel(config(id), build(id))
-        } catch (t: Throwable) {
-            loaded.forEach { runCatching { it.close() } }
-            throw t
-        }
-        return loaded
-    }
-
     @Test
     fun `a model that fails to load closes the ones already built`() {
         val first = CountingScorer()
-        var thrown: Throwable? = null
-        try {
-            loadOrClose(listOf("okay_nabu", "hey_jarvis")) { id ->
-                if (id == "hey_jarvis") throw IllegalStateException("model is corrupt") else first
-            }
-        } catch (t: Throwable) {
-            thrown = t
-        }
-        assertTrue("the failure must reach the caller", thrown is IllegalStateException)
+        val failure = IllegalStateException("model is corrupt")
+        val factory = MicroWakeWordEngineFactory(load = { id ->
+            if (id == "hey_jarvis") throw failure
+            LoadedWakeWordModel(config(id), first)
+        })
+
+        val thrown = runCatching { factory.create(listOf("okay_nabu", "hey_jarvis")) {} }.exceptionOrNull()
+
+        assertSame("the original failure must reach the caller", failure, thrown)
         assertTrue("the model already built must not be left holding its arena", first.closed)
     }
 
     @Test
-    fun `a clean load closes nothing`() {
+    fun `a clean load leaves models open until the returned engine closes`() {
         val scorers = listOf(CountingScorer(), CountingScorer())
-        val loaded = loadOrClose(listOf("okay_nabu", "hey_jarvis")) { id ->
-            scorers[if (id == "okay_nabu") 0 else 1]
-        }
-        assertEquals(2, loaded.size)
-        assertTrue("nothing may be closed on the success path", scorers.none { it.closed })
+        val factory = MicroWakeWordEngineFactory(load = { id ->
+            LoadedWakeWordModel(config(id), scorers[if (id == "okay_nabu") 0 else 1])
+        })
+
+        val engine = factory.create(listOf("okay_nabu", "hey_jarvis")) {}
+
+        assertNotNull("usable models arm an engine", engine)
+        assertTrue("the returned engine owns the still-open models", scorers.none { it.closed })
+        engine!!.close()
+        assertTrue("closing the returned engine releases every model", scorers.all { it.closed })
+    }
+
+    @Test
+    fun `a failure while configuring the detector closes every acquired model`() {
+        val scorers = listOf(CountingScorer(), CountingScorer())
+        val failure = IllegalStateException("settings unavailable")
+        val factory = MicroWakeWordEngineFactory(
+            load = { id -> LoadedWakeWordModel(config(id), scorers[if (id == "okay_nabu") 0 else 1]) },
+            sensitivity = { throw failure },
+        )
+
+        val thrown = runCatching { factory.create(listOf("okay_nabu", "hey_jarvis")) {} }.exceptionOrNull()
+
+        assertSame("the original failure must reach the caller", failure, thrown)
+        assertTrue("no acquired arena survives a failed engine construction", scorers.all { it.closed })
     }
 }

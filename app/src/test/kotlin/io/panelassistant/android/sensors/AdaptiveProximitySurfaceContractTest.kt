@@ -1,34 +1,62 @@
 package io.panelassistant.android.sensors
 
-import io.panelassistant.android.testsupport.TestSources
 import io.panelassistant.android.config.SettingsRegistry
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
+import io.panelassistant.android.state.StateConverger.Observation
+import io.panelassistant.android.testsupport.PanelRuntimeRig
+import org.junit.Assert.assertEquals
 import org.junit.Test
 
-class AdaptiveProximitySurfaceContractTest {
-    // Source-text reason: the state core needs the Android service to construct.
+internal class AdaptiveProximitySurfaceContractTest : PanelRuntimeRig() {
     @Test fun homeAssistantReceivesOnlyFleetNormalizedState() {
-        assertTrue(source("PanelStateCore.kt").contains("normalizedLevel?.coerceIn(0, 100)"))
-        assertTrue("%" == SettingsRegistry.spec("proximity_level")!!.ha!!.facts.unit)
-    }
+        val rig = rig()
+        try {
+            val seen = mutableListOf<Pair<String, Observation.Reportable>>()
+            rig.core.addStateSink { channel, observation ->
+                if (channel == "proximity_level") seen += channel to observation
+            }
 
-    @Test fun wakeOnWaveHelpExplainsTheGestureAndTheTouchFallback() {
-        val help = SettingsRegistry.spec("wake_on_wave")!!.help
-        assertTrue(help.contains("clear-to-near-to-clear"))
-        assertTrue(help.contains("touch-to-wake remains available"))
+            rig.core.publishProximity(false, -20)
+            rig.core.publishProximity(true, 130)
+
+            assertEquals(
+                listOf("proximity_level" to Observation.Known("0"), "proximity_level" to Observation.Known("100")),
+                seen,
+            )
+            assertEquals("%", SettingsRegistry.spec("proximity_level")?.ha?.facts?.unit)
+        } finally {
+            rig.close()
+        }
     }
 
     @Test fun independentReportMaskIsNotCollapsedByTheStateOwner() {
-        val core = source("PanelStateCore.kt")
+        val rig = rig()
+        try {
+            val seen = mutableListOf<Pair<String, Observation.Reportable>>()
+            rig.core.addStateSink { channel, observation ->
+                if (channel == "proximity" || channel == "proximity_level") seen += channel to observation
+            }
+            rig.core.publishProximity(false, 10)
+            assertEquals(
+                listOf("proximity" to Observation.Known("OFF"), "proximity_level" to Observation.Known("10")),
+                seen,
+            )
+            seen.clear()
 
-        assertTrue(core.contains("reportMask: Int = ProximityReportGate.BOTH"))
-        assertTrue(core.contains("val admitted = admit(nextNear, level, reportMask)"))
-        assertTrue(core.contains("proximityPublication.near?.let"))
-        assertTrue(core.contains("proximityPublication.level?.let"))
-        assertTrue(core.contains("admitted and ProximityReportGate.PRESENCE != 0"))
-        assertTrue(core.contains("admitted and ProximityReportGate.LEVEL != 0"))
+            rig.core.publishProximity(true, 80, ProximityReportGate.PRESENCE)
+            assertEquals(listOf("proximity" to Observation.Known("ON")), seen)
+            seen.clear()
+            // A reconnect/audit must read the admitted level, rather than the suppressed sample.
+            rig.core.reconcile("proximity_level")
+            assertEquals(listOf("proximity_level" to Observation.Known("10")), seen)
+            seen.clear()
+
+            rig.core.publishProximity(false, 90, ProximityReportGate.LEVEL)
+            assertEquals(listOf("proximity_level" to Observation.Known("90")), seen)
+            seen.clear()
+            rig.core.reconcile("proximity")
+            assertEquals(listOf("proximity" to Observation.Known("ON")), seen)
+        } finally {
+            rig.close()
+        }
     }
-
-    private fun source(relative: String): String = TestSources.kotlin(relative).readText()
 }

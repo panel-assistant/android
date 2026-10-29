@@ -1,5 +1,8 @@
 """Contract tests for `.github/dependabot.yml`.
 
+Source-text reason: the hosted Dependabot service consumes this configuration; its
+ecosystem, ignore and security-update rules are the external scheduling contract.
+
 Dependabot edits `gradle/libs.versions.toml` and nothing else, so it cannot complete a
 Gradle version bump in this repository: `gradle/verification-metadata.xml`,
 `app/gradle.lockfile` and `settings-gradle.lockfile` all have to be regenerated, and

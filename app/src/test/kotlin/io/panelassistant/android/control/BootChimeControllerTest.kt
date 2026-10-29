@@ -1,5 +1,10 @@
 package io.panelassistant.android.control
 
+import io.panelassistant.android.platform.RootShell
+import io.panelassistant.android.platform.RootRunOutcome
+import io.panelassistant.android.testsupport.scratchDirectory
+import java.io.File
+import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -86,27 +91,61 @@ class BootChimeControllerTest {
         assertNull(hardware.restored)
     }
 
-    @Test fun exactRestoreCommandPreservesUnsetAndIndependentStreamValues() {
-        val command = restoreShellCommand(prior)
-        assertTrue(command.contains("settings put system volume_ring_speaker 2"))
-        assertTrue(command.contains("settings delete system volume_ring"))
-        assertTrue(command.contains("settings put system volume_notification 7"))
-        assertTrue(command.contains("volume --stream 2 --set 3"))
-        assertTrue(command.contains("volume --stream 5 --set 6"))
-        assertFalse(command.contains("--set 10"))
-        assertEquals(4, " && ".toRegex().findAll(command).count())
-        assertFalse(command.contains(';'))
+    @Test fun rootRestorePreservesUnsetAndIndependentStreamValues() = withShellHardware { hardware, log, _ ->
+        assertEquals(ControlApplyOutcome.APPLIED, hardware.restore(prior))
+        assertEquals(
+            listOf(
+                "put system volume_ring_speaker 2",
+                "delete system volume_ring",
+                "put system volume_notification 7",
+                "media_session volume --stream 2 --set 3",
+                "media_session volume --stream 5 --set 6",
+            ),
+            log.readLines(),
+        )
     }
 
-    @Test fun silenceCommandCannotMaskAnEarlierPrivilegedWriteFailure() {
+    @Test fun rootSilenceReportsAnEarlierPrivilegedWriteFailure() = withShellHardware { hardware, log, fail ->
+        fail.writeText("put system volume_ring 0")
+        assertEquals(ControlApplyOutcome.FAILED, hardware.silence())
         assertEquals(
-            "settings put system volume_ring_speaker 0 && " +
-                "settings put system volume_ring 0 && " +
-                "settings put system volume_notification 0 && " +
-                "cmd media_session volume --stream 2 --set 0 && " +
-                "cmd media_session volume --stream 5 --set 0",
-            silenceShellCommand(0),
+            listOf("put system volume_ring_speaker 0", "put system volume_ring 0"),
+            log.readLines(),
         )
+    }
+
+    /** Execute the hardware owner's command with Android's two CLI boundaries replaced by fixtures. */
+    private fun withShellHardware(test: (AndroidBootChimeHardware, File, File) -> Unit) {
+        val directory = scratchDirectory("boot-chime-shell").toFile()
+        try {
+            val log = File(directory, "calls")
+            val fail = File(directory, "fail").apply { writeText("") }
+            for (command in listOf("settings", "cmd")) File(directory, command).apply {
+                writeText("""#!/bin/sh
+                    |printf '%s\n' "${'$'}*" >> "${'$'}CALLS"
+                    |[ "${'$'}*" != "${'$'}(cat "${'$'}FAIL")" ]
+                    |""".trimMargin())
+                assertTrue(setExecutable(true))
+            }
+            val root = object : RootShell by FakeRootShell() {
+                override fun runClassified(cmd: String): RootRunOutcome {
+                    val process = ProcessBuilder("sh", "-c", cmd).apply {
+                        environment()["PATH"] = directory.path + ":" + System.getenv("PATH")
+                        environment()["CALLS"] = log.path
+                        environment()["FAIL"] = fail.path
+                    }.redirectErrorStream(true).start()
+                    return try {
+                        assertTrue("boot-chime command finished", process.waitFor(5, TimeUnit.SECONDS))
+                        if (process.exitValue() == 0) RootRunOutcome.RAN_OK else RootRunOutcome.RAN_FAILED
+                    } finally {
+                        process.destroyForcibly()
+                    }
+                }
+            }
+            test(AndroidBootChimeHardware(FakeBootChimeDirect(prior, applySucceeds = false), root, FakeDaemon()), log, fail)
+        } finally {
+            directory.deleteRecursively()
+        }
     }
 
     @Test fun directTransitionAttemptsEveryDurableSettingAndLiveStream() {
