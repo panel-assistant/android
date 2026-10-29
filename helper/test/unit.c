@@ -1270,53 +1270,18 @@ static void test_bootchime_protocol(void) {
     sysexec_stub_reset();
 }
 
-static void test_screencap_stream_writes(void) {
+// Streaming mechanics are covered against real sysexec.c in bounded_exec.c. This dispatcher test
+// only owns the command selection and the raw-byte response at its injected actuator boundary.
+static void test_screencap_command(void) {
     const char payload[] = "PNG-fixture-payload";
-    const int test_fd = 4242;
-    conn_ctx ctx = { .fd = test_fd, .subscribed = 0 };
-
+    const char *const argv[] = { "screencap", "-p", NULL };
+    char out[64];
     sysexec_stub_reset();
     sysexec_stub_add_popen("screencap -p", payload, 0);
-    const int recoverable_steps[] = { 3, WRITE_STEP_EINTR, 4, WRITE_STEP_ALL };
-    wrapped_write_reset(test_fd, recoverable_steps,
-                        sizeof recoverable_steps / sizeof recoverable_steps[0]);
-    cmd_screencap(&ctx, "");
-    wrapped_write_disable();
-    CHECK(wrapped_write_call_count == 4,
-          "SCREENCAP retries short writes and EINTR (calls %zu, want 4)\n",
-          wrapped_write_call_count);
-    CHECK(wrapped_write_size == strlen(payload) &&
-          memcmp(wrapped_write_bytes, payload, strlen(payload)) == 0,
-          "SCREENCAP preserves the full byte stream across partial writes\n");
-
-    char large_payload[12289];
-    memset(large_payload, 'A', sizeof large_payload - 1);
-    large_payload[sizeof large_payload - 1] = '\0';
-    sysexec_stub_reset();
-    sysexec_stub_add_popen("screencap -p", large_payload, 0);
-    const int error_steps[] = { 5, WRITE_STEP_ERROR, WRITE_STEP_ALL };
-    wrapped_write_reset(test_fd, error_steps, sizeof error_steps / sizeof error_steps[0]);
-    cmd_screencap(&ctx, "");
-    wrapped_write_disable();
-    CHECK(wrapped_write_call_count == 2,
-          "SCREENCAP stops writing after terminal peer error (calls %zu, want 2)\n",
-          wrapped_write_call_count);
-    CHECK(wrapped_write_size == 5 && memcmp(wrapped_write_bytes, large_payload, 5) == 0,
-          "SCREENCAP emits only the accepted prefix after terminal peer error\n");
-    CHECK(sysexec_stub_last_pclose_offset() == 8192,
-          "SCREENCAP stops draining its source after terminal peer error (offset %ld, want 8192)\n",
-          sysexec_stub_last_pclose_offset());
-
-    sysexec_stub_reset();
-    sysexec_stub_add_popen("screencap -p", payload, 0);
-    const int zero_steps[] = { WRITE_STEP_ZERO, WRITE_STEP_ALL };
-    wrapped_write_reset(test_fd, zero_steps, sizeof zero_steps / sizeof zero_steps[0]);
-    cmd_screencap(&ctx, "");
-    wrapped_write_disable();
-    CHECK(wrapped_write_call_count == 1,
-          "SCREENCAP treats a zero write as terminal (calls %zu, want 1)\n",
-          wrapped_write_call_count);
-    CHECK(wrapped_write_size == 0, "SCREENCAP emits no bytes after a zero write\n");
+    dispatch_reply("SCREENCAP", out, sizeof out);
+    CHECK(strcmp(out, payload) == 0, "SCREENCAP returns the raw actuator bytes\n");
+    CHECK(sysexec_stub_count_argv("/system/bin/screencap", argv, 0) == 1,
+          "SCREENCAP requests one PNG capture with exact structural argv\n");
 }
 
 static void test_line_accumulator(void) {
@@ -2425,7 +2390,7 @@ int main(int argc, char **argv) {
     test_keyevent_named_keys_only();
     test_sysctl_execution_results();
     test_bootchime_protocol();
-    test_screencap_stream_writes();
+    test_screencap_command();
     test_line_accumulator();
     test_reply_stream_writes();
     test_server_send_deadline();

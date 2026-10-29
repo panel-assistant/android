@@ -138,7 +138,61 @@ static int eventually_not_acting(pid_t pid) {
     return process_not_acting(pid);
 }
 
-int main(void) {
+// Interpose only the destination write syscall. The source remains a real fork/exec/pipe through
+// production sysexec.c; unlike the dispatcher stub, this seam exercises its actual retry loop.
+static const char stream_payload[] = "PNG-fixture-payload";
+static int stream_write_mode;
+static size_t stream_write_calls, stream_bytes;
+static char stream_output[sizeof stream_payload];
+
+ssize_t write(int fd, const void *bytes, size_t size) {
+    if (fd != 707 || !stream_write_mode) return syscall(SYS_write, fd, bytes, size);
+    size_t call = stream_write_calls++;
+    if (stream_write_mode == 1 && call == 1) { errno = EINTR; return -1; }
+    if (stream_write_mode == 2 && call == 1) { errno = EPIPE; return -1; }
+    if (stream_write_mode == 3) return 0;
+    size_t accepted = size;
+    if (call == 0 && accepted > 3) accepted = 3;
+    if (accepted > sizeof stream_output - stream_bytes) return -1;
+    memcpy(stream_output + stream_bytes, bytes, accepted);
+    stream_bytes += accepted;
+    return (ssize_t)accepted;
+}
+
+static void test_stream_writes(void) {
+    for (int mode = 1; mode <= 3; mode++) {
+        const char *const argv[] = { "bounded-exec", "--stream-fixture", mode == 1 ? "fast" : "wait", NULL };
+        stream_write_mode = mode;
+        stream_write_calls = stream_bytes = 0;
+        memset(stream_output, 0, sizeof stream_output);
+        unsigned long began = now_ms();
+        int status = sysexec_stream_argv("/proc/self/exe", argv, 707);
+        unsigned long took = now_ms() - began;
+        stream_write_mode = 0;
+        if (mode == 1) {
+            CHECK(status == 0, "real stream succeeds across short writes and EINTR");
+            CHECK(stream_write_calls >= 3 && stream_bytes == sizeof stream_payload - 1 &&
+                  memcmp(stream_output, stream_payload, sizeof stream_payload - 1) == 0,
+                  "real stream preserves every byte across short writes and EINTR");
+        } else {
+            CHECK(status < 0, "real stream reports terminal output failure");
+            CHECK(took < 500UL, "terminal output failure aborts instead of draining a live source");
+            CHECK(stream_write_calls == (mode == 2 ? 2u : 1u) &&
+                  stream_bytes == (mode == 2 ? 3u : 0u),
+                  "real stream emits only the accepted prefix and never retries terminal writes");
+        }
+        CHECK(!child_pending(), "real stream reaps its source after success or output failure");
+    }
+}
+
+int main(int argc, char **argv) {
+    if (argc == 3 && strcmp(argv[1], "--stream-fixture") == 0) {
+        if (syscall(SYS_write, STDOUT_FILENO, stream_payload, sizeof stream_payload - 1) !=
+            (ssize_t)(sizeof stream_payload - 1)) return 2;
+        if (strcmp(argv[2], "wait") == 0) sysexec_sleep_ms(1200);
+        return 0;
+    }
+    test_stream_writes();
     static const char *const sleep_candidates[] = { "/bin/sleep", "/usr/bin/sleep", NULL };
     static const char *const true_candidates[] = { "/bin/true", "/usr/bin/true", NULL };
     const char *sleep_path = resolve(sleep_candidates);
@@ -453,8 +507,11 @@ int main(void) {
     {
         const char *const argv[] = { "nope", NULL };
         unsigned elapsed = 99u;
+        unsigned long began = now_ms();
         int status = sysexec_run_argv_deadline("/nonexistent/actuator", argv, 1, 5000u, &elapsed);
         CHECK(status != 0, "a missing actuator does not report success\n");
+        CHECK(elapsed < 5000u, "a missing actuator leaves the unused deadline budget available\n");
+        CHECK(now_ms() - began < 2000UL, "a missing actuator returns before its deadline\n");
         CHECK(!child_pending(), "a missing actuator leaves no child behind\n");
     }
 

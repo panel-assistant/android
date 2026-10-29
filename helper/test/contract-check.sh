@@ -6,6 +6,7 @@
 # added on one side but not the other (or a rename) would drift silently. This asserts every verb the
 # app SENDS to the helper daemon is HANDLED by the shared commands.def manifest — a mismatch fails CI.
 #
+# Source-text reason: cross-language literal verb wiring has no shared executable client manifest.
 # Scope: verb NAMES only. Arg formats + reply strings are pinned separately by the daemon's own golden
 # request->reply unit tests (helper/test/unit.c).
 #
