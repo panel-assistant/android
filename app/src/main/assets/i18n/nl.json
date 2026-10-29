@@ -7759,8 +7759,8 @@
    "state": "machine-cross-checked"
   },
   "profiles.issue.unknown-core-transfer": {
-   "text": "Onbekende overdracht '{value}' van Panel Assistant.",
-   "sourceHash": "e4a1382e0e69c7a88620925541c3a63e0f2b4862decf182e24cb99b72eb00cb7",
+   "text": "Onbekende LED-overdrachtsfunctie '{value}' van Panel Assistant.",
+   "sourceHash": "6a3e772e15e7b18ac0876316d778ec45d862e0f7d31346d2b0a1135f619507bd",
    "state": "machine-cross-checked"
   },
   "profiles.issue.unknown-field": {
@@ -10723,14 +10723,34 @@
    "sourceHash": "23e39291d6135814ed7c936e278974544b0df5fbf0eb0427b6700979b7472a93",
    "state": "machine-cross-checked"
   },
+  "setup.webview.after_update": {
+   "text": "Na de update start het paneel zijn app opnieuw op. Laat deze pagina open: ze gaat vanzelf verder naar het Home Assistant-adres.",
+   "sourceHash": "9ea7a503304638a49a546bcfb1bed7aadfd5fa80c58ac23e4ec88e51240cda80",
+   "state": "machine-cross-checked"
+  },
   "setup.webview.found": {
    "text": "Dit paneel heeft Chromium {found}. Een actueel Home Assistant-dashboard heeft Chromium {needed} of nieuwer nodig.",
    "sourceHash": "29d3bc49a5e9bbc77f2874fe03a9d53e6e7a5a21fbdcb54fd075343a6ccc98ee",
    "state": "machine-cross-checked"
   },
+  "setup.webview.play": {
+   "text": "Dit paneel werkt zijn engine bij via Google Play: open op het paneel de Play Store en werk Android System WebView bij.",
+   "sourceHash": "1ee78fca20a49f0b9757b8d2b68b22a61696137734987c922834e800836ee73c",
+   "state": "machine-cross-checked"
+  },
   "setup.webview.title": {
    "text": "De browser-engine van het paneel moet worden bijgewerkt",
    "sourceHash": "c408def35c0373230b7dd6da75056046236ddd96415495d4935697de526844fa",
+   "state": "machine-cross-checked"
+  },
+  "setup.webview.update_steps": {
+   "text": "Updatestappen voor {model}",
+   "sourceHash": "2ede37fa8d53dcf6214ad13dd7b37b3007f234da7cef240307e8592c1bb23a54",
+   "state": "machine-cross-checked"
+  },
+  "setup.webview.update_steps_any": {
+   "text": "WebView-updatestappen",
+   "sourceHash": "50ceb4e2fa12f7618c726863fafc21b7e17cd0b94259447bd92afc25e517300f",
    "state": "machine-cross-checked"
   },
   "shell.action.reload": {

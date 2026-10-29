@@ -256,11 +256,21 @@
         i18nText("setup.repair.explanation", "Its settings are still here — nothing has been reset. One thing needs attention below.")));
     }
     if (journey.webview) {
+      // Advisory, never blocking: the facts, then what to do about them. The update steps open in a new tab
+      // so this page stays open to carry on.
       var wv = journey.webview;
+      var lines = [];
+      if (wv.found && wv.needed) lines.push(i18nText("setup.webview.found", "This panel has Chromium {found}. A current Home Assistant dashboard needs Chromium {needed} or newer.",
+        { found: String(wv.found), needed: String(wv.needed) }));
+      if (wv.play) lines.push(i18nText("setup.webview.play", "This panel updates its engine through Google Play: on the panel, open the Play Store and update Android System WebView."));
+      // The note promises the page moves on to the Home Assistant address, true only up to that step.
+      if (key === "identity" || key === "renderer" || key === "ha_url") {
+        lines.push(i18nText("setup.webview.after_update", "After the update the panel restarts its app. Keep this page open: it carries on to the Home Assistant address by itself."));
+      }
+      var updateLink = wv.steps ? el("a", { href: wv.steps, target: "_blank", rel: "noopener",
+        text: wv.model ? i18nText("setup.webview.update_steps", "Update steps for {model}", { model: wv.model }) : i18nText("setup.webview.update_steps_any", "WebView update steps") }) : null;
       stepHost.appendChild(window.HaNotice.row("warning",
-        i18nText("setup.webview.title", "The panel’s browser engine needs updating"),
-        wv.found && wv.needed ? i18nText("setup.webview.found", "This panel has Chromium {found}. A current Home Assistant dashboard needs Chromium {needed} or newer.",
-          { found: String(wv.found), needed: String(wv.needed) }) : ""));
+        i18nText("setup.webview.title", "The panel’s browser engine needs updating"), lines.join(" "), updateLink));
     }
     kids.forEach(function (k) { if (k) stepHost.appendChild(k); });
     var h = stepHost.querySelector("h2");

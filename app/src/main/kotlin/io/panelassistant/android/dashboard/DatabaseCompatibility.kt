@@ -194,7 +194,11 @@ internal fun observeDatabaseCompatibility(
     boundary = boundary,
 )
 
-internal data class DatabaseFileInspection(val schema: Int, val integrityValid: Boolean)
+internal data class DatabaseFileInspection(
+    val schema: Int,
+    val integrityValid: Boolean,
+    val hasSchemaObjects: Boolean = true,
+)
 
 /** Injectable file observer used by JVM tests to prove absent/unreadable/recovery classification. */
 internal fun observeDatabaseCompatibility(
@@ -218,8 +222,13 @@ internal fun observeDatabaseCompatibility(
         !isRegularFile(target) -> {
             PrimaryDatabaseObservation.Unreadable("canonical path is not a regular file")
         }
+        // A concurrent first open creates the file before its schema commits. A zero-byte file, or a
+        // valid SQLite file with user_version 0 and no schema objects, holds nothing to protect.
+        target.length() == 0L -> PrimaryDatabaseObservation.Missing
         else -> inspectDatabase(target)?.let {
-            if (it.integrityValid) {
+            if (it.integrityValid && it.schema == 0 && !it.hasSchemaObjects) {
+                PrimaryDatabaseObservation.Missing
+            } else if (it.integrityValid) {
                 PrimaryDatabaseObservation.Readable(it.schema)
             } else {
                 PrimaryDatabaseObservation.Unreadable("database quick_check failed")
@@ -251,7 +260,10 @@ private fun inspectSqlite(file: File): DatabaseFileInspection? = runCatching {
             cursor.moveToFirst() && cursor.getString(0).equals("ok", ignoreCase = true) &&
                 !cursor.moveToNext()
         }
-        DatabaseFileInspection(database.version, integrityValid)
+        val hasSchemaObjects = database.rawQuery("SELECT count(*) FROM sqlite_master", emptyArray()).use { cursor ->
+            !cursor.moveToFirst() || cursor.getLong(0) > 0
+        }
+        DatabaseFileInspection(database.version, integrityValid, hasSchemaObjects)
     }
 }.getOrNull()
 
