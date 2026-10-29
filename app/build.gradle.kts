@@ -628,7 +628,7 @@ afterEvaluate {
         "io.panelassistant.android.util.AndroidWebViewUpdateIoTest",
         "io.panelassistant.android.http.PaneldServerWebViewApprovalTest",
     )
-    // The repository selector emits exact class filters. Their proofs run in the dependency worker.
+    // Caller class and method selections run in the dependency worker, including class-name globs.
     val requestedArgs = gradle.startParameter.taskRequests.flatMap { it.args }
     val requestedTests = requestedArgs.mapIndexedNotNull { index, argument ->
         when {
@@ -638,11 +638,21 @@ afterEvaluate {
         }
     }
     val ordinaryUnitTasks = setOf(":app:testDebugUnitTest", "testDebugUnitTest", ":app:testReleaseUnitTest", "testReleaseUnitTest")
-    val singleOrdinaryTask = requestedArgs.firstOrNull() in ordinaryUnitTasks && requestedArgs.drop(1).all {
-        it == "--tests" || it == "--rerun" || it in callerClasses ||
-            (it.startsWith("--tests=") && it.substringAfter('=') in callerClasses)
+    fun callerSelector(pattern: String): Boolean = callerClasses.any { className ->
+        val simpleName = className.substringAfterLast('.')
+        // Keep broad globs on the ordinary path: they can also select SDK-stub tests.
+        val classPattern = pattern.substringBefore("$simpleName.", pattern).let {
+            if (it != pattern) it + simpleName else pattern
+        }
+        val namesCaller = classPattern.endsWith(simpleName)
+        val regex = classPattern.split('*').joinToString(".*") { Regex.escape(it) }.toRegex()
+        namesCaller && (regex.matches(className) || regex.matches(simpleName))
     }
-    val callerOnlySelection = singleOrdinaryTask && requestedTests.isNotEmpty() && requestedTests.all { it in callerClasses }
+    val singleOrdinaryTask = requestedArgs.firstOrNull() in ordinaryUnitTasks && requestedArgs.drop(1).all {
+        it == "--tests" || it == "--rerun" || it in requestedTests ||
+            (it.startsWith("--tests=") && it.substringAfter('=') in requestedTests)
+    }
+    val callerOnlySelection = singleOrdinaryTask && requestedTests.isNotEmpty() && requestedTests.all(::callerSelector)
     val webViewCallerTests = tasks.register<Test>("testWebViewCaller") {
         description = "Exercises native WebView admission and host-executable Android adapter paths."
         group = "verification"
@@ -650,11 +660,15 @@ afterEvaluate {
         testClassesDirs = debugTests.get().testClassesDirs
         classpath = files(providerAndroidRuntimeJar) + debugTests.get().classpath
         useJUnit()
-        callerClasses.forEach { filter.includeTestsMatching(it) }
+        if (callerOnlySelection) {
+            requestedTests.forEach { filter.includeTestsMatching(it) }
+        } else {
+            callerClasses.forEach { filter.includeTestsMatching(it) }
+        }
     }
     tasks.withType<Test>().matching { it.name.endsWith("UnitTest") }.configureEach {
         dependsOn(webViewCallerTests)
         callerClasses.forEach { filter.excludeTestsMatching(it) }
-        onlyIf("Exact caller class selections execute in the isolated worker") { !callerOnlySelection }
+        onlyIf("Caller-only selections execute in the isolated worker") { !callerOnlySelection }
     }
 }
