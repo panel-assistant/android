@@ -20,6 +20,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /** Exercises the unchanged Activity entry point; this test also runs on the pre-fix production tree. */
+@CoreInstrumentation
 @RunWith(AndroidJUnit4::class)
 class ConfigActivityDialogLifecycleInstrumentedTest {
     @Test fun destroyingActivityDismissesItsShownHardenedModeResult() {
