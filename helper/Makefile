@@ -173,8 +173,8 @@ $(BUILD)/uninstall-supervisor: $(CORE_SRCS) $(SRC_DIR)/main.c $(SRC_DIR)/sysexec
 		-DAPP_DATA='"/tmp/.hapaneld-uninstall-data-test"' -DAPP_USER_DATA='"/tmp/.hapaneld-uninstall-user-test"' \
 		-I$(SRC_DIR) $(CORE_SRCS) $(SRC_DIR)/sysexec.c test/uninstall_supervisor.c $(LDLIBS) -Wl,--wrap=unlinkat -Wl,--wrap=lstat -o $@
 
-$(BUILD)/adb-recovery: test/adb_recovery.c $(SRC_DIR)/adb_recovery.c $(SRC_DIR)/identity.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c | $(BUILD)
-	$(CC) $(CFLAGS) -DAPP_DATA='"/tmp/.hapaneld-rc2-16-data"' -DAPP_USER_DATA='"/tmp/.hapaneld-rc2-16-user"' -DHAPANELD_BUILD_ID='"$(TEST_BUILD_ID)"' -I$(SRC_DIR) test/adb_recovery.c $(SRC_DIR)/identity.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c $(LDLIBS) -o $@
+$(BUILD)/adb-recovery: test/adb_recovery.c test/adb_recovery_paths.h $(SRC_DIR)/adb_recovery.c $(SRC_DIR)/identity.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c | $(BUILD)
+	$(CC) $(CFLAGS) -include test/adb_recovery_paths.h -DHAPANELD_BUILD_ID='"$(TEST_BUILD_ID)"' -I$(SRC_DIR) test/adb_recovery.c $(SRC_DIR)/identity.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c $(LDLIBS) -o $@
 adb-recovery-test: $(BUILD)/adb-recovery
 	$(BUILD)/adb-recovery
 
