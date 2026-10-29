@@ -537,7 +537,6 @@ class CameraRtspServer(
 
     companion object {
         const val DEFAULT_PORT = 8554
-        const val MOUNT = RtspSession.MOUNT_PATH
         const val MAX_CLIENTS = 4
         /** Attached streams plus a little room for a client that is still describing or tearing down. */
         const val MAX_CONNECTIONS = 8
