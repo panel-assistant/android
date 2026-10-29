@@ -11,6 +11,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.json.JSONObject
 
 /**
  * `Native` means the firmware's own navigation bar has authority. It is physically identical to `Off`
@@ -145,7 +146,12 @@ internal class NativeNavbarModeTest : PanelRuntimeRig() {
 
     @Test fun `the public api documents native as profile gated wireFormat`() {
         // Source-text reason: the shipped OpenAPI document is the public API contract.
-        val openApi = TestSources.appFile("src/main/assets/openapi.json").readText()
-        assertTrue(openApi.contains("\"enum\": [\"Off\", \"Always on\", \"Swipe reveal\", \"Native\"]"))
+        val schema = JSONObject(TestSources.appFile("src/main/assets/openapi.json").readText())
+            .getJSONObject("paths").getJSONObject("/api/v1/config").getJSONObject("post")
+            .getJSONObject("requestBody").getJSONObject("content").getJSONObject("application/x-www-form-urlencoded")
+            .getJSONObject("schema").getJSONObject("properties").getJSONObject("navbar_mode")
+        assertEquals("string", schema.getString("type"))
+        val modes = schema.getJSONArray("enum")
+        assertEquals(listOf("Off", "Always on", "Swipe reveal", "Native"), (0 until modes.length()).map { modes.getString(it) })
     }
 }
