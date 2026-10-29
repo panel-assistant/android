@@ -38,7 +38,9 @@ internal class DashboardRendererRig(
     val owner = BuiltinDashboard.acquireActivityOwner()
     val cover = DashboardWebCover(activity, main)
     val bridge = DashboardFrontendBridge(main, CoroutineScope(Job()), proxy(DashboardFrontendBridge.Host::class.java))
-    val config = Config(fakePreferences(prefs).instance)
+    /** The settings store behind [config], to read what a write left behind. */
+    val store = fakePreferences(prefs)
+    val config = Config(store.instance)
     private val entityGate = DashboardEntityGate(
         activity = allocate(AppCompatActivity::class.java),
         main = main,
