@@ -1,22 +1,16 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import { loadTransport } from './page-transport.mjs';
+import { loadTransport, textElement } from './page-transport.mjs';
 
 const source = fs.readFileSync(process.argv[2], 'utf8');
 const created = [];
 function element() {
-  const listeners = new Map();
-  const value = {
-    dataset: {}, className: '', textContent: '', innerHTML: '', checked: false, disabled: false,
-    indeterminate: false, value: '', children: [],
-    classList: {toggle() {}, remove() {}},
-    addEventListener(type, listener) { listeners.set(type, listener); },
-    appendChild(child) { this.children.push(child); },
-    querySelector() { return element(); }, querySelectorAll() { return []; },
-    matches() { return false; }, closest() { return null; }, getAttribute(name) { return this.dataset[name.replace('data-', '')]; },
-    async fire(type, event = {}) { const listener = listeners.get(type); return listener && listener.call(this, event); },
-  };
+  const value = textElement();
+  value.indeterminate = false;
+  value.querySelector = () => element();
+  value.matches = () => false;
+  value.getAttribute = name => value.dataset[name.replace('data-', '')];
   created.push(value);
   return value;
 }
@@ -45,6 +39,7 @@ global.document = {
     return [];
   },
   createElement: () => element(),
+  createTextNode: text => { const node = element(); node.textContent = text; return node; },
 };
 global.setInterval = () => 0;
 global.confirm = () => true;

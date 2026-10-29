@@ -24,13 +24,18 @@ function load(fetch) {
 const reply = (status, body) => Promise.resolve({ status, headers: { get: () => 'application/json', forEach() {} }, text: () => Promise.resolve(body) });
 const settle = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
 
-test('the form routes are asked for JSON and only a screenshot may be cached', () => {
-  const { transport } = load(() => reply(200, '{}'));
+test('the form routes are asked for JSON and only a screenshot may be cached', async () => {
+  const requests = [];
+  const { transport } = load((url, init) => { requests.push({ url, init }); return reply(200, '{}'); });
   for (const op of ['display.density', 'power_safety.acknowledge', 'power_safety.repair', 'tame', 'settings']) {
-    assert.equal(transport.httpRequestFor(op, {}).init.headers.Accept, 'application/json', op);
+    await transport.request(op, {});
+    assert.equal(requests.at(-1).init.headers.Accept, 'application/json', op);
   }
-  assert.equal(transport.httpRequestFor('screenshot', { cached: 'a'.repeat(64) }).init.cache, 'default');
-  assert.equal(transport.httpRequestFor('perf', {}).init.cache, 'no-store');
+  await transport.request('screenshot', { cached: 'a'.repeat(64) });
+  assert.equal(requests.at(-1).init.cache, 'default');
+  await transport.request('perf', {});
+  assert.equal(requests.at(-1).init.cache, 'no-store');
+  assert.equal(requests.length, 7, 'each caller request reached fetch');
 });
 
 test('a failed route reports its status', async () => {

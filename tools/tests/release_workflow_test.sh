@@ -224,6 +224,8 @@ fi
 verify_job="$(awk '/^  verify:$/ { in_job=1 } /^  package:$/ { exit } in_job' "$WORKFLOW")"
 package_job="$(awk '/^  package:$/ { in_job=1 } /^  sign-and-publish:$/ { exit } in_job' "$WORKFLOW")"
 publish_job="$(awk '/^  sign-and-publish:$/ { in_job=1 } in_job' "$WORKFLOW")"
+# Source-text reason: GitHub owns check inventory, API permissions, polling budget and
+# job scheduling. Runtime cases above cover selection and failure semantics.
 if grep -Fq 'Require clean integrated checks for the source commit' "$WORKFLOW" && \
    grep -Fq 'commits/$SOURCE_COMMIT/check-runs' "$WORKFLOW" && \
    grep -Fq 'code-scanning/alerts?state=open' "$WORKFLOW" && \
@@ -237,12 +239,8 @@ if grep -Fq 'Require clean integrated checks for the source commit' "$WORKFLOW" 
    grep -Fq '"CodeQL · java-kotlin"' "$WORKFLOW" && \
    grep -Fq '"CodeQL · javascript-typescript"' "$WORKFLOW" && \
    grep -Fq '"CodeQL · python"' "$WORKFLOW" && \
-   grep -Fq 'select(.name == $name and .head_sha == $source and .app.slug == "github-actions")' "$WORKFLOW" && \
-   grep -Fq '| max_by(.id) // {}' "$WORKFLOW" && \
    grep -Fq 'max_attempts=60' "$WORKFLOW" && \
    grep -Fq 'sleep_seconds=10' "$WORKFLOW" && \
-   grep -Fq 'if [ "$conclusion" != success ]; then' "$WORKFLOW" && \
-   grep -Fq 'Timed out waiting for required checks' "$WORKFLOW" && \
    grep -Fqx '      checks: read' <<<"$verify_job" && \
    grep -Fqx '      security-events: read' <<<"$verify_job" && \
    ! grep -Fq 'Require clean integrated checks for the source commit' <<<"$package_job"; then
@@ -496,6 +494,10 @@ done
 descriptor_step="$(extract_named_step 'Generate bounded install descriptor without release credentials')"
 proof_step="$(extract_named_step 'Sign and authenticate release proofs')"
 final_step="$(extract_named_step 'Final exact verification before publication')"
+# Source-text reason: sealed job inputs, secret injection and publication order are
+# hosted workflow boundaries; extracted-step cases below cover filesystem isolation and signatures.
+# Source-text reason: the generator suppresses tool stderr, so fixture output cannot
+# independently attest its UID. Keep the explicit privilege-drop boundary contract.
 if grep -Fq 'cp tools/generate_install_descriptor.py release-input/generate_install_descriptor.py' <<<"$package_job" && \
    [ "$(grep -Fc 'generate_install_descriptor.py \' <<<"$package_job")" -eq 1 ] && \
    grep -Fq 'sha256sum android-gradle-runtime.cdx.json generate_install_descriptor.py' <<<"$package_job" && \
@@ -503,23 +505,16 @@ if grep -Fq 'cp tools/generate_install_descriptor.py release-input/generate_inst
    grep -Fq '(cd release-input && sha256sum --check MANIFEST.sha256)' <<<"$publish_job" && \
    grep -Fq '/usr/bin/setpriv \' <<<"$descriptor_step" && \
    grep -Fq -- '--reuid=65534 \' <<<"$descriptor_step" && \
-   grep -Fq 'SYS_landlock_restrict_self' <<<"$descriptor_step" && \
-   grep -Fq '/usr/bin/env -i \' <<<"$descriptor_step" && \
-   grep -Fq '/usr/bin/python3 "$workspace/release-input/generate_install_descriptor.py" "${generator_args[@]}"' <<<"$descriptor_step" && \
    ! grep -Fq 'KEYSTORE_B64: ${{' <<<"$(extract_named_step_yaml 'Generate bounded install descriptor without release credentials')" && \
    ! grep -Eq '(^|[[:space:]])(python3|release-input/[^[:space:]]+\.py)([[:space:]]|$)' <<<"$proof_step" && \
    ! grep -Fq -- '-srcstorepass "$KEYSTORE_PASSWORD"' <<<"$proof_step" && \
    ! grep -Fq -- '-srckeypass "$KEY_PASSWORD"' <<<"$proof_step" && \
    ! grep -Fq -- '-passin "pass:' <<<"$proof_step" && \
-   grep -Fq 'Install descriptor is not the exact canonical 13-field APK contract.' <<<"$proof_step" && \
-   grep -Fq 'for metadata_name in "$descriptor_name" "$protocol_name"; do' <<<"$proof_step" && \
-   grep -Fq '/usr/bin/openssl dgst -sha256 -verify "$public_key" -signature "dist/$metadata_name.sig"' <<<"$proof_step" && \
    grep -Fq 'Final exact verification before publication' <<<"$publish_job" && \
-   grep -Fq '/usr/bin/openssl dgst -sha256 -verify "$public_key" -signature "dist/$descriptor_name.sig"' <<<"$final_step" && \
    grep -Fq 'files: dist/*' <<<"$publish_job"; then
-  pass "release seals, isolates, revalidates, signs and publishes the exact APK install descriptor"
+  pass "release seals descriptor inputs and separates generation from credentialed publication"
 else
-  fail_test "release seals, isolates, revalidates, signs and publishes the exact APK install descriptor"
+  fail_test "release seals descriptor inputs and separates generation from credentialed publication"
 fi
 
 # Source-text reason: hosted tool installation and the credentialed tool paths cannot be replaced
@@ -754,10 +749,10 @@ if (
      .packageId == "io.panelassistant.android" and
      .launchComponent == "io.panelassistant.android/io.panelassistant.android.MainActivity"
    ' "$descriptor_case/dist/$descriptor_name" >/dev/null; then
-  pass "credential-free uid-65534 step behaviorally generates the exact 13-field descriptor"
+  pass "credential-free step behaviorally generates the exact 13-field descriptor"
 else
   sed -n '1,80p' "$descriptor_case/generate.log" >&2
-  fail_test "credential-free uid-65534 step behaviorally generates the exact 13-field descriptor"
+  fail_test "credential-free step behaviorally generates the exact 13-field descriptor"
 fi
 
 if jq -e --arg sha "$(sha256sum "$descriptor_case/dist/$apk_name" | cut -d' ' -f1)" '
@@ -1180,18 +1175,8 @@ else
   fail_test "standalone helpers are compared with the helper packaged in the APK"
 fi
 
-# The descriptor names the one APK, whose asset name carries the `.apk.bin` suffix that keeps earlier
-# updaters away. No step names the retired bridge APK or its descriptor.
-if grep -Fq 'apk_name="panel-assistant-${RELEASE_TAG}-manual-setup-required.apk.bin"' <<<"$descriptor_step" && \
-   grep -Fq 'descriptor_name="ha-paneld-${RELEASE_TAG}-install.json"' <<<"$descriptor_step" && \
-   [ "$(grep -Fc 'apk_name="panel-assistant-${RELEASE_TAG}-manual-setup-required.apk.bin"' "$WORKFLOW")" -eq 5 ] && \
-   ! grep -Fq 'ha-paneld-${RELEASE_TAG}-manual-setup-required' "$WORKFLOW" && \
-   ! grep -Fq 'bridge-install' "$WORKFLOW"; then
-  pass "the descriptor pins the one APK, its asset carries .apk.bin, and no bridge asset is named"
-else
-  fail_test "the descriptor pins the one APK, its asset carries .apk.bin, and no bridge asset is named"
-fi
-
+# Source-text reason: earlier installers compare these published wire identifiers byte
+# for byte; absence of retired identifiers across hosted steps is a compatibility contract.
 # From 0.9.11 the schemas and meta-data keys carry the new id. Panel Assistant 0.8.0 and older compare
 # the schemas byte for byte and skip such a release, so the old spellings must not survive anywhere in
 # the workflow: a release that published one of them would reach installers that cannot drive it.

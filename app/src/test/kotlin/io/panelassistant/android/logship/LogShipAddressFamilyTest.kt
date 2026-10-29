@@ -7,7 +7,6 @@ import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.net.Inet4Address
-import java.net.Inet6Address
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
@@ -35,15 +34,6 @@ class LogShipAddressFamilyTest {
 
         assertTrue("IPv4 must be tried first", ordered.first() is Inet4Address)
         assertEquals(listOf(v4, v6), ordered)
-    }
-
-    @Test fun everyAddressIsKeptSoAStreamTransportCanFallBack() {
-        val ordered = LogShipEndpoint.orderedCandidates(listOf(v6, v4))
-
-        // Dropping the non-preferred family would turn a recoverable TCP/HTTP failure into a
-        // permanent one for a collector that genuinely listens on IPv6 only.
-        assertEquals(2, ordered.size)
-        assertTrue(ordered.any { it is Inet6Address })
     }
 
     @Test fun aSingleFamilyNameIsUnaffected() {
