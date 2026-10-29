@@ -10334,8 +10334,8 @@
       "state": "machine-cross-checked"
     },
     "settings.dashboard_theme.help": {
-      "text": "仅限内置渲染器。\n\n- **跟随 Home Assistant**会将仪表盘的明暗选择交给 Home Assistant，深色模式设置则为该选择提供默认值。\n- **深色**和**浅色**在 Home Assistant 设为自动时于此面板上指定主题；这适用于没有侧边栏、无法从中进入 Home Assistant 个人资料页的信息亭仪表盘。\n- **环境**会根据自动亮度模型所感知的室内光线在深色和浅色之间选择，且只有当房间保持较暗或较亮的状态一分钟后才切换；需开启自动亮度，且在获得读数之前会跟随 Home Assistant。\n\nHome Assistant 中明确选择的浅色或深色仍然优先；请使用自动或单独的面板用户。恢复为跟随 Home Assistant 后，选择权会按原样交还。",
-      "sourceHash": "a50cd5d79a729b0c1fb8d39afa1f2cd03b65577d0d206cdc95b79e2a3512c08a",
+      "text": "仅限内置渲染器。\n\n- **跟随 Home Assistant**会将仪表盘的明暗选择交给 Home Assistant。当 Home Assistant 设为自动时，它会使用此面板自身的偏好：Android 10 及更高版本使用 Android 系统主题，Android 9 及更早版本使用深色模式设置。它不会复制其他浏览器的主题。\n- **深色**和**浅色**在 Home Assistant 设为自动时于此面板上指定主题；这适用于没有侧边栏、无法从中进入 Home Assistant 个人资料页的信息亭仪表盘。\n- **环境**会根据自动亮度模型所感知的室内光线在深色和浅色之间选择，且只有当房间保持较暗或较亮的状态一分钟后才切换；需开启自动亮度，且在获得读数之前会跟随 Home Assistant。\n\nHome Assistant 中明确选择的浅色或深色仍然优先；请使用自动或单独的面板用户。恢复为跟随 Home Assistant 后，选择权会按原样交还。",
+      "sourceHash": "1e5d297de8fa29050f4ada9f3c4b9c6cda0acb5c7f16bc29450ec63c39047b0b",
       "state": "machine-cross-checked"
     },
     "settings.dashboard_theme.label": {

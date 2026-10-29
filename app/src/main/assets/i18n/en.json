@@ -31322,8 +31322,8 @@
       "hardMaxChars": 90
     },
     "settings.dashboard_theme.help": {
-      "text": "Built-in renderer only.\n\n- **Follow Home Assistant** leaves the dashboard's light/dark choice to Home Assistant, which is what the Dark mode setting supplies a default for.\n- **Dark** and **Light** choose it on this panel when Home Assistant is set to Auto, for a kiosk dashboard with no sidebar to reach the Home Assistant profile page from.\n- **Ambient** chooses Dark or Light from the room's light as the auto-brightness model sees it, and changes only after the room has stayed darker or lighter for a minute; it needs Auto-brightness on, and follows Home Assistant until it has a reading.\n\nAn explicit Light or Dark choice in Home Assistant still wins; use Auto or a separate panel user. Returning to Follow Home Assistant hands the choice back exactly as it was found.",
-      "sourceHash": "a50cd5d79a729b0c1fb8d39afa1f2cd03b65577d0d206cdc95b79e2a3512c08a",
+      "text": "Built-in renderer only.\n\n- **Follow Home Assistant** leaves the dashboard's light/dark choice to Home Assistant. When Home Assistant is set to Auto, it uses this panel's own preference: the Android system theme on Android 10 and later, or the Dark mode setting on Android 9 and older. It does not copy the theme from another browser.\n- **Dark** and **Light** choose it on this panel when Home Assistant is set to Auto, for a kiosk dashboard with no sidebar to reach the Home Assistant profile page from.\n- **Ambient** chooses Dark or Light from the room's light as the auto-brightness model sees it, and changes only after the room has stayed darker or lighter for a minute; it needs Auto-brightness on, and follows Home Assistant until it has a reading.\n\nAn explicit Light or Dark choice in Home Assistant still wins; use Auto or a separate panel user. Returning to Follow Home Assistant hands the choice back exactly as it was found.",
+      "sourceHash": "1e5d297de8fa29050f4ada9f3c4b9c6cda0acb5c7f16bc29450ec63c39047b0b",
       "surface": "settings",
       "context": "Configure > Dashboard > Dashboard theme: supporting help for the dashboard_theme setting.",
       "risk": "ordinary",
@@ -31332,7 +31332,8 @@
       ],
       "placeholders": [],
       "frozen": [
-        "Home Assistant"
+        "Home Assistant",
+        "Android"
       ],
       "softMaxChars": 1013,
       "hardMaxChars": 1350
