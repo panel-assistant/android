@@ -244,10 +244,14 @@ tasks.matching { it.name.startsWith("process") && it.name.endsWith("MainManifest
 // Selected Android classes replace SDK stubs; tests use their host-executable paths without a framework runner or device.
 val providerAndroidRuntime = configurations.create("providerAndroidRuntime")
 val providerInstallSourceRuntime = configurations.create("providerInstallSourceRuntime")
+abstract class ProviderArchiveServices {
+    @get:javax.inject.Inject abstract val archives: org.gradle.api.file.ArchiveOperations
+}
 val providerAndroidRuntimeJar = tasks.register<Jar>("providerAndroidRuntimeJar") {
+    val archives = objects.newInstance<ProviderArchiveServices>().archives
     archiveFileName.set("provider-android-runtime.jar")
     destinationDirectory.set(layout.buildDirectory.dir("provider-android-runtime"))
-    from(providerAndroidRuntime.elements.map { files -> files.map { zipTree(it.asFile) } }) {
+    from(providerAndroidRuntime.elements.map { files -> files.map { archives.zipTree(it.asFile) } }) {
         include("android/util/AtomicFile*.class", "android/os/FileUtils*.class")
         include("android/content/pm/Signature*.class", "android/content/pm/SigningInfo*.class")
         include("android/content/pm/PackageInfo*.class", "android/content/pm/PackageParser\$SigningDetails*.class")
@@ -255,7 +259,7 @@ val providerAndroidRuntimeJar = tasks.register<Jar>("providerAndroidRuntimeJar")
         include("android/webkit/WebViewFactory*.class", "android/webkit/WebViewProvider*.class")
         include("android/view/ViewDebug\$HierarchyHandler.class", "com/android/internal/util/SizedInputStream.class")
     }
-    from(providerInstallSourceRuntime.elements.map { files -> files.map { zipTree(it.asFile) } }) {
+    from(providerInstallSourceRuntime.elements.map { files -> files.map { archives.zipTree(it.asFile) } }) {
         include("android/content/pm/InstallSourceInfo*.class")
     }
 }
@@ -594,6 +598,18 @@ tasks.withType<Test>().configureEach {
     systemProperty("hapaneld.test.runtimeReadDirectories", unitTestRuntimeReadDirectories.joinToString(File.pathSeparator))
     systemProperty("hapaneld.test.runtimeReadFiles", unitTestRuntimeReadFiles.joinToString(File.pathSeparator))
     systemProperty("hapaneld.test.runtimeReadAssetExcludes", unitTestGeneratedAssetExcludes.joinToString(File.pathSeparator))
+    val repositoryDirectory = rootProject.projectDir
+    doFirst {
+        val repository = repositoryDirectory.toPath().toAbsolutePath().normalize()
+        val activeInputs = inputs.files.files.map { it.toPath().toAbsolutePath().normalize() }
+            .filter { it.startsWith(repository) }
+            .map { repository.relativize(it).toFile().invariantSeparatorsPath }
+            .sorted()
+        // This generated observation is not an input to itself; keep its size out of JVM arguments.
+        val snapshot = temporaryDir.resolve("runtime-inputs.txt")
+        snapshot.writeText(activeInputs.joinToString("\n"))
+        systemProperty("hapaneld.test.activeTaskInputs", snapshot.absolutePath)
+    }
     providers.gradleProperty("autoSleepReplayInput").orNull?.let {
         systemProperty("hapaneld.autoSleepReplay.input", it)
         inputs.file(it)
