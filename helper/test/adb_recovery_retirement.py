@@ -35,6 +35,7 @@ else:
  name,value=sys.argv[1:]
  (p/name).write_text(value)
  if name=='ctl.restart':
+  with (p/'restarts').open('a') as log: log.write('restart\\n')
   (p/'reopening').touch()
   while (p/'block').exists(): time.sleep(.01)
   if (p/'fail').exists(): sys.exit(1)
@@ -54,7 +55,7 @@ else:
         subprocess.run(['cc','-O1','-g','-Wall','-Wextra','-Werror','-Wno-format-truncation',
                         '-Isrc', *[f'-D{k}="{v}"' for k,v in flags.items()],
                         *sources,'src/main.c','src/sysexec.c','test/adb_recovery_retirement_cuts.c',
-                        '-Wl,--wrap=unlinkat','-Wl,--wrap=rmdir','-lpthread','-o',str(binary)],cwd=ROOT,check=True)
+                        '-Wl,--wrap=unlinkat','-Wl,--wrap=rmdir','-Wl,--wrap=mkdirat','-lpthread','-o',str(binary)],cwd=ROOT,check=True)
         def request(command):
             with socket.socket(socket.AF_UNIX) as s:
                 s.settimeout(4)
@@ -64,7 +65,8 @@ else:
         def ready():
             try: return request('STATUS').startswith('READY')
             except OSError: return False
-        for case in ('armed', 'never-armed', 'reappeared', 'replaced', 'late-return', 'directory-return', 'replacement-race', 'network-fails', 'running-worker'):
+        cases = ('armed', 'never-armed', 'reappeared', 'replaced', 'late-return', 'directory-return', 'replacement-race', 'network-fails', 'running-worker', 'already-open', 'foreign-stage', 'return-again', 'retirement-fails')
+        for case in os.environ.get('RECOVERY_CASES', ','.join(cases)).split(','):
             app.mkdir(); user.mkdir(); live.mkdir()
             exe=live/'helper'; shutil.copyfile(binary,exe); exe.chmod(0o700)
             (p/'tcp').write_text('0: 00000000:15B3 00000000:0000 0A\n')
@@ -90,6 +92,20 @@ else:
                     (p/'fail').touch()
                     (p/'init.svc.adbd').write_text('stopped')
                     (p/'tcp').write_text('')
+                restart_count=lambda:len((p/'restarts').read_text().splitlines()) if (p/'restarts').exists() else 0
+                before_restarts=restart_count()
+                if case=='foreign-stage': (live/'.stage-foreign').write_text('keep')
+                if case in ('already-open','foreign-stage'):
+                    shutil.rmtree(app); shutil.rmtree(user)
+                    wait_for(lambda:owner.poll() is not None,'already-open retirement must finish')
+                    assert restart_count()==before_restarts, 'already-open network ADB must not restart on removal'
+                    if case=='foreign-stage':
+                        assert (live/'.stage-foreign').read_text()=='keep' and not exe.exists(), 'foreign stage must survive without keeping root owner'
+                    else: assert not live.exists()
+                    print('PASS',case,flush=True)
+                    continue
+                (p/'init.svc.adbd').write_text('stopped')
+                (p/'tcp').write_text('')
                 (p/'reopening').unlink(missing_ok=True)
                 (p/'block').touch()
                 shutil.rmtree(app); shutil.rmtree(user)
@@ -98,22 +114,39 @@ else:
                 if case=='reappeared': app.mkdir()
                 if case=='replaced':
                     replacement=live/'replacement'
-                    shutil.copyfile(binary,replacement)
+                    replacement.write_text('foreign replacement')
                     replacement.replace(exe)
                 (p/'block').unlink()
                 if case=='network-fails':
-                    time.sleep(.3)
+                    time.sleep(1.4)
+                    assert restart_count()-before_restarts<=2, 'failed retirement retries must be bounded'
                     assert owner.poll() is None and exe.exists(), 'failed network recovery must retain owner and executable'
                     (p/'fail').unlink()
-                if case in ('reappeared','replaced','late-return','directory-return','replacement-race'):
+                if case=='retirement-fails':
+                    time.sleep(1.4)
+                    assert len(Path(str(app)+'.attempts').read_text())<=2, 'retirement retries must be bounded'
+                    assert ready() and exe.exists(), 'failed retirement must retain owner and executable'
+                    assert restart_count()-before_restarts==1, 'failed retirement must not restart recovered ADB'
+                    print('PASS',case,flush=True)
+                    continue
+                if case in ('reappeared','late-return','directory-return','return-again'):
                     time.sleep(.5)
                     assert ready() and exe.exists() and live.exists(), 'app return must cancel retirement' if case in ('reappeared','late-return','directory-return') else 'replacement executable must survive'
                 else:
                     wait_for(lambda:owner.poll() is not None,'owner did not retire')
                     assert owner.returncode==0
                     assert not Path(f'/proc/{guardian}').exists(), 'guardian survived'
-                    assert not live.exists(), 'root executable directory survived'
+                    if case not in ('replaced','replacement-race'):
+                        assert not live.exists(), 'root executable directory survived'
+                    else:
+                        assert exe.exists(), 'replacement executable must survive'
                     assert (p/'init.svc.adbd').read_text()=='running'
+                if case=='return-again':
+                    shutil.rmtree(app)
+                    wait_for(lambda:owner.poll() is not None,'second removal after return must retire restored executable')
+                    assert not live.exists(), 'second removal must remove restored executable directory'
+                if case!='network-fails':
+                    assert restart_count()-before_restarts<=1, 'absence episode must not restart ADB repeatedly'
                 if case=='replacement-race': assert exe.read_text()=='replacement', 'new executable was overwritten'
                 if case=='running-worker':
                     shell=int((p/'shell-pid').read_text())

@@ -1,11 +1,22 @@
 #define _GNU_SOURCE
 #include <fcntl.h>
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
 /* Inject package/upgrade changes at destructive syscall boundaries, after the last
  * presence/inode observation. The daemon still runs its production entry and loop. */
+int __real_mkdirat(int, const char *, mode_t);
+int __wrap_mkdirat(int directory, const char *name, mode_t mode) {
+    const char *cut = getenv("RECOVERY_RETIREMENT_CUT");
+    if (cut && !strcmp(cut, "retirement-fails") && !strncmp(name, ".retiring-", 10)) {
+        int file = open(APP_DATA ".attempts", O_CREAT | O_APPEND | O_WRONLY, 0600);
+        if (file >= 0) { if (write(file, "x", 1) != 1) abort(); close(file); }
+        errno = EIO; return -1;
+    }
+    return __real_mkdirat(directory, name, mode);
+}
 int __real_unlinkat(int, const char *, int);
 int __real_rmdir(const char *);
 int __wrap_unlinkat(int directory, const char *name, int flags) {
@@ -14,9 +25,11 @@ int __wrap_unlinkat(int directory, const char *name, int flags) {
         int file = openat(directory, "helper", O_CREAT | O_EXCL | O_WRONLY, 0700);
         if (file >= 0) { if (write(file, "replacement", 11) != 11) abort(); close(file); }
     }
+    static int returned;
     int result = __real_unlinkat(directory, name, flags);
-    if (!result && !flags && cut && !strncmp(name, ".retiring-", 10) && !strcmp(cut, "late-return"))
-        (void)mkdir(APP_DATA, 0700);
+    if (!result && !flags && cut && !strncmp(name, ".retiring-", 10) && (!strcmp(cut, "late-return") || !strcmp(cut, "return-again")) && !returned) {
+        returned = 1; (void)mkdir(APP_DATA, 0700);
+    }
     return result;
 }
 int __wrap_rmdir(const char *path) {

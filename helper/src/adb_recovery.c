@@ -271,6 +271,11 @@ static int set_network(int on) {
             fprintf(stderr, "hapaneld-adb-recovery: emergency network recovery; durable security authority invalidation unavailable\n");
         }
     }
+    if (on) {
+        char state[32];
+        if (!property("init.svc.adbd", state, sizeof state) && !strcmp(state, "running") &&
+            tcp_listener(1) == 1) return 0;
+    }
     if ((on && set_property("service.adb.listen_addrs", "")) ||
         set_property("service.adb.tcp.port", on ? "5555" : "-1") ||
         set_property(on ? "ctl.restart" : "ctl.stop", "adbd")) return -1;
@@ -376,29 +381,59 @@ static int restore_executable(int directory, int executable, const char *custody
     if (result) (void)unlinkat(directory, "helper", 0);
     return result;
 }
+/* A cancelled retirement may have restored a byte-identical copy with a new inode. */
+static int same_executable(int executable, int directory, const char *name, off_t size) {
+    int file = openat(directory, name, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    if (file < 0) return 0;
+    struct stat metadata;
+    int same = !fstat(file, &metadata) && S_ISREG(metadata.st_mode) && metadata.st_size == size;
+    for (off_t offset = 0; same && offset < size;) {
+        unsigned char a[8192], b[8192];
+        size_t bytes = size - offset > (off_t)sizeof a ? sizeof a : (size_t)(size - offset);
+        ssize_t first = pread(executable, a, bytes, offset);
+        if (first < 0 && errno == EINTR) continue;
+        ssize_t second = pread(file, b, bytes, offset);
+        if (second < 0 && errno == EINTR) continue;
+        if (first != (ssize_t)bytes || second != first || memcmp(a, b, bytes)) same = 0;
+        offset += (off_t)bytes;
+    }
+    close(file); return same;
+}
 static int retire_files(void) {
     int directory = open(ADB_RECOVERY_DIRECTORY, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
     if (directory < 0) return errno == ENOENT ? 0 : -1;
     int executable = open("/proc/self/exe", O_RDONLY | O_CLOEXEC);
     if (executable < 0) { close(directory); return -1; }
     char holder[64], custody[80];
-    snprintf(holder, sizeof holder, ".retiring-%ld", (long)getpid());
+    snprintf(holder, sizeof holder, ".retiring-%ld-%lld", (long)getpid(), now_ms());
     snprintf(custody, sizeof custody, "%s/helper", holder);
     int result = -1, captured = 0, removed = 0;
     struct stat self, installed;
     if (!helper_app_data_absent() || mkdirat(directory, holder, 0700)) goto done;
     /* The newly created root-only directory gives renameat an unoccupied target
      * on Android kernels predating renameat2. Capture precedes the inode check. */
-    if (renameat(directory, "helper", directory, custody)) goto done;
+    if (renameat(directory, "helper", directory, custody)) {
+        if (errno == ENOENT && helper_app_data_absent()) result = 0;
+        goto done;
+    }
     captured = 1;
     if (fstat(executable, &self) || fstatat(directory, custody, &installed, AT_SYMLINK_NOFOLLOW) ||
-        !S_ISREG(installed.st_mode) || installed.st_dev != self.st_dev || installed.st_ino != self.st_ino ||
         !helper_app_data_absent()) goto done;
+    if (!S_ISREG(installed.st_mode) ||
+        ((installed.st_dev != self.st_dev || installed.st_ino != self.st_ino) &&
+         !same_executable(executable, directory, custody, self.st_size))) {
+        /* A newer/foreign executable belongs to its bootstrap, not this obsolete owner. */
+        if (!restore_custody(directory, custody) || errno == EEXIST) {
+            captured = 0;
+            if (helper_app_data_absent()) result = 0;
+        }
+        goto done;
+    }
     if (unlinkat(directory, custody, 0)) goto done;
     removed = 1;
     if (unlinkat(directory, holder, AT_REMOVEDIR)) goto done;
     if (!helper_app_data_absent()) goto done;
-    if (rmdir(ADB_RECOVERY_DIRECTORY) && errno != ENOENT) goto done;
+    if (rmdir(ADB_RECOVERY_DIRECTORY) && errno != ENOENT && errno != ENOTEMPTY) goto done;
     if (helper_app_data_absent()) result = 0;
     else {
         if (mkdir(ADB_RECOVERY_DIRECTORY, 0700) && errno != EEXIST) goto done;
@@ -438,6 +473,7 @@ int adb_recovery_main(void) {
     if (guardian < 0) { close(server); return 1; }
     char nonce[65] = ""; long long renewed = 0;
     int managed = 0, hold = 0, recovery_pending = 0;
+    long long retirement_after_ms = 0;
     pid_t workers[MAX_EXECUTORS] = {0};
     for (;;) {
         if (atomic_load(&lease->recovered)) managed = 0;
@@ -458,11 +494,15 @@ int adb_recovery_main(void) {
                 if (done < 0 || !WIFEXITED(status) || WEXITSTATUS(status)) recovery_pending = 1;
             }
         }
-        if (managed && (now_ms() - renewed >= ADB_RECOVERY_LEASE_MS || helper_app_data_absent())) recovery_pending = 1;
-        if (recovery_pending) {
+        int absent = helper_app_data_absent();
+        if (!absent) retirement_after_ms = 0;
+        if (managed && (now_ms() - renewed >= ADB_RECOVERY_LEASE_MS || absent)) recovery_pending = 1;
+        if (recovery_pending && (!absent || now_ms() >= retirement_after_ms)) {
             if (!set_network(1)) { managed = 0; recovery_pending = 0; atomic_store(&lease->armed, 0); }
+            else if (absent) retirement_after_ms = now_ms() + 1000;
         }
-        if (helper_app_data_absent() && owner_actuator()) {
+        if (absent && now_ms() >= retirement_after_ms && owner_actuator()) {
+            retirement_after_ms = now_ms() + 1000;
             /* Reopen and prove the surviving route even if this owner was never armed. */
             if (!set_network(1) && helper_app_data_absent()) {
                 atomic_store(&lease->armed, 0);
