@@ -342,6 +342,29 @@ static pid_t start_guardian(int server) {
     }
     return guardian;
 }
+#ifndef ADB_RECOVERY_DIRECTORY
+#define ADB_RECOVERY_DIRECTORY "/data/local/panel-assistant-adb-recovery"
+#endif
+/* Unlink only our running inode: an upgrade may already have replaced the pathname. */
+static int retire_files(void) {
+    int directory = open(ADB_RECOVERY_DIRECTORY, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (directory < 0) return errno == ENOENT ? 0 : -1;
+    struct stat self, installed;
+    int result = -1;
+    if (!helper_app_data_absent()) { close(directory); return -1; }
+    if (!fstatat(directory, "helper", &installed, AT_SYMLINK_NOFOLLOW)) {
+        if (stat("/proc/self/exe", &self) || !S_ISREG(installed.st_mode) ||
+            installed.st_dev != self.st_dev || installed.st_ino != self.st_ino) {
+            close(directory); return -1;
+        }
+        if (!helper_app_data_absent() || unlinkat(directory, "helper", 0)) {
+            close(directory); return -1;
+        }
+    } else if (errno != ENOENT) { close(directory); return -1; }
+    if (!helper_app_data_absent()) { close(directory); return -1; }
+    if (!rmdir(ADB_RECOVERY_DIRECTORY) || errno == ENOENT) result = 0;
+    close(directory); return result;
+}
 static int owner_actuator(void) {
     int expected = 0;
     return atomic_compare_exchange_strong(&lease->actuator, &expected, 1);
@@ -389,6 +412,29 @@ int adb_recovery_main(void) {
         if (managed && (now_ms() - renewed >= ADB_RECOVERY_LEASE_MS || helper_app_data_absent())) recovery_pending = 1;
         if (recovery_pending) {
             if (!set_network(1)) { managed = 0; recovery_pending = 0; atomic_store(&lease->armed, 0); }
+        }
+        if (helper_app_data_absent() && owner_actuator()) {
+            /* Reopen and prove the surviving route even if this owner was never armed. */
+            if (!set_network(1) && helper_app_data_absent()) {
+                atomic_store(&lease->armed, 0);
+                managed = 0;
+                if (guardian > 0) {
+                    (void)kill(guardian, SIGKILL);
+                    while (waitpid(guardian, NULL, 0) < 0 && errno == EINTR) {}
+                    guardian = -1;
+                }
+                for (int i = 0; i < MAX_EXECUTORS; i++) {
+                    int group = atomic_exchange(&lease->groups[i], 0);
+                    if (group > 1) (void)kill(-group, SIGKILL);
+                    if (workers[i] > 0) {
+                        (void)kill(workers[i], SIGKILL);
+                        while (waitpid(workers[i], NULL, 0) < 0 && errno == EINTR) {}
+                        workers[i] = 0;
+                    }
+                }
+                if (!retire_files()) { close(server); return 0; }
+            }
+            atomic_store(&lease->actuator, 0);
         }
         struct pollfd pfd = { .fd = server, .events = POLLIN };
         if (poll(&pfd, 1, 100) <= 0) continue;
