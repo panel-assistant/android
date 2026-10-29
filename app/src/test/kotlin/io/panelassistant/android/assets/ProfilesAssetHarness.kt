@@ -49,8 +49,8 @@ internal object ProfilesAssetHarness {
           // Source-text reason: execute the entire shipped asset, with no code extraction or source assertions.
           vm.runInNewContext(fs.readFileSync(process.argv[1], 'utf8'), context);
           await flush();
-          assert.match(node('profile-status').textContent, /Viewing immutable revision/);
-          assert.ok(requests.some(request => request.op === 'profiles.revision'), 'selected YAML was loaded');
+          assert.equal(node('profile-editor').childNodes[0].value, 'id: sample', 'requested YAML populates the editor');
+          assert.ok(requests.some(request => request.op === 'profiles.revision'), 'selected YAML was requested');
           return {node, requests, options() {
             return node('profile-select').childNodes.flatMap(child => child.tagName === 'OPTGROUP' ? child.childNodes : [child]);
           }};
