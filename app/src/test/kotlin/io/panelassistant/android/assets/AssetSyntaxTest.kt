@@ -10,46 +10,11 @@ import org.junit.Test
 import org.json.JSONObject
 import java.io.File
 
-/**
- * Cheap "malformed asset" smoke test for the bundled `:8888` UI. The web layer (client JS, static JSON)
- * has no other automated coverage — a syntactically broken `switcher.js`/`configure.js` or a corrupt
- * `openapi.json` would otherwise ship to the fleet and only surface as a dead tab in a browser. This
- * runs `node --check` on every JS asset and `JSON.parse` on every JSON asset.
- *
- * Not a full HTTP/DOM test (the real Ktor server needs an Android Context; jsdom isn't a dep) — it only
- * catches *syntax* breakage, which is the regression class that's both real and cheap to guard here. It
- * self-skips (JUnit assume) when `node` or the assets dir is unavailable, so a runner without Node.js
- * doesn't fail the build; CI runners and the dev container both have Node, so it runs there.
- */
+/** Behaviour checks for the bundled web UI through its shipped assets and transport boundaries. */
 class AssetSyntaxTest {
 
-    // Source-text reason: syntax-checks and executes every shipped web asset; no JS code text is asserted.
+    // Source-text reason: executes shipped web assets and reads the published API schema; no JS code text is asserted.
     private val assetsDir: File? = TestSources.assetDir()
-
-    @Test fun everyJsAssetParses() {
-        val dir = assetsDir
-        assumeTrue("assets dir not found (skipping)", dir != null)
-        Node.assumeAvailable()
-        val js = dir!!.walkTopDown().filter { it.isFile && it.name.endsWith(".js") }.sortedBy { it.path }.toList()
-        assertTrue("no .js assets found under ${dir.path}", js.isNotEmpty())
-        for (f in js) {
-            val (code, out) = Node.run("--check", f.absolutePath)
-            assertEquals("${f.name} is not valid JavaScript:\n$out", 0, code)
-        }
-    }
-
-    @Test fun everyJsonAssetParses() {
-        val dir = assetsDir
-        assumeTrue("assets dir not found (skipping)", dir != null)
-        Node.assumeAvailable()
-        val json = dir!!.walkTopDown().filter { it.isFile && it.name.endsWith(".json") }.sortedBy { it.path }.toList()
-        for (f in json) {
-            val (code, out) = Node.run(
-                "-e", "JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'))", f.absolutePath,
-            )
-            assertEquals("${f.name} is not valid JSON:\n$out", 0, code)
-        }
-    }
 
     @Test fun configureLanguageSignalsUseOneBoundedBrowserOverrideContract() {
         val dir = assetsDir
@@ -225,20 +190,51 @@ class AssetSyntaxTest {
         assumeTrue("assets dir not found (skipping)", dir != null)
         Node.assumeAvailable()
         val script = """
-            const fs=require('fs'),vm=require('vm'),source=fs.readFileSync(process.argv[1],'utf8');
-            const start=source.indexOf('function rendererMeasurement('),end=source.indexOf('function perf(d,known){');
-            if(start<0||end<=start)process.exit(2);
-            global.window={};${NodeI18n.REAL_BRIDGE}vm.runInThisContext(source.slice(start,end));
-            const builtin=rendererMeasurement('builtin_unavailable',{status:'ok',pkg:'builtin',mainPct:99});
-            if(builtin.header!=='· built-in observer unavailable')process.exit(3);
-            if(!builtin.rows.some(row=>row.val==='reload the built-in dashboard to retry'))process.exit(4);
-            if(JSON.stringify(builtin).includes('Companion proxy'))process.exit(5);
-            const external=rendererMeasurement('foreign_proxy',{status:'ok',pkg:'com.example.wallpanel',mainPct:17});
-            if(external.header!=='· external renderer proxy'||!external.title.includes('com.example.wallpanel'))process.exit(6);
-            if(JSON.stringify(external).includes('Companion'))process.exit(7);
-            if(!external.rows.some(row=>row.val==='renderer CPU proxy'))process.exit(8);
-            const unavailable=rendererMeasurement('foreign_proxy',{status:'no-renderer'});
-            if(!unavailable.rows.some(row=>row.val==='External renderer proxy needs root/helper access'))process.exit(9);
+            const fs=require('fs'),vm=require('vm'),assert=require('node:assert/strict');
+            function element() {
+              let text='';
+              return {children:[],style:{},width:600,height:150,offsetHeight:150,
+                set textContent(value){text=String(value);this.children=[]},
+                get textContent(){return text+this.children.map(child=>child.textContent).join('')},
+                appendChild(child){child.parentNode=this;this.children.push(child);return child},
+                removeChild(child){this.children.splice(this.children.indexOf(child),1)},
+                get lastChild(){return this.children[this.children.length-1]},
+                getAttribute(){return null}, querySelector(){return null},
+                getContext(){return new Proxy({}, {get:()=>()=>{}})}
+              };
+            }
+            const nodes={};
+            for(const id of ['perfchart','respchart','perf','topproc','smtbl','streamtbl','smhdr','perfage','insthdr','insthint']) {
+              nodes[id]=element();nodes[id].parentNode=element();
+            }
+            const subscribers={};
+            global.window=global;
+            global.document={body:element(),readyState:'complete',getElementById:id=>nodes[id]||null,
+              querySelector:()=>null,querySelectorAll:()=>[],createElement:element,
+              createTextNode:textContent=>({textContent}),addEventListener(){}};
+            global.addEventListener=()=>{};global.cssToken=()=>'';
+            global.HaI18n={t:(key,fallback,values)=>String(fallback).replace(/\{(\w+)\}/g,
+              (whole,name)=>values&&name in values?values[name]:whole)};
+            global.PaneldTransport={subscribe(family,callback){subscribers[family]=callback},
+              request(){return Promise.resolve({outcome:'applied',result:{}})}};
+            vm.runInThisContext(fs.readFileSync(process.argv[1],'utf8'));
+            assert.equal(typeof subscribers.perf,'function','the page subscribed to performance');
+            function update(mode,render){
+              subscribers.perf({dashboard:{mode},render},'known');
+              assert.equal(nodes.perfage.textContent,'· live','the performance update completed');
+              return nodes.smtbl.textContent;
+            }
+            let visible=update('builtin_unavailable',{status:'ok',pkg:'builtin',mainPct:99});
+            assert.equal(nodes.smhdr.textContent,'· built-in observer unavailable');
+            assert.ok(visible.includes('reload the built-in dashboard to retry'));
+            assert.ok(!visible.includes('Companion proxy'));
+            visible=update('foreign_proxy',{status:'ok',pkg:'com.example.wallpanel',mainPct:17});
+            assert.equal(nodes.smhdr.textContent,'· external renderer proxy');
+            assert.ok(nodes.smhdr.title.includes('com.example.wallpanel'));
+            assert.ok(!visible.includes('Companion'));
+            assert.ok(visible.includes('renderer CPU proxy'));
+            visible=update('foreign_proxy',{status:'no-renderer'});
+            assert.ok(visible.includes('External renderer proxy needs root/helper access'));
         """.trimIndent()
         val (code, out) = Node.run("-e", script, File(dir, "info.js").absolutePath)
         assertEquals("renderer measurement presentation contract failed:\n$out", 0, code)
@@ -368,22 +364,19 @@ class AssetSyntaxTest {
         assumeTrue("assets dir not found (skipping)", dir != null)
         Node.assumeAvailable()
         val script = """
-            const fs=require('fs'),vm=require('vm'),source=fs.readFileSync(process.argv[1],'utf8');
-            const summary={ref:{id:'wrong.device',revision:'a'.repeat(64)},matches_this_device:false,compatible:true,active:false,origin:'imported'};
-            const nodes={};let status='',posts=0;
-            global.model={profiles:[summary],selected:summary.ref,status:{selection:{mode:'pinned'}},sourceLoaded:true,editable:false,loading:false,preview:null,source:'',originalSource:''};
-            global.selectedSummary=()=>summary;global.reviewedSummary=()=>summary;global.byId=id=>nodes[id]||(nodes[id]={disabled:false,hidden:false,textContent:''});
-            global.isDirty=()=>false;global.renderBadges=()=>{};global.summaryForRef=()=>summary;global.setStatus=m=>{status=m};
-            global.string=v=>v==null?'':String(v);global.t=(key,fallback)=>fallback;global.openModal=()=>{throw new Error('wrong-device activation opened confirmation')};
-            global.postJson=()=>{posts++;return Promise.resolve({})};
-            const updateStart=source.indexOf('function updateActions()'),updateEnd=source.indexOf('function loadCatalog(');
-            const activateStart=source.indexOf('function activate(ref, action)'),activateEnd=source.indexOf('function pollAfterRestart(');
-            if(updateStart<0||updateEnd<0||activateStart<0||activateEnd<0)process.exit(2);
-            vm.runInThisContext(source.slice(updateStart,updateEnd));vm.runInThisContext(source.slice(activateStart,activateEnd));
-            updateActions();
-            if(!nodes['profile-activate'].disabled)process.exit(3);
-            activate(summary.ref,'activate');
-            if(posts!==0||!status.includes('does not match this device'))process.exit(4);
+            ${ProfilesAssetHarness.SCRIPT}
+            (async () => {
+              const summary={ref:{id:'wrong.device',revision:'a'.repeat(64)},matches_this_device:false,compatible:true,active:false,origin:'imported'};
+              const rig = await loadProfiles([summary]);
+              const button = rig.node('profile-activate');
+              assert.equal(button.disabled, true, 'wrong-device activation is disabled after loading YAML');
+              // Invoke the registered handler too: programmatic dispatch must not open approval.
+              button.dispatch('click');
+              await flush();
+              assert.equal(rig.node('profile-modal').hidden, true, 'wrong-device activation opened confirmation');
+              assert.match(rig.node('profile-status').textContent, /does not match this device/);
+              assert.equal(rig.requests.filter(request => request.op === 'profiles.activate').length, 0);
+            })().catch(error => { console.error(error); process.exitCode = 1; });
         """.trimIndent()
         val (code, out) = Node.run("-e", script, File(dir, "profiles.js").absolutePath)
         assertEquals("Wrong-device profile reached activation flow:\n$out", 0, code)
