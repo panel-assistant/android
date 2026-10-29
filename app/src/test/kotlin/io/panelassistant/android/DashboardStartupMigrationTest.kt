@@ -1,8 +1,10 @@
 package io.panelassistant.android
 
 import io.panelassistant.android.config.SettingsRegistry
+import io.panelassistant.android.testsupport.TestSources
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -23,6 +25,28 @@ internal class DashboardStartupMigrationTest {
         DashboardRendererRig(stored(schema = SettingsRegistry.SCHEMA, kiosk = true)).use { rig ->
             assertEquals(ExternalBusController.CommandKind.KioskMode(true), firstPageKiosk(rig))
         }
+    }
+
+    @Test fun theDashboardsCreationReadsItsStartupSettingsThroughTheMigration() {
+        // Source-text reason: a lifecycle wiring. onCreate cannot run on the plain JVM (androidx's
+        // ComponentActivity.onCreate needs the saved-state controller a constructor-less activity lacks, and
+        // the unit tests have no Robolectric), so this pins that creation reads the settings the first page
+        // opens with through prepareStartupConfig, before the renderer starts; the tests above pin what it does.
+        val activity = TestSources.kotlin("DashboardActivity.kt").readText()
+        val onCreate = slice(activity, "override fun onCreate(savedInstanceState: Bundle?) {", "\n    }\n")
+        val read = "val config = readActivityStateOffMain { prepareStartupConfig(Config(this@DashboardActivity)) }"
+        assertTrue("onCreate must read its startup settings through prepareStartupConfig", onCreate.contains(read))
+        assertTrue("before the renderer starts", onCreate.indexOf(read) < onCreate.indexOf("initializeRenderer(config)"))
+        val prepare = slice(activity, "private fun prepareStartupConfig(config: Config): Config {", "\n    }\n")
+        assertTrue("prepareStartupConfig must migrate the store", prepare.contains("config.migrateLiveStore()"))
+    }
+
+    /** The text between [start] and [end]; fails rather than answering with the whole file when either is missing. */
+    private fun slice(text: String, start: String, end: String): String {
+        assertTrue("missing: $start", text.contains(start))
+        val after = text.substringAfter(start)
+        assertTrue("missing the end of: $start", after.contains(end))
+        return after.substringBefore(end)
     }
 
     private fun stored(schema: Int, kiosk: Boolean) =
