@@ -39,7 +39,8 @@ static int fixture_execve(const char *path, char *const arguments[], char *const
 #define ADB_RECOVERY_TCP fixture_path("tcp")
 #define ADB_RECOVERY_TCP6 fixture_path("tcp6")
 #define ADB_RECOVERY_FENCE_PARENT fixture_path("no_backup")
-#define ADB_RECOVERY_SOCKET "hapaneld-adb-recovery-test"
+#define ADB_RECOVERY_SOCKET "hapaneld-adb-recovery-rc2-16-test"
+#define ADB_RECOVERY_DIRECTORY "/tmp/.hapaneld-rc2-16-helper"
 static unsigned fixture_lease_ms=600;
 #define ADB_RECOVERY_LEASE_MS fixture_lease_ms
 #include "../src/adb_recovery.c"
@@ -99,6 +100,55 @@ static void arm(void) {
     CHECK(!request(command,response,sizeof response)&&!strcmp(response,"OK"),"lease arms before runtime close");
     CHECK(network_is("stopped"),"managed lease closes adbd");
     CHECK(!strcmp(get("persist.adb.tcp.port"),"5555"),"closure preserves positive reboot fallback");
+}
+/* Observe lease deadlines, with margins for property subprocesses and host scheduling. */
+static void wait_until(long long deadline) {
+    while (now_ms() < deadline) usleep(5000);
+}
+static void heartbeat_tests(void) {
+    const char *second = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    char command[100], response[160];
+    start(); arm();
+    snprintf(command, sizeof command, "ARM %s\n", second);
+    CHECK(!request(command,response,sizeof response) && !strcmp(response,"OK"),
+          "replacement session arms a fresh lease");
+    long long armed_at = now_ms();
+    wait_until(armed_at + 300);
+    snprintf(command, sizeof command, "BEAT %s\n", nonce);
+    CHECK(!request(command,response,sizeof response) && !strcmp(response,"ERR"),
+          "superseded heartbeat is rejected");
+    wait_until(armed_at + 850);
+    CHECK(network_is("running"),"superseded heartbeat cannot renew the current lease");
+    stop();
+
+    start(); arm();
+    snprintf(command, sizeof command, "ARM %s\n", second);
+    CHECK(!request(command,response,sizeof response) && !strcmp(response,"OK"),
+          "current heartbeat session arms");
+    armed_at = now_ms();
+    wait_until(armed_at + 350);
+    snprintf(command, sizeof command, "BEAT %s\n", second);
+    CHECK(!request(command,response,sizeof response) && !strcmp(response,"OK"),
+          "current heartbeat is accepted");
+    long long beat_at = now_ms();
+    wait_until(armed_at + 750);
+    CHECK(network_is("stopped"),"current heartbeat keeps ADB closed beyond the original lease");
+    wait_until(beat_at + 850);
+    CHECK(network_is("running"),"current heartbeat renewal eventually expires");
+    stop();
+}
+static void absent_data_test(void) {
+    fixture_lease_ms = 60000;
+    start(); arm();
+    long long removed_at = now_ms();
+    CHECK(!rmdir(APP_DATA) && !rmdir(APP_USER_DATA),"controlled app data is removed");
+    /* Two 100ms polls plus 300ms allowance for host scheduling/property subprocesses;
+     * the 60-second lease makes this distinguish absence recovery from expiry. */
+    while (!network_is("running") && now_ms() - removed_at < 500) usleep(5000);
+    CHECK(network_is("running"),"absent app data promptly reopens ADB before lease expiry");
+    stop();
+    CHECK(!mkdir(APP_DATA,0700) && !mkdir(APP_USER_DATA,0700),"controlled app data is restored");
+    fixture_lease_ms = 600;
 }
 static void unauthorized_test(void) {
     pid_t stranger = fork();
@@ -167,6 +217,8 @@ int main(int argc,char **argv) {
     char directory[]="/tmp/adb-recovery-XXXXXX";if(!mkdtemp(directory)||setenv("HAPANELD_ADB_FIXTURE",directory,1))abort();
     if(setenv("ANDROID_ROOT","/poison-root",1)||setenv("ANDROID_DATA","/poison-data",1)||setenv("CLASSPATH","/poison-classpath",1))abort();
     if (mkdir(fixture_path("no_backup"),0700)) abort();
+    if (mkdir(APP_DATA,0700) || mkdir(APP_USER_DATA,0700)) abort();
+    heartbeat_tests(); absent_data_test();
     start();unauthorized_test();shell_tests();worker_death_test();stop();start();arm();
     int slow=connect_owner();write_all(slow,"S",1);
     long long slow_deadline = now_ms() + 1200;
@@ -216,6 +268,7 @@ int main(int argc,char **argv) {
     CHECK(wait_network("running"),"read-only authority storage cannot strand emergency recovery");
     CHECK(!request("STATUS\n",reply,sizeof reply) && strstr(reply," 0 0 1")!=NULL,"emergency recovery reports unverified security and no managed-OFF proof");
     unlink(fixture_path("fence-write-fails"));unlink(fixture_path("authority-readonly"));stop();
+    CHECK(!rmdir(APP_DATA) && !rmdir(APP_USER_DATA),"controlled app data cleanup succeeds");
     char command[700];snprintf(command,sizeof command,"rm -rf -- '%s'",directory);int cleanup_status = system(command); CHECK(cleanup_status == 0,"fixture cleanup succeeds");
     if(!failures)puts("adb recovery behavioral contracts passed");
     return failures?1:0;
