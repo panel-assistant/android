@@ -53,10 +53,17 @@ class PendingHomeOperationTest {
                 command == "cmd package set-home-activity ${it.component}"
             }
         })
-        val system = SystemController(env, root, FakeDaemon(available = false))
+        val system = SystemController(env, root, FakeDaemon(available = false), acquireHomeLock = { AutoCloseable {} })
 
-        fun pending(claim: Boolean = true, native: () -> Boolean = { true }, component: String = dashboard.component) =
-            pendingHomeOperation(config, env, component, claim, native) { system.setHomeActivity(it) }
+        fun pending(
+            claim: Boolean = true,
+            native: () -> Boolean = { true },
+            component: String = dashboard.component,
+            shellIdentity: String? = "1:2",
+            appIdentity: String? = "1:2",
+        ) = pendingHomeOperation(config, env, component, claim, native, shellIdentity, { appIdentity }) {
+            system.setHomeActivity(it)
+        }
 
         fun handBack(beforeClear: () -> Unit = {}): HandBackHomePolicy.Outcome {
             val controller = HandBackHomeController(
@@ -149,13 +156,38 @@ class PendingHomeOperationTest {
         assertEquals(PendingHomeResult.SHELL, result)
         assertEquals(2, result.code)
         assertEquals("panel-assistant-pending-home-shell", result.data)
-        assertEquals(PendingHomeResult.SHELL, panel.pending(claim = false, native = { false }))
+        val locked = panel.pending(claim = false, native = { false })
+        assertEquals(PendingHomeResult.SHELL_LOCKED, locked)
+        assertEquals(1, locked.code)
+        assertEquals("panel-assistant-pending-home-shell-locked", locked.data)
         assertTrue(panel.root.ran.isEmpty())
         assertTrue(panel.config.homeTakeoverPending)
         assertTrue(panel.handBack().uninstallSafe)
         assertEquals(PendingHomeResult.DEFERRED, panel.pending(claim = false, native = { false }))
         assertEquals(PendingHomeResult.DEFERRED, panel.pending(native = { false }))
         assertEquals(vendor, panel.env.defaultHome())
+    }
+
+
+    @Test fun `shell permission requires a validated matching lock inode`() {
+        val panel = Panel()
+        for ((shell, app) in listOf(null to "1:2", "1:2" to null, "1:3" to "1:2", "bad" to "1:2")) {
+            assertEquals(PendingHomeResult.DEFERRED, panel.pending(
+                claim = false, native = { false }, shellIdentity = shell, appIdentity = app,
+            ))
+        }
+        assertTrue(panel.config.homeTakeoverPending)
+        assertTrue(panel.root.ran.isEmpty())
+    }
+
+    @Test fun `shell lock identity does not bypass revocation during capability probe`() {
+        val panel = Panel()
+        val result = panel.pending(claim = false, native = {
+            panel.config.clearHandBackDesiredState()
+            false
+        })
+        assertEquals(PendingHomeResult.DEFERRED, result)
+        assertTrue(panel.root.ran.isEmpty())
     }
 
     @Test fun `native failure or inexact readback never grants shell fallback or acknowledges pending`() {

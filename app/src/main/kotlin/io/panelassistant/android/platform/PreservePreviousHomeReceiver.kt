@@ -20,7 +20,7 @@ import kotlin.concurrent.thread
 class PreservePreviousHomeReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val operation = intent.getStringExtra("operation")
-        if (operation == "claim_pending_home" || operation == "pending_home_shell_eligibility") {
+        if (operation == "claim_pending_home" || operation == "pending_home_shell_lock_eligibility") {
             val pending = goAsync()
             // HOME actuators can wait for Android. Keep that work off the receiver's main thread.
             thread(name = "pending-home") {
@@ -33,9 +33,9 @@ class PreservePreviousHomeReceiver : BroadcastReceiver() {
                         claim = operation == "claim_pending_home",
                         nativeAvailable = { HelperClient.available() || Su.availableIsolated() },
                         setHome = { SystemController(env).setHomeActivity(it) },
+                        shellLockIdentity = intent.getStringExtra("home_lock_identity"),
                     )
-                    pending.resultCode = if (operation == "pending_home_shell_eligibility" &&
-                        result == PendingHomeResult.SHELL) 1 else result.code
+                    pending.resultCode = result.code
                     pending.resultData = result.data
                 } catch (_: Exception) {
                     pending.resultCode = 0
@@ -81,6 +81,7 @@ internal enum class PendingHomeResult(val code: Int, val data: String?) {
     DEFERRED(0, null),
     CLAIMED(1, "panel-assistant-pending-home-claimed"),
     SHELL(2, "panel-assistant-pending-home-shell"),
+    SHELL_LOCKED(1, "panel-assistant-pending-home-shell-locked"),
 }
 
 /** The automatic setup caller has less authority than an explicit install or update repair. */
@@ -90,20 +91,25 @@ internal fun pendingHomeOperation(
     component: String?,
     claim: Boolean,
     nativeAvailable: () -> Boolean,
+    shellLockIdentity: String? = null,
+    lockIdentity: () -> String? = NativeHomeLock::identity,
     setHome: (String) -> Boolean,
 ): PendingHomeResult {
     // Probing can block. The intent must be read again after it, under HOME custody.
+    if (!claim && (shellLockIdentity == null || shellLockIdentity != lockIdentity())) {
+        return PendingHomeResult.DEFERRED
+    }
     val native = nativeAvailable()
     return withHomeCustody {
         if (!config.setupEverCompleted || !config.homeTakeoverPending) {
             return@withHomeCustody PendingHomeResult.DEFERRED
         }
-        if (!claim) return@withHomeCustody if (native) PendingHomeResult.DEFERRED else PendingHomeResult.SHELL
+        if (!claim) return@withHomeCustody if (native) PendingHomeResult.DEFERRED else PendingHomeResult.SHELL_LOCKED
         val target = env.homeActivities().singleOrNull {
             it.pkg == env.ownPackage && it.component == component
         } ?: return@withHomeCustody PendingHomeResult.DEFERRED
         // A rootless app cannot execute the ADB shell's HOME command. This receipt is deliberately
-        // distinct; the shell rechecks it before each mutation, and never follows a failed native claim.
+        // distinct; the shell must obtain shared exclusion and recheck intent before mutating HOME.
         if (!native) return@withHomeCustody PendingHomeResult.SHELL
         // Handback clears pending under the same HOME custody: it either follows this actual mutation,
         // or has already revoked it. An earlier eligibility reply cannot grant a later shell write.

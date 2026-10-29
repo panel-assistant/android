@@ -62,7 +62,7 @@ class SystemControllerTest {
         return Triple(
             SystemController(
                 env, root, d, builtinForeground = { builtinForeground }, homeWarning = { homeWarnings?.add(it) },
-                vendorHomePackages = vendorHome,
+                vendorHomePackages = vendorHome, acquireHomeLock = { AutoCloseable {} },
             ),
             root, d,
         )
@@ -119,6 +119,38 @@ class SystemControllerTest {
         val (controller, root, _) = sc(env)
         assertTrue(controller.setHomeActivity("com.vendor/.Home", restoringHome = true))
         assertTrue(root.ran.contains("cmd package set-home-activity com.vendor/.Home"))
+    }
+
+
+    @Test fun `busy or unavailable home exclusion cannot fall through to a handback actuator`() {
+        val env = FakeSystemEnv()
+        val root = FakeRootShell()
+        val daemon = FakeDaemon(replies = mapOf("SETHOME com.vendor/.Home" to "OK"))
+        val controller = SystemController(env, root, daemon, acquireHomeLock = { null })
+        assertFalse(controller.setHomeActivity("com.vendor/.Home", restoringHome = true))
+        assertTrue(root.ran.isEmpty())
+        assertTrue(daemon.sent.isEmpty())
+        // Explicit HOME repair has its existing authority and does not require the handback lock.
+        assertTrue(controller.setHomeActivity("com.vendor/.Home"))
+        assertEquals(listOf("SETHOME com.vendor/.Home"), daemon.sent)
+    }
+
+    @Test fun `handback retains exclusion through incumbent helper and su fallback then releases`() {
+        var held = false
+        var acquisitions = 0
+        val root = FakeRootShell(onRun = { assertTrue(held) })
+        val daemon = FakeDaemon(onSend = { assertTrue(held) })
+        val controller = SystemController(FakeSystemEnv(), root, daemon, acquireHomeLock = {
+            assertFalse(held)
+            held = true
+            acquisitions++
+            AutoCloseable { held = false }
+        })
+        assertTrue(controller.setHomeActivity("com.vendor/.Home", restoringHome = true))
+        assertEquals(listOf("SETHOME com.vendor/.Home"), daemon.sent)
+        assertEquals(listOf("cmd package set-home-activity com.vendor/.Home"), root.ran)
+        assertEquals(1, acquisitions)
+        assertFalse(held)
     }
 
     @Test fun `deferred first setup proof requires actual own foreground without taking home`() {
