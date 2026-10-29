@@ -652,8 +652,10 @@ class BundledHelperInstallerTest {
     }
 
     @Test fun `candidate rollback leaves an unrelated process at a stale cached pid alive`() {
-        val unrelated = ProcessBuilder("sleep", "30").start()
+        val unrelated = ProcessBuilder("bash", "-c", "echo \$\$; exec sleep 30").start()
         try {
+            val unrelatedPid = unrelated.inputStream.bufferedReader().readLine().orEmpty()
+            assertTrue("unrelated process did not report its pid", unrelatedPid.matches(Regex("[0-9]+")))
             assertTrue("unrelated process must be alive before rollback", unrelated.isAlive)
             withTakeoverFiles(TakeoverTopology.SYSTEM, candidateStarts = false) { fixture ->
                 val command = bundledLegacyHelperTakeoverCommand(
@@ -662,7 +664,7 @@ class BundledHelperInstallerTest {
                 )
                 val process = ProcessBuilder("bash", "-c", command)
                     .redirectErrorStream(true)
-                    .apply { environment()["candidate_pid"] = unrelated.pid().toString() }
+                    .apply { environment()["candidate_pid"] = unrelatedPid }
                     .start()
                 val output = process.inputStream.bufferedReader().readText()
                 assertEquals(output, 1, process.waitFor())
