@@ -134,7 +134,8 @@ internal class LocalAdbRuntime(
         if (op == "adb.shell" && (command == null || command.isEmpty() || command.size > 65_536 || command.contains(0) || timeout == null || timeout !in 1..180_000)) return refused()
         fun currentRequest() = granted && generation.get() == current && nonce == requestNonce && admit()
         if (!currentRequest()) return refused("expired")
-        if (op != "adb.shell" && args.length() != 0) return refused()
+        if (op != "adb.shell" && args.length() != 0 &&
+            !(op == "adb.ready" && args.length() == 1 && args.opt("include_build_id") is Boolean)) return refused()
         return withContext(dispatcher) {
             if (op == "adb.shell" || op == "adb.recover") {
                 val digest = MessageDigest.getInstance("SHA-256").digest(command ?: ByteArray(0)).joinToString("") { "%02x".format(it) }
@@ -199,7 +200,9 @@ internal class LocalAdbRuntime(
                         "adb.prepare" -> prepare()
                         "adb.ready" -> {
                             val state = publish()
-                            JSONObject().put("ready", state != null).put("managed", state?.managed == true).put("recovery_hold", state?.recoveryHold == true).put("security_unverified", state?.securityUnverified == true).put("build_id", state?.buildId ?: JSONObject.NULL)
+                            JSONObject().put("ready", state != null).put("managed", state?.managed == true).put("recovery_hold", state?.recoveryHold == true).put("security_unverified", state?.securityUnverified == true).also {
+                                if (args.opt("include_build_id") == true) it.put("build_id", state?.buildId ?: JSONObject.NULL)
+                            }
                         }
                         else -> return@withLock refused("unknown_command")
                     }

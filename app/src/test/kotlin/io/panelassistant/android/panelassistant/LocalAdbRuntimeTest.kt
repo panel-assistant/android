@@ -58,7 +58,7 @@ class LocalAdbRuntimeTest {
         runtime.session("granted", true); runCurrent()
         assertEquals(1, bootstraps)
         assertEquals(listOf("arm"), endpoint.effects)
-        val ready = runtime.request("adb.ready", JSONObject(), { true }).result as JSONObject
+        val ready = runtime.request("adb.ready", JSONObject().put("include_build_id", true), { true }).result as JSONObject
         assertEquals(io.panelassistant.android.BuildConfig.HELPER_BUILD_ID, ready.getString("build_id"))
         assertTrue(ready.getBoolean("managed"))
     }
@@ -72,7 +72,7 @@ class LocalAdbRuntimeTest {
         runtime.session("granted", true); runCurrent()
         assertEquals(0, bootstraps)
         assertEquals(listOf("arm"), endpoint.effects)
-        val ready = runtime.request("adb.ready", JSONObject(), { true }).result as JSONObject
+        val ready = runtime.request("adb.ready", JSONObject().put("include_build_id", true), { true }).result as JSONObject
         assertEquals(io.panelassistant.android.BuildConfig.HELPER_BUILD_ID, ready.getString("build_id"))
     }
 
@@ -87,7 +87,7 @@ class LocalAdbRuntimeTest {
         runtime.session("granted", true); runCurrent()
         assertEquals(1, bootstraps)
         assertTrue(endpoint.effects.isEmpty())
-        val ready = runtime.request("adb.ready", JSONObject(), { true }).result as JSONObject
+        val ready = runtime.request("adb.ready", JSONObject().put("include_build_id", true), { true }).result as JSONObject
         assertEquals("0".repeat(64), ready.getString("build_id"))
         advanceTimeBy(30_001); runCurrent()
         assertEquals(2, bootstraps)
@@ -95,6 +95,46 @@ class LocalAdbRuntimeTest {
         advanceTimeBy(30_000); runCurrent()
         assertEquals(3, bootstraps)
         assertEquals(listOf("arm"), endpoint.effects)
+    }
+
+    @Test fun readyPreservesTheLegacyShapeUnlessBuildIdentityIsExplicitlyRequested() = runTest {
+        val endpoint = Endpoint().apply { status = LocalAdbState(true, true, buildId = "0".repeat(64)) }
+        val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), { it() })
+        runtime.session("granted", true); runCurrent()
+        val legacyKeys = setOf("ready", "managed", "recovery_hold", "security_unverified")
+        for (args in listOf(JSONObject(), JSONObject().put("include_build_id", false))) {
+            val reply = runtime.request("adb.ready", args, { true })
+            assertEquals("applied", reply.outcome)
+            val ready = reply.result as JSONObject
+            assertEquals(legacyKeys, ready.keys().asSequence().toSet())
+            assertTrue(ready.getBoolean("ready"))
+            assertTrue(ready.getBoolean("managed"))
+            assertTrue(ready.getBoolean("recovery_hold"))
+        }
+        for (args in listOf(JSONObject().put("include_build_id", "true"), JSONObject().put("include_build_id", 1), JSONObject().put("include_build_id", JSONObject.NULL), JSONObject().put("other", true), JSONObject().put("include_build_id", true).put("other", true))) {
+            val reply = runtime.request("adb.ready", args, { true })
+            assertEquals("refused", reply.outcome)
+            assertEquals("invalid_value", reply.code)
+            assertNull(reply.result)
+        }
+        val ready = runtime.request("adb.ready", JSONObject().put("include_build_id", true), { true }).result as JSONObject
+        assertEquals(legacyKeys + "build_id", ready.keys().asSequence().toSet())
+        assertEquals("0".repeat(64), ready.getString("build_id"))
+        assertTrue(endpoint.effects.isEmpty())
+    }
+
+    @Test fun optedInReadyReportsNoBuildWhenNoDaemonIsAvailable() = runTest {
+        val endpoint = Endpoint().apply { status = null }
+        val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), { it() })
+        runtime.session("granted", true); runCurrent()
+        val legacy = runtime.request("adb.ready", JSONObject(), { true }).result as JSONObject
+        assertFalse(legacy.has("build_id"))
+        assertFalse(legacy.getBoolean("ready"))
+        val ready = runtime.request("adb.ready", JSONObject().put("include_build_id", true), { true }).result as JSONObject
+        assertFalse(ready.getBoolean("ready"))
+        assertTrue(ready.has("build_id"))
+        assertTrue(ready.isNull("build_id"))
+        assertTrue(endpoint.effects.isEmpty())
     }
 
     @Test fun capabilityRollbackReopensInsteadOfRenewingManagedClosure() = runTest {
