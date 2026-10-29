@@ -65,7 +65,7 @@
     <string name="panel_not_set_up">Dit paneel is nog niet ingesteld.</string>
     <string name="panel_not_set_up_hint">Scan de code met je telefoon — het duurt ongeveer twee minuten. Of tik op %1$s om het op dit scherm te doen.</string>
     <string name="browser_engine_too_old">De browser-engine van dit paneel is te oud.</string>
-    <string name="browser_engine_too_old_hint">Home Assistant-dashboards hebben een nieuwere nodig. Los het op via de pagina ‘Instellen’ in een browser.</string>
+    <string name="browser_engine_too_old_hint">De installatie kan gewoon worden afgerond, maar Home Assistant-dashboards hebben een nieuwere nodig. De pagina ‘Instellen’ in een browser laat zien hoe je die bijwerkt.</string>
     <string name="choose_dashboard_app">Kies een dashboard-app.</string>
     <string name="continue_setup_browser">Ga verder op de pagina ‘Instellen’ in een browser.</string>
     <string name="connected_next_ha_address">Verbonden. Volgende stap: het Home Assistant-adres.</string>

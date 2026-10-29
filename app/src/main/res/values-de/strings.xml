@@ -68,7 +68,7 @@
     <string name="panel_not_set_up">Dieses Panel ist noch nicht eingerichtet.</string>
     <string name="panel_not_set_up_hint">Scanne den Code mit deinem Smartphone – es dauert etwa zwei Minuten. Oder tippe auf %1$s, um es auf diesem Bildschirm einzurichten.</string>
     <string name="browser_engine_too_old">Die Browser-Engine dieses Panels ist zu alt.</string>
-    <string name="browser_engine_too_old_hint">Home Assistant-Dashboards benötigen eine neuere Version. Behebe dies auf der Einrichtungsseite in einem Browser.</string>
+    <string name="browser_engine_too_old_hint">Die Einrichtung lässt sich trotzdem abschließen, aber Home Assistant-Dashboards benötigen eine neuere Version. Wie du sie aktualisierst, zeigt die Einrichtungsseite in einem Browser.</string>
     <string name="choose_dashboard_app">Wähle eine Dashboard-App.</string>
     <string name="continue_setup_browser">Fahre auf der Einrichtungsseite in einem Browser fort.</string>
     <string name="connected_next_ha_address">Verbunden. Als Nächstes: die Home Assistant-Adresse.</string>

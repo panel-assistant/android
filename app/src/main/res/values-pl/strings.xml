@@ -65,7 +65,7 @@
     <string name="panel_not_set_up">Ten panel nie został jeszcze skonfigurowany.</string>
     <string name="panel_not_set_up_hint">Zeskanuj kod telefonem – zajmie to około dwóch minut. Albo dotknij %1$s, aby zrobić to na tym ekranie.</string>
     <string name="browser_engine_too_old">Silnik przeglądarki tego panelu jest zbyt stary.</string>
-    <string name="browser_engine_too_old_hint">Pulpity Home Assistant wymagają nowszego silnika. Napraw to na stronie konfiguracji w przeglądarce.</string>
+    <string name="browser_engine_too_old_hint">Konfigurację można dokończyć, ale pulpity Home Assistant wymagają nowszego silnika. Strona konfiguracji w przeglądarce pokazuje, jak go zaktualizować.</string>
     <string name="choose_dashboard_app">Wybierz aplikację do pulpitu.</string>
     <string name="continue_setup_browser">Kontynuuj na stronie konfiguracji w przeglądarce.</string>
     <string name="connected_next_ha_address">Połączono. Dalej: adres Home Assistant.</string>
