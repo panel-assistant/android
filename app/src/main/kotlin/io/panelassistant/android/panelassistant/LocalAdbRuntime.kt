@@ -46,6 +46,7 @@ internal class LocalAdbRuntime(
         { _, _, _ -> io.panelassistant.android.http.DeferredSessionApproval("not_commandable") },
     private val onClosed: () -> Unit = {},
     private val healthy: suspend () -> Boolean = { true },
+    private val rootKnownUnusable: () -> Boolean = { false },
 ) : PanelAssistantLocalAdb {
     private val generation = AtomicLong()
     private val effects = Mutex()
@@ -53,6 +54,11 @@ internal class LocalAdbRuntime(
     @Volatile private var nonce = ""
     @Volatile private var granted = false
     @Volatile private var compatibleHistory = false
+
+    // A panel without root cannot start the endpoint, so offering it only made Panel Assistant stage the
+    // helper and fail a root bootstrap before every operation, and kept this side retrying every 30 seconds.
+    // The endpoint is asked only when root is known unusable, so a rooted panel's hello waits on nothing new.
+    override fun offered(): Boolean = !rootKnownUnusable() || endpoint.state() != null
 
     override fun session(token: String, granted: Boolean) {
         val (current, fresh, retainExistingLease) = RemoteDebugSecurityTransitionGate.withLock {
@@ -217,7 +223,7 @@ internal class LocalAdbRuntime(
                         main.post { if (acknowledgement.isActive) acknowledgement.resume(true) }
                     }
                 } == true
-            })
+            }, rootKnownUnusable = { Su.rootKnownUnusable() })
         }
     }
 }
