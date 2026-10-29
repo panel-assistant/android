@@ -1218,6 +1218,11 @@
       "sourceHash": "ba3bbbe10d8bef66441c88536ce7b8e724e2829b59a3da658654f4961cd61ae5",
       "state": "machine-cross-checked"
     },
+    "configure.network_adb.managed": {
+      "text": "Panel Assistant verwaltet ADB auf diesem Panel und hält es ausgeschaltet. Wird das Panel aus Panel Assistant entfernt, schaltet sich ADB wieder ein.",
+      "sourceHash": "1a7a2f8db70c54fc9bacab8eae1395b666d9ceb583101692b453e1d55e40ed55",
+      "state": "machine-cross-checked"
+    },
     "configure.oauth.browser_recommended": {
       "text": "Die Browser-Anmeldung wird empfohlen; das Langzeit-Zugriffstoken bleibt als erweiterte Ausweichoption verfügbar.",
       "sourceHash": "cf970982eab16b244e4b741429787443be4627c11c694862e71bd2b3981661b5",

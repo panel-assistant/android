@@ -291,6 +291,24 @@ class PaneldServer internal constructor(
         return true
     }
 
+    /**
+     * A direct ON while Panel Assistant manages network ADB is refused rather than journalled: the app cannot
+     * apply it (AdbController.set), so a queued ON would read as pending for good and could open port 5555
+     * later without a new action from the owner. Restores and imports keep the hardened check only.
+     */
+    private suspend fun rejectDirectNetworkAdb(call: OpCall, requested: String?): Boolean {
+        if (rejectHardenedNetworkAdb(call, requested)) return true
+        if (!io.panelassistant.android.control.ManagedNetworkAdb.managed ||
+            SettingValue.parseBool(requested.orEmpty()) != true
+        ) return false
+        call.respondText(
+            """{"ok":false,"error":"network-adb-managed-by-panel-assistant","message":"Panel Assistant manages network ADB on this panel."}""",
+            ContentType.Application.Json,
+            HttpStatusCode.Conflict,
+        )
+        return true
+    }
+
 
 
     // Per-INSTALL build token (changes on every (re)install, not just a version bump) so an open info
@@ -935,7 +953,7 @@ class PaneldServer internal constructor(
         onboarding = DirectConfigOnboarding(config),
         capabilities = { liveCapabilities(managementObservations.snapStaleOk().caps) },
         authorizeSensitive = ::authorizeSensitive,
-        rejectHardenedNetworkAdb = ::rejectHardenedNetworkAdb,
+        rejectHardenedNetworkAdb = ::rejectDirectNetworkAdb,
         onHaAreaCommitted = { haArea.onHaAreaCommitted() },
     )
 

@@ -1043,6 +1043,11 @@
    "sourceHash": "ba3bbbe10d8bef66441c88536ce7b8e724e2829b59a3da658654f4961cd61ae5",
    "state": "machine-cross-checked"
   },
+  "configure.network_adb.managed": {
+   "text": "Panel Assistant beheert ADB op dit paneel en houdt het uit. Als je het paneel uit Panel Assistant verwijdert, wordt ADB weer ingeschakeld.",
+   "sourceHash": "1a7a2f8db70c54fc9bacab8eae1395b666d9ceb583101692b453e1d55e40ed55",
+   "state": "machine-cross-checked"
+  },
   "configure.oauth.browser_recommended": {
    "text": "Inloggen via de browser wordt aanbevolen; het langdurige token blijft beschikbaar als geavanceerde terugvaloptie.",
    "sourceHash": "cf970982eab16b244e4b741429787443be4627c11c694862e71bd2b3981661b5",

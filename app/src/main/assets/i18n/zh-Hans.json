@@ -1218,6 +1218,11 @@
       "state": "machine-cross-checked",
       "text": "正在加载…"
     },
+    "configure.network_adb.managed": {
+      "text": "Panel Assistant 管理此面板上的 ADB 并使其保持关闭。从 Panel Assistant 中移除此面板后，ADB 将重新开启。",
+      "sourceHash": "1a7a2f8db70c54fc9bacab8eae1395b666d9ceb583101692b453e1d55e40ed55",
+      "state": "machine-cross-checked"
+    },
     "configure.oauth.browser_recommended": {
       "sourceHash": "cf970982eab16b244e4b741429787443be4627c11c694862e71bd2b3981661b5",
       "state": "machine-cross-checked",

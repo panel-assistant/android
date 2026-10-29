@@ -36,12 +36,20 @@
       "aria-label": cfg.i18nText("configure.advanced.marker", "Advanced setting")
     }) : null;
     labelText.appendChild(cfg.el("span", { class: "flabel-tail" }, [lastWord, advancedMark, cfg.helpButton(f)]));
+    // Panel Assistant keeps network ADB off here and the app cannot turn it on: the row says so instead of
+    // offering a switch whose ON could only ever wait.
+    var adbManaged = f.key === "network_adb" && cfg.networkAdbManaged === true;
+    var managedNote = adbManaged ? cfg.el("small", {
+      id: "cfg-network_adb-managed", class: "managed-status",
+      text: cfg.i18nText("configure.network_adb.managed", "Panel Assistant manages ADB on this panel and keeps it off. Removing the panel from Panel Assistant turns ADB back on.")
+    }) : null;
     var label = cfg.el("div", { class: "flabel" }, [
       labelText,
       summary,
       companionRendererHint,
       secretNote,
-      Object.prototype.hasOwnProperty.call(cfg.applyPending, f.key) ?
+      managedNote,
+      adbManaged ? null : Object.prototype.hasOwnProperty.call(cfg.applyPending, f.key) ?
         cfg.el("small", { class: "apply-pending-status", text: cfg.applyPendingStatusText(f.key) })
       : cfg.rendererPending[f.key] === true ?
         cfg.el("small", { class: "renderer-pending-status", text: cfg.i18nText("configure.renderer.pending", "Saved; not on the dashboard yet.") }) : null,
@@ -49,6 +57,14 @@
     ]);
     // Read-only rows (diagnostic sensors) have no editable value — just the expose-to-HA pip.
     var valueControl = f.readOnly ? null : cfg.control(f);
+    if (valueControl && adbManaged) {
+      // A copy keeps the switch's look and drops its handlers, so it reads off and cannot be changed.
+      valueControl = valueControl.cloneNode(true);
+      valueControl.classList.remove("on");
+      valueControl.classList.add("blocked");
+      valueControl.setAttribute("aria-checked", "false");
+      valueControl.setAttribute("aria-disabled", "true");
+    }
     if (valueControl) {
       if (!valueControl.getAttribute("aria-label")) valueControl.setAttribute("aria-label", f.label);
       valueControl.setAttribute("lang", f.labelLanguage);
@@ -57,6 +73,7 @@
         valueControl.setAttribute("title", cfg.i18nText("configure.hardened.setting_approval", "Changing this setting may require physical on-panel approval when Hardened mode is enabled."));
       }
       if (secretNote) valueControl.setAttribute("aria-describedby", ((valueControl.getAttribute("aria-describedby") || "") + " " + secretNote.id).trim());
+      if (managedNote) valueControl.setAttribute("aria-describedby", ((valueControl.getAttribute("aria-describedby") || "") + " " + managedNote.id).trim());
     }
     var ctl = cfg.el("div", { class: "fctl" }, f.readOnly ? [cfg.pip(f)] : [cfg.pip(f), valueControl]);
     // Anchor id so dashboard "edit" icons can deep-link straight to this setting.

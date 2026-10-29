@@ -3329,6 +3329,21 @@
       "softMaxChars": 24,
       "hardMaxChars": 40
     },
+    "configure.network_adb.managed": {
+      "text": "Panel Assistant manages ADB on this panel and keeps it off. Removing the panel from Panel Assistant turns ADB back on.",
+      "sourceHash": "1a7a2f8db70c54fc9bacab8eae1395b666d9ceb583101692b453e1d55e40ed55",
+      "surface": "configure",
+      "context": "Configure > System > Network ADB: shown under the switch while Panel Assistant keeps network ADB off on this panel; the switch is disabled and says how ADB comes back.",
+      "risk": "consequential",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [
+        "Panel Assistant",
+        "ADB"
+      ],
+      "softMaxChars": 150,
+      "hardMaxChars": 215
+    },
     "configure.oauth.browser_recommended": {
       "text": "Browser sign-in is recommended; the long-lived token remains available as an advanced fallback.",
       "sourceHash": "cf970982eab16b244e4b741429787443be4627c11c694862e71bd2b3981661b5",

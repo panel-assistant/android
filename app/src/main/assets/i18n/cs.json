@@ -1233,6 +1233,11 @@
       "sourceHash": "ba3bbbe10d8bef66441c88536ce7b8e724e2829b59a3da658654f4961cd61ae5",
       "state": "machine-cross-checked"
     },
+    "configure.network_adb.managed": {
+      "text": "Panel Assistant na tomto panelu spravuje ADB a nechává ho vypnuté. Odebráním panelu z Panel Assistant se ADB znovu zapne.",
+      "sourceHash": "1a7a2f8db70c54fc9bacab8eae1395b666d9ceb583101692b453e1d55e40ed55",
+      "state": "machine-cross-checked"
+    },
     "configure.oauth.browser_recommended": {
       "text": "Doporučujeme přihlášení přes prohlížeč; token s dlouhou platností zůstává k dispozici jako pokročilá záložní možnost.",
       "sourceHash": "cf970982eab16b244e4b741429787443be4627c11c694862e71bd2b3981661b5",
