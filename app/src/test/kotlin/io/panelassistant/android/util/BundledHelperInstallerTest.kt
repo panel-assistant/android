@@ -339,6 +339,10 @@ class BundledHelperInstallerTest {
             assertEquals(fixture.oldBytes, fixture.oldBin.readText())
             assertFalse(fixture.stage.exists())
             assertTrue(File(fixture.dataLocal, ".hapaneld-helper.legacy-takeover").isFile)
+            assertFalse(
+                "boot service stopped before the takeover record was durable",
+                File(fixture.root, "stopped-before-record").exists(),
+            )
             assertFalse(File(fixture.root, "dev/.hapaneld-helper-transaction.lock").exists())
             }
         }
@@ -651,24 +655,24 @@ class BundledHelperInstallerTest {
         }
     }
 
-    @Test fun `candidate rollback leaves an unrelated process at a stale cached pid alive`() {
-        val unrelated = ProcessBuilder("bash", "-c", "echo \$\$; exec sleep 30").start()
+    @Test fun `candidate rollback spares an unrelated program now holding the candidate's pid`() {
+        // The supervisor's pid is what a script would cache from `$!`; exec gives it to another
+        // program, as pid reuse would. Rollback must stop only processes running the live inode.
+        val pidFile = File(scratchDirectory("bundled-helper-supervise-pid-").toFile(), "pid")
         try {
-            val unrelatedPid = unrelated.inputStream.bufferedReader().readLine().orEmpty()
-            assertTrue("unrelated process did not report its pid", unrelatedPid.matches(Regex("[0-9]+")))
-            assertTrue("unrelated process must be alive before rollback", unrelated.isAlive)
-            withTakeoverFiles(TakeoverTopology.SYSTEM, candidateStarts = false) { fixture ->
+            withTakeoverFiles(TakeoverTopology.SYSTEM, candidateStarts = false, supervisePidFile = pidFile) { fixture ->
                 val command = bundledLegacyHelperTakeoverCommand(
                     sha256(fixture.stage), stagedBuild, incumbentBuild,
                     filesystemRoot = fixture.root.absolutePath, polls = 1,
                 )
-                val process = ProcessBuilder("bash", "-c", command)
-                    .redirectErrorStream(true)
-                    .apply { environment()["candidate_pid"] = unrelatedPid }
-                    .start()
+                val process = ProcessBuilder("bash", "-c", command).redirectErrorStream(true).start()
                 val output = process.inputStream.bufferedReader().readText()
                 assertEquals(output, 1, process.waitFor())
-                assertTrue("rollback killed the unrelated owner of a stale pid", unrelated.isAlive)
+                val pid = pidFile.readText().trim().toLong()
+                assertTrue(
+                    "rollback killed the unrelated owner of the candidate's pid",
+                    ProcessHandle.of(pid).map { it.isAlive }.orElse(false),
+                )
                 assertEquals(fixture.oldBytes, fixture.oldBin.readText())
                 assertEquals(fixture.oldRegistration, fixture.registration.readText())
                 assertEquals(fixture.candidateBytes, fixture.stage.readText())
@@ -676,8 +680,9 @@ class BundledHelperInstallerTest {
                 assertFalse(File(fixture.root, "dev/.hapaneld-helper-transaction.lock").exists())
             }
         } finally {
-            unrelated.destroyForcibly()
-            unrelated.waitFor()
+            pidFile.takeIf { it.isFile }?.readText()?.trim()?.toLongOrNull()
+                ?.let { ProcessHandle.of(it).ifPresent { handle -> handle.destroyForcibly() } }
+            pidFile.parentFile!!.deleteRecursively()
         }
     }
 
@@ -1159,6 +1164,7 @@ class BundledHelperInstallerTest {
         registrationBytes: String = legacyRegistration(topology),
         sharedSocketReplies: Boolean = false,
         guardStatus: String = emptyStatus,
+        supervisePidFile: File? = null,
         test: (TakeoverFixture) -> Unit,
     ) {
         val root = scratchDirectory("bundled-helper-takeover-").toFile()
@@ -1200,6 +1206,7 @@ class BundledHelperInstallerTest {
                 signalOnSupervise = signalOnSupervise,
                 sharedSocketMarker = sharedSocketMarker,
                 guardStatus = guardStatus,
+                supervisePidFile = supervisePidFile,
             )
             val oldRegistration = registrationBytes
             writeExecutable(oldBin, oldBytes, 755)
@@ -1210,6 +1217,8 @@ class BundledHelperInstallerTest {
                 writeExecutable(File(root, "system/bin/stop"), """
                     #!/bin/sh
                     [ "${'$'}1" = hapaneld_helper ] || exit 2
+                    [ -s '${File(dataLocal, ".hapaneld-helper.legacy-takeover").absolutePath}' ] ||
+                      : > '${File(root, "stopped-before-record").absolutePath}'
                     rm -f '${incumbentReady.absolutePath}'
                 """.trimIndent() + "\n", 755)
                 writeExecutable(File(root, "system/bin/start"), """
@@ -1295,6 +1304,7 @@ class BundledHelperInstallerTest {
         sharedSocketMarker: File? = null,
         incumbentReadyMarker: File? = null,
         guardStatus: String = emptyStatus,
+        supervisePidFile: File? = null,
     ): String = """
         #!/bin/sh
         if [ "${'$'}1" = --replacement-safe ]; then
@@ -1303,6 +1313,7 @@ class BundledHelperInstallerTest {
         fi
         if [ "${'$'}1" = --supervise ]; then
           ${if (signalOnSupervise) "kill -TERM \"${'$'}PPID\"; sleep 1" else ":"}
+          ${if (supervisePidFile != null) "echo ${'$'}${'$'} > '${supervisePidFile.absolutePath}'; exec sleep 30" else ":"}
           exit ${if (starts) 0 else 7}
         fi
         if [ "${'$'}1" = --request ]; then

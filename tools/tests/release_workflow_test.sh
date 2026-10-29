@@ -495,9 +495,10 @@ descriptor_step="$(extract_named_step 'Generate bounded install descriptor witho
 proof_step="$(extract_named_step 'Sign and authenticate release proofs')"
 final_step="$(extract_named_step 'Final exact verification before publication')"
 # Source-text reason: sealed job inputs, secret injection and publication order are
-# hosted workflow boundaries; extracted-step cases below cover filesystem isolation and signatures.
+# hosted workflow boundaries; extracted-step cases below cover signatures.
 # Source-text reason: the generator suppresses tool stderr, so fixture output cannot
-# independently attest its UID. Keep the explicit privilege-drop boundary contract.
+# independently attest its UID or its landlock confinement. Keep the explicit
+# privilege-drop and filesystem-isolation boundary contracts.
 if grep -Fq 'cp tools/generate_install_descriptor.py release-input/generate_install_descriptor.py' <<<"$package_job" && \
    [ "$(grep -Fc 'generate_install_descriptor.py \' <<<"$package_job")" -eq 1 ] && \
    grep -Fq 'sha256sum android-gradle-runtime.cdx.json generate_install_descriptor.py' <<<"$package_job" && \
@@ -505,6 +506,7 @@ if grep -Fq 'cp tools/generate_install_descriptor.py release-input/generate_inst
    grep -Fq '(cd release-input && sha256sum --check MANIFEST.sha256)' <<<"$publish_job" && \
    grep -Fq '/usr/bin/setpriv \' <<<"$descriptor_step" && \
    grep -Fq -- '--reuid=65534 \' <<<"$descriptor_step" && \
+   grep -Fq 'SYS_landlock_restrict_self' <<<"$descriptor_step" && \
    ! grep -Fq 'KEYSTORE_B64: ${{' <<<"$(extract_named_step_yaml 'Generate bounded install descriptor without release credentials')" && \
    ! grep -Eq '(^|[[:space:]])(python3|release-input/[^[:space:]]+\.py)([[:space:]]|$)' <<<"$proof_step" && \
    ! grep -Fq -- '-srcstorepass "$KEYSTORE_PASSWORD"' <<<"$proof_step" && \
