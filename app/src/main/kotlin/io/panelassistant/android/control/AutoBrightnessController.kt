@@ -10,7 +10,6 @@ import io.panelassistant.android.stableOwner
 import io.panelassistant.android.metrics.FeatureCostOperation
 import io.panelassistant.android.metrics.FeatureCostOutcome
 import io.panelassistant.android.metrics.FeatureCosts
-import io.panelassistant.android.sensors.SensorTrace
 import io.panelassistant.android.sensors.HaAmbientHistorySeed
 import java.security.MessageDigest
 import java.util.TimeZone
@@ -563,12 +562,6 @@ internal class AutoBrightnessController(
             }
             lastAppliedTarget = applied
         }
-        SensorTrace.recordLux(
-            write.lux.toFloat(),
-            write.effectiveLux.toFloat(),
-            write.automaticTarget,
-            lastAppliedTarget.takeIf { it >= 0 },
-        )
         requestEvaluationLocked(write.nextDelayMs)
     }
 
