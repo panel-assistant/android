@@ -147,7 +147,7 @@ $(BUILD)/cdprelay-test: cdprelay.c | $(BUILD)
 
 # Real UNIX-socket composition fixture: production server/dispatch core with the no-exec host stub.
 socket-test-server: $(BUILD)/socket-test-server
-$(BUILD)/socket-test-server: $(CORE_SRCS) $(STUB) test/socket_server.c | $(BUILD)
+$(BUILD)/socket-test-server: $(CORE_SRCS) $(STUB) test/socket_server.c $(SRC_DIR)/commands.def | $(BUILD)
 	$(CC) $(CFLAGS) -DHAPANELD_TEST -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/socket_server.c $(LDLIBS) -o $@
 
 # App<->daemon verb-contract cross-check: every verb the app sends must exist in commands.def.
