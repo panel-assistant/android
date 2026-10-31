@@ -264,7 +264,13 @@ class DashboardActivity : AppCompatActivity() {
     private var appNavigatedDashboardRoute: String? = null
     private val homeDashboardAttempts = HomeDashboardResolutionAttemptGate()
     private val admissionRetryPolicy = AdmissionRetryPolicy()
-    private val statusScreens = DashboardStatusScreens(this, main, activityScope, admissionRetryPolicy, object : DashboardStatusScreens.Host {
+    private val statusScreens = createStatusScreens { tick, delay -> main.postDelayed(tick, delay) }
+    /**
+     * The status screens and the WebView cover, wired to this activity: one factory each, so a JVM test
+     * builds exactly this wiring (above all, that their clocks stop while the screen is dark). [post] is
+     * where a clock's next tick goes: [main] on a panel.
+     */
+    private fun createStatusScreens(post: (Runnable, Long) -> Unit) = DashboardStatusScreens(this, main, activityScope, admissionRetryPolicy, object : DashboardStatusScreens.Host {
         override val activityOwner get() = this@DashboardActivity.activityOwner
         override val destroyed get() = this@DashboardActivity.destroyed
         override val hasWeb get() = web != null
@@ -292,7 +298,7 @@ class DashboardActivity : AppCompatActivity() {
         override fun redrawCoverPage() {
             if (authLatched) renderAuthLatchPage() else if (interstitialShown) reissueReconnecting()
         }
-    }, screenAwake = { pacer.screenAwake })
+    }, screenAwake = { pacer.screenAwake }, postWaiting = post)
     private val entityGate = DashboardEntityGate(this, main, activityScope, statusScreens, object : DashboardEntityGate.Host {
         override val activityOwner get() = this@DashboardActivity.activityOwner
         override val destroyed get() = this@DashboardActivity.destroyed
@@ -324,7 +330,8 @@ class DashboardActivity : AppCompatActivity() {
     /** When the reconnecting cover first went up, for its "unreachable for" hero; 0 while it is down. */
     private var reconnectingSinceMs = 0L
     // The cover over the WebView: up only while the phase is reconnecting or latched (see [phase]).
-    private val webCover by lazy { DashboardWebCover(this, main, screenAwake = { pacer.screenAwake }) }
+    private val webCover by lazy { createWebCover { tick, delayMs -> main.postDelayed(tick, delayMs) } }
+    private fun createWebCover(post: (Runnable, Long) -> Unit) = DashboardWebCover(this, main, screenAwake = { pacer.screenAwake }, post = post)
     private fun showWebCover(fill: (StatusSurface) -> Unit) =
         webCover.show(swipe?.parent as? ViewGroup, StatusSurface.darkFor(this, activityConfig), fill)
     // The main-frame document the dashboard WebView is actually showing (onPageCommitVisible), or null
