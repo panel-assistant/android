@@ -1,269 +1,22 @@
 #define _GNU_SOURCE
-#include "guard_maintenance.h"
-#include "companion.h"
+#include "guard_maintenance_internal.h"
 
-#include "sha256.h"
-#include "sysexec.h"
-#include "util.h"
-#include "version.h"
 
-#include <errno.h>
-#include <dirent.h>
-#include <fcntl.h>
-#include <inttypes.h>
-#include <limits.h>
-#include <pthread.h>
-#include <signal.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/stat.h>
-#include <sys/statvfs.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <sys/file.h>
-#include <sys/xattr.h>
-#include <time.h>
-#include <unistd.h>
-
-#ifdef HAPANELD_TEST
-#define GUARD_PARENT "/tmp"
-#define GUARD_DIR_NAME ".hapaneld-guard-db-test"
-#define GUARD_APP_USER_ROOT "/tmp/.hapaneld-guard-app-test/data/user/0"
-#define GUARD_BOOT_ID "/tmp/.hapaneld-guard-db-test.boot-id"
-#define GUARD_INSTALLED_APK "/tmp/.hapaneld-guard-installed/base.apk"
-#else
-#define GUARD_PARENT "/data/local"
-#define GUARD_DIR_NAME ".hapaneld-guard-db"
-#define GUARD_APP_USER_ROOT "/data/user/0"
-#define GUARD_BOOT_ID "/proc/sys/kernel/random/boot_id"
-#endif
-
-#define GUARD_DIR GUARD_PARENT "/" GUARD_DIR_NAME
-// The package a session acts on is bound once, at GUARDPREPARE, from the caller's SO_PEERCRED
-// identity, and lives in the durable plan; every later verb and every reconcile derives the package
-// id, its database directory, `pm path`, `am force-stop` and `monkey -p` target from that record.
-// GUARD_DB_NAME and every restore-record, schema and metadata identifier stay byte-identical,
-// because shipped 0.4.1 verifiers compare them exactly.
-#define GUARD_DB_NAME "ha-paneld.db"
-#define GUARD_APP_PATH_BYTES 512
-#define GUARD_PACKAGE_BYTES 64
-#define GUARD_DRAFT "draft.v1"
-#define GUARD_DRAFT_TMP ".draft.v1.tmp"
-#define GUARD_MANIFEST "manifest.v1"
-#define GUARD_MANIFEST_TMP ".manifest.v1.tmp"
-#define GUARD_JOURNAL "journal.v1"
-#define GUARD_JOURNAL_TMP ".journal.v1.tmp"
-#define GUARD_CAPTURE "capture.v1"
-#define GUARD_CAPTURE_TMP ".capture.v1.tmp"
-#define GUARD_REPLACEMENT "replacement.v1"
-#define GUARD_REPLACEMENT_TMP ".replacement.v1.tmp"
-#define GUARD_A_APK "a.apk"
-#define GUARD_B_APK "b.apk"
-#define GUARD_A_UPLOAD ".a.apk.upload"
-#define GUARD_B_UPLOAD ".b.apk.upload"
-#define GUARD_BASELINE "baseline.db"
-#define GUARD_BASELINE_TMP ".baseline.db.tmp"
-#define GUARD_PREMIGRATE "premigrate.db"
-#define GUARD_PREMIGRATE_TMP ".premigrate.db.tmp"
-#define GUARD_B_PRIMARY "b-primary.db"
-#define GUARD_B_PRIMARY_TMP ".b-primary.db.tmp"
-#define GUARD_HEALTH_COPY "health.db"
-#define GUARD_HEALTH_COPY_TMP ".health.db.tmp"
-#define GUARD_SETTINGS "settings.v2"
-#define GUARD_SETTINGS_UPLOAD ".settings.v2.upload"
-#define GUARD_OWNER_LOCK ".owner.lock"
-#define GUARD_A_APK_PATH GUARD_DIR "/" GUARD_A_APK
-#define GUARD_B_APK_PATH GUARD_DIR "/" GUARD_B_APK
-#define GUARD_HEALTH_COPY_URI "file:" GUARD_DIR "/" GUARD_HEALTH_COPY "?immutable=1"
-#define GUARD_ROLLBACK_TMP ".guard.rollback.tmp"
-#define GUARD_APP_RESTORE_RECORD ".ha-paneld.db.restore.v1"
-#define GUARD_APP_RESTORE_RECORD_TMP ".ha-paneld.db.restore.v1.tmp"
-#define GUARD_APP_RESTORE_PREPARED ".ha-paneld.db.restore.prepared.v1"
-#define GUARD_APP_RESTORE_MAX_RECORD_BYTES 2048
-#define GUARD_REPLACEMENT_MAX_BINARY_BYTES (16ULL * 1024ULL * 1024ULL)
-#ifdef HAPANELD_TEST
-#define GUARD_APP_HELPER_PARENT "/tmp"
-#define GUARD_APP_HELPER_LIVE ".hapaneld-helper-live-test"
-#define GUARD_APP_HELPER_STAGE ".hapaneld-helper-live-test.new"
-#define GUARD_APP_HELPER_PREVIOUS ".hapaneld-helper-live-test.previous"
-#define GUARD_APP_HELPER_PREVIOUS_TMP ".hapaneld-helper-live-test.previous.tmp"
-#define HELPER_TRANSACTION_LOCK_PARENT "/tmp"
-#define HELPER_TRANSACTION_LOCK_NAME ".hapaneld-helper-transaction-lock-test"
-#else
-#define GUARD_APP_HELPER_PARENT "/data/local"
-#define GUARD_APP_HELPER_LIVE "hapaneld-helper"
-#define GUARD_APP_HELPER_STAGE ".hapaneld-helper.new"
-#define GUARD_APP_HELPER_PREVIOUS ".hapaneld-helper.previous"
-#define GUARD_APP_HELPER_PREVIOUS_TMP ".hapaneld-helper.previous.tmp"
-#define HELPER_TRANSACTION_LOCK_PARENT "/dev"
-#define HELPER_TRANSACTION_LOCK_NAME ".hapaneld-helper-transaction.lock"
-#endif
-#define HELPER_TRANSACTION_LOCK_PID "pid"
-#define GUARD_MAX_RECORD_BYTES 4096
-#define GUARD_MAX_APK_BYTES (256ULL * 1024ULL * 1024ULL)
-#define GUARD_MAX_DB_BYTES (64ULL * 1024ULL * 1024ULL)
-#define GUARD_MAX_SETTINGS_BYTES (256ULL * 1024ULL)
-#define GUARD_STORAGE_HEADROOM (64ULL * 1024ULL * 1024ULL)
-#define GUARD_TOKEN_COUNT 48
-#define GUARD_LABEL_BYTES 256
-#define GUARD_HEALTH_TIMEOUT_MS (2ULL * 60ULL * 1000ULL)
-#define GUARD_OVERALL_MAX_MS (30ULL * 60ULL * 1000ULL)
-#define GUARD_RECOVERY_RESERVE_MS (8ULL * 60ULL * 1000ULL)
-#define GUARD_FORWARD_MIN_MS (2ULL * 60ULL * 1000ULL)
-#define GUARD_SQLITE_PROOF_MAX_BYTES (8ULL * 1024ULL * 1024ULL)
-#define GUARD_SQLITE_PROOF_TIMEOUT_MS 5000U
-#define GUARD_AM_TIMEOUT_MS 10000U
-#define GUARD_SQLITE_PATH "/system/bin/sqlite3"
-#define GUARD_PROBE_TABLE "db_compatibility_canary_v15"
-
-typedef struct {
-    int defined;
-    int staged;
-    uint64_t bytes;
-    char sha[65];
-    uint64_t version_code;
-    uint32_t contract_min;
-    uint32_t contract_max;
-    uint32_t expected_schema;
-} guard_artifact;
-
-typedef struct {
-    char session[65];
-    char boot[65];
-    char signer[65];
-    char package[GUARD_PACKAGE_BYTES];
-    uint64_t generation;
-    uint64_t overall_deadline_ms;
-    uint64_t forward_deadline_ms;
-    uint32_t settings_authority_version;
-    uint64_t settings_authority_bytes;
-    char settings_authority_sha[65];
-    int settings_authority_staged;
-    uint64_t baseline_bytes;
-    char baseline_sha[65];
-    uint32_t baseline_schema;
-    uint64_t baseline_app_state;
-    char baseline_app_state_sha[65];
-    char baseline_settings_sha[65];
-    guard_artifact a;
-    guard_artifact b;
-    int captured;
-    uint64_t db_dir_dev;
-    uint64_t db_dir_ino;
-    uint64_t db_dev;
-    uint64_t db_ino;
-    uint64_t db_uid;
-    uint64_t db_gid;
-    uint32_t db_mode;
-    char db_label[GUARD_LABEL_BYTES];
-} guard_plan;
-
-typedef struct {
-    char session[65];
-    uint64_t manifest_generation;
-    char manifest_sha[65];
-    uint64_t generation;
-    enum guard_phase phase;
-    char role[5];
-    char installed_sha[65];
-    uint64_t version_code;
-    uint32_t schema;
-    uint64_t deadline_ms;
-    char error[33];
-    char outcome[33];
-    int pm_settled;
-    int pm_spawned;
-    uint64_t pm_pid;
-    uint64_t pm_start_ticks;
-    int rollback_attempt_consumed;
-    uint64_t recovery_deadline_ms;
-    uint64_t premigrate_bytes;
-    char premigrate_sha[65];
-    uint64_t b_primary_bytes;
-    char b_primary_sha[65];
-    char retirement_sha[65];
-} guard_journal;
-
-enum guard_capture_state {
-    GUARD_CAPTURE_INTENT = 0,
-    GUARD_CAPTURE_STOP_ATTEMPTED,
-    GUARD_CAPTURE_FAILED_LAUNCHING,
-    GUARD_CAPTURE_FAILED_NO_MUTATION,
-    GUARD_CAPTURE_FAILED_LAUNCH_ATTEMPTED,
-    GUARD_CAPTURE_CANCEL_INTENT,
-};
-
-typedef struct {
-    char session[65];
-    uint64_t draft_generation;
-    char draft_sha[65];
-    enum guard_capture_state state;
-} guard_capture;
-
-enum guard_replacement_phase {
-    GUARD_REPLACEMENT_REQUESTED = 0,
-    GUARD_REPLACEMENT_GRANTED,
-    GUARD_REPLACEMENT_BACKUP_DURABLE,
-    GUARD_REPLACEMENT_SWAPPED,
-};
-
-typedef struct {
-    char boot[65];
-    char nonce[65];
-    enum guard_replacement_phase phase;
-    uint64_t generation;
-    uint64_t old_bytes;
-    char old_sha[65];
-    uint64_t old_dev;
-    uint64_t old_ino;
-    uint64_t new_bytes;
-    char new_sha[65];
-    uint64_t new_dev;
-    uint64_t new_ino;
-    char new_build[65];
-} guard_replacement;
-
-typedef struct {
-    int present;
-    struct stat stat;
-} guard_file_snapshot;
-
-typedef struct {
-    int parent;
-    int dir;
-    struct stat dir_stat;
-    struct stat pid_stat;
-} helper_transaction_lock;
-
-enum helper_transaction_lock_result {
-    HELPER_TRANSACTION_LOCK_HOLD = -1,
-    HELPER_TRANSACTION_LOCK_ACQUIRED = 0,
-    HELPER_TRANSACTION_LOCK_BUSY = 1,
-};
-
-enum guard_publish_result {
-    GUARD_PUBLISH_FAILED = -1,
-    GUARD_PUBLISH_COMMITTED = 0,
-    GUARD_PUBLISH_INDETERMINATE = 1,
-};
-
-static pthread_mutex_t guard_lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t guard_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t package_gate = PTHREAD_MUTEX_INITIALIZER;
-static int guard_initialized;
+int guard_initialized;
 static int guard_supervised;
 static int guard_supervisor_owner;
 static pid_t guard_supervisor_pid = -1;
-static int guard_owner_fd = -1;
+int guard_owner_fd = -1;
 
-static int known_file_present(int dir, const char *name);
-static int empty_inventory_safe(int dir);
+int known_file_present(int dir, const char *name);
+int empty_inventory_safe(int dir);
 static int retirement_owner_lock_exact(int dir);
 static int plans_compatible(const guard_plan *plan);
-static int open_guard_dir(void);
+int open_guard_dir(void);
 static int load_replacement_at(int dir, guard_replacement *replacement);
-static int load_replacement_reconciled(int dir, guard_replacement *replacement);
+int load_replacement_reconciled(int dir, guard_replacement *replacement);
 static uint64_t monotonic_ms(void);
 static int load_manifest_reconciled(int dir, guard_plan *plan, guard_journal *journal,
                                     int repair_missing_journal);
@@ -280,13 +33,10 @@ static int reconcile_orphaned_cancel_at(int dir);
 static int reconcile_terminal_retirement_at(int dir);
 
 #ifdef HAPANELD_TEST
-static enum guard_test_fault test_fault;
+enum guard_test_fault test_fault;
 static uint64_t test_now_ms;
 static int test_pm_process_state;
 static int test_app_autonomous_profile;
-#define TEST_FAULT(value) (test_fault == (value))
-#else
-#define TEST_FAULT(value) ((void)(value), 0)
 #endif
 
 static int parse_u64(const char *text, uint64_t minimum, uint64_t maximum, uint64_t *value) {
@@ -378,7 +128,7 @@ const char *guard_phase_name(enum guard_phase phase) {
         ? names[(unsigned)phase] : "AMBIGUOUS";
 }
 
-static int open_guard_dir(void) {
+int open_guard_dir(void) {
     const char *parent_path = GUARD_PARENT;
 #ifdef HAPANELD_TEST
     const char *test_parent = getenv("HAPANELD_GUARD_TEST_PARENT");
@@ -410,7 +160,7 @@ static int open_guard_dir(void) {
     return dir;
 }
 
-static int remove_fixed_nondir(int dir, const char *name) {
+int remove_fixed_nondir(int dir, const char *name) {
     struct stat st;
     if (fstatat(dir, name, &st, AT_SYMLINK_NOFOLLOW) != 0) return errno == ENOENT ? 0 : -1;
     if (S_ISDIR(st.st_mode)) return -1;
@@ -911,7 +661,7 @@ static int replacement_same_transaction(const guard_replacement *left,
         left->new_ino == right->new_ino && strcmp(left->new_build, right->new_build) == 0;
 }
 
-static int load_replacement_reconciled(int dir, guard_replacement *replacement) {
+int load_replacement_reconciled(int dir, guard_replacement *replacement) {
     guard_replacement current, temporary;
     int final_state = load_replacement_at(dir, &current);
     char record[GUARD_MAX_RECORD_BYTES];
@@ -1008,7 +758,7 @@ static int store_capture_at(int dir, const guard_capture *capture) {
                 : GUARD_TEST_FAULT_CAPTURE_INTENT_DIR_SYNC);
 }
 
-static int store_replacement_at(int dir, const guard_replacement *replacement) {
+int store_replacement_at(int dir, const guard_replacement *replacement) {
     char record[GUARD_MAX_RECORD_BYTES];
     int length = serialize_replacement(replacement, record);
     if (length < 0) return GUARD_PUBLISH_FAILED;
@@ -4938,13 +4688,13 @@ int guard_maintenance_install_begin(void) {
 
 void guard_maintenance_install_end(void) { pthread_mutex_unlock(&package_gate); }
 
-static int known_file_present(int dir, const char *name) {
+int known_file_present(int dir, const char *name) {
     struct stat st;
     if (fstatat(dir, name, &st, AT_SYMLINK_NOFOLLOW) == 0) return 1;
     return errno == ENOENT ? 0 : -1;
 }
 
-static int empty_inventory_safe(int dir) {
+int empty_inventory_safe(int dir) {
     int duplicate = openat(dir, ".", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
     if (duplicate < 0) return 0;
     DIR *stream = fdopendir(duplicate);
@@ -5187,7 +4937,7 @@ static int finalized_retirement_preflight(int dir, const guard_plan *plan,
     return exact;
 }
 
-static int open_app_helper_parent(void) {
+int open_app_helper_parent(void) {
     int dir = open(GUARD_APP_HELPER_PARENT, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
     struct stat st;
     if (dir < 0 || fstat(dir, &st) != 0 || !S_ISDIR(st.st_mode) ||
@@ -5402,7 +5152,7 @@ static int acquire_helper_transaction_lock(helper_transaction_lock *lock) {
     return HELPER_TRANSACTION_LOCK_ACQUIRED;
 }
 
-static int app_helper_identity_at(int dir, const char *name, uint64_t *bytes,
+int app_helper_identity_at(int dir, const char *name, uint64_t *bytes,
                                   char sha[65], uint64_t *dev, uint64_t *ino) {
     int fd = openat(dir, name, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
     struct stat st;
@@ -5419,7 +5169,7 @@ static int app_helper_identity_at(int dir, const char *name, uint64_t *bytes,
     return exact ? 0 : -1;
 }
 
-static int app_helper_identity_matches(int dir, const char *name, uint64_t bytes,
+int app_helper_identity_matches(int dir, const char *name, uint64_t bytes,
                                        const char *sha, uint64_t dev, uint64_t ino) {
     uint64_t actual_bytes = 0, actual_dev = 0, actual_ino = 0;
     char actual_sha[65];
@@ -5490,12 +5240,12 @@ static int seal_app_helper_stage_at(int parent, uint64_t bytes, const char *sha,
         bytes, sha, dev, ino);
 }
 
-static int replacement_boot_current(const guard_replacement *replacement) {
+int replacement_boot_current(const guard_replacement *replacement) {
     char boot[65];
     return current_boot_nonce(boot) == 0 && strcmp(boot, replacement->boot) == 0;
 }
 
-static int replacement_request_topology_exact(const guard_replacement *replacement) {
+int replacement_request_topology_exact(const guard_replacement *replacement) {
     int parent = open_app_helper_parent();
     if (parent < 0) return -1;
     int exact = app_helper_identity_matches(parent, GUARD_APP_HELPER_LIVE,
@@ -5509,7 +5259,7 @@ static int replacement_request_topology_exact(const guard_replacement *replaceme
     return exact ? 0 : -1;
 }
 
-static int replacement_old_caller_exact(const guard_replacement *replacement) {
+int replacement_old_caller_exact(const guard_replacement *replacement) {
     if (replacement_request_topology_exact(replacement) != 0) return -1;
 #ifndef HAPANELD_TEST_SKIP_SELF_BINDING
     int parent = open_app_helper_parent();
@@ -5851,274 +5601,6 @@ void cmd_guardretire(conn_ctx *ctx, const char *args) {
         cmd_guardretire_terminal(ctx, args);
     else
         cmd_guardretire_app(ctx, args);
-}
-
-int guard_maintenance_replacement_parent_grant(char nonce[65]) {
-    if (!guard_maintenance_supervisor_authoritative() || !nonce) return GUARD_REPLACEMENT_HOLD;
-    pthread_mutex_lock(&guard_lock);
-    int dir = open_guard_dir();
-    guard_replacement replacement;
-    int loaded = dir >= 0 ? load_replacement_reconciled(dir, &replacement) : -1;
-    int valid = loaded == 1 && replacement.phase == GUARD_REPLACEMENT_REQUESTED &&
-        replacement_boot_current(&replacement) && replacement_old_caller_exact(&replacement) == 0;
-    int stored = GUARD_PUBLISH_FAILED;
-    if (valid) {
-        replacement.phase = GUARD_REPLACEMENT_GRANTED;
-        replacement.generation++;
-        stored = store_replacement_at(dir, &replacement);
-    }
-    if (stored == GUARD_PUBLISH_COMMITTED) snprintf(nonce, 65, "%s", replacement.nonce);
-    if (dir >= 0) close(dir);
-    pthread_mutex_unlock(&guard_lock);
-    return stored == GUARD_PUBLISH_COMMITTED ? GUARD_REPLACEMENT_READY : GUARD_REPLACEMENT_HOLD;
-}
-
-int guard_maintenance_replacement_export_lease(void) {
-    if (!guard_maintenance_supervisor_authoritative() || guard_owner_fd < 0) return -1;
-    struct stat owner, exported;
-    if (fstat(guard_owner_fd, &owner) != 0 || !S_ISREG(owner.st_mode) ||
-        owner.st_uid != geteuid() || owner.st_nlink != 1 ||
-        dup2(guard_owner_fd, GUARD_REPLACEMENT_LEASE_FD) < 0 ||
-        fstat(GUARD_REPLACEMENT_LEASE_FD, &exported) != 0 ||
-        owner.st_dev != exported.st_dev || owner.st_ino != exported.st_ino) return -1;
-    int flags = fcntl(GUARD_REPLACEMENT_LEASE_FD, F_GETFD, 0);
-    return flags >= 0 && fcntl(GUARD_REPLACEMENT_LEASE_FD, F_SETFD,
-        flags & ~FD_CLOEXEC) == 0 ? 0 : -1;
-}
-
-int guard_maintenance_replacement_parent_abort(const char nonce[65]) {
-    if (!guard_maintenance_supervisor_authoritative() || !nonce || !lower_hex_64(nonce)) return -1;
-    pthread_mutex_lock(&guard_lock);
-    int dir = open_guard_dir();
-    guard_replacement replacement;
-    int loaded = dir >= 0 ? load_replacement_reconciled(dir, &replacement) : -1;
-    int safe = loaded == 1 && strcmp(replacement.nonce, nonce) == 0 &&
-        (replacement.phase == GUARD_REPLACEMENT_REQUESTED ||
-         replacement.phase == GUARD_REPLACEMENT_GRANTED) &&
-        replacement_boot_current(&replacement) && replacement_old_caller_exact(&replacement) == 0;
-    int removed = safe && unlinkat(dir, GUARD_REPLACEMENT, 0) == 0 && fsync(dir) == 0;
-    if (dir >= 0) close(dir);
-    close(GUARD_REPLACEMENT_LEASE_FD);
-    pthread_mutex_unlock(&guard_lock);
-    return removed ? 0 : -1;
-}
-
-static int adopt_replacement_lease(const char nonce[65], guard_replacement *replacement,
-                                   int *guard_dir) {
-#ifndef HAPANELD_TEST_SKIP_SELF_BINDING
-    if (geteuid() != 0) return -1;
-#endif
-    if (!nonce || !lower_hex_64(nonce)) return -1;
-    int dir = open_guard_dir();
-    int owner = dir >= 0 ? openat(dir, GUARD_OWNER_LOCK,
-        O_RDWR | O_NOFOLLOW | O_CLOEXEC) : -1;
-    struct stat lease_st, owner_st;
-    int valid = dir >= 0 && owner >= 0 &&
-        fstat(GUARD_REPLACEMENT_LEASE_FD, &lease_st) == 0 &&
-        fstat(owner, &owner_st) == 0 && S_ISREG(lease_st.st_mode) &&
-        lease_st.st_uid == geteuid() && lease_st.st_nlink == 1 &&
-        (lease_st.st_mode & 0777) == 0600 && lease_st.st_dev == owner_st.st_dev &&
-        lease_st.st_ino == owner_st.st_ino &&
-        flock(GUARD_REPLACEMENT_LEASE_FD, LOCK_EX | LOCK_NB) == 0 &&
-        load_replacement_reconciled(dir, replacement) == 1 &&
-        strcmp(replacement->nonce, nonce) == 0 && replacement_boot_current(replacement);
-    if (owner >= 0) close(owner);
-    if (!valid) {
-        if (dir >= 0) close(dir);
-        return -1;
-    }
-    guard_owner_fd = GUARD_REPLACEMENT_LEASE_FD;
-    *guard_dir = dir;
-    return 0;
-}
-
-static int copy_app_helper_at(int parent, const char *source_name,
-                              const char *temporary_name, uint64_t bytes,
-                              const char *sha) {
-    if (remove_fixed_nondir(parent, temporary_name) != 0) return -1;
-    int source = openat(parent, source_name, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
-    int output = openat(parent, temporary_name,
-        O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0700);
-    uint64_t remaining = bytes;
-    hapaneld_sha256 hash;
-    hapaneld_sha256_init(&hash);
-    unsigned char buffer[65536];
-    int copied = source >= 0 && output >= 0;
-    while (copied && remaining > 0) {
-        size_t wanted = remaining < sizeof buffer ? (size_t)remaining : sizeof buffer;
-        ssize_t count = read(source, buffer, wanted);
-        if (count < 0 && errno == EINTR) continue;
-        if (count <= 0 || write_complete(output, buffer, (size_t)count) != 0) {
-            copied = 0;
-            break;
-        }
-        hapaneld_sha256_update(&hash, buffer, (size_t)count);
-        remaining -= (uint64_t)count;
-    }
-    unsigned char digest[32];
-    char actual[65];
-    hapaneld_sha256_final(&hash, digest);
-    hapaneld_sha256_hex(digest, actual);
-    int durable = copied && remaining == 0 && strcmp(actual, sha) == 0 &&
-        fchmod(output, 0700) == 0 && fsync(output) == 0;
-    if (source >= 0) close(source);
-    if (output >= 0 && close(output) != 0) durable = 0;
-    if (!durable) {
-        (void)remove_fixed_nondir(parent, temporary_name);
-        return -1;
-    }
-    return 0;
-}
-
-int guard_maintenance_replacement_stage_app(const char nonce[65]) {
-    guard_replacement replacement;
-    int dir = -1;
-    if (adopt_replacement_lease(nonce, &replacement, &dir) != 0 ||
-        replacement.phase != GUARD_REPLACEMENT_GRANTED ||
-        replacement_request_topology_exact(&replacement) != 0) {
-        if (dir >= 0) close(dir);
-        return -1;
-    }
-    int parent = open_app_helper_parent();
-    int staged_self = parent >= 0;
-#ifndef HAPANELD_TEST_SKIP_SELF_BINDING
-    struct stat self_st, staged_st;
-    staged_self = staged_self && stat("/proc/self/exe", &self_st) == 0 &&
-        fstatat(parent, GUARD_APP_HELPER_STAGE, &staged_st, AT_SYMLINK_NOFOLLOW) == 0 &&
-        self_st.st_dev == staged_st.st_dev && self_st.st_ino == staged_st.st_ino;
-#endif
-    staged_self = staged_self && strcmp(helper_build_id(), replacement.new_build) == 0;
-    if (!staged_self || known_file_present(parent, GUARD_APP_HELPER_PREVIOUS) != 0 ||
-        copy_app_helper_at(parent, GUARD_APP_HELPER_LIVE,
-            GUARD_APP_HELPER_PREVIOUS_TMP, replacement.old_bytes,
-            replacement.old_sha) != 0 ||
-        renameat(parent, GUARD_APP_HELPER_PREVIOUS_TMP,
-                 parent, GUARD_APP_HELPER_PREVIOUS) != 0 || fsync(parent) != 0) {
-        if (parent >= 0) close(parent);
-        close(dir);
-        return -1;
-    }
-    uint64_t backup_bytes = 0, backup_dev = 0, backup_ino = 0;
-    char backup_sha[65];
-    int backup_exact = parent >= 0 && app_helper_identity_at(parent,
-        GUARD_APP_HELPER_PREVIOUS, &backup_bytes, backup_sha,
-        &backup_dev, &backup_ino) == 0 && backup_bytes == replacement.old_bytes &&
-        strcmp(backup_sha, replacement.old_sha) == 0;
-    if (!staged_self || !backup_exact || TEST_FAULT(GUARD_TEST_FAULT_REPLACEMENT_AFTER_BACKUP)) {
-        if (parent >= 0) close(parent);
-        close(dir);
-        return -1;
-    }
-    replacement.phase = GUARD_REPLACEMENT_BACKUP_DURABLE;
-    replacement.generation++;
-    if (store_replacement_at(dir, &replacement) != GUARD_PUBLISH_COMMITTED ||
-        renameat(parent, GUARD_APP_HELPER_STAGE, parent, GUARD_APP_HELPER_LIVE) != 0 ||
-        fsync(parent) != 0 ||
-        app_helper_identity_matches(parent, GUARD_APP_HELPER_LIVE,
-            replacement.new_bytes, replacement.new_sha,
-            replacement.new_dev, replacement.new_ino) != 0 ||
-        TEST_FAULT(GUARD_TEST_FAULT_REPLACEMENT_AFTER_SWAP)) {
-        close(parent);
-        close(dir);
-        return -1;
-    }
-    replacement.phase = GUARD_REPLACEMENT_SWAPPED;
-    replacement.generation++;
-    int stored = store_replacement_at(dir, &replacement);
-    close(parent);
-    close(dir);
-    return stored == GUARD_PUBLISH_COMMITTED ? 0 : -1;
-}
-
-int guard_maintenance_replacement_supervisor_adopt_app(const char nonce[65]) {
-    guard_replacement replacement;
-    int dir = -1;
-    if (adopt_replacement_lease(nonce, &replacement, &dir) != 0 ||
-        replacement.phase != GUARD_REPLACEMENT_SWAPPED ||
-        strcmp(helper_build_id(), replacement.new_build) != 0) {
-        if (dir >= 0) close(dir);
-        return -1;
-    }
-    int parent = open_app_helper_parent();
-    uint64_t previous_bytes = 0, previous_dev = 0, previous_ino = 0;
-    char previous_sha[65];
-    int exact = parent >= 0 && app_helper_identity_matches(parent, GUARD_APP_HELPER_LIVE,
-            replacement.new_bytes, replacement.new_sha,
-            replacement.new_dev, replacement.new_ino) == 0 &&
-        app_helper_identity_at(parent, GUARD_APP_HELPER_PREVIOUS,
-            &previous_bytes, previous_sha, &previous_dev, &previous_ino) == 0 &&
-        previous_bytes == replacement.old_bytes && strcmp(previous_sha, replacement.old_sha) == 0;
-#ifndef HAPANELD_TEST
-    struct stat self_st, live_st;
-    exact = exact && stat("/proc/self/exe", &self_st) == 0 &&
-        fstatat(parent, GUARD_APP_HELPER_LIVE, &live_st, AT_SYMLINK_NOFOLLOW) == 0 &&
-        self_st.st_dev == live_st.st_dev && self_st.st_ino == live_st.st_ino;
-#endif
-    if (parent >= 0) close(parent);
-    if (!exact) {
-        close(dir);
-        return -1;
-    }
-    int flags = fcntl(GUARD_REPLACEMENT_LEASE_FD, F_GETFD, 0);
-    if (flags < 0 || fcntl(GUARD_REPLACEMENT_LEASE_FD, F_SETFD,
-                           flags | FD_CLOEXEC) != 0) {
-        close(dir);
-        return -1;
-    }
-    guard_initialized = 0;
-    close(dir);
-    return 0;
-}
-
-int guard_maintenance_replacement_worker_commit_app(const char nonce[65]) {
-    if (!guard_maintenance_supervised() || !nonce || !lower_hex_64(nonce)) return -1;
-    pthread_mutex_lock(&guard_lock);
-    int dir = open_guard_dir();
-    guard_replacement replacement;
-    int loaded = dir >= 0 ? load_replacement_reconciled(dir, &replacement) : -1;
-    int parent = open_app_helper_parent();
-    int previous_present = parent >= 0
-        ? known_file_present(parent, GUARD_APP_HELPER_PREVIOUS) : -1;
-    if (loaded == 0 && previous_present == 0 && dir >= 0 && empty_inventory_safe(dir)) {
-        guard_initialized = 1;
-        if (parent >= 0) close(parent);
-        close(dir);
-        pthread_mutex_unlock(&guard_lock);
-        return 0;
-    }
-    if (loaded == 1 && previous_present == 0 && parent >= 0 &&
-        replacement.phase == GUARD_REPLACEMENT_SWAPPED &&
-        strcmp(replacement.nonce, nonce) == 0 && replacement_boot_current(&replacement) &&
-        strcmp(helper_build_id(), replacement.new_build) == 0 &&
-        app_helper_identity_matches(parent, GUARD_APP_HELPER_LIVE,
-            replacement.new_bytes, replacement.new_sha,
-            replacement.new_dev, replacement.new_ino) == 0) {
-        int resumed = unlinkat(dir, GUARD_REPLACEMENT, 0) == 0 && fsync(dir) == 0;
-        close(parent);
-        close(dir);
-        guard_initialized = resumed;
-        pthread_mutex_unlock(&guard_lock);
-        return resumed ? 0 : -1;
-    }
-    uint64_t previous_bytes = 0, previous_dev = 0, previous_ino = 0;
-    char previous_sha[65];
-    int exact = loaded == 1 && parent >= 0 &&
-        replacement.phase == GUARD_REPLACEMENT_SWAPPED &&
-        strcmp(replacement.nonce, nonce) == 0 && replacement_boot_current(&replacement) &&
-        strcmp(helper_build_id(), replacement.new_build) == 0 &&
-        app_helper_identity_matches(parent, GUARD_APP_HELPER_LIVE,
-            replacement.new_bytes, replacement.new_sha,
-            replacement.new_dev, replacement.new_ino) == 0 &&
-        app_helper_identity_at(parent, GUARD_APP_HELPER_PREVIOUS,
-            &previous_bytes, previous_sha, &previous_dev, &previous_ino) == 0 &&
-        previous_bytes == replacement.old_bytes && strcmp(previous_sha, replacement.old_sha) == 0;
-    int committed = exact && unlinkat(parent, GUARD_APP_HELPER_PREVIOUS, 0) == 0 &&
-        fsync(parent) == 0 && unlinkat(dir, GUARD_REPLACEMENT, 0) == 0 && fsync(dir) == 0;
-    if (parent >= 0) close(parent);
-    if (dir >= 0) close(dir);
-    guard_initialized = committed;
-    pthread_mutex_unlock(&guard_lock);
-    return committed ? 0 : -1;
 }
 
 void guard_maintenance_set_supervised(int supervised) {
