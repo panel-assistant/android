@@ -5877,8 +5877,12 @@ int guard_maintenance_replacement_export_lease(void) {
     if (!guard_maintenance_supervisor_authoritative() || guard_owner_fd < 0) return -1;
     struct stat owner, exported;
     if (fstat(guard_owner_fd, &owner) != 0 || !S_ISREG(owner.st_mode) ||
-        owner.st_uid != geteuid() || owner.st_nlink != 1 ||
-        dup2(guard_owner_fd, GUARD_REPLACEMENT_LEASE_FD) < 0 ||
+        owner.st_uid != geteuid() || owner.st_nlink != 1) return -1;
+    struct stat occupant;
+    if (fcntl(GUARD_REPLACEMENT_LEASE_FD, F_GETFD, 0) >= 0 &&
+        (fstat(GUARD_REPLACEMENT_LEASE_FD, &occupant) != 0 ||
+         occupant.st_dev != owner.st_dev || occupant.st_ino != owner.st_ino)) return -1;
+    if (dup2(guard_owner_fd, GUARD_REPLACEMENT_LEASE_FD) < 0 ||
         fstat(GUARD_REPLACEMENT_LEASE_FD, &exported) != 0 ||
         owner.st_dev != exported.st_dev || owner.st_ino != exported.st_ino) return -1;
     int flags = fcntl(GUARD_REPLACEMENT_LEASE_FD, F_GETFD, 0);
@@ -5927,6 +5931,7 @@ static int adopt_replacement_lease(const char nonce[65], guard_replacement *repl
         if (dir >= 0) close(dir);
         return -1;
     }
+    if (guard_owner_fd >= 0 && guard_owner_fd != GUARD_REPLACEMENT_LEASE_FD) close(guard_owner_fd);
     guard_owner_fd = GUARD_REPLACEMENT_LEASE_FD;
     *guard_dir = dir;
     return 0;
