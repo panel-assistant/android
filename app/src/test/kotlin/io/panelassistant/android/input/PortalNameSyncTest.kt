@@ -109,6 +109,12 @@ class PortalNameSyncTest {
         assertEquals(0, t.returns) // never opened Settings, so never navigates
     }
 
+    @Test fun cancellingAnOpenedRenameNeverNavigates() {
+        val s = Session().apply { driver.request("Chosen"); show(prunedEditor("Original")); driver.close() }
+        assertEquals(listOf(false), s.results.map { it.first })
+        assertEquals(0, s.returns)
+    }
+
     @Test fun saveAndDoneAreNotSuccessUntilEditorClosesAndPersistedNameIsReopened() {
         val s = Session().apply { submit() }
         assertTrue(s.results.isEmpty())

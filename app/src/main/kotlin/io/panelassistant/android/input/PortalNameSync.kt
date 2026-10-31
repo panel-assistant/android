@@ -182,7 +182,8 @@ internal class PortalNameSync(
         launched = false
         finished(success, reason)
     }
-    override fun close() { finish(false, "Portal rename cancelled") }
+    /** Cancellation comes from teardown or a withdrawn name; it never navigates. */
+    override fun close() { launched = false; finish(false, "Portal rename cancelled") }
 
     companion object {
         const val SETTINGS = "com.facebook.alohaapps.settings"
