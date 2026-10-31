@@ -245,6 +245,14 @@ class PanelAccessibilityService : AccessibilityService() {
         }
     }
 
+    /** Put back the dashboard a failed Portal rename covered with Meta's editor. */
+    private fun returnToDashboard() {
+        runCatching {
+            startActivity(Intent(this, io.panelassistant.android.DashboardActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
+        }.onFailure { Log.w(TAG, "Portal rename could not return to the dashboard", it) }
+    }
+
     /** Press Install on Android's confirmation of this app's own update, and on nothing else. */
     private fun pressOwnUpdateInstall(event: AccessibilityEvent?) {
         val installer = ConfirmedSelfInstaller.awaitingConfirmationIn() ?: return
@@ -443,6 +451,7 @@ class PanelAccessibilityService : AccessibilityService() {
                         act = service::operatePortalName,
                         post = { task, delay -> mainHandler.postDelayed(task, delay) },
                         cancel = { mainHandler.removeCallbacks(it) },
+                        returnToDashboard = service::returnToDashboard,
                         finished = { success, reason ->
                             if (portalRenameOwnerGeneration == portalRenameGeneration.get()) {
                                 portalRenamePending = false
