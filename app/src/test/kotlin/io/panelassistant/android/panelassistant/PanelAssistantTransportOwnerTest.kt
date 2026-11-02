@@ -913,6 +913,29 @@ class PanelAssistantTransportOwnerTest {
         harness.owner.close()
     }
 
+    @Test fun aSessionThatDropsAfterItsHelloKeepsItsRouteButAConnectThatFailsDoesNot() = runTest {
+        val route = io.panelassistant.android.HaConnectionRoute(OWNER, OWNER.url, 0L)
+        val silent = FakeConnection(Ha.accepting(answerPings = false))
+        val failed = mutableListOf<io.panelassistant.android.HaConnectionRoute>()
+        val harness = harness(silent, IOException("refused"), FakeConnection(Ha.accepting()),
+            onTransportFailure = { failed += it })
+        harness.session = { HaApiSession(OWNER.url, "token", owner = OWNER, route = route) }
+        harness.owner.replaceDemand(DEMAND)
+        advanceTimeBy(30_000L + 15_000L)
+        runCurrent()
+
+        assertTrue(silent.closed)
+        assertEquals("a route that carried an accepted session is not failed by its end", emptyList<Any>(), failed)
+        advanceTimeBy(1_000L)
+        runCurrent()
+        assertEquals(2, harness.connector.times.size)
+        assertEquals("a connect that fails still lets the routes try a peer", listOf(route), failed)
+        advanceTimeBy(60_000L)
+        runCurrent()
+        assertEquals(PanelAssistantTransportPhase.CONNECTED, harness.owner.status.phase)
+        harness.owner.close()
+    }
+
     @Test fun theHelloStatesTheChannelsTheBridgeCannotFillAndAChannelThatBecomesUnsupportedHelloesAgain() = runTest {
         val shadow = Shadow(listOf("relay1", "temperature"))
         shadow.unsupported += "humidity"

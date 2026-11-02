@@ -3,6 +3,11 @@ package io.panelassistant.android
 import android.content.SharedPreferences
 import com.sun.net.httpserver.HttpServer
 import io.panelassistant.android.sensors.DashboardHaApiSessionProvider
+import io.panelassistant.android.panelassistant.PanelAssistantHelloIdentity
+import io.panelassistant.android.panelassistant.PanelAssistantTransportConnection
+import io.panelassistant.android.panelassistant.PanelAssistantTransportDemand
+import io.panelassistant.android.panelassistant.PanelAssistantTransportOwner
+import java.io.IOException
 import java.lang.reflect.Proxy
 import java.net.InetSocketAddress
 import java.net.URLDecoder
@@ -11,6 +16,16 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.selects.onTimeout
+import kotlinx.coroutines.selects.select
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
+import org.json.JSONArray
+import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Test
@@ -20,6 +35,7 @@ class HaConnectionRoutesTest {
     private val servers = mutableListOf<Endpoint>()
     private val instance = "a".repeat(32)
     private val user = "b".repeat(32)
+    private val helloIdentity = PanelAssistantHelloIdentity(did = "0".repeat(64), appVersion = "1.0.0", appVersionCode = 1)
     private fun server() = Endpoint().also { servers += it }
     @After fun close() { servers.forEach { it.close() }; HaCredentialManager.forgetRefusal() }
 
@@ -107,13 +123,57 @@ class HaConnectionRoutesTest {
         val ha = server()
         val (config, _) = config(ha.url)
         assertTrue(learn(config))
-        // The native owner's onTransportFailure after a dropped session or Core restart.
+        // The native owner's onTransportFailure after a connect that failed (a Core restart refusing it).
         HaConnectionRoutes.failed(config, HaConnectionRoutes.current(config))
         val session = DashboardHaApiSessionProvider(config).resolve(false)
         assertEquals(listOf("/api/panel_assistant/instance", "/auth/token"), ha.requests.map { it.path })
         assertEquals("fresh", session.accessToken)
         assertEquals(ha.url, session.baseUrl)
         assertNoProofCredentials(ha)
+    }
+
+    @Test fun aDroppedSessionReconnectsOnTheSameRouteSoTheRendererKeepsItsPage() = runTest {
+        val configured = server()
+        val peer = server()
+        val (config, _) = config(configured.url)
+        assertTrue(learn(config, peer.url))
+        val before = HaConnectionRoutes.current(config)
+        val native = native(config, Socket(answerPings = false), Socket())
+        native.owner.replaceDemand(PanelAssistantTransportDemand(before.owner, helloIdentity))
+        runCurrent()
+        // Home Assistant stops answering the live session: its ping times out and the session drops while the
+        // configured address still answers, as on ha-integration #25.
+        advanceTimeBy(45_000L)
+        runCurrent()
+        advanceTimeBy(5_000L)
+        runCurrent()
+        val after = HaConnectionRoutes.current(config)
+        assertEquals(listOf(configured.url, configured.url), native.connects)
+        assertEquals("the reconnect keeps the route and its epoch", before, after)
+        assertEquals("nothing the renderer embodies changed", emptyList<RendererRebuildCause>(), rebuildCauses(before, after))
+        native.owner.close()
+    }
+
+    @Test fun aRouteThatStopsAnsweringStillMovesTheRendererToItsPeer() = runTest {
+        val configured = server()
+        val peer = server()
+        val (config, _) = config(configured.url)
+        assertTrue(learn(config, peer.url))
+        val before = HaConnectionRoutes.current(config)
+        val native = native(config, Socket(answerPings = false), Socket())
+        native.owner.replaceDemand(PanelAssistantTransportDemand(before.owner, helloIdentity))
+        runCurrent()
+        configured.status = 503
+        advanceTimeBy(45_000L)
+        runCurrent()
+        advanceTimeBy(5_000L)
+        runCurrent()
+        val after = HaConnectionRoutes.current(config)
+        assertEquals(listOf(configured.url, peer.url), native.connects)
+        assertEquals(peer.url, after.url)
+        assertEquals(before.epoch + 1, after.epoch)
+        assertEquals(listOf(RendererRebuildCause.ROUTE, RendererRebuildCause.ENDPOINT), rebuildCauses(before, after))
+        native.owner.close()
     }
 
     @Test fun reusedAccessTokenStillRequiresInstanceProof() {
@@ -296,6 +356,64 @@ class HaConnectionRoutesTest {
             assertNull(url, HaConnectionAdvertisement.parse(raw))
         }
         assertEquals("https://ha.example", HaConnectionRoutes.normalize("https://HA.example:443/"))
+    }
+
+    /** What the dashboard compares when the route epoch moves (DashboardActivity.handleNewIntent); the entity
+     *  filter's signature carries the same effective address, so it follows [RendererRebuildCause.ENDPOINT]. */
+    private fun rebuildCauses(before: HaConnectionRoute, after: HaConnectionRoute) = rendererRebuildCauses(
+        routeChanged = after.epoch != before.epoch,
+        signedIn = false,
+        embodied = RendererConfiguration(before.url, null, null, null, null),
+        wanted = RendererConfiguration(after.url, null, null, null, null),
+    )
+
+    private class Native(val owner: PanelAssistantTransportOwner, val connects: List<String>)
+
+    /** The native session owner wired to the routes as ServiceHaLinks wires it. */
+    private fun TestScope.native(config: Config, vararg sockets: Socket): Native {
+        val queue = ArrayDeque(sockets.toList())
+        val connects = CopyOnWriteArrayList<String>()
+        val owner = PanelAssistantTransportOwner(
+            scope = backgroundScope,
+            auth = DashboardHaApiSessionProvider(config),
+            connector = { baseUrl, _ -> connects += baseUrl; queue.removeFirstOrNull() ?: throw IOException("unreachable") },
+            workerDispatcher = StandardTestDispatcher(testScheduler),
+            monotonicMillis = { testScheduler.currentTime },
+            jitter = { bound -> bound },
+            log = {},
+            observeForHello = { true },
+            onConnection = { session, accepted ->
+                val route = session.route
+                route != null && HaConnectionRoutes.isCurrent(config, route) &&
+                    (accepted.connection?.let { HaConnectionRoutes.learn(config, route, it, accepted.entryId) } ?: true)
+            },
+            onTransportFailure = { route -> HaConnectionRoutes.failed(config, route) },
+        )
+        return Native(owner, connects)
+    }
+
+    /** Panel Assistant's side of one native socket: accepts the hello and, unless told not to, answers pings. */
+    private class Socket(private val answerPings: Boolean = true) : PanelAssistantTransportConnection {
+        private val inbound = Channel<String>(Channel.UNLIMITED)
+
+        override suspend fun send(text: String) {
+            val frame = JSONObject(text)
+            val id = frame.getLong("id")
+            when (frame.getString("type")) {
+                "panel_assistant/hello" -> inbound.trySend(JSONObject().put("id", id).put("type", "result")
+                    .put("success", true).put("result", JSONObject().put("protocol", 5).put("session", "opaque")
+                        .put("capabilities", JSONArray()).put("integration", JSONObject().put("version", "1.0.0"))
+                        .put("channels", JSONObject().put("accepted", 0).put("unknown", JSONArray()))).toString())
+                "ping" -> if (answerPings) inbound.trySend(JSONObject().put("id", id).put("type", "pong").toString())
+            }
+        }
+
+        override suspend fun receive(timeoutMs: Long): String? = select {
+            inbound.onReceive { it }
+            onTimeout(timeoutMs) { null }
+        }
+
+        override suspend fun close() { inbound.close() }
     }
 
     private fun advertisement(vararg urls: String) = HaConnectionAdvertisement(instance, user, urls.toList())
