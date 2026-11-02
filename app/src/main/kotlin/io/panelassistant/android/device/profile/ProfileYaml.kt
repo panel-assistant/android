@@ -400,13 +400,14 @@ private class SchemaReader(private val issues: MutableList<ProfileIssue>) {
 
     private fun evdevButtons(value: Any?): List<ProfileEvdevButton> = list(value, "input.evdev_buttons").mapIndexed { index, item ->
         val path = "input.evdev_buttons[$index]"
-        val map = map(item, path, setOf("node", "code", "grab", "event_type", "sw"), required = true).orEmpty()
+        val map = map(item, path, setOf("node", "code", "grab", "event_type", "sw", "release"), required = true).orEmpty()
         ProfileEvdevButton(
             node = string(map, "node", path, required = true).orEmpty(),
             code = integer(map, "code", path, required = true) ?: 0,
             grab = boolean(map, "grab", path, required = true) ?: false,
             eventType = string(map, "event_type", path, required = true).orEmpty(),
             sw = boolean(map, "sw", path) ?: false,
+            release = boolean(map, "release", path) ?: false,
         )
     }
 
@@ -832,7 +833,7 @@ internal fun ProfileDocument.toYamlMap(): Map<String, Any?> = linkedMapOf(
     ).withoutNullValues(),
     "input" to linkedMapOf(
         "evdev_buttons" to input.evdevButtons.map {
-            linkedMapOf("node" to it.node, "code" to it.code, "grab" to it.grab, "event_type" to it.eventType, "sw" to it.sw)
+            linkedMapOf("node" to it.node, "code" to it.code, "grab" to it.grab, "event_type" to it.eventType, "sw" to it.sw, "release" to it.release)
         },
         "has_physical_buttons" to input.hasPhysicalButtons,
     ).withoutNullValues(),
