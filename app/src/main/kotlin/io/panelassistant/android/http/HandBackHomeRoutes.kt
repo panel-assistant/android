@@ -59,7 +59,8 @@ internal fun Route.handBackHomeRoutes(dependencies: HandBackHomeRouteDependencie
             val profileKnown = withContext(Dispatchers.IO) { dependencies.profileKnownPackages() }
             when (val result = withContext(Dispatchers.IO) { dependencies.handBack(profileKnown) }) {
                 is HandBackHomeController.Result.Refused -> call.respondText(
-                    """{"ok":false,"error":${Json.str(refusalCode(result.reason))}}""",
+                    """{"ok":false,"error":${Json.str(refusalCode(result.reason))}""" +
+                        result.originalHome?.let { ""","original_home":${Json.str(it)}""" }.orEmpty() + "}",
                     ContentType.Application.Json,
                     // A refusal here is a panel state, not a malformed request: nothing was changed and the
                     // caller's next move is to fix the panel, so this is 409 rather than 400.
@@ -184,6 +185,7 @@ private fun refusalCode(reason: HandBackHomePolicy.Refusal): String = when (reas
     HandBackHomePolicy.Refusal.OWNERSHIP_UNREADABLE -> "ownership-unreadable"
     HandBackHomePolicy.Refusal.PACKAGE_STATE_UNKNOWN -> "package-state-unknown"
     HandBackHomePolicy.Refusal.NO_REPLACEMENT_HOME -> "no-replacement-home"
+    HandBackHomePolicy.Refusal.ORIGINAL_HOME_MISSING -> "original-home-missing"
 }
 
 private fun jsonArray(values: List<String>): String =

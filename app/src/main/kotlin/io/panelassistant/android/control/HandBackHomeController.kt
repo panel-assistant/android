@@ -32,7 +32,7 @@ internal class HandBackHomeController(
 
     sealed interface Result {
         data class Done(val outcome: HandBackHomePolicy.Outcome) : Result
-        data class Refused(val reason: HandBackHomePolicy.Refusal) : Result
+        data class Refused(val reason: HandBackHomePolicy.Refusal, val originalHome: String? = null) : Result
     }
 
     /**
@@ -54,7 +54,7 @@ internal class HandBackHomeController(
             val decision =
                 HandBackHomePolicy.decide(owned, profileKnown, observed, homes, ownPackage, currentHome?.substringBefore('/'), previousHomeComponent())
         ) {
-            is HandBackHomePolicy.Decision.Refuse -> return Result.Refused(decision.reason)
+            is HandBackHomePolicy.Decision.Refuse -> return Result.Refused(decision.reason, decision.originalHome)
             is HandBackHomePolicy.Decision.Proceed -> decision.plan
         }
 

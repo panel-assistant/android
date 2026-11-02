@@ -36,6 +36,12 @@ internal object HandBackHomePolicy {
 
         /** No other app on this device can take the HOME role, so surrendering it would strand the panel. */
         NO_REPLACEMENT_HOME,
+
+        /**
+         * The launcher recorded as this panel's original home screen is no longer there, so only reinstalling
+         * that launcher lets hand back proceed. [Decision.Refuse.originalHome] names it.
+         */
+        ORIGINAL_HOME_MISSING,
     }
 
     /**
@@ -96,7 +102,7 @@ internal object HandBackHomePolicy {
 
     sealed interface Decision {
         data class Proceed(val plan: Plan) : Decision
-        data class Refuse(val reason: Refusal) : Decision
+        data class Refuse(val reason: Refusal, val originalHome: String? = null) : Decision
     }
 
     /**
@@ -158,6 +164,7 @@ internal object HandBackHomePolicy {
             .filter { it.enabled || it.pkg in willBeEnabled }
         val target = (if (previousHomeComponent != null) {
             eligibleHomes.firstOrNull { it.component == previousHomeComponent }
+                ?: return Decision.Refuse(Refusal.ORIGINAL_HOME_MISSING, originalHome = previousHomeComponent)
         } else eligibleHomes.minWithOrNull(
                 // A launcher that already holds the role is the answer on a panel that has been handed back
                 // once already: re-confirming it makes the retry a clean no-op instead of moving HOME to
