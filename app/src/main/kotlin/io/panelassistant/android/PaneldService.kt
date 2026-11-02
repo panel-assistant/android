@@ -417,6 +417,9 @@ class PaneldService : Service() {
     private val portalNameGeneration = java.util.concurrent.atomic.AtomicLong()
     @Volatile internal var portalNameStatus = "Not requested"
         private set
+    // The name Meta's editor last verified in this process. Panel Assistant offers the same name on every
+    // new session; once Meta has verified it, opening the editor again would only cover the dashboard.
+    @Volatile private var portalNameVerified: String? = null
     // Outlives runtime generations: each new state core binds its converger here, and the transport owner
     // reports what it records only on a session Panel Assistant accepts. The button event's types include
     // the active profile's.
@@ -1293,12 +1296,15 @@ class PaneldService : Service() {
                     portalNameGeneration.incrementAndGet()
                     portalNameAccessibility.cancelPortalRename()
                     portalNameStatus = "No chosen name"
-                } else {
+                } else if (name != portalNameVerified) {
                     val generation = portalNameGeneration.incrementAndGet()
+                    // A new attempt may leave Meta's name anywhere until it reports back.
+                    portalNameVerified = null
                     portalNameStatus = "Pending native verification"
                     if (!portalNameAccessibility.renamePortal(name) { success, reason ->
                             if (generation == portalNameGeneration.get()) {
                                 portalNameStatus = if (success) "Verified: $reason" else "Failed: $reason"
+                                if (success) portalNameVerified = name
                             }
                             if (success) Log.i(TAG, "Meta Portal name: $reason")
                             else Log.w(TAG, "Meta Portal name not verified: $reason")
