@@ -1218,6 +1218,11 @@
       "sourceHash": "ba3bbbe10d8bef66441c88536ce7b8e724e2829b59a3da658654f4961cd61ae5",
       "state": "machine-cross-checked"
     },
+    "configure.network_adb.managed": {
+      "text": "Panel Assistant gère ADB sur ce panneau et le maintient désactivé. Retirer le panneau de Panel Assistant réactive ADB.",
+      "sourceHash": "1a7a2f8db70c54fc9bacab8eae1395b666d9ceb583101692b453e1d55e40ed55",
+      "state": "machine-cross-checked"
+    },
     "configure.oauth.browser_recommended": {
       "text": "La connexion par navigateur est recommandée ; le jeton longue durée reste disponible comme solution avancée de secours.",
       "sourceHash": "cf970982eab16b244e4b741429787443be4627c11c694862e71bd2b3981661b5",
@@ -10329,8 +10334,8 @@
       "state": "machine-cross-checked"
     },
     "settings.dashboard_theme.help": {
-      "text": "Moteur de rendu intégré uniquement.\n\n- **Comme dans Home Assistant** laisse Home Assistant choisir le mode clair ou sombre du tableau de bord, pour lequel le réglage Mode sombre fournit la valeur par défaut.\n- **Sombre** et **Clair** imposent le mode sur ce panneau lorsque Home Assistant est réglé sur Automatique, pour un tableau de bord kiosque sans barre latérale permettant d’accéder à la page de profil Home Assistant.\n- **Lumière ambiante** choisit Sombre ou Clair selon la luminosité de la pièce telle que perçue par le modèle de luminosité automatique, et ne change qu’après une minute durant laquelle la pièce est restée plus sombre ou plus claire ; elle nécessite que l’option Luminosité auto soit activée et suit Home Assistant jusqu’à ce qu’elle dispose d’une mesure.\n\nUn choix explicite Clair ou Sombre dans Home Assistant reste prioritaire ; utilisez Automatique ou un utilisateur distinct pour le panneau. Revenir à Comme dans Home Assistant restitue exactement le choix trouvé initialement.",
-      "sourceHash": "a50cd5d79a729b0c1fb8d39afa1f2cd03b65577d0d206cdc95b79e2a3512c08a",
+      "text": "Moteur de rendu intégré uniquement.\n\n- **Comme dans Home Assistant** laisse Home Assistant choisir le mode clair ou sombre du tableau de bord. Lorsque Home Assistant est réglé sur Automatique, il utilise la préférence de ce panneau : le thème système Android à partir d’Android 10, ou le réglage Mode sombre sous Android 9 et les versions antérieures. Il ne reprend pas le thème d’un autre navigateur.\n- **Sombre** et **Clair** imposent le mode sur ce panneau lorsque Home Assistant est réglé sur Automatique, pour un tableau de bord kiosque sans barre latérale permettant d’accéder à la page de profil Home Assistant.\n- **Lumière ambiante** choisit Sombre ou Clair selon la luminosité de la pièce telle que perçue par le modèle de luminosité automatique, et ne change qu’après une minute durant laquelle la pièce est restée plus sombre ou plus claire ; elle nécessite que l’option Luminosité auto soit activée et suit Home Assistant jusqu’à ce qu’elle dispose d’une mesure.\n\nUn choix explicite Clair ou Sombre dans Home Assistant reste prioritaire ; utilisez Automatique ou un utilisateur distinct pour le panneau. Revenir à Comme dans Home Assistant restitue exactement le choix trouvé initialement.",
+      "sourceHash": "1e5d297de8fa29050f4ada9f3c4b9c6cda0acb5c7f16bc29450ec63c39047b0b",
       "state": "machine-cross-checked"
     },
     "settings.dashboard_theme.label": {
@@ -11849,8 +11854,8 @@
       "state": "machine-cross-checked"
     },
     "setup.sign_in.state.in_progress": {
-      "text": "Une connexion est en cours… terminez-la ici ou sur le panneau.",
-      "sourceHash": "4eca2929c8f06dc9d764f830e4aa3ea03cff84f3a3857487281d0d21d9fa25be",
+      "text": "Le panneau affiche une page de connexion Home Assistant. Connectez-vous dessus ou utilisez ce navigateur.",
+      "sourceHash": "036ad1c96e2d2814578a7aec0bc7526208edfed6775f97427f055a327914486c",
       "state": "machine-cross-checked"
     },
     "setup.sign_in.state.waiting": {
@@ -11874,8 +11879,8 @@
       "state": "machine-cross-checked"
     },
     "setup.webview.found": {
-      "text": "Ce panneau utilise Chromium {found}. Un tableau de bord Home Assistant actuel nécessite Chromium {needed} ou une version plus récente.",
-      "sourceHash": "29d3bc49a5e9bbc77f2874fe03a9d53e6e7a5a21fbdcb54fd075343a6ccc98ee",
+      "text": "Le moteur de navigation de ce panneau (Android System WebView) utilise Chromium {found}. Un tableau de bord Home Assistant actuel nécessite Chromium {needed} ou une version plus récente.",
+      "sourceHash": "94f19a9509ec35ea05bdd385b4659b229ef687b0b6d5d64beb724232c01f4400",
       "state": "machine-cross-checked"
     },
     "setup.webview.play": {

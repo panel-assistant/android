@@ -1108,8 +1108,12 @@ class EntityLearningManager(
             val visibleIssueJson = visibleIssues.toString()
             val visibleIssueCounts = EntityCatalogIssuePersistence.counts(visibleIssueJson)
             val held = shouldHoldRendererForEntityBootstrap(config)
+            // Released past its time limit, the renderer runs unfiltered while learning still waits; the
+            // reason is what it waits for, and the stream is what Home Assistant actually sends.
+            val rendererHold = RendererEntityHold.snapshot()
+            val released = rendererHold?.released == true
             val holdReason = entityBootstrapHoldReason(
-                held = held,
+                held = entityLearningHold(config),
                 blockingIssues = s.blockingIssueCount,
                 problem = classifyEntityBootstrapProblem(s.state, s.error),
             )
@@ -1119,7 +1123,7 @@ class EntityLearningManager(
                 includeRuntime = autoRuntime,
             )
             val preview = previewEntitySubscription(filtered, filterIds, s.catalogCount, desired)
-            val streamMode = entityStreamMode(held, filtered)
+            val streamMode = entityStreamMode(held, filtered && !released)
             span.work(units = (s.catalogCount + suggestions.size).toLong())
             return JSONObject()
                 .put("requested_enabled", learningEnabled)
@@ -1149,8 +1153,10 @@ class EntityLearningManager(
                 .put("strategy_selector_ignored", strategySelectorAllowed(streamMode, visibleIssues))
                 .put("hold_reason", holdReason?.wireName ?: JSONObject.NULL)
                 .put("resync_suspended", holdReason == EntityBootstrapHoldReason.DECISION)
-                .put("stream_entity_count", when { held -> 0; filtered -> filterIds.size; else -> s.catalogCount })
-                .put("stream_filter_hash", if (filtered) EntityFilterProtocol.hash(filterIds) else "")
+                .put("renderer_hold", rendererHold?.kind ?: JSONObject.NULL)
+                .put("renderer_hold_released", released)
+                .put("stream_entity_count", when { held -> 0; filtered && !released -> filterIds.size; else -> s.catalogCount })
+                .put("stream_filter_hash", if (filtered && !released) EntityFilterProtocol.hash(filterIds) else "")
                 .put("unresolved_count", s.unresolvedCount)
                 .put("error", s.error).put("db_bytes", s.dbBytes).put("sync_running", syncJob?.isActive == true)
                 .toString()
@@ -1168,7 +1174,8 @@ class EntityLearningManager(
      */
     fun strategySelectorAllowed(): Boolean {
         ensureInitialized()
-        val filtered = config.dashboardEntityFilterEnabled
+        // A renderer released past its hold's time limit streams unfiltered whatever the filter says.
+        val filtered = config.dashboardEntityFilterEnabled && RendererEntityHold.released == null
         val held = shouldHoldRendererForEntityBootstrap(config)
         return strategySelectorAllowed(
             entityStreamMode(held, filtered),
@@ -1247,6 +1254,8 @@ class EntityLearningManager(
         val subscribed = filter == "subscribed"
         val review = filter == "review"
         val filtered = config.dashboardEntityFilterEnabled
+        // What the dashboard is subscribed to: everything while its renderer is released unfiltered.
+        val streamed = filtered && RendererEntityHold.released == null
         val held = shouldHoldRendererForEntityBootstrap(config)
         val effectiveFilter = when {
             filter == "candidate" && query.isBlank() -> "candidate"
@@ -1263,7 +1272,7 @@ class EntityLearningManager(
                 subscribed = subscribed,
                 review = review,
                 held = held,
-                filtered = filtered,
+                filtered = streamed,
                 activeIds = config.dashboardEntityFilterIds.toSet(),
                 pinnedIds = config.dashboardEntityOverrides.filterValues { it == "pinned" }.keys,
             ),
@@ -1271,9 +1280,9 @@ class EntityLearningManager(
         ))
         if (subscribed) {
             val catalogCount = store.snapshot(instance(), dashboardPath()).catalogCount
-            json.put("stream_mode", entityStreamMode(held, filtered))
+            json.put("stream_mode", entityStreamMode(held, streamed))
                 .put("configured_count", if (filtered) config.dashboardEntityFilterIds.size else 0)
-                .put("catalog_present_count", when { held -> 0; filtered -> json.optInt("total"); else -> catalogCount })
+                .put("catalog_present_count", when { held -> 0; streamed -> json.optInt("total"); else -> catalogCount })
         }
         return json.toString()
     }

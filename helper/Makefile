@@ -24,7 +24,7 @@ BUILD   := build
 # the unit tests, so coverage can never silently drop a module. main.c (accept loop) and sysexec.c
 # (real exec/pipe/thread/reboot) are deliberately NOT here: the fuzz and test builds swap in a stub
 # sysexec and never run main, so a valid REBOOT/RELOAD/WATCH/GPIOWATCH can't exec or spawn on the build host.
-CORE_SRCS := $(addprefix $(SRC_DIR)/, identity.c adb_recovery.c util.c sha256.c led.c screen.c input.c gpio.c sysctl.c perf.c cht8305.c vi530x.c version.c companion.c guard_maintenance.c logcat.c server.c dispatch.c)
+CORE_SRCS := $(addprefix $(SRC_DIR)/, identity.c adb_recovery.c util.c sha256.c led.c screen.c input.c gpio.c sysctl.c perf.c cht8305.c vi530x.c version.c companion.c guard_maintenance.c guard_replacement.c logcat.c server.c dispatch.c)
 DAEMON_SRCS := $(CORE_SRCS) $(SRC_DIR)/main.c $(SRC_DIR)/sysexec.c
 STUB := test/sysexec_stub.c
 TEST_BUILD_ID := aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -47,6 +47,8 @@ test:
 	$(MAKE) test-units
 
 test-units: $(TEST_BINS)
+	$(MAKE) adb-recovery-retirement-test
+	$(MAKE) adb-recovery-replacement-test
 	$(BUILD)/adb-recovery
 	$(BUILD)/uninstall-supervisor
 	$(BUILD)/unit
@@ -146,7 +148,7 @@ $(BUILD)/cdprelay-test: cdprelay.c | $(BUILD)
 
 # Real UNIX-socket composition fixture: production server/dispatch core with the no-exec host stub.
 socket-test-server: $(BUILD)/socket-test-server
-$(BUILD)/socket-test-server: $(CORE_SRCS) $(STUB) test/socket_server.c | $(BUILD)
+$(BUILD)/socket-test-server: $(CORE_SRCS) $(STUB) test/socket_server.c $(SRC_DIR)/commands.def | $(BUILD)
 	$(CC) $(CFLAGS) -DHAPANELD_TEST -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/socket_server.c $(LDLIBS) -o $@
 
 # App<->daemon verb-contract cross-check: every verb the app sends must exist in commands.def.
@@ -172,7 +174,23 @@ $(BUILD)/uninstall-supervisor: $(CORE_SRCS) $(SRC_DIR)/main.c $(SRC_DIR)/sysexec
 		-DAPP_DATA='"/tmp/.hapaneld-uninstall-data-test"' -DAPP_USER_DATA='"/tmp/.hapaneld-uninstall-user-test"' \
 		-I$(SRC_DIR) $(CORE_SRCS) $(SRC_DIR)/sysexec.c test/uninstall_supervisor.c $(LDLIBS) -Wl,--wrap=unlinkat -Wl,--wrap=lstat -o $@
 
-$(BUILD)/adb-recovery: test/adb_recovery.c $(SRC_DIR)/adb_recovery.c $(SRC_DIR)/identity.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c | $(BUILD)
-	$(CC) $(CFLAGS) -DAPP_DATA='"/proc/self"' -DAPP_USER_DATA='"/proc/self"' -DHAPANELD_BUILD_ID='"$(TEST_BUILD_ID)"' -I$(SRC_DIR) test/adb_recovery.c $(SRC_DIR)/identity.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c $(LDLIBS) -o $@
+$(BUILD)/adb-recovery: test/adb_recovery.c test/adb_recovery_paths.h $(SRC_DIR)/adb_recovery.c $(SRC_DIR)/identity.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c | $(BUILD)
+	$(CC) $(CFLAGS) -include test/adb_recovery_paths.h -DHAPANELD_BUILD_ID='"$(TEST_BUILD_ID)"' -I$(SRC_DIR) test/adb_recovery.c $(SRC_DIR)/identity.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c $(LDLIBS) -o $@
 adb-recovery-test: $(BUILD)/adb-recovery
 	$(BUILD)/adb-recovery
+
+# Process/filesystem proof through the production command-line entry.
+.PHONY: adb-recovery-retirement-test
+adb-recovery-retirement-test: $(BUILD)/adb-recovery-retirement
+	$(BUILD)/adb-recovery-retirement
+$(BUILD)/adb-recovery-retirement: test/adb_recovery_retirement.py | $(BUILD)
+	cp $< $@
+	chmod +x $@
+
+# Runtime stale-build replacement through the shipped daemon entry.
+.PHONY: adb-recovery-replacement-test
+adb-recovery-replacement-test: $(BUILD)/adb-recovery-replacement
+	$(BUILD)/adb-recovery-replacement
+$(BUILD)/adb-recovery-replacement: test/adb_recovery_replacement.py test/adb_recovery_replacement_cuts.c | $(BUILD)
+	cp $< $@
+	chmod +x $@

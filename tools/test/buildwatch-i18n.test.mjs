@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import vm from 'node:vm';
-import { i18nHelper, installHaNotice, installTransport } from './fixtures/i18n-bridge.mjs';
+import { chromium } from 'playwright-core';
+import { browserTest, chrome, startHarness } from './fixtures/browser-harness.mjs';
+import { i18nBridge, i18nHelper, installHaNotice, installTransport } from './fixtures/i18n-bridge.mjs';
 
 const asset = new URL('../../app/src/main/assets/buildwatch.js', import.meta.url);
 const englishCatalogueAsset = new URL('../../app/src/main/assets/i18n/en.json', import.meta.url);
@@ -58,7 +60,6 @@ async function loadBuildwatch({ translations = {}, locale = 'en', helper = true,
   const ids = Object.fromEntries(['verbar', 'halifebar', 'halifecell', 'hanetbar', 'hanetcell'].map((id) => [id, node(id)]));
   const bodyAttributes = { 'data-build': 'build-a' };
   const calls = [];
-  const created = [];
   const ticks = [];
   const health = { line: '' };
   const location = { origin: 'http://panel.test', pathname, reloads: 0, reload() { this.reloads += 1; } };
@@ -72,7 +73,6 @@ async function loadBuildwatch({ translations = {}, locale = 'en', helper = true,
     createElement(tag) {
       const element = node(tag);
       element.tagName = tag.toUpperCase();
-      created.push(element);
       return element;
     },
   };
@@ -102,7 +102,7 @@ async function loadBuildwatch({ translations = {}, locale = 'en', helper = true,
   }
   await settle();
   calls.splice(0);
-  return { calls, created, ids, location, poll, source };
+  return { calls, ids, location, poll };
 }
 
 test('lifecycle copy uses the closed key set, keeps glyphs decorative, and clears unknown states', async () => {
@@ -163,8 +163,9 @@ test('network row selects every severity and responsiveness matrix key', async (
       const expected = state === 'healthy' && !suffix
         ? 'dashboard.runtime.ha_network_healthy'
         : `dashboard.runtime.ha_network_${stem}${suffix}`;
-      assert.ok(rig.calls.some((call) => call.key === expected), `${state} × ${response} must use ${expected}`);
-      assert.notEqual(rig.ids.hanetcell.textContent, '');
+      assert.equal(rig.ids.hanetcell.textContent, english(expected, {
+        evidence: english('shell.runtime.ha_network_evidence_p95_no_misses', { p95Ms: '25' }),
+      }), `${state} × ${response} must render its translated observation`);
     }
   }
 
@@ -201,17 +202,19 @@ test('network row selects every severity and responsiveness matrix key', async (
 test('network evidence uses shell projection keys and locale-formatted bounded numbers', async () => {
   const rig = await loadBuildwatch({ locale: 'de-DE' });
   const cases = [
-    ['ha_net=healthy ha_resp=healthy ha_net_p95=4200 ha_net_n=30 ha_net_miss=0', 'shell.runtime.ha_network_evidence_p95_no_misses'],
-    ['ha_net=healthy ha_resp=healthy ha_net_p95=4200 ha_net_n=2000 ha_net_miss=1234', 'shell.runtime.ha_network_evidence_p95_missed'],
+    ['ha_net=healthy ha_resp=healthy ha_net_p95=4200 ha_net_n=30 ha_net_miss=0', 'shell.runtime.ha_network_evidence_p95_no_misses', { p95Ms: '4.200' }],
+    ['ha_net=healthy ha_resp=healthy ha_net_p95=4200 ha_net_n=2000 ha_net_miss=1234', 'shell.runtime.ha_network_evidence_p95_missed', { p95Ms: '4.200', missCount: '1.234', probeCount: '2.000' }],
     ['ha_net=healthy ha_resp=healthy ha_net_p95=-1 ha_net_n=30 ha_net_miss=0', 'shell.runtime.ha_network_evidence_no_reply_no_misses'],
-    ['ha_net=healthy ha_resp=healthy ha_net_p95=-1 ha_net_n=30 ha_net_miss=3', 'shell.runtime.ha_network_evidence_no_reply_missed'],
+    ['ha_net=healthy ha_resp=healthy ha_net_p95=-1 ha_net_n=30 ha_net_miss=3', 'shell.runtime.ha_network_evidence_no_reply_missed', { missCount: '3', probeCount: '30' }],
     ['ha_net=healthy ha_resp=healthy ha_net_p95=-1 ha_net_n=0 ha_net_miss=0 ha_net_age=-1', 'shell.runtime.ha_network_evidence_no_probes'],
-    ['ha_net=healthy ha_resp=healthy ha_net_p95=-1 ha_net_n=0 ha_net_miss=0 ha_net_age=45000', 'shell.runtime.ha_network_evidence_no_answer'],
+    ['ha_net=healthy ha_resp=healthy ha_net_p95=-1 ha_net_n=0 ha_net_miss=0 ha_net_age=45000', 'shell.runtime.ha_network_evidence_no_answer', { lastReplyAge: '45 s' }],
   ];
-  for (const [tokens, expected] of cases) {
+  for (const [tokens, expected, values] of cases) {
     rig.calls.splice(0);
     await rig.poll(tokens);
-    assert.ok(rig.calls.some((call) => call.key === expected), `must use ${expected}`);
+    assert.equal(rig.ids.hanetcell.textContent, english('dashboard.runtime.ha_network_healthy', {
+      evidence: english(expected, values),
+    }), `must render ${expected}`);
   }
   assert.ok(rig.calls.some((call) => call.key === 'shell.runtime.duration_seconds'));
 
@@ -301,11 +304,9 @@ test('the version banner creates a safe localized reload link and preserves Engl
   const english = await loadBuildwatch({ helper: false, dirty: true });
   await english.poll('build=build-b cfg=cfg-a');
   assert.deepEqual(notice(english.ids.verbar), { severity: 'update', pill: 'Update', text: 'A newer Panel Assistant is installed', action: 'reload' });
-  assert.doesNotMatch(english.source, /\.innerHTML\s*=/);
-  assert.doesNotMatch(english.source, /replace\(\/\^\[\^A-Za-z\]/);
 });
 
-test('untrusted catalogue strings stay inert text in lifecycle, network, and reload banners', async () => {
+browserTest('untrusted catalogue strings stay inert text in lifecycle, network, and reload banners', async t => {
   const payload = '<img src=x onerror="globalThis.translationExecuted=true">';
   const translations = {
     'shell.runtime.ha_lifecycle.starting': payload,
@@ -316,22 +317,26 @@ test('untrusted catalogue strings stay inert text in lifecycle, network, and rel
     'shell.new_version.installed': payload,
     'shell.action.reload': payload,
   };
-  const rig = await loadBuildwatch({ translations, dirty: true });
-
-  await rig.poll('ha=starting ha_net=warning ha_resp=healthy ha_net_p95=25 ha_net_n=30 ha_net_miss=0');
-  assert.equal(noticeText(rig.ids.halifebar), `${payload}`);
-  assert.equal(rig.ids.halifecell.textContent, payload);
-  assert.equal(noticeText(rig.ids.hanetbar), `${payload} ${payload}`);
-  assert.equal(rig.ids.hanetcell.textContent, `losing probes; ${payload}`);
-
-  await rig.poll('ha_net=warning ha_net_cause=latency ha_resp=healthy ha_net_p95=25 ha_net_n=30 ha_net_miss=0');
-  assert.equal(noticeText(rig.ids.hanetbar), `${payload}`);
-  assert.equal(rig.ids.hanetcell.textContent, payload);
-
-  await rig.poll('build=build-b cfg=cfg-a');
-  assert.deepEqual(notice(rig.ids.verbar), { severity: 'update', pill: 'Update', text: payload, action: payload });
-  assert.ok(rig.created.every((element) => element.tagName !== 'IMG'), 'catalogue text never becomes markup');
-  assert.doesNotMatch(rig.source, /\.innerHTML\s*=/);
+  let line = '';
+  const harness = await startHarness(path => path === '/health' ? { headers: { 'content-type': 'text/plain' }, body: line } : undefined,
+    () => `<!doctype html><html><head>${i18nBridge({ strings: translations })}</head><body data-build="build-a"><button id="savebtn">Save</button><div id="verbar"></div><div id="halifebar"></div><div id="halifecell"></div><div id="hanetbar"></div><div id="hanetcell"></div><script src="/assets/buildwatch.js"></script></body></html>`);
+  let browser;
+  t.after(async () => { await browser?.close(); harness.server.closeAllConnections?.(); await new Promise(done => harness.server.close(done)); });
+  browser = await chromium.launch({ executablePath: chrome, headless: true });
+  const page = await browser.newPage();
+  for (const latency of [false, true]) {
+    line = `ha=starting ha_net=warning ${latency ? 'ha_net_cause=latency ' : ''}ha_resp=healthy ha_net_p95=25 ha_net_n=30 ha_net_miss=0 build=build-b cfg=cfg-a`;
+    await page.goto(harness.url);
+    await page.waitForFunction(() => document.querySelector('#verbar .notice-text'));
+    assert.equal(await page.locator('#halifebar .notice-text').textContent(), payload);
+    assert.equal(await page.locator('#halifecell').textContent(), payload);
+    assert.equal(await page.locator('#hanetbar .notice-text').textContent(), latency ? payload : `${payload} ${payload}`);
+    assert.equal(await page.locator('#hanetcell').textContent(), latency ? payload : `losing probes; ${payload}`);
+    assert.equal(await page.locator('#verbar .notice-text').textContent(), payload);
+    assert.equal(await page.locator('#verbar .notice-action').textContent(), payload);
+    assert.equal(await page.locator('img').count(), 0);
+    assert.equal(await page.evaluate(() => globalThis.translationExecuted), undefined);
+  }
 });
 
 test('untranslated keys preserve exact English runtime copy', async () => {

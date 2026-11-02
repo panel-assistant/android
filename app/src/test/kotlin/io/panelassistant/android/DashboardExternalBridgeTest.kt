@@ -230,6 +230,40 @@ class DashboardV2CompatibilityProbeTest {
         assertEquals(DashboardV2Admission.Blocked(result), DashboardV2Admission.resolve(result, "2026.5.0"))
     }
 
+    @Test fun `unproven route keeps the classified failure and names the address tried`() = runTest {
+        val result = provenRouteProbe(
+            HaApiSession(
+                URL, null,
+                transientDetail = "Failed to connect",
+                transientEvidence = HaTransportEvidence(HaTransportFault.REFUSED),
+            ),
+        ).check() as DashboardV2ProbeResult.Unavailable
+        assertEquals(HaTransportFault.REFUSED, result.evidence.fault)
+        assertTrue(result.detail, result.detail.contains(URL))
+        assertFalse(result.allowCachedVersion)
+    }
+
+    @Test fun `unproven route without a classified failure reports unknown and the address`() = runTest {
+        val result = provenRouteProbe(HaApiSession(URL, null, transientDetail = "Failed to connect"))
+            .check() as DashboardV2ProbeResult.Unavailable
+        assertEquals(HaTransportEvidence.UNKNOWN, result.evidence)
+        assertTrue(result.detail, result.detail.contains(URL))
+    }
+
+    @Test fun `unproven route that was never attempted reports no fault`() = runTest {
+        val result = provenRouteProbe(HaApiSession(URL, null, notAttempted = true))
+            .check() as DashboardV2ProbeResult.Unavailable
+        assertEquals(HaTransportEvidence.NONE, result.evidence)
+        assertFalse(result.allowCachedVersion)
+    }
+
+    private fun provenRouteProbe(session: HaApiSession) = DashboardV2CompatibilityProbe(
+        HaApiSessionProvider { session },
+        ConfigTransport { JSONObject().put("version", "2026.5.0") },
+        Dispatchers.Unconfined,
+        requiresProvenRoute = { true },
+    )
+
     private fun probe(sessions: List<HaApiSession>, response: JSONObject): DashboardV2CompatibilityProbe {
         val remaining = ArrayDeque(sessions)
         return DashboardV2CompatibilityProbe(

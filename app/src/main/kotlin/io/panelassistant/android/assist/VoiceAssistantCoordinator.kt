@@ -72,25 +72,31 @@ data class VoiceSettings(
  */
 data class WakeWordActivation(val modelId: String, val phrase: String, val heardAtNs: Long = 0L)
 
-/** Arms the microWakeWord engine on the models [catalog] can load, bundled or imported. */
+/** Arms the microWakeWord engine on the bundled or imported models [load] can acquire. */
 internal class MicroWakeWordEngineFactory(
-    private val catalog: io.panelassistant.android.assist.wakeword.WakeWordCatalog,
+    private val load: (String) -> LoadedWakeWordModel?,
     private val log: (String) -> Unit = {},
     /** The `voice_sensitivity` setting, read each time the listener is armed. */
     private val sensitivity: () -> String? = { null },
 ) : WakeWordEngineFactory {
     override fun create(modelIds: List<String>, onActivation: (WakeWordActivation) -> Unit): WakeWordEngine? {
-        val models = modelIds.mapNotNull(catalog::load)
-        if (models.isEmpty()) return null
-        val detector = io.panelassistant.android.assist.wakeword.WakeWordDetector(
-            models,
-            { hit -> onActivation(WakeWordActivation(hit.modelId, hit.phrase, hit.timestampNs)) },
-            maxActive = models.size,
-            nearMiss = { id, mean -> log("wake word $id heard at ${"%.2f".format(mean)}, short of its cutoff") },
-            cutoffOffset = io.panelassistant.android.assist.wakeword.WakeWordDetector.cutoffOffset(sensitivity()),
-        )
-        return object : WakeWordEngine, PcmConsumer by detector {
-            override fun close() = detector.close()
+        val models = ArrayList<LoadedWakeWordModel>()
+        try {
+            modelIds.mapNotNullTo(models, load)
+            if (models.isEmpty()) return null
+            val detector = io.panelassistant.android.assist.wakeword.WakeWordDetector(
+                models,
+                { hit -> onActivation(WakeWordActivation(hit.modelId, hit.phrase, hit.timestampNs)) },
+                maxActive = models.size,
+                nearMiss = { id, mean -> log("wake word $id heard at ${"%.2f".format(mean)}, short of its cutoff") },
+                cutoffOffset = io.panelassistant.android.assist.wakeword.WakeWordDetector.cutoffOffset(sensitivity()),
+            )
+            return object : WakeWordEngine, PcmConsumer by detector {
+                override fun close() = detector.close()
+            }
+        } catch (failure: Throwable) {
+            models.forEach { runCatching { it.close() } }
+            throw failure
         }
     }
 }

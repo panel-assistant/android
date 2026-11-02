@@ -11,6 +11,7 @@ import org.junit.Test
 class EvdevStreamSessionTest {
     private val key = EvdevButton("/dev/input/event1", 116, grab = true, eventType = "KEYCODE_POWER")
     private val switch = EvdevButton("/dev/input/event8", 14, grab = false, eventType = "KEYCODE_MUTE", sw = true)
+    private val releaseKey = EvdevButton("/dev/input/event3", 59, grab = true, eventType = "KEYCODE_F1", release = true)
 
     @Test fun everyWatchAndSubscriptionMustBeAcknowledgedBeforeStreaming() {
         val input = ByteArrayInputStream("OK\nOK\nOK\nOK\nOK\nKEY 116 1\nKEY 116 0\nSW 14 1\nSW 14 0\n".toByteArray())
@@ -23,6 +24,31 @@ class EvdevStreamSessionTest {
         assertEquals("INPUTV3\nWATCHRESET\nWATCH /dev/input/event1 1\nWATCH /dev/input/event8 0\nSUBSCRIBE\n", output.toString())
         assertEquals(listOf("KEYCODE_POWER", "KEYCODE_MUTE", "KEYCODE_MUTE"), events)
         assertEquals(EvdevStreamSession.Mode.RECONFIGURABLE, mode)
+    }
+
+    @Test fun aReleaseEnabledKeyEmitsBothEdges() {
+        // A button that opts in with release=true reports the up edge as <base>_RELEASED; the press stays
+        // the bare base type so existing automations keep working. Autorepeat (value 2) is ignored.
+        val events = mutableListOf<String>()
+        EvdevStreamSession.run(
+            listOf(releaseKey),
+            ByteArrayInputStream("OK\nOK\nOK\nOK\nOK\nKEY 59 1\nKEY 59 2\nKEY 59 0\n".toByteArray()),
+            ByteArrayOutputStream(),
+            emit = events::add,
+        )
+        assertEquals(listOf("KEYCODE_F1", "KEYCODE_F1_RELEASED"), events)
+    }
+
+    @Test fun aKeyWithoutReleaseStaysPressOnly() {
+        // Default (release=false) keys drop the up edge, exactly as before this feature.
+        val events = mutableListOf<String>()
+        EvdevStreamSession.run(
+            listOf(key),
+            ByteArrayInputStream("OK\nOK\nOK\nOK\nOK\nKEY 116 1\nKEY 116 0\n".toByteArray()),
+            ByteArrayOutputStream(),
+            emit = events::add,
+        )
+        assertEquals(listOf("KEYCODE_POWER"), events)
     }
 
     @Test fun eventRacingAheadOfSubscribeAckIsNotLost() {

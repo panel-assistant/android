@@ -260,7 +260,7 @@
       // so this page stays open to carry on.
       var wv = journey.webview;
       var lines = [];
-      if (wv.found && wv.needed) lines.push(i18nText("setup.webview.found", "This panel has Chromium {found}. A current Home Assistant dashboard needs Chromium {needed} or newer.",
+      if (wv.found && wv.needed) lines.push(i18nText("setup.webview.found", "This panel’s browser engine (Android System WebView) has Chromium {found}. A current Home Assistant dashboard needs Chromium {needed} or newer.",
         { found: String(wv.found), needed: String(wv.needed) }));
       if (wv.play) lines.push(i18nText("setup.webview.play", "This panel updates its engine through Google Play: on the panel, open the Play Store and update Android System WebView."));
       // The note promises the page moves on to the Home Assistant address, true only up to that step.
@@ -472,7 +472,7 @@
       i18nText("setup.sign_in.lead", "The built-in dashboard needs permission to read your Home Assistant."), [
       browserRoute,
       panelRoute,
-      statusLine(inFlight ? i18nText("setup.sign_in.state.in_progress", "A sign-in is in progress… finish it here or on the panel.") :
+      statusLine(inFlight ? i18nText("setup.sign_in.state.in_progress", "The panel is showing a Home Assistant login. Sign in there, or use this browser.") :
         i18nText("setup.sign_in.state.waiting", "Choose an option above. This page updates by itself once you’ve signed in.")),
       el("p", { class: "muted", id: "wiz-err", role: "alert" }),
     ])], "signin");

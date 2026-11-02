@@ -1,5 +1,6 @@
 package io.panelassistant.android
 
+import io.panelassistant.android.testsupport.Node
 import io.panelassistant.android.util.DashboardTheme
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -167,19 +168,60 @@ class RendererThemeOverrideStatusTest {
         assertNull(absent.effectiveDark)
         assertTrue("an explicit absence is a VALID observation", absent.valid)
 
-        // Garbage must not be read as "the theme is gone", or a page mid-teardown would erase the
-        // stored observation the native launch screen relies on.
-        for (garbage in listOf(null, "null", "undefined", "\"not json\"", "\"{\\\"s\\\":\\\"true\\\"}\"")) {
-            val bad = ExternalAuthProtocol.parseThemeObservation(garbage)
-            assertFalse("$garbage must be invalid", bad.valid && bad.storedDark != null)
+        // An unreadable result must not erase the stored observation while a page tears down.
+        for (garbage in listOf(null, "null", "undefined", "\"not json\"")) {
+            assertFalse("$garbage must be invalid", ExternalAuthProtocol.parseThemeObservation(garbage).valid)
         }
-        assertFalse(ExternalAuthProtocol.parseThemeObservation("\"not json\"").valid)
+        // A readable object with a nonboolean field carries no scheme, rather than coercing text to true.
+        val wrongType = ExternalAuthProtocol.parseThemeObservation("\"{\\\"s\\\":\\\"true\\\"}\"")
+        assertTrue(wrongType.valid)
+        assertNull(wrongType.storedDark)
+        assertNull(wrongType.effectiveDark)
     }
 
-    @Test fun theObservationScriptReturnsOnlyTheTwoFixedFields() {
-        val js = ExternalAuthProtocol.THEME_OBSERVATION_JS
-        assertTrue(js.contains("JSON.stringify({s:s,e:e})"))
-        assertTrue(js.contains("hass.themes.darkMode"))
-        assertTrue(js.contains("localStorage.getItem('selectedTheme')"))
+    @Test fun theObservationScriptReadsStoredAndEffectiveSchemesIndependently() {
+        Node.assumeAvailable()
+        val script = JSONObject.quote(ExternalAuthProtocol.THEME_OBSERVATION_JS)
+        val harness = """
+            const vm = require('vm');
+            const cases = [
+              {stored:'{"dark":true,"theme":"named"}', effective:false},
+              {stored:'{"dark":false}', effective:true},
+              {stored:null, effective:null},
+              {stored:'not json', effective:true},
+              {stored:'{"dark":"true"}', effective:'false'},
+              {stored:'{"dark":false}', effective:null, noFrontend:true},
+              {stored:null, effective:false, storageThrows:true},
+              {stored:'{"dark":true}', effective:null, documentThrows:true}
+            ];
+            const observations = cases.map(c => {
+              const page = {
+                localStorage: {getItem: key => {
+                  if (c.storageThrows) throw new Error('storage unavailable');
+                  return key === 'selectedTheme' ? c.stored : null;
+                }},
+                document: {querySelector: selector => {
+                  if (c.documentThrows) throw new Error('page unavailable');
+                  return selector === 'home-assistant' && !c.noFrontend ? {hass:{themes:{darkMode:c.effective}}} : null;
+                }}
+              };
+              return JSON.parse(vm.runInNewContext($script, page));
+            });
+            process.stdout.write(JSON.stringify(observations));
+        """.trimIndent()
+        val (code, output) = Node.run(stdin = harness)
+        assertEquals("observation script failed: $output", 0, code)
+        val observations = org.json.JSONArray(output)
+        val expected = listOf(
+            true to false, false to true, null to null, null to true,
+            null to null, false to null, null to false, true to null,
+        )
+        assertEquals(expected.size, observations.length())
+        expected.forEachIndexed { index, (stored, effective) ->
+            val actual = observations.getJSONObject(index)
+            assertEquals("case $index has only the two observation fields", setOf("s", "e"), actual.keys().asSequence().toSet())
+            assertEquals("case $index stored scheme", stored, actual.opt("s").takeUnless { it == JSONObject.NULL })
+            assertEquals("case $index effective scheme", effective, actual.opt("e").takeUnless { it == JSONObject.NULL })
+        }
     }
 }

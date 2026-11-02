@@ -1,5 +1,6 @@
 package io.panelassistant.android
 
+import io.panelassistant.android.dashboard.RendererEntityHold
 import android.os.SystemClock
 import io.panelassistant.android.util.DashboardTheme
 import io.panelassistant.android.control.AmbientThemeReason
@@ -290,6 +291,17 @@ internal data class RendererAdmissionPresentation(
     val themeAmbientReason: String? = null,
     /** Under `ambient` only: the room's last normalised light level, 0 to 1, or null before one. */
     val themeAmbientLevel: Double? = null,
+    /**
+     * The entity hold keeping the dashboard off screen, or the one it was released from, as an
+     * [EntityHoldKind] wire name; null when there is none. Panel Assistant reads this to tell a panel
+     * held for its entity filter, or showing its dashboard unfiltered past the hold's time limit, from
+     * one that is simply slow to load.
+     */
+    val entityHold: String? = null,
+    /** `holding` while the hold screen stands, `released` once the dashboard opened unfiltered past its limit. */
+    val entityHoldState: String? = null,
+    /** How long ago the hold was first shown. */
+    val entityHoldAgeMs: Long? = null,
 ) {
 
     /** Stable flat JSON for `GET /api/v1/status`; `mode` and `state` stay first for shell clients. */
@@ -323,6 +335,9 @@ internal data class RendererAdmissionPresentation(
         field("theme_ambient", themeAmbient)
         field("theme_ambient_reason", themeAmbientReason)
         field("theme_ambient_level", themeAmbientLevel)
+        field("entity_hold", entityHold)
+        field("entity_hold_state", entityHoldState)
+        field("entity_hold_age_ms", entityHoldAgeMs)
         field("summary", summary)
         field("action", action)
         append('}')
@@ -411,6 +426,8 @@ internal data class RendererAdmissionPresentation(
             ambientReason: AmbientThemeReason? = null,
             /** Under Ambient, the room's last normalised light level. */
             ambientLevel: Double? = null,
+            /** The built-in renderer's entity hold, on the same clock as [nowElapsedMs]. */
+            entityHold: RendererEntityHold.Snapshot? = null,
         ): RendererAdmissionPresentation {
             val record = live?.record
             val connected = live?.frontendConnected == true
@@ -532,6 +549,9 @@ internal data class RendererAdmissionPresentation(
                 themeAmbient = ambientWire,
                 themeAmbientReason = ambientReasonWire,
                 themeAmbientLevel = ambientLevelWire,
+                entityHold = entityHold?.kind,
+                entityHoldState = entityHold?.let { if (it.released) "released" else "holding" },
+                entityHoldAgeMs = entityHold?.let { (nowElapsedMs - it.sinceMs).coerceAtLeast(0L) },
             )
         }
 

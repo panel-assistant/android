@@ -1102,6 +1102,39 @@ class PanelAssistantTransportOwnerTest {
         harness.owner.close()
     }
 
+    @Test fun theHelloOffersLocalAdbOnlyWhenThePanelCanReachRoot() = runTest {
+        // A panel without root cannot start the local ADB endpoint. Offering it anyway made Panel Assistant stage
+        // the helper and fail a root bootstrap before every install, update, removal and recovery.
+        fun offeredWith(rootKnownUnusable: Boolean, endpointAnswers: Boolean): List<String> {
+            val endpoint = object : LocalAdbEndpoint {
+                override fun state() = if (endpointAnswers) LocalAdbState(false, false) else null
+                override fun arm(nonce: String) = true
+                override fun beat(nonce: String) = true
+                override fun recover(nonce: String, submit: (() -> Unit) -> Boolean): Boolean? = true
+                override fun shell(command: ByteArray, timeoutMs: Int, submit: (() -> Unit) -> Boolean): JSONObject? = null
+            }
+            val runtime = LocalAdbRuntime(
+                backgroundScope, endpoint, { false }, { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), { it() },
+                rootKnownUnusable = { rootKnownUnusable },
+            )
+            val management = object : PanelAssistantManagement by FakeManagement() {
+                override val localAdb: PanelAssistantLocalAdb = runtime
+            }
+            val connection = FakeConnection(Ha.accepting(capabilities = listOf("management")))
+            val harness = harness(connection, management = management)
+            harness.owner.replaceDemand(DEMAND)
+            runCurrent()
+            val offered = JSONObject(connection.sent.first()).getJSONArray("capabilities")
+            harness.owner.close()
+            return (0 until offered.length()).map(offered::getString)
+        }
+
+        assertFalse("a panel without su and without an endpoint", "local_adb" in offeredWith(rootKnownUnusable = true, endpointAnswers = false))
+        assertTrue("management stays offered", "management" in offeredWith(rootKnownUnusable = true, endpointAnswers = false))
+        assertTrue("a rooted panel", "local_adb" in offeredWith(rootKnownUnusable = false, endpointAnswers = false))
+        assertTrue("an endpoint already answering", "local_adb" in offeredWith(rootKnownUnusable = true, endpointAnswers = true))
+    }
+
     @Test fun aRelayedCommandRunsAsItsUserThroughTheSidebarDoorAndNeverThroughPanelAssistantsOwnCommands() = runTest {
         val sink = ImmediateSink()
         val submitted = mutableListOf<Pair<String, String>>()
@@ -1212,9 +1245,11 @@ class PanelAssistantTransportOwnerTest {
 
     @Test fun aSnapshotStillBuildingNeverHoldsTheReconnectAfterTheSessionEnds() = runTest {
         val building = CompletableDeferred<Unit>()
+        var snapshotCalls = 0
         val management = object : PanelAssistantManagement by FakeManagement() {
             // Blocking work, as the status build is: cancellation cannot interrupt it.
             override suspend fun snapshot(): PanelAssistantManagementSnapshot {
+                snapshotCalls++
                 withContext(NonCancellable) { building.await() }
                 return PanelAssistantManagementSnapshot("", "")
             }
@@ -1225,6 +1260,7 @@ class PanelAssistantTransportOwnerTest {
         runCurrent()
         first.inbound.trySend(Ha.manage("m1", "snapshot"))
         runCurrent()
+        assertEquals("snapshot work must start before its session ends", 1, snapshotCalls)
         first.inbound.trySend(Ha.sessionClosed("entry_unloaded"))
         advanceTimeBy(5_000)
         runCurrent()

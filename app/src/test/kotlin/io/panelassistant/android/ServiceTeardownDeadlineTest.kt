@@ -1,9 +1,7 @@
 package io.panelassistant.android
 
 import android.content.ContextWrapper
-import android.content.SharedPreferences
 import io.panelassistant.android.util.ServiceRuntimeOwner
-import java.lang.reflect.Proxy
 import java.net.InetAddress
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -38,7 +36,7 @@ class ServiceTeardownDeadlineTest {
         val locksHeld = AtomicInteger()
         val advertiser = MdnsAdvertiser(
             context = ContextWrapper(null),
-            config = Config(readOnlyPreferences()),
+            config = Config(fakePreferences().instance),
             runtimePanelId = PANEL,
             runtimeFriendlyName = "Teardown Test Panel",
             runtimeHttpPort = 8888,
@@ -131,34 +129,6 @@ class ServiceTeardownDeadlineTest {
         val unsafeClass = Class.forName("sun.misc.Unsafe")
         val unsafe = unsafeClass.getDeclaredField("theUnsafe").apply { isAccessible = true }.get(null)
         return unsafeClass.getMethod("allocateInstance", Class::class.java).invoke(unsafe, type) as T
-    }
-
-    /** Every read answers its default; the advertiser only reads identity from its configuration. */
-    private fun readOnlyPreferences(): SharedPreferences {
-        lateinit var editor: SharedPreferences.Editor
-        editor = Proxy.newProxyInstance(
-            SharedPreferences.Editor::class.java.classLoader,
-            arrayOf(SharedPreferences.Editor::class.java),
-        ) { _, method, _ ->
-            when (method.name) {
-                "commit" -> true
-                "apply" -> null
-                else -> editor
-            }
-        } as SharedPreferences.Editor
-        return Proxy.newProxyInstance(
-            SharedPreferences::class.java.classLoader,
-            arrayOf(SharedPreferences::class.java),
-        ) { _, method, args ->
-            when (method.name) {
-                "getAll" -> emptyMap<String, Any?>()
-                "contains" -> false
-                "edit" -> editor
-                "registerOnSharedPreferenceChangeListener", "unregisterOnSharedPreferenceChangeListener" -> null
-                "toString" -> "ReadOnlyPreferences"
-                else -> args?.getOrNull(1)
-            }
-        } as SharedPreferences
     }
 
     private companion object {

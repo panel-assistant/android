@@ -41,7 +41,9 @@ class PanelMediaPlayerTest {
 
     @Test fun playStreamsTheUrlDirectlyAndReportsBufferingThenPlaying() {
         val h = Harness()
-        assertEquals("""{"state":"idle","muted":false}""", h.player.observation())
+        val initial = JSONObject(h.player.observation())
+        assertEquals("idle", initial.getString("state"))
+        assertEquals(false, initial.get("muted"))
         assertTrue(h.player.command(PanelMediaCommand.Play(url, announce = false)))
         assertEquals(listOf(url), h.streams.map { it.url })
         assertEquals("buffering", h.state())

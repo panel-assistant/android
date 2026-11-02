@@ -244,10 +244,14 @@ tasks.matching { it.name.startsWith("process") && it.name.endsWith("MainManifest
 // Selected Android classes replace SDK stubs; tests use their host-executable paths without a framework runner or device.
 val providerAndroidRuntime = configurations.create("providerAndroidRuntime")
 val providerInstallSourceRuntime = configurations.create("providerInstallSourceRuntime")
+abstract class ProviderArchiveServices {
+    @get:javax.inject.Inject abstract val archives: org.gradle.api.file.ArchiveOperations
+}
 val providerAndroidRuntimeJar = tasks.register<Jar>("providerAndroidRuntimeJar") {
+    val archives = objects.newInstance<ProviderArchiveServices>().archives
     archiveFileName.set("provider-android-runtime.jar")
     destinationDirectory.set(layout.buildDirectory.dir("provider-android-runtime"))
-    from(providerAndroidRuntime.elements.map { files -> files.map { zipTree(it.asFile) } }) {
+    from(providerAndroidRuntime.elements.map { files -> files.map { archives.zipTree(it.asFile) } }) {
         include("android/util/AtomicFile*.class", "android/os/FileUtils*.class")
         include("android/content/pm/Signature*.class", "android/content/pm/SigningInfo*.class")
         include("android/content/pm/PackageInfo*.class", "android/content/pm/PackageParser\$SigningDetails*.class")
@@ -255,7 +259,7 @@ val providerAndroidRuntimeJar = tasks.register<Jar>("providerAndroidRuntimeJar")
         include("android/webkit/WebViewFactory*.class", "android/webkit/WebViewProvider*.class")
         include("android/view/ViewDebug\$HierarchyHandler.class", "com/android/internal/util/SizedInputStream.class")
     }
-    from(providerInstallSourceRuntime.elements.map { files -> files.map { zipTree(it.asFile) } }) {
+    from(providerInstallSourceRuntime.elements.map { files -> files.map { archives.zipTree(it.asFile) } }) {
         include("android/content/pm/InstallSourceInfo*.class")
     }
 }
@@ -595,6 +599,18 @@ tasks.withType<Test>().configureEach {
     systemProperty("hapaneld.test.runtimeReadDirectories", unitTestRuntimeReadDirectories.joinToString(File.pathSeparator))
     systemProperty("hapaneld.test.runtimeReadFiles", unitTestRuntimeReadFiles.joinToString(File.pathSeparator))
     systemProperty("hapaneld.test.runtimeReadAssetExcludes", unitTestGeneratedAssetExcludes.joinToString(File.pathSeparator))
+    val repositoryDirectory = rootProject.projectDir
+    doFirst {
+        val repository = repositoryDirectory.toPath().toAbsolutePath().normalize()
+        val activeInputs = inputs.files.files.map { it.toPath().toAbsolutePath().normalize() }
+            .filter { it.startsWith(repository) }
+            .map { repository.relativize(it).toFile().invariantSeparatorsPath }
+            .sorted()
+        // This generated observation is not an input to itself; keep its size out of JVM arguments.
+        val snapshot = temporaryDir.resolve("runtime-inputs.txt")
+        snapshot.writeText(activeInputs.joinToString("\n"))
+        systemProperty("hapaneld.test.activeTaskInputs", snapshot.absolutePath)
+    }
     providers.gradleProperty("autoSleepReplayInput").orNull?.let {
         systemProperty("hapaneld.autoSleepReplay.input", it)
         inputs.file(it)
@@ -613,7 +629,7 @@ afterEvaluate {
         "io.panelassistant.android.util.AndroidWebViewUpdateIoTest",
         "io.panelassistant.android.http.PaneldServerWebViewApprovalTest",
     )
-    // The repository selector emits exact class filters. Their proofs run in the dependency worker.
+    // Caller class and method selections run in the dependency worker, including class-name globs.
     val requestedArgs = gradle.startParameter.taskRequests.flatMap { it.args }
     val requestedTests = requestedArgs.mapIndexedNotNull { index, argument ->
         when {
@@ -623,11 +639,21 @@ afterEvaluate {
         }
     }
     val ordinaryUnitTasks = setOf(":app:testDebugUnitTest", "testDebugUnitTest", ":app:testReleaseUnitTest", "testReleaseUnitTest")
-    val singleOrdinaryTask = requestedArgs.firstOrNull() in ordinaryUnitTasks && requestedArgs.drop(1).all {
-        it == "--tests" || it == "--rerun" || it in callerClasses ||
-            (it.startsWith("--tests=") && it.substringAfter('=') in callerClasses)
+    fun callerSelector(pattern: String): Boolean = callerClasses.any { className ->
+        val simpleName = className.substringAfterLast('.')
+        // Keep broad globs on the ordinary path: they can also select SDK-stub tests.
+        val classPattern = pattern.substringBefore("$simpleName.", pattern).let {
+            if (it != pattern) it + simpleName else pattern
+        }
+        val namesCaller = classPattern.endsWith(simpleName)
+        val regex = classPattern.split('*').joinToString(".*") { Regex.escape(it) }.toRegex()
+        namesCaller && (regex.matches(className) || regex.matches(simpleName))
     }
-    val callerOnlySelection = singleOrdinaryTask && requestedTests.isNotEmpty() && requestedTests.all { it in callerClasses }
+    val singleOrdinaryTask = requestedArgs.firstOrNull() in ordinaryUnitTasks && requestedArgs.drop(1).all {
+        it == "--tests" || it == "--rerun" || it in requestedTests ||
+            (it.startsWith("--tests=") && it.substringAfter('=') in requestedTests)
+    }
+    val callerOnlySelection = singleOrdinaryTask && requestedTests.isNotEmpty() && requestedTests.all(::callerSelector)
     val webViewCallerTests = tasks.register<Test>("testWebViewCaller") {
         description = "Exercises native WebView admission and host-executable Android adapter paths."
         group = "verification"
@@ -635,11 +661,15 @@ afterEvaluate {
         testClassesDirs = debugTests.get().testClassesDirs
         classpath = files(providerAndroidRuntimeJar) + debugTests.get().classpath
         useJUnit()
-        callerClasses.forEach { filter.includeTestsMatching(it) }
+        if (callerOnlySelection) {
+            requestedTests.forEach { filter.includeTestsMatching(it) }
+        } else {
+            callerClasses.forEach { filter.includeTestsMatching(it) }
+        }
     }
     tasks.withType<Test>().matching { it.name.endsWith("UnitTest") }.configureEach {
         dependsOn(webViewCallerTests)
         callerClasses.forEach { filter.excludeTestsMatching(it) }
-        onlyIf("Exact caller class selections execute in the isolated worker") { !callerOnlySelection }
+        onlyIf("Caller-only selections execute in the isolated worker") { !callerOnlySelection }
     }
 }

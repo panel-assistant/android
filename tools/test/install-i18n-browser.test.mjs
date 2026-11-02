@@ -13,32 +13,6 @@ const catalogueDir = fileURLToPath(new URL('../../app/src/main/assets/i18n/', im
 const chrome = process.env.CHROME || '/usr/bin/chromium';
 const browserTest = existsSync(chrome) ? test : test.skip;
 
-function objectLiteral(source, name) {
-  const marker = `var ${name} = Object.freeze(`;
-  const start = source.indexOf(marker);
-  assert.notEqual(start, -1, `${name} declaration is missing`);
-  const bodyStart = start + marker.length;
-  let depth = 0, quote = '', escaped = false;
-  for (let index = bodyStart; index < source.length; index += 1) {
-    const char = source[index];
-    if (quote) {
-      if (escaped) escaped = false;
-      else if (char === '\\') escaped = true;
-      else if (char === quote) quote = '';
-      continue;
-    }
-    if (char === '"' || char === "'") quote = char;
-    else if (char === '{' || char === '[') depth += 1;
-    else if (char === '}' || char === ']') depth -= 1;
-    else if (char === ')' && depth === 0) return source.slice(bodyStart, index);
-  }
-  assert.fail(`${name} declaration is unterminated`);
-}
-
-function frozenObject(source, name) {
-  return Function(`"use strict";return (${objectLiteral(source, name)});`)();
-}
-
 async function realCatalogueProjection(locale, prefixes) {
   const source = JSON.parse(await readFile(`${catalogueDir}/en.json`, 'utf8'));
   const target = JSON.parse(await readFile(`${catalogueDir}/${locale}.json`, 'utf8'));
@@ -63,14 +37,42 @@ const samples = Object.freeze({
   attempts: '2', reason_code: 'no-response',
 });
 
+// Cases come from the published English catalogue, independently of install.js's private tables.
+// These ten protocol codes intentionally reuse a different catalogue family or a plural selector.
+async function presentationCases() {
+  const catalogue = JSON.parse(await readFile(`${catalogueDir}/en.json`, 'utf8')).strings;
+  const aliases = {
+    'restore-completed-with-state': ['install.restore.state_values.one', 'install.restore.state_values.other'],
+    'destructive-operation-in-progress': ['profiles.result.destructive-operation-in-progress'],
+    'profile-restart-unavailable': ['profiles.result.profile-restart-unavailable'],
+    'profile-activation-abort-persist-failed': ['profiles.result.profile-activation-abort-persist-failed'],
+    'companion-urls-repaired': ['install.companion.urls_repaired.one', 'install.companion.urls_repaired.other'],
+    'status-companion-url-missing': ['install.status.companion_url_missing.one', 'install.status.companion_url_missing.other'],
+    'status-mdns-not-running': ['runtime.mdns.not_running'],
+    'status-mdns-stale-address': ['runtime.mdns.stale_address'],
+    'status-mdns-unresponsive': ['runtime.mdns.unresponsive.one', 'runtime.mdns.unresponsive.other'],
+    'status-mdns-recovering': ['runtime.mdns.recovering'],
+  };
+  const codes = Object.fromEntries(Object.keys(catalogue).filter(key => key.startsWith('install.presentation.'))
+    .map(key => [key.slice('install.presentation.'.length).replaceAll('_', '-'), [key]]));
+  Object.assign(codes, aliases);
+  return Object.entries(codes).map(([code, keys]) => {
+    const names = new Set(keys.flatMap(key => catalogue[key].placeholders.map(name => name.slice(1, -1))));
+    if (code === 'operation-working') names.add('owner');
+    if (['status-storage-warning', 'status-storage-critical', 'status-storage-database-failure'].includes(code)) {
+      for (const name of ['usable_bytes', 'total_bytes', 'used_percent', 'database_bytes', 'wal_bytes']) names.add(name);
+    }
+    for (const name of names) assert.ok(Object.hasOwn(samples, name), `${code}: sample for ${name}`);
+    return { code, keys, params: Object.fromEntries([...names].map(name => [name, samples[name]])) };
+  });
+}
+
 async function rig(t, options = {}) {
   const source = await readFile(asset, 'utf8');
-  const presentations = frozenObject(source, 'PRESENTATIONS');
-  const params = frozenObject(source, 'PARAMS');
+  const cases = await presentationCases();
   const strings = {};
   const languages = {};
-  for (const [code, spec] of Object.entries(presentations)) {
-    const keys = typeof spec === 'string' ? [spec] : [spec.one, spec.other];
+  for (const { code, keys } of cases) {
     for (const key of keys) {
       strings[key] = `LOC:${code}:${Object.keys(samples).map((name) => `{${name}}`).join('|')}`;
       languages[key] = 'zh-Hans';
@@ -78,7 +80,7 @@ async function rig(t, options = {}) {
   }
   Object.assign(strings, options.extraStrings || {});
   Object.keys(options.extraStrings || {}).forEach((key) => { languages[key] = 'zh-Hans'; });
-  if (options.untranslated) delete languages[typeof presentations[options.untranslated] === 'string' ? presentations[options.untranslated] : presentations[options.untranslated].other];
+  if (options.untranslated) for (const key of cases.find(item => item.code === options.untranslated).keys) delete languages[key];
   const projection = options.projection || { locale: 'zh-Hans', strings, languages };
   const projectedLocale = projection.locale;
   const status = options.status || { warnings: [], warning_presentations: [] };
@@ -101,7 +103,7 @@ async function rig(t, options = {}) {
   browser = await (options.engine === 'WebKit' ? webkit.launch({ headless: true }) : chromium.launch({ executablePath: chrome, headless: true }));
   const page = await browser.newPage();
   await page.goto(`http://127.0.0.1:${server.address().port}/${options.query || ''}`, { waitUntil: 'domcontentloaded' });
-  return { page, presentations, params };
+  return { page, cases };
 }
 
 browserTest('Version picker explains unavailable releases and keeps permitted choices usable', async (t) => {
@@ -216,13 +218,10 @@ browserTest('Install localizes closed wire tokens from the real German catalogue
   assert.doesNotMatch(restore, /rollback_failed/);
 });
 
-browserTest('Install accepts every frozen presentation code with its exact parameter shape', async (t) => {
-  const { page, presentations, params } = await rig(t);
-  const cases = Object.keys(presentations).map((code) => {
-    const rule = params[code] || {};
-    return { code, params: Object.fromEntries([...(rule.required || []), ...(rule.optional || [])].map((name) => [name, samples[name]])) };
-  });
-  const outcomes = await page.evaluate((items) => items.map((envelope) => window.HaPaneldInstallPresentation.present(envelope, `RAW:${envelope.code}`)), cases);
+browserTest('Install accepts every published presentation code with its catalogue parameter shape', async (t) => {
+  const { page, cases } = await rig(t);
+  assert.equal(cases.length, 115, 'the published protocol vocabulary is nonempty and complete');
+  const outcomes = await page.evaluate((items) => items.map((envelope) => window.HaPaneldInstallPresentation.present(envelope, `RAW:${envelope.code}`)), cases.map(({ code, params }) => ({ code, params })));
   outcomes.forEach((outcome, index) => {
     assert.equal(outcome.fallback, false, `${cases[index].code} unexpectedly fell back`);
     assert.match(outcome.text, new RegExp(`^LOC:${cases[index].code}:`));

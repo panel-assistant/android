@@ -65,7 +65,7 @@
     <string name="panel_not_set_up">Ця панель ще не налаштована.</string>
     <string name="panel_not_set_up_hint">Відскануйте код телефоном — це займе близько двох хвилин. Або натисніть %1$s, щоб зробити це на цьому екрані.</string>
     <string name="browser_engine_too_old">Браузерний рушій цієї панелі занадто застарілий.</string>
-    <string name="browser_engine_too_old_hint">Інформаційним панелям Home Assistant потрібен новіший рушій. Виправте це на сторінці налаштувань у браузері.</string>
+    <string name="browser_engine_too_old_hint">Налаштування можна завершити, але інформаційним панелям Home Assistant потрібен новіший рушій. Як його оновити, показує сторінка налаштувань у браузері.</string>
     <string name="choose_dashboard_app">Оберіть застосунок для інформаційної панелі.</string>
     <string name="continue_setup_browser">Продовжуйте на сторінці налаштування в браузері.</string>
     <string name="connected_next_ha_address">Підключено. Далі: адреса Home Assistant.</string>

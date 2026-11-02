@@ -1218,6 +1218,11 @@
       "state": "machine-cross-checked",
       "text": "Cargando…"
     },
+    "configure.network_adb.managed": {
+      "text": "Panel Assistant gestiona ADB en este panel y lo mantiene desactivado. Al quitar el panel de Panel Assistant, ADB se vuelve a activar.",
+      "sourceHash": "1a7a2f8db70c54fc9bacab8eae1395b666d9ceb583101692b453e1d55e40ed55",
+      "state": "machine-cross-checked"
+    },
     "configure.oauth.browser_recommended": {
       "sourceHash": "cf970982eab16b244e4b741429787443be4627c11c694862e71bd2b3981661b5",
       "state": "machine-cross-checked",
@@ -10329,8 +10334,8 @@
       "state": "machine-cross-checked"
     },
     "settings.dashboard_theme.help": {
-      "text": "Solo para el renderizador integrado.\n\n- **Seguir Home Assistant** deja que Home Assistant elija el modo claro u oscuro del panel de control; el ajuste Modo oscuro proporciona el valor predeterminado de esa elección.\n- **Oscuro** y **Claro** fijan el modo en este panel cuando Home Assistant está configurado como Automático, para un panel de control en modo quiosco sin barra lateral desde la que acceder a la página de perfil de Home Assistant.\n- **Ambiente** elige Oscuro o Claro según la luz de la habitación medida por el modelo de brillo automático y solo cambia después de que la habitación se haya mantenido más oscura o más clara durante un minuto; requiere que Brillo automático esté activado y sigue Home Assistant hasta obtener una lectura.\n\nUna elección explícita de Claro u Oscuro en Home Assistant sigue teniendo prioridad; usa Automático o un usuario independiente para el panel. Al volver a Seguir Home Assistant, la elección se devuelve exactamente tal como se encontró.",
-      "sourceHash": "a50cd5d79a729b0c1fb8d39afa1f2cd03b65577d0d206cdc95b79e2a3512c08a",
+      "text": "Solo para el renderizador integrado.\n\n- **Seguir Home Assistant** deja que Home Assistant elija el modo claro u oscuro del panel de control. Cuando Home Assistant está en Automático, usa la preferencia de este panel: el tema del sistema Android en Android 10 y posteriores, o el ajuste Modo oscuro en Android 9 y anteriores. No copia el tema de otro navegador.\n- **Oscuro** y **Claro** fijan el modo en este panel cuando Home Assistant está configurado como Automático, para un panel de control en modo quiosco sin barra lateral desde la que acceder a la página de perfil de Home Assistant.\n- **Ambiente** elige Oscuro o Claro según la luz de la habitación medida por el modelo de brillo automático y solo cambia después de que la habitación se haya mantenido más oscura o más clara durante un minuto; requiere que Brillo automático esté activado y sigue Home Assistant hasta obtener una lectura.\n\nUna elección explícita de Claro u Oscuro en Home Assistant sigue teniendo prioridad; usa Automático o un usuario independiente para el panel. Al volver a Seguir Home Assistant, la elección se devuelve exactamente tal como se encontró.",
+      "sourceHash": "1e5d297de8fa29050f4ada9f3c4b9c6cda0acb5c7f16bc29450ec63c39047b0b",
       "state": "machine-cross-checked"
     },
     "settings.dashboard_theme.label": {
@@ -11849,9 +11854,9 @@
       "text": "recomendado"
     },
     "setup.sign_in.state.in_progress": {
-      "sourceHash": "4eca2929c8f06dc9d764f830e4aa3ea03cff84f3a3857487281d0d21d9fa25be",
+      "sourceHash": "036ad1c96e2d2814578a7aec0bc7526208edfed6775f97427f055a327914486c",
       "state": "machine-cross-checked",
-      "text": "Hay un inicio de sesión en curso… termínalo aquí o en el panel."
+      "text": "El panel muestra un inicio de sesión de Home Assistant. Inicia sesión allí o usa este navegador."
     },
     "setup.sign_in.state.waiting": {
       "sourceHash": "d6dfb33f6411d1945de51bbd39f41ea4eac18e28b1050ff36036a809768fec9f",
@@ -11874,8 +11879,8 @@
       "state": "machine-cross-checked"
     },
     "setup.webview.found": {
-      "text": "Este panel tiene Chromium {found}. Un panel de control actual de Home Assistant necesita Chromium {needed} o posterior.",
-      "sourceHash": "29d3bc49a5e9bbc77f2874fe03a9d53e6e7a5a21fbdcb54fd075343a6ccc98ee",
+      "text": "El motor del navegador de este panel (Android System WebView) tiene Chromium {found}. Un panel de control actual de Home Assistant necesita Chromium {needed} o posterior.",
+      "sourceHash": "94f19a9509ec35ea05bdd385b4659b229ef687b0b6d5d64beb724232c01f4400",
       "state": "machine-cross-checked"
     },
     "setup.webview.play": {

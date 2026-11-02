@@ -1043,6 +1043,11 @@
    "sourceHash": "ba3bbbe10d8bef66441c88536ce7b8e724e2829b59a3da658654f4961cd61ae5",
    "state": "machine-cross-checked"
   },
+  "configure.network_adb.managed": {
+   "text": "Panel Assistant beheert ADB op dit paneel en houdt het uit. Als je het paneel uit Panel Assistant verwijdert, wordt ADB weer ingeschakeld.",
+   "sourceHash": "1a7a2f8db70c54fc9bacab8eae1395b666d9ceb583101692b453e1d55e40ed55",
+   "state": "machine-cross-checked"
+  },
   "configure.oauth.browser_recommended": {
    "text": "Inloggen via de browser wordt aanbevolen; het langdurige token blijft beschikbaar als geavanceerde terugvaloptie.",
    "sourceHash": "cf970982eab16b244e4b741429787443be4627c11c694862e71bd2b3981661b5",
@@ -9184,8 +9189,8 @@
    "state": "machine-cross-checked"
   },
   "settings.dashboard_theme.help": {
-   "text": "Alleen ingebouwde renderer.\n\n- **Volg Home Assistant** laat de licht/donker-keuze van het dashboard over aan Home Assistant, waarvoor de instelling Donkere modus een standaardwaarde levert.\n- **Donker** en **Licht** kiezen die op dit paneel wanneer Home Assistant op Auto staat, voor een kioskdashboard zonder zijbalk om de profielpagina van Home Assistant te bereiken.\n- **Omgevingslicht** kiest Donker of Licht op basis van het licht in de kamer zoals het model voor automatische helderheid dat ziet, en wisselt pas nadat de kamer een minuut lang donkerder of lichter is gebleven; dit vereist dat Automatische helderheid aanstaat, en het volgt Home Assistant totdat er een meting is.\n\nEen expliciete keuze voor Licht of Donker in Home Assistant wint nog steeds; gebruik Auto of een aparte paneelgebruiker. Terugkeren naar Volg Home Assistant geeft de keuze precies terug zoals die werd aangetroffen.",
-   "sourceHash": "a50cd5d79a729b0c1fb8d39afa1f2cd03b65577d0d206cdc95b79e2a3512c08a",
+   "text": "Alleen ingebouwde renderer.\n\n- **Home Assistant volgen** laat de licht/donker-keuze van het dashboard over aan Home Assistant. Als Home Assistant op Automatisch staat, gebruikt het de eigen voorkeur van dit paneel: het Android-systeemthema vanaf Android 10, of de instelling Donkere modus op Android 9 en ouder. Het neemt het thema van een andere browser niet over.\n- **Donker** en **Licht** kiezen die op dit paneel wanneer Home Assistant op Auto staat, voor een kioskdashboard zonder zijbalk om de profielpagina van Home Assistant te bereiken.\n- **Omgevingslicht** kiest Donker of Licht op basis van het licht in de kamer zoals het model voor automatische helderheid dat ziet, en wisselt pas nadat de kamer een minuut lang donkerder of lichter is gebleven; dit vereist dat Automatische helderheid aanstaat, en het volgt Home Assistant totdat er een meting is.\n\nEen expliciete keuze voor Licht of Donker in Home Assistant wint nog steeds; gebruik Auto of een aparte paneelgebruiker. Terugkeren naar Home Assistant volgen geeft de keuze precies terug zoals die werd aangetroffen.",
+   "sourceHash": "1e5d297de8fa29050f4ada9f3c4b9c6cda0acb5c7f16bc29450ec63c39047b0b",
    "state": "machine-cross-checked"
   },
   "settings.dashboard_theme.label": {
@@ -10704,8 +10709,8 @@
    "state": "machine-cross-checked"
   },
   "setup.sign_in.state.in_progress": {
-   "text": "Er is een aanmelding bezig… rond die hier of op het paneel af.",
-   "sourceHash": "4eca2929c8f06dc9d764f830e4aa3ea03cff84f3a3857487281d0d21d9fa25be",
+   "text": "Het paneel toont een Home Assistant-inlogscherm. Log daar in of gebruik deze browser.",
+   "sourceHash": "036ad1c96e2d2814578a7aec0bc7526208edfed6775f97427f055a327914486c",
    "state": "machine-cross-checked"
   },
   "setup.sign_in.state.waiting": {
@@ -10729,8 +10734,8 @@
    "state": "machine-cross-checked"
   },
   "setup.webview.found": {
-   "text": "Dit paneel heeft Chromium {found}. Een actueel Home Assistant-dashboard heeft Chromium {needed} of nieuwer nodig.",
-   "sourceHash": "29d3bc49a5e9bbc77f2874fe03a9d53e6e7a5a21fbdcb54fd075343a6ccc98ee",
+   "text": "De browser-engine van dit paneel (Android System WebView) heeft Chromium {found}. Een actueel Home Assistant-dashboard heeft Chromium {needed} of nieuwer nodig.",
+   "sourceHash": "94f19a9509ec35ea05bdd385b4659b229ef687b0b6d5d64beb724232c01f4400",
    "state": "machine-cross-checked"
   },
   "setup.webview.play": {

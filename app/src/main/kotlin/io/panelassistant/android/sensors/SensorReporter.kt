@@ -773,7 +773,6 @@ class SensorReporter(
     }
 
     private fun deliverProximity(decision: ProximityCalibrationRuntime.Decision, run: SensorRunCallbacks) {
-        SensorTrace.recordProx(lastRaw, decision.near)
         if (decision.reportMask != ProximityReportGate.NONE) {
             run.proximity(decision.near, decision.normalizedLevel, decision.reportMask)
         }

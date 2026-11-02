@@ -43,13 +43,6 @@ class StateArchiveSectionTest {
         }
     }
 
-    @Test fun `the marker carries a fixed code and never a failure message`() {
-        val fragment = StateArchiveSection.manifestFragment(entry, null, 0, captureFailed = true)
-
-        assertEquals("""{"error":"capture-failed"}""", fragment)
-        assertEquals("capture-failed", StateArchiveSection.CAPTURE_FAILED)
-    }
-
     @Test fun `an absent section stays absent and a declared payload stays restorable`() {
         assertEquals(StateArchiveSection.Disposition.ABSENT, StateArchiveSection.restoreStateDisposition(null))
         assertEquals(

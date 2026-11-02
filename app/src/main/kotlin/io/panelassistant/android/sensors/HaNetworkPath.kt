@@ -396,13 +396,6 @@ internal class HaNetworkPath(
  * None of these ever include a host, address, SSID, BSSID or an individual sample.
  */
 internal object HaNetworkPathPresentation {
-    /**
-     * The panel-facing headline: one short phrase readable from across a room. It says packets are
-     * going missing, because that is now the only thing that can raise it — never "slow", which is
-     * a claim a round trip cannot support.
-     */
-    const val PANEL_TEXT = "HA network unreliable"
-
     /** `/health` tokens, or empty when there is nothing to report (unreportable, exactly like `ha=`). */
     fun healthToken(snap: HaNetworkPath.Snapshot?): String {
         if (snap == null || !snap.measuring) return ""

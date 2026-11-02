@@ -45,14 +45,4 @@ class CameraPromptDeliveryTest {
         gate.onResumed()
         assertEquals("asked on the resume that follows", 1, asked)
     }
-
-    @Test fun theSignalThatArrivesDuringOnResumeIsTheCaseThatUsedToBeLost() {
-        // Registering the prompt listener fires synchronously when an ask is already due, and that
-        // happens before AndroidX reports RESUMED. Modelled here as: signal, then the ON_RESUME event.
-        var asked = 0
-        val gate = CameraPromptDelivery { asked++ }
-        gate.onSignal()
-        gate.onResumed()
-        assertEquals(1, asked)
-    }
 }

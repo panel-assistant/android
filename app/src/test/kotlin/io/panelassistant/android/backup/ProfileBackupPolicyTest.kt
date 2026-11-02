@@ -5,6 +5,7 @@ import javax.xml.parsers.DocumentBuilderFactory
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.w3c.dom.Document
+import org.w3c.dom.Element
 
 class ProfileBackupPolicyTest {
     @Test
@@ -20,27 +21,34 @@ class ProfileBackupPolicyTest {
     @Test
     fun `android backup rules never migrate credentials or panel-local state`() {
         // Source-text reason: the shipped backup rules are the Android backup privacy contract.
-        val legacy = exclusions("src/main/res/xml/backup_rules.xml")
-        val modern = exclusions("src/main/res/xml/data_extraction_rules.xml")
-
-        for (path in NON_TRANSFERABLE_FILES) {
-            val exclusion = Exclusion("file", path)
-            assertEquals("legacy exclusion for $path", 1, legacy.count { it == exclusion })
-            assertEquals("modern exclusions for $path", 2, modern.count { it == exclusion })
+        val legacy = document("src/main/res/xml/backup_rules.xml")
+        val modern = document("src/main/res/xml/data_extraction_rules.xml")
+        val policies = listOf(
+            "legacy" to legacy.documentElement,
+            "cloud backup" to section(modern, "cloud-backup"),
+            "device transfer" to section(modern, "device-transfer"),
+        )
+        for ((name, policy) in policies) {
+            val exclusions = exclusions(policy)
+            for (path in NON_TRANSFERABLE_FILES) {
+                assertEquals("$name exclusion for $path", 1, exclusions.count { it == Exclusion("file", path) })
+            }
+            for (path in NON_TRANSFERABLE_DATABASES + ".") {
+                assertEquals("$name database exclusion for $path", 1, exclusions.count { it == Exclusion("database", path) })
+            }
         }
-        for (path in NON_TRANSFERABLE_DATABASES) {
-            val exclusion = Exclusion("database", path)
-            assertEquals("legacy exclusion for $path", 1, legacy.count { it == exclusion })
-            assertEquals("modern exclusions for $path", 2, modern.count { it == exclusion })
-        }
-        assertEquals(1, legacy.count { it == Exclusion("database", ".") })
-        assertEquals(2, modern.count { it == Exclusion("database", ".") })
     }
 
-    private fun exclusions(path: String): List<Exclusion> {
-        val document = document(path)
-        return (0 until document.getElementsByTagName("exclude").length).mapNotNull { index ->
-            val attributes = document.getElementsByTagName("exclude").item(index).attributes ?: return@mapNotNull null
+    private fun section(document: Document, tag: String): Element {
+        val sections = document.getElementsByTagName(tag)
+        assertEquals("one $tag policy", 1, sections.length)
+        return sections.item(0) as Element
+    }
+
+    private fun exclusions(policy: Element): List<Exclusion> {
+        val nodes = policy.getElementsByTagName("exclude")
+        return (0 until nodes.length).mapNotNull { index ->
+            val attributes = nodes.item(index).attributes ?: return@mapNotNull null
             val domain = attributes.getNamedItem("domain")?.nodeValue ?: return@mapNotNull null
             val excludedPath = attributes.getNamedItem("path")?.nodeValue ?: return@mapNotNull null
             Exclusion(domain, excludedPath)

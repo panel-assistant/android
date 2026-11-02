@@ -36,10 +36,12 @@ class PortalNameSyncTest {
         val actions = mutableListOf<Pair<PortalNameSync.Action, String>>()
         val results = mutableListOf<Pair<Boolean, String>>()
         val pending = mutableMapOf<Runnable, Long>()
+        var returns = 0
         val driver = PortalNameSync({ time }, { visible }, { launches++; accepted }, { _, action, name ->
             actions += action to name
             accepted
-        }, { task, delay -> pending[task] = time + delay }, { pending.remove(it) }, { ok, reason -> results += ok to reason })
+        }, { task, delay -> pending[task] = time + delay }, { pending.remove(it) }, { returns++ },
+            { ok, reason -> results += ok to reason })
         fun show(window: PortalNameSync.Window?) { visible = window; driver.onEvent(); advance(300) }
         fun advance(ms: Long) {
             val until = time + ms
@@ -62,6 +64,55 @@ class PortalNameSyncTest {
             advance(PortalNameSync.SAVE_SETTLE_MS + PortalNameSync.POLL_MS)
             show(editor(name, 22))
         }
+    }
+
+    // What a service without flagIncludeNotImportantViews is served: Meta's plain LinearLayouts
+    // (qa_device_setup_name, names_niu_list, the dialog container) are dropped, their important
+    // children lifted to the window root.
+    private fun prunedEditor(name: String, window: Int = 20) = editor(name, window).let { full ->
+        val list = full.root.all(id + "niu_list").single()
+        val done = full.root.all(id + "next").single()
+        full.copy(root = node(kind = "android.widget.FrameLayout", children = listOf(list, done)))
+    }
+    private fun prunedDialog(name: String) = PortalNameSync.Window(21, PortalNameSync.SETTINGS, false, node(children = listOf(
+        node("niu_dialog_input", "android.widget.EditText", name),
+        node("niu_dialog_button_positive", "android.widget.Button", "Save", true),
+    )))
+
+    @Test fun renameCompletesOnTheTreeADefaultAccessibilityServiceIsServed() {
+        val s = Session().apply {
+            driver.request("Chosen")
+            show(prunedEditor("Original")); show(prunedDialog("Original")); show(prunedDialog("Chosen")); show(prunedEditor("Chosen"))
+            show(dashboard); advance(PortalNameSync.SAVE_SETTLE_MS + PortalNameSync.POLL_MS); show(prunedEditor("Chosen", 22))
+        }
+        assertEquals(listOf(PortalNameSync.Action.CUSTOM, PortalNameSync.Action.TEXT, PortalNameSync.Action.SAVE,
+            PortalNameSync.Action.DONE, PortalNameSync.Action.BACK), s.actions.map { it.first })
+        assertEquals(listOf(true), s.results.map { it.first })
+        assertEquals(0, s.returns)
+    }
+
+    @Test fun timeoutInAnUnrecognisedEditorBringsTheDashboardBack() {
+        val s = Session().apply {
+            driver.request("Chosen")
+            show(PortalNameSync.Window(20, PortalNameSync.SETTINGS, false, node("some_new_layout")))
+            advance(PortalNameSync.TIMEOUT_MS)
+        }
+        assertTrue(s.actions.isEmpty())
+        assertEquals(listOf(false), s.results.map { it.first })
+        assertEquals(1, s.returns)
+    }
+
+    @Test fun failureWithTheDashboardAlreadyInFrontLeavesItAlone() {
+        val s = Session().apply { accepted = false; driver.request("Chosen") }
+        assertEquals(0, s.returns)
+        val t = Session().apply { visible = editor("Original"); driver.request("Chosen") }
+        assertEquals(0, t.returns) // never opened Settings, so never navigates
+    }
+
+    @Test fun cancellingAnOpenedRenameNeverNavigates() {
+        val s = Session().apply { driver.request("Chosen"); show(prunedEditor("Original")); driver.close() }
+        assertEquals(listOf(false), s.results.map { it.first })
+        assertEquals(0, s.returns)
     }
 
     @Test fun saveAndDoneAreNotSuccessUntilEditorClosesAndPersistedNameIsReopened() {

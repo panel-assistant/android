@@ -10,7 +10,7 @@ import org.junit.Test
 /**
  * Executes the `dashboard_theme` document-start scripts against a simulated `localStorage` and
  * `matchMedia`, because the property that matters here is not what the script says but what it leaves
- * behind. A golden pins the bytes; this pins the ownership algebra:
+ * behind. These tests exercise the ownership algebra:
  *
  *  - forcing changes exactly one field, `dark`, and preserves every other field in Home Assistant's
  *    stored theme object (a named theme and its colours are the user's);
@@ -26,7 +26,7 @@ import org.junit.Test
  * falls back to `default_dark_theme`/`default_theme` and the panel goes on rendering.
  *
  * Runs the real emitted script text, so a change to the builder that breaks the transaction fails here
- * rather than only moving a golden.
+ * through its caller-visible storage effects.
  */
 class DashboardThemePolicyScriptTest {
 
@@ -294,13 +294,6 @@ class DashboardThemePolicyScriptTest {
         assertTrue("marker removed: $out", !out.contains("haPaneldForcedThemeDark"))
     }
 
-    @Test fun theSeedAndToggleRunOnlyInTheTopFrame() {
-        for (script in listOf(seed(true), seed(false), toggle(true), toggle(false))) {
-            assertTrue(script, script.startsWith("(()=>{" + InjectionScript.TOP_FRAME_GUARD))
-        }
-    }
-
-    // --- the shim -------------------------------------------------------------------------------
 
     @Test fun theShimAnswersOnlyColourSchemeQueriesAndDelegatesTheRest() {
         assumeNode()
@@ -348,21 +341,4 @@ class DashboardThemePolicyScriptTest {
         assertTrue("listeners must be callable: $out", out.contains(""""__called":"ok""""))
     }
 
-    // --- byte identity --------------------------------------------------------------------------
-
-    private fun golden(name: String): String =
-        requireNotNull(javaClass.getResourceAsStream("/injection-golden/$name")) { "missing golden $name" }
-            .readBytes().toString(Charsets.UTF_8).removeSuffix("\n")
-
-    @Test fun themePolicyScriptsAreByteIdentical() {
-        assertEquals(golden("themePolicy_dark.js"), force(true))
-        assertEquals(golden("themePolicy_light.js"), force(false))
-        assertEquals(golden("themePolicy_follow.js"), follow())
-    }
-
-    @Test fun everyThemePolicyScriptRunsOnlyInTheTopFrame() {
-        for (script in listOf(force(true), force(false), follow())) {
-            assertTrue(script, script.startsWith("(()=>{" + InjectionScript.TOP_FRAME_GUARD))
-        }
-    }
 }

@@ -36,9 +36,15 @@ internal class DashboardRendererRig(
     private val main: Handler = allocate(Handler::class.java)
     private val gate = RendererGenerationGate()
     val owner = BuiltinDashboard.acquireActivityOwner()
-    val cover = DashboardWebCover(activity, main)
+    /** Clock ticks the status screens and the cover asked to have posted, in order. */
+    val posted = mutableListOf<Runnable>()
+    private val recordPost: (Runnable, Long) -> Unit = { tick, _ -> posted += tick }
+    /** The activity's own cover, built by its factory. */
+    val cover: DashboardWebCover by lazy { factory("createWebCover") as DashboardWebCover }
     val bridge = DashboardFrontendBridge(main, CoroutineScope(Job()), proxy(DashboardFrontendBridge.Host::class.java))
-    val config = Config(fakePreferences(prefs).instance)
+    /** The settings store behind [config], to read what a write left behind. */
+    val store = fakePreferences(prefs)
+    val config = Config(store.instance)
     private val entityGate = DashboardEntityGate(
         activity = allocate(AppCompatActivity::class.java),
         main = main,
@@ -50,6 +56,7 @@ internal class DashboardRendererRig(
             override val screenAwake get() = pacer.screenAwake
             override fun buildAndLoad(config: Config) = error("no rebuild expected")
             override fun teardownWeb() = error("no teardown expected")
+            override fun reconcile() = error("no reconcile expected")
         },
         readConfig = { config },
     )
@@ -66,16 +73,23 @@ internal class DashboardRendererRig(
         set("activityOwner", owner)
         set("activityConfig", config)
         set("entityGate", entityGate)
-        set("statusScreens", allocate(DashboardStatusScreens::class.java))
         BuiltinDashboard.consumeNavPath()
         BuiltinDashboard.consumeReloadRequest()
         BuiltinDashboard.consumeReloadReason()
         // The activity's own factory, so the pacer reads this activity back exactly as it does on a panel.
         set("pacer", DashboardActivity::class.java.getDeclaredMethod("createPacer").apply { isAccessible = true }.invoke(activity))
         set("admissionRetryPolicy", AdmissionRetryPolicy())
+        // The activity's own status-screen factory, wired as on a panel but posting into [posted].
+        set("statusScreens", factory("createStatusScreens"))
         set("homeDashboardAttempts", HomeDashboardResolutionAttemptGate())
         set("compatibilityAttempts", DashboardV2AttemptGate())
     }
+
+    private fun factory(name: String): Any? = DashboardActivity::class.java.getDeclaredMethod(name, Function2::class.java)
+        .apply { isAccessible = true }.invoke(activity, recordPost)
+
+    /** The activity's status screens, as its own factory built them. */
+    val statusScreens: DashboardStatusScreens get() = get("statusScreens") as DashboardStatusScreens
 
     /** Make [view] the activity's WebView, its listeners already installed (as after its first load). */
     fun show(view: RecordingWebView, committed: String? = view.url) {

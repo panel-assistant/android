@@ -1,40 +1,40 @@
 package io.panelassistant.android.control
 
-import io.panelassistant.android.testsupport.TestSources
-import java.io.File
-import org.junit.Assert.assertFalse
+import io.panelassistant.android.panelassistant.PanelAssistantStateReporter
+import io.panelassistant.android.testsupport.PanelRuntimeRig
+import kotlinx.coroutines.runBlocking
+import org.json.JSONObject
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class WifiOutageWiringContractTest {
-    // Source-text reason: the diagnostic channels need the Android service to construct.
-    private val core = source("PanelStateCore.kt")
+internal class WifiOutageWiringContractTest : PanelRuntimeRig() {
+    @Test fun outageCounterReportsItsSnapshotWhenWifiHasNoReading() {
+        val rig = rig(wifiOutages = { WifiOutageCounts(last24h = 17) })
+        try {
+            rig.config.setHaExposed("diag_wifi_rssi", true)
+            val reporter = PanelAssistantStateReporter(log = {})
+            rig.core.addStateSink(reporter.bindShape(rig.core::nativeChannelShape))
+            assertTrue(runBlocking { rig.core.observeForNativeHello { true } })
+            reporter.open(reporter.offer().descriptors, true)
+            val raw = reporter.next(1, "outage-session", 0)
+            assertNotNull("the state owner emitted a native report", raw)
+            val observations = JSONObject(raw!!).getJSONArray("observations")
+            fun observation(channel: String): JSONObject? =
+                (0 until observations.length()).map(observations::getJSONObject)
+                    .singleOrNull { it.optString("channel") == channel }
 
-    @Test fun outageCountersKeepReportingThroughTheDropoutTheyReport() {
-        // WIFI_DIAGNOSTIC_KEYS members go unavailable when Wi-Fi goes away — the opposite of what a
-        // dropout counter wants. The counters must stay out of that set.
-        // Bounded at the set literal's closing paren, not the first newline, so the guard keeps
-        // scanning the whole declaration if it is ever reformatted across lines.
-        val keys = core.substring(
-            core.indexOf("internal val WIFI_DIAGNOSTIC_KEYS"),
-            core.indexOf(")", core.indexOf("internal val WIFI_DIAGNOSTIC_KEYS")),
-        )
-        assertFalse(keys.contains("diag_wifi_outages_24h"))
-        assertFalse(keys.contains("diag_wifi_outages_7d"))
+            val outage = observation("diag_wifi_outages_24h")
+            assertNotNull("the outage channel is registered and reported", outage)
+            assertEquals("known", outage!!.optString("state"))
+            assertEquals(17, outage.optInt("value", -1))
+            val rssi = observation("diag_wifi_rssi")
+            assertNotNull("the exposed Wi-Fi channel is reported", rssi)
+            assertEquals("unknown", rssi!!.optString("state"))
+            assertEquals("not_on_wifi", rssi.optString("reason"))
+        } finally {
+            rig.close()
+        }
     }
-
-    @Test fun theCounterReadsTheTrackerSnapshot() {
-        assertTrue(core.contains(""""diag_wifi_outages_24h" -> wifiOutages()?.last24h?.toString()"""))
-        // Membership in DIAG_KEYS is what wires discovery and the heartbeat refresh; a diagValue
-        // branch alone is unreachable code.
-        val diagKeys = core.substring(
-            core.indexOf("internal val DIAG_KEYS"),
-            core.indexOf(")", core.indexOf("internal val DIAG_KEYS")),
-        )
-        assertTrue(diagKeys.contains("\"diag_wifi_outages_24h\""))
-    }
-
-    private fun source(relative: String): String =
-        (TestSources.appFileOrNull("src/main/kotlin/io/panelassistant/android/$relative")
-            ?: TestSources.kotlin("control/$relative")).readText()
 }

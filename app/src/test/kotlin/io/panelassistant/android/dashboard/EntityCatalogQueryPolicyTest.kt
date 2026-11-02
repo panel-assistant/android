@@ -1,5 +1,6 @@
 package io.panelassistant.android.dashboard
 
+import java.sql.DriverManager
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -7,51 +8,56 @@ import org.junit.Test
 import org.json.JSONObject
 
 class EntityCatalogQueryPolicyTest {
-    private fun row(
-        id: String,
-        access: Long = 0,
-        rate: Double = 0.0,
-        reasons: String = "",
-        last: Long = 0,
-        override: String = "auto",
-    ) = EntitySortProjection(id, access, rate, reasons, last, override)
-
     @Test fun apiSortPolicyAllowsOnlyDisplayedColumnsAndDirections() {
         val allowed = listOf("entity_id", "access_1h", "rate_1h_bps", "reasons", "last_access_at", "override")
         allowed.forEach { assertEquals(it, EntityCatalogSorting.key(it)) }
         assertEquals("entity_id", EntityCatalogSorting.key("update_bytes DESC; DROP TABLE entity"))
         assertEquals("asc", EntityCatalogSorting.direction("sideways"))
         assertEquals("desc", EntityCatalogSorting.direction("DESC"))
-        assertTrue(EntityCatalogSorting.sqlOrder("entity_id", "asc")!!.startsWith("e.entity_id"))
-        assertTrue(EntityCatalogSorting.sqlOrder("last_access_at", "desc")!!.contains("DESC"))
-        assertTrue(EntityCatalogSorting.sqlOrder("access_1h", "asc")!!.startsWith("recent_access_1h ASC"))
-        assertTrue(EntityCatalogSorting.sqlOrder("rate_1h_bps", "desc")!!.startsWith("recent_rate_1h DESC"))
     }
 
-    @Test fun everyDisplayedColumnSortsBothDirectionsWithDeterministicEntityTieBreak() {
-        val rows = listOf(
-            row("sensor.z", 7, 2.5, "runtime", 100, "pinned"),
-            row("sensor.a", 7, 2.5, "runtime", 100, "pinned"),
-            row("sensor.m", 2, 9.0, "dashboard", 300, "excluded"),
-        )
-        for (key in listOf("entity_id", "access_1h", "rate_1h_bps", "reasons", "last_access_at", "override")) {
-            for (direction in listOf("asc", "desc")) {
-                val sorted = rows.sortedWith(EntityCatalogSorting.comparator(key, direction) { it })
-                // Equal primary values are stable across refreshes/pages regardless of primary direction.
-                if (key != "entity_id") assertTrue(sorted.indexOfFirst { it.entityId == "sensor.a" } < sorted.indexOfFirst { it.entityId == "sensor.z" })
-                assertEquals(rows.toSet(), sorted.toSet())
+    @Test fun productionSqlOrdersEveryDisplayedColumnBeforePaginationWithDeterministicEntityTieBreak() {
+        DriverManager.getConnection("jdbc:sqlite::memory:").use { db ->
+            db.createStatement().use { statement ->
+                statement.execute(EntityCatalogSchema.ENTITY_TABLE_SQL)
+                statement.execute(EntityCatalogSchema.DASHBOARD_ENTITY_TABLE_SQL)
+                statement.execute("""INSERT INTO entity(instance,entity_id,first_seen_at,last_seen_at) VALUES
+                    ('ha','sensor.z',0,0),('ha','sensor.a',0,0),('ha','sensor.m',0,0)""")
+                statement.execute("""INSERT INTO dashboard_entity(
+                    instance,path,entity_id,access_count,update_bytes,reasons,last_access_at,pinned,excluded) VALUES
+                    ('ha','dash','sensor.z',7,25,'runtime',100,1,0),
+                    ('ha','dash','sensor.a',7,25,'runtime',100,1,0),
+                    ('ha','dash','sensor.m',2,90,'dashboard',300,0,1)""")
+            }
+            // entitiesJson uses this exact production ORDER BY fragment. Recent aggregate values
+            // are fixture inputs here; aggregation itself is outside this ordering contract.
+            fun ordered(key: String, direction: String, page: String = ""): List<String> {
+                val orderBy = requireNotNull(EntityCatalogSorting.sqlOrder(key, direction))
+                return db.createStatement().use { statement ->
+                    statement.executeQuery("""SELECT e.entity_id,
+                        m.access_count AS recent_access_1h,m.update_bytes/10.0 AS recent_rate_1h
+                        FROM entity e LEFT JOIN dashboard_entity m
+                        ON m.instance=e.instance AND m.entity_id=e.entity_id AND m.path='dash'
+                        ORDER BY $orderBy $page""").use { rows ->
+                        buildList { while (rows.next()) add(rows.getString(1)) }
+                    }
+                }
+            }
+            val expected = mapOf(
+                "entity_id" to (listOf("sensor.a", "sensor.m", "sensor.z") to listOf("sensor.z", "sensor.m", "sensor.a")),
+                "access_1h" to (listOf("sensor.m", "sensor.a", "sensor.z") to listOf("sensor.a", "sensor.z", "sensor.m")),
+                "rate_1h_bps" to (listOf("sensor.a", "sensor.z", "sensor.m") to listOf("sensor.m", "sensor.a", "sensor.z")),
+                "reasons" to (listOf("sensor.m", "sensor.a", "sensor.z") to listOf("sensor.a", "sensor.z", "sensor.m")),
+                "last_access_at" to (listOf("sensor.a", "sensor.z", "sensor.m") to listOf("sensor.m", "sensor.a", "sensor.z")),
+                "override" to (listOf("sensor.m", "sensor.a", "sensor.z") to listOf("sensor.a", "sensor.z", "sensor.m")),
+            )
+            for ((key, orders) in expected) {
+                for ((direction, order) in listOf("asc" to orders.first, "desc" to orders.second)) {
+                    assertEquals("$key $direction including the ascending entity tie break", order, ordered(key, direction))
+                    assertEquals("$key $direction page follows global order", order.drop(1), ordered(key, direction, "LIMIT 2 OFFSET 1"))
+                }
             }
         }
-    }
-
-    @Test fun paginationIsAppliedAfterGlobalSort() {
-        val rows = (0 until 250).map { row("sensor.%03d".format(it), access = ((it * 37) % 91).toLong()) }
-        val globallySorted = rows.sortedWith(EntityCatalogSorting.comparator("access_1h", "desc") { it })
-
-        val secondPage = globallySorted.drop(100).take(100)
-
-        assertEquals(globallySorted.subList(100, 200), secondPage)
-        assertTrue(secondPage.first() !in globallySorted.take(100))
     }
 
     @Test fun percentileTrackingRemainsConstantSpaceAtCatalogScale() {

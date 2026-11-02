@@ -134,15 +134,18 @@ internal class WebViewUpdate(
         }
         if (active || (InstallProgress.running && InstallProgress.component == "WebView")) return
         val previous = receipt ?: return
-        val spec = candidate()?.second?.takeIf { it.apkSha256 == previous.optString("artifact_sha256") } ?: return
         val state = previous.optString("state")
+        // Only an uncertain package submission needs evidence for the same candidate.
+        val spec = if (state == "submitted_unknown") {
+            candidate()?.second?.takeIf { it.apkSha256 == previous.optString("artifact_sha256") } ?: return
+        } else null
         val next = when {
-            state == "submitted_unknown" && io.installedMatches(spec) -> "installed"
+            state == "submitted_unknown" && spec != null && io.installedMatches(spec) -> "installed"
             state == "downloading" || state == "verified" -> "deferred"
             else -> return
         }
         runCatching { save(JSONObject(previous.toString()).put("state", next).put("reason", if (next == "deferred") "interrupted" else JSONObject.NULL)) }
-        if (next == "installed") stage(spec).delete()
+        if (next == "installed" && spec != null) stage(spec).delete()
     }
 
     private suspend fun runInstall(requestId: String, spec: WebViewSpec, ticket: InstallProgress.Ticket) {

@@ -46,7 +46,8 @@ class VoiceAssistantCoordinatorTest {
 
     private class FakeEngine(val onActivation: (WakeWordActivation) -> Unit) : WakeWordEngine {
         var closed = false
-        override fun onFrame(frame: PcmFrame) {}
+        val heard = CopyOnWriteArrayList<List<Short>>()
+        override fun onFrame(frame: PcmFrame) { heard += frame.samples.toList() }
         override fun close() { closed = true }
     }
 
@@ -61,6 +62,7 @@ class VoiceAssistantCoordinatorTest {
 
     private inner class ScriptedRunner : AssistRunner {
         val requests = CopyOnWriteArrayList<VoiceTurnRequest>()
+        val heard = CopyOnWriteArrayList<List<Short>>()
         val started = CompletableDeferred<Unit>()
         val release = CompletableDeferred<AssistOutcome>()
         /** Completed once this run has fully unwound, including its capture attachment. */
@@ -85,7 +87,9 @@ class VoiceAssistantCoordinatorTest {
             onReply: (String) -> Unit,
         ): AssistOutcome {
             requests += request
-            attachment = attachAudio(object : PcmConsumer { override fun onFrame(frame: PcmFrame) {} })
+            attachment = attachAudio(object : PcmConsumer {
+                override fun onFrame(frame: PcmFrame) { heard += frame.samples.toList() }
+            })
             playbackHandle = playback
             started.complete(Unit)
             return try {
@@ -553,18 +557,20 @@ class VoiceAssistantCoordinatorTest {
         val c = coordinator()
         c.start()
 
-        val wakeLease = mic.leases.single { it.purpose == MicPurpose.WAKE_WORD }
-        val wakeDelivered = ShortArray(1) { 1000 }
-        wakeLease.consumer.onFrame(PcmFrame(wakeDelivered, timestampNs = 1L))
+        val engine = engines.single()
+        mic.pushFrame(shortArrayOf(1000), timestampNs = 1L)
+        assertEquals("the wake-word listener hears the captured signal", listOf(listOf<Short>(1000)), engine.heard)
 
-        engines.single().onActivation(WakeWordActivation("hey_jarvis", "hey jarvis"))
-        awaitRunner(0)
-        val assistLease = mic.leases.single { it.purpose == MicPurpose.ASSIST }
-        val delivered = ShortArray(1) { 1000 }
-        assistLease.consumer.onFrame(PcmFrame(delivered, timestampNs = 2L))
+        engine.onActivation(WakeWordActivation("hey_jarvis", "hey jarvis"))
+        val runner = awaitRunner(0)
+        mic.pushFrame(shortArrayOf(1000), timestampNs = 2L)
 
-        assertTrue("pipeline audio should be amplified, got ${delivered[0]}", delivered[0] > 3000)
-        assertEquals("the wake-word listener must see the unamplified signal", 1000, wakeDelivered[0].toInt())
+        assertEquals("the pipeline receives one amplified frame", listOf(listOf<Short>(3981)), runner.heard)
+        assertEquals("the wake-word listener is paused during the command", listOf(listOf<Short>(1000)), engine.heard)
+        runner.release.complete(AssistOutcome())
+        awaitRunFinished(c)
+        mic.pushFrame(shortArrayOf(1000), timestampNs = 3L)
+        assertEquals("the resumed wake-word listener still hears unamplified audio", listOf(listOf<Short>(1000), listOf<Short>(1000)), engine.heard)
     }
 
     @Test
@@ -573,11 +579,9 @@ class VoiceAssistantCoordinatorTest {
         val c = coordinator()
         c.start()
         engines.single().onActivation(WakeWordActivation("hey_jarvis", "hey jarvis"))
-        awaitRunner(0)
-        val assistLease = mic.leases.single { it.purpose == MicPurpose.ASSIST }
-        val delivered = ShortArray(1) { 1000 }
-        assistLease.consumer.onFrame(PcmFrame(delivered, timestampNs = 2L))
-        assertEquals(1000, delivered[0].toInt())
+        val runner = awaitRunner(0)
+        mic.pushFrame(shortArrayOf(1000, -1000, 0), timestampNs = 2L)
+        assertEquals(listOf(listOf<Short>(1000, -1000, 0)), runner.heard)
     }
 
     @Test

@@ -49,6 +49,35 @@ class PaneldListenerPortTest {
         }
     }
 
+    @Test fun rebindWaitsForItsOwnPortInsteadOfMovingWhileThePortIsBrieflyHeld() {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val port = ServerSocket(0, 50, java.net.InetAddress.getByName("127.0.0.1")).use { it.localPort }
+        var offLan = true
+        val published = java.util.Collections.synchronizedList(mutableListOf<Int>())
+        val listener = PaneldListener(scope, { port }, { offLan }, onBound = { published += it }) {
+            routing { get("/") { call.respondText("ready") } }
+        }
+        try {
+            listener.start {}
+            assertEquals(listOf(port), published)
+            // A listener on another loopback address stands in for the old socket: it clashes with the
+            // wildcard bind that leaving hardened mode needs, until it closes a moment later.
+            val holder = ServerSocket().apply { bind(InetSocketAddress("127.0.0.2", port)) }
+            offLan = false
+            val rebound = java.util.concurrent.Executors.newSingleThreadExecutor().let { executor ->
+                executor.submit<Boolean> { listener.rebind() }.also { executor.shutdown() }
+            }
+            Thread.sleep(1_000)
+            holder.close()
+            assertTrue(rebound.get(10, java.util.concurrent.TimeUnit.SECONDS))
+            assertEquals(listOf(port, port), published)
+            assertEquals("ready", get(port))
+        } finally {
+            listener.stop()
+            scope.cancel()
+        }
+    }
+
     @Test fun moduleFailureClosesIngressAndDoesNotPublishOrTryOtherPorts() {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         val failure = IllegalStateException("broken module")

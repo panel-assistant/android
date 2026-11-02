@@ -228,7 +228,7 @@ class StorageHealthTest {
         assertEquals(listOf(0L, 1L), received)
     }
 
-    @Test fun runtimeStyleDispatchLeavesTheWriterThreadAndSuppressesQueuedWorkAfterClose() {
+    @Test fun runtimeStyleDispatchLeavesTheWriterThreadAndStopsNewDeliveryAfterClose() {
         val authority = StorageHealthAuthority(StorageHealthPolicy(freeSpaceThresholds()))
         val executor = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "storage-listener-test") }
         val received = Collections.synchronizedList(mutableListOf<Pair<Long, String>>())
@@ -254,6 +254,23 @@ class StorageHealthTest {
         } finally {
             executor.shutdownNow()
         }
+    }
+
+    @Test fun closingRuntimeStyleDispatchSuppressesAlreadyQueuedSnapshots() {
+        val authority = StorageHealthAuthority(StorageHealthPolicy(freeSpaceThresholds()))
+        val queued = mutableListOf<Runnable>()
+        val received = mutableListOf<Long>()
+        val subscription = StorageHealthListenerDispatch { queued += it }
+            .subscribe(authority) { received += it.checkedAtMillis }
+
+        authority.refresh(observation(180, 200).copy(checkedAtMillis = 1))
+        assertEquals("both the initial snapshot and refresh must be queued before close", 2, queued.size)
+        assertTrue("the executor has not delivered either snapshot yet", received.isEmpty())
+
+        subscription.close()
+        queued.forEach(Runnable::run)
+
+        assertEquals("snapshots queued by the old subscription must be suppressed", emptyList<Long>(), received)
     }
 
     @Test fun reentrantPublicationIsQueuedBehindTheSnapshotAlreadyBeingDelivered() {

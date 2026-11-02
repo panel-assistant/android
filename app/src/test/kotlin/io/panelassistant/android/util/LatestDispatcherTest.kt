@@ -244,16 +244,37 @@ class LatestDispatcherTest {
         assertTrue(d.closeAndJoin(2_000L))
     }
 
-    @Test fun onDiscardRunsOutsideTheLockSoAHookMayReenterTheDispatcher() {
-        val reentrantCount = java.util.concurrent.atomic.AtomicInteger(-1)
-        lateinit var d: LatestDispatcher<Unit, Int>
-        d = LatestDispatcher.singleSlot<Int>("t",
-            consume = { Thread.sleep(50) },
-            onDiscard = { reentrantCount.compareAndSet(-1, d.pendingCount()) }) // re-enters under no lock
-        d.submit(1)                    // starts running
-        d.submit(2)                    // pending
-        d.submit(3)                    // replaces 2 -> onDiscard(2) re-enters pendingCount(); must not deadlock
-        assertTrue("onDiscard hook re-entered the dispatcher without deadlock", reentrantCount.get() >= 0)
-        assertTrue(d.closeAndJoin(2_000))
+    @Test fun onDiscardAllowsAnotherThreadToReadDispatcherStateBeforeTheHookReturns() {
+        val consuming = CountDownLatch(1)
+        val releaseConsumer = CountDownLatch(1)
+        val stateRead = CountDownLatch(1)
+        val observedCount = java.util.concurrent.atomic.AtomicInteger(-1)
+        var reader: Thread? = null
+        lateinit var dispatcher: LatestDispatcher<Unit, Int>
+        dispatcher = LatestDispatcher.singleSlot(
+            "discard-lock-contract",
+            consume = { consuming.countDown(); releaseConsumer.await() },
+            onDiscard = {
+                reader = Thread {
+                    observedCount.set(dispatcher.pendingCount())
+                    stateRead.countDown()
+                }.apply { isDaemon = true; start() }
+                assertTrue(
+                    "discard callback must allow another thread to read dispatcher state before it returns",
+                    stateRead.await(1, TimeUnit.SECONDS),
+                )
+            },
+        )
+        try {
+            dispatcher.submit(1)
+            assertTrue("consumer must own the first value", consuming.await(2, TimeUnit.SECONDS))
+            dispatcher.submit(2)
+            assertEquals(LatestDispatcher.Admission.COALESCED, dispatcher.submit(3))
+            assertEquals(1, observedCount.get())
+        } finally {
+            releaseConsumer.countDown()
+            dispatcher.closeAndJoin(2_000)
+            reader?.join(2_000)
+        }
     }
 }

@@ -8,6 +8,7 @@ internal class PortalNameSync(
     private val act: (Window, Action, String) -> Boolean,
     private val post: (Runnable, Long) -> Unit,
     private val cancel: (Runnable) -> Unit,
+    private val returnToDashboard: () -> Unit,
     private val finished: (Boolean, String) -> Unit,
 ) : AutoCloseable {
     data class Node(
@@ -19,11 +20,14 @@ internal class PortalNameSync(
         fun usable(kind: String, click: Boolean = false) = visible && enabled && this.kind == kind && (!click || clickable)
     }
     data class Window(val id: Int, val packageName: String?, val dashboard: Boolean, val root: Node) {
-        fun editor(): Node? = root.all(ID + "qa_device_setup_name").singleOrNull()?.takeIf { it.visible && it.enabled }
+        // Anchor on the editor's actionable controls only. Meta's containers (qa_device_setup_name,
+        // names_niu_list, the dialog root) are plain layouts that a default accessibility service is
+        // never served; their important children arrive lifted to the window root.
+        fun editor(): Node? = root.takeIf {
+            it.all(ID + "niu_list").size == 1 && it.all(ID + "next").size == 1 && it.all(ID + "niu_dialog_input").isEmpty()
+        }
         fun row(): Node? {
-            val editor = editor() ?: return null
-            val container = editor.all(ID + "names_niu_list").singleOrNull() ?: return null
-            val list = container.all(ID + "niu_list").singleOrNull()?.takeIf {
+            val list = editor()?.all(ID + "niu_list")?.singleOrNull()?.takeIf {
                 it.usable("androidx.recyclerview.widget.RecyclerView")
             } ?: return null
             // The first direct adapter row is the custom name; its label changes with the name.
@@ -34,8 +38,9 @@ internal class PortalNameSync(
             }
         }
         fun name(): String? = row()?.children?.singleOrNull { it.id == ID + "title" }?.text
-        fun dialog(): Node? = root.all(ID + "qa_common_device_setup_name_alert_enter_portal_name").singleOrNull()
-            ?.takeIf { it.visible && it.enabled }
+        fun dialog(): Node? = root.takeIf {
+            it.all(ID + "niu_dialog_input").size == 1 && it.all(ID + "niu_dialog_button_positive").size == 1
+        }
         fun target(action: Action): Node? = when (action) {
             Action.CUSTOM -> row()
             Action.TEXT -> dialog()?.all(ID + "niu_dialog_input")?.singleOrNull()?.takeIf { it.usable("android.widget.EditText") }
@@ -58,6 +63,7 @@ internal class PortalNameSync(
     private var tickQueued = false
     private var awaitingReplacement = false
     private var draftChanged = false
+    private var launched = false
     val active get() = running
 
     fun request(name: String) {
@@ -78,6 +84,7 @@ internal class PortalNameSync(
         }
         originId = initial.id
         if (!launch()) { finish(false, "Portal name editor could not be opened"); return }
+        launched = true
         schedule()
     }
 
@@ -170,9 +177,13 @@ internal class PortalNameSync(
         running = false
         cancel(tick)
         tickQueued = false
+        // A failed rename must not leave Meta's editor (or whatever it led to) over the dashboard.
+        if (!success && launched && runCatching { window()?.dashboard }.getOrNull() != true) returnToDashboard()
+        launched = false
         finished(success, reason)
     }
-    override fun close() { finish(false, "Portal rename cancelled") }
+    /** Cancellation comes from teardown or a withdrawn name; it never navigates. */
+    override fun close() { launched = false; finish(false, "Portal rename cancelled") }
 
     companion object {
         const val SETTINGS = "com.facebook.alohaapps.settings"

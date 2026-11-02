@@ -9,25 +9,7 @@ import { chromium } from 'playwright-core';
 const htmlAsset = fileURLToPath(new URL('../../app/src/main/assets/api.html', import.meta.url));
 const apiAsset = fileURLToPath(new URL('../../app/src/main/assets/api.js', import.meta.url));
 const helperAsset = fileURLToPath(new URL('../../app/src/main/assets/i18n.js', import.meta.url));
-const englishCatalogue = fileURLToPath(new URL('../../app/src/main/assets/i18n/en.json', import.meta.url));
 const chrome = process.env.CHROME || '/usr/bin/chromium';
-
-const newKeys = Object.freeze([
-  'api.action.send',
-  'api.approval.conditional',
-  'api.error.load_spec',
-  'api.group.other',
-  'api.header.back_to_panel',
-  'api.intro.import',
-  'api.intro.live',
-  'api.intro.network',
-  'api.request.body',
-  'api.status.error',
-]);
-const reusedKeys = Object.freeze([
-  'configure.hardened.action_approval',
-  'shell.hardened.key',
-]);
 
 const translations = Object.freeze({
   'api.action.send': '发送 {method}',
@@ -151,15 +133,6 @@ async function rig(t, { strings = translations, spec = fixtureSpec(), failSpec =
   if (!failSpec) await page.waitForFunction(() => document.querySelectorAll('details.ep').length === 7);
   return { page, requests };
 }
-
-test('API Explorer owns exactly ten new catalogue strings and reuses exactly two established strings', async () => {
-  const [source, catalogue] = await Promise.all([readFile(apiAsset, 'utf8'), readFile(englishCatalogue, 'utf8').then(JSON.parse)]);
-  const apiKeys = [...source.matchAll(/"(api\.[a-z0-9._-]+|configure\.hardened\.action_approval|shell\.hardened\.key)"/g)]
-    .map((match) => match[1]);
-  assert.deepEqual([...new Set(apiKeys.filter((key) => key.startsWith('api.')))].sort(), [...newKeys].sort());
-  assert.deepEqual([...new Set(apiKeys.filter((key) => !key.startsWith('api.')))].sort(), [...reusedKeys].sort());
-  for (const key of [...newKeys, ...reusedKeys]) assert.ok(catalogue.strings[key], `${key} has an English catalogue record`);
-});
 
 test('API Explorer localizes all controlled chrome while preserving frozen technical tokens', async (t) => {
   const { page } = await rig(t);

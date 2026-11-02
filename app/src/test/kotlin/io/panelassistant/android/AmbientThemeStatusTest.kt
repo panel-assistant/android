@@ -111,11 +111,19 @@ class AmbientThemeStatusTest {
         }
     }
 
-    @Test fun everyStatusFieldIsDeclaredRequiredInTheOpenApi() {
-        val openApi = TestSources.appFile("src/main/assets/openapi.json").readText()
-        val keys = json(present(DashboardTheme.DARK, AmbientThemeReason.ROOM_DARK)).keys().asSequence().toList()
-        val required = Regex("\"required\": \\[(\"mode\", \"state\"[^\\]]*)]").find(openApi)!!.groupValues[1]
-        keys.forEach { assertTrue("$it must be required in openapi.json", required.contains("\"$it\"")) }
-        for (reason in AmbientThemeReason.values()) assertTrue(reason.wire, openApi.contains("\"${reason.wire}\""))
+    // Source-text reason: openapi.json is the published response schema, read as data.
+    @Test fun thePublishedOpenApiRequiresEveryRendererStatusFieldAndDeclaresAmbientReasons() {
+        val schema = JSONObject(TestSources.appFile("src/main/assets/openapi.json").readText())
+            .getJSONObject("components").getJSONObject("schemas").getJSONObject("RendererHealth")
+        val keys = json(present(DashboardTheme.DARK, AmbientThemeReason.ROOM_DARK)).keys().asSequence().toSet()
+        val required = schema.getJSONArray("required").let { values ->
+            (0 until values.length()).map { values.getString(it) }.toSet()
+        }
+        assertTrue("renderer status fields missing from the published required set: ${keys - required}", required.containsAll(keys))
+        val reasons = schema.getJSONObject("properties").getJSONObject("theme_ambient_reason")
+            .getJSONArray("enum").let { values ->
+                (0 until values.length()).map { values.getString(it) }.toSet()
+            }
+        assertEquals(AmbientThemeReason.values().map { it.wire }.toSet(), reasons)
     }
 }

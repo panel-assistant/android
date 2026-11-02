@@ -10,6 +10,9 @@ import java.io.OutputStreamWriter
 
 /** The deterministic app side of the helper's WATCH/SUBSCRIBE line protocol. */
 internal object EvdevStreamSession {
+    /** Suffix for the release (up edge) event type of a button that opts in with `release=true`. */
+    const val RELEASED_SUFFIX = "_RELEASED"
+
     enum class Mode { RECONFIGURABLE, VERIFIED, LEGACY }
 
     private data class ParsedEvent(val valid: Boolean, val eventType: String?)
@@ -98,8 +101,16 @@ internal object EvdevStreamSession {
         }
         val code = fields[1].toIntOrNull() ?: return ParsedEvent(false, null)
         val value = fields[2].toIntOrNull() ?: return ParsedEvent(false, null)
-        val button = buttons.firstOrNull { it.sw == sw && it.code == code }
-        val shouldEmit = if (sw) value == 0 || value == 1 else value == 1
-        return ParsedEvent(true, button?.eventType?.takeIf { shouldEmit })
+        val button = buttons.firstOrNull { it.sw == sw && it.code == code } ?: return ParsedEvent(true, null)
+        // Press (value 1) fires the base event type, unchanged. The up edge (value 0) is reported only
+        // when the button opts in with release=true, as a distinct <base>_RELEASED type; otherwise the
+        // existing behaviour stands (keys are press-only; a switch still reports its state change as the
+        // base type on both edges). value 2 is kernel autorepeat and never a physical edge.
+        val emitted = when (value) {
+            1 -> button.eventType
+            0 -> if (button.release) button.eventType + RELEASED_SUFFIX else button.eventType.takeIf { button.sw }
+            else -> null
+        }
+        return ParsedEvent(true, emitted)
     }
 }

@@ -111,8 +111,10 @@ class HandBackHomeControllerTest {
     @Test fun `missing original home refuses without clearing desired state`() {
         val panel = tamedPanel()
         panel.previousHome = "com.missing/.Home"
-        assertEquals(HandBackHomeController.Result.Refused(HandBackHomePolicy.Refusal.NO_REPLACEMENT_HOME),
-            panel.controller().handBack(emptySet()))
+        assertEquals(
+            HandBackHomeController.Result.Refused(HandBackHomePolicy.Refusal.ORIGINAL_HOME_MISSING, "com.missing/.Home"),
+            panel.controller().handBack(emptySet()),
+        )
         assertTrue(panel.log.isEmpty())
     }
 

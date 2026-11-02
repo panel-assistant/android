@@ -310,6 +310,73 @@ static void test_nonreplacement_staging_dirsync_reconciliation(void) {
         "exact artifact retry publishes one reconciled staged successor\n");
 }
 
+static void begin_requested_replacement(void);
+
+static int owner_lock_fd_count(void) {
+    struct stat lock_st, fd_st;
+    if (stat(CUSTODY "/.owner.lock", &lock_st) != 0) return -1;
+    int count = 0;
+    for (int fd = 0; fd < 1024; fd++)
+        if (fstat(fd, &fd_st) == 0 && fd_st.st_dev == lock_st.st_dev &&
+            fd_st.st_ino == lock_st.st_ino) count++;
+    return count;
+}
+
+static void test_replacement_export_refuses_foreign_fd3(void) {
+    guard_test_reset();
+    int placeholder = open("/dev/null", O_RDONLY);
+    CHECK(placeholder >= 0 && (placeholder == GUARD_REPLACEMENT_LEASE_FD ||
+          dup2(placeholder, GUARD_REPLACEMENT_LEASE_FD) == GUARD_REPLACEMENT_LEASE_FD),
+        "hold fd 3 so the owner lock lands elsewhere\n");
+    if (placeholder != GUARD_REPLACEMENT_LEASE_FD) close(placeholder);
+    setup();
+    begin_requested_replacement();
+    char nonce[65];
+    CHECK(guard_maintenance_replacement_parent_grant(nonce) == GUARD_REPLACEMENT_READY,
+        "foreign-fd3 fixture grants the replacement\n");
+    int owner_fds = owner_lock_fd_count();
+    CHECK(owner_fds == 1, "foreign-fd3 fixture holds one owner lock off fd 3 (got %d)\n", owner_fds);
+    int foreign = open("/tmp/.hapaneld-guard-foreign-fd3", O_RDWR | O_CREAT | O_TRUNC, 0600);
+    struct stat before, after;
+    CHECK(foreign >= 0 && dup2(foreign, GUARD_REPLACEMENT_LEASE_FD) == GUARD_REPLACEMENT_LEASE_FD &&
+          fstat(GUARD_REPLACEMENT_LEASE_FD, &before) == 0, "occupy fd 3 with a foreign file\n");
+    CHECK(guard_maintenance_replacement_export_lease() != 0,
+        "export refuses to overwrite a foreign descriptor on the lease fd\n");
+    CHECK(fstat(GUARD_REPLACEMENT_LEASE_FD, &after) == 0 && after.st_dev == before.st_dev &&
+          after.st_ino == before.st_ino, "foreign descriptor on the lease fd survives export\n");
+    close(GUARD_REPLACEMENT_LEASE_FD);
+    if (foreign >= 0 && foreign != GUARD_REPLACEMENT_LEASE_FD) close(foreign);
+    unlink("/tmp/.hapaneld-guard-foreign-fd3");
+    CHECK(guard_maintenance_replacement_parent_abort(nonce) == 0,
+        "foreign-fd3 fixture aborts the granted replacement\n");
+}
+
+static void test_replacement_adopt_closes_previous_owner_fd(void) {
+    guard_test_reset();
+    int placeholder = open("/dev/null", O_RDONLY);
+    CHECK(placeholder >= 0 && (placeholder == GUARD_REPLACEMENT_LEASE_FD ||
+          dup2(placeholder, GUARD_REPLACEMENT_LEASE_FD) == GUARD_REPLACEMENT_LEASE_FD),
+        "hold fd 3 so the owner lock lands elsewhere\n");
+    if (placeholder != GUARD_REPLACEMENT_LEASE_FD) close(placeholder);
+    setup();
+    begin_requested_replacement();
+    close(GUARD_REPLACEMENT_LEASE_FD);
+    char nonce[65];
+    CHECK(guard_maintenance_replacement_parent_grant(nonce) == GUARD_REPLACEMENT_READY &&
+          guard_maintenance_replacement_export_lease() == 0,
+        "adopt fixture grants and exports the owner lease\n");
+    CHECK(owner_lock_fd_count() == 2, "export leaves the owner fd and its fd 3 copy\n");
+    CHECK(guard_maintenance_replacement_stage_app(nonce) == 0 &&
+          guard_maintenance_replacement_supervisor_adopt_app(nonce) == 0,
+        "adopt fixture stages and adopts the inherited lease\n");
+    int owner_fds = owner_lock_fd_count();
+    CHECK(owner_fds == 1,
+        "adopting the lease closes the previous owner-lock descriptor (got %d)\n", owner_fds);
+    guard_test_set_supervised(1);
+    CHECK(guard_maintenance_replacement_worker_commit_app(nonce) == 0,
+        "adopt fixture commits the replacement\n");
+}
+
 static void test_replacement_fence_and_same_lease_app_swap(void) {
     setup();
     static const char old_helper[] = "old-app-helper-binary";
@@ -833,7 +900,7 @@ static void test_cancel_only_exact_staging(void) {
     }
 }
 
-static void test_capture_intent_reconciles_after_process_cut(enum guard_test_fault fault) {
+static void prepare_capture_recovery(void) {
     setup();
     unsigned char database[128] = {0};
     memcpy(database, "SQLite format 3", 15);
@@ -858,6 +925,66 @@ static void test_capture_intent_reconciles_after_process_cut(enum guard_test_fau
     write_file_mode(DB_PATH "-wal", "", 0, 0600);
     write_file_mode(DB_PATH "-shm", "owned-checkpoint-shm", 20, 0600);
     guard_test_set_supervised(1);
+}
+
+/* Run the handler failure through the same tick/deadline/start/complete seam as main. */
+static void test_failed_capture_recovers_once(int mode) {
+    prepare_capture_recovery();
+    guard_test_set_fault(GUARD_TEST_FAULT_MANIFEST_FILE_SYNC);
+    char command[1024], reply[1024];
+    snprintf(command, sizeof command, "GUARDACTION %s 6 CAPTURE_BASELINE", SESSION);
+    dispatch_once(command, reply, sizeof reply);
+    CHECK(strcmp(reply, "ERR INDETERMINATE capture\n") == 0,
+        "failed capture reaches supervisor recovery\n");
+    guard_maintenance_set_supervisor_owner();
+    int work = guard_maintenance_supervisor_tick();
+    CHECK(work == GUARD_WORK_LAUNCH_A && access(CUSTODY "/manifest.v1", F_OK) != 0,
+        "failed publication authorizes only incumbent recovery without manifest\n");
+    guard_test_set_fault(GUARD_TEST_FAULT_NONE);
+    uint64_t deadline = 0;
+    CHECK(guard_maintenance_supervisor_work_deadline(work, &deadline) == 0,
+        "failed capture recovery retains its original bounded deadline\n");
+    uint64_t forbidden_deadline;
+    CHECK(guard_maintenance_supervisor_work_deadline(GUARD_WORK_INSTALL_A, &forbidden_deadline) < 0 &&
+          guard_maintenance_supervisor_work_deadline(GUARD_WORK_INSTALL_B, &forbidden_deadline) < 0 &&
+          guard_maintenance_supervisor_work_deadline(GUARD_WORK_LAUNCH_B, &forbidden_deadline) < 0,
+        "draft recovery grants neither install nor candidate launch authority\n");
+    if (mode == 1) sysexec_stub_fail_run("monkey -p", -1);
+    if (mode == 3) guard_test_set_now_ms(deadline);
+    if (mode == 4) write_file_mode(INSTALLED_APK, "replaced", 8, 0600);
+    pid_t executor = -1;
+    int started = guard_maintenance_supervisor_work_deadline(work, &deadline) == 0
+        ? guard_maintenance_supervisor_start_work(work, &executor) : -1;
+    CHECK((started == 0) == (mode != 1 && mode != 3 && mode != 4),
+        "recovery starts only an exact unexpired incumbent (mode %d)\n", mode);
+    if (mode == 5) {
+        guard_test_drop_runtime();
+        CHECK(guard_test_reconcile() == 0, "restart reconciles consumed recovery authority\n");
+        guard_maintenance_set_supervisor_owner();
+    } else {
+        enum guard_execution_result result = started != 0 ? GUARD_EXEC_NOT_STARTED
+            : (mode == 2 ? GUARD_EXEC_TIMED_OUT : GUARD_EXEC_REAPED);
+        CHECK(guard_maintenance_supervisor_complete(work, result, mode == 6 ? 256 : 0) == GUARD_WORK_NONE,
+            "recovery settles success, failed spawn, timeout, expiry or launch failure (mode %d)\n", mode);
+    }
+    CHECK(guard_maintenance_supervisor_tick() == GUARD_WORK_NONE &&
+          guard_maintenance_supervisor_tick() == GUARD_WORK_NONE,
+        "settled recovery is never replayed (mode %d)\n", mode);
+    CHECK(guard_maintenance_supervisor_start_work(GUARD_WORK_LAUNCH_A, &executor) < 0,
+        "consumed launch authority cannot start a second executor\n");
+    const char *const launch[] = {
+        "monkey", "-p", APP_PKG, "-c", "android.intent.category.LAUNCHER", "1", NULL,
+    };
+    CHECK(sysexec_stub_count_argv("/system/bin/monkey", launch, 1) ==
+          (mode == 3 || mode == 4 ? 0 : 1),
+        "exact incumbent receives at most one launch attempt (mode %d)\n", mode);
+    CHECK(access(CUSTODY "/manifest.v1", F_OK) != 0,
+        "recovery never fabricates maintenance authority\n");
+}
+
+static void test_capture_intent_reconciles_after_process_cut(enum guard_test_fault fault) {
+    static const char b_payload[] = "capture-cut-candidate-b";
+    prepare_capture_recovery();
     guard_test_set_fault(fault);
 
     char command[1024], reply[1024], expected[1024];
@@ -2198,6 +2325,8 @@ int main(void) {
     test_replacement_respects_installstream_package_gate();
     test_replacement_shared_lock_admission();
     test_replacement_fence_and_same_lease_app_swap();
+    test_replacement_export_refuses_foreign_fd3();
+    test_replacement_adopt_closes_previous_owner_fd();
     test_replacement_backup_cut_recovers_exact_old();
     test_replacement_build_mismatch_aborts_before_swap();
     test_replacement_swap_cut_resumes_exact_new();
@@ -2206,6 +2335,7 @@ int main(void) {
     test_replacement_synced_temp_cuts_reconcile();
     test_replacement_stage_durability_precedes_fence();
     test_cancel_only_exact_staging();
+    for (int mode = 0; mode < 7; mode++) test_failed_capture_recovers_once(mode);
     test_capture_intent_reconciles_after_process_cut(GUARD_TEST_FAULT_MANIFEST_FILE_SYNC);
     test_capture_intent_reconciles_after_process_cut(GUARD_TEST_FAULT_CAPTURE_INTENT_DIR_SYNC);
     test_capture_intent_reconciles_after_process_cut(GUARD_TEST_FAULT_CAPTURE_STOP_DIR_SYNC);

@@ -24,7 +24,7 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.resume
 
-internal data class LocalAdbState(val managed: Boolean, val recoveryHold: Boolean, val securityUnverified: Boolean = false)
+internal data class LocalAdbState(val managed: Boolean, val recoveryHold: Boolean, val securityUnverified: Boolean = false, val buildId: String = BuildConfig.HELPER_BUILD_ID)
 internal interface LocalAdbEndpoint {
     fun state(): LocalAdbState?
     fun arm(nonce: String): Boolean
@@ -46,6 +46,7 @@ internal class LocalAdbRuntime(
         { _, _, _ -> io.panelassistant.android.http.DeferredSessionApproval("not_commandable") },
     private val onClosed: () -> Unit = {},
     private val healthy: suspend () -> Boolean = { true },
+    private val rootKnownUnusable: () -> Boolean = { false },
 ) : PanelAssistantLocalAdb {
     private val generation = AtomicLong()
     private val effects = Mutex()
@@ -53,6 +54,11 @@ internal class LocalAdbRuntime(
     @Volatile private var nonce = ""
     @Volatile private var granted = false
     @Volatile private var compatibleHistory = false
+
+    // A panel without root cannot start the endpoint, so offering it only made Panel Assistant stage the
+    // helper and fail a root bootstrap before every operation, and kept this side retrying every 30 seconds.
+    // The endpoint is asked only when root is known unusable, so a rooted panel's hello waits on nothing new.
+    override fun offered(): Boolean = !rootKnownUnusable() || endpoint.state() != null
 
     override fun session(token: String, granted: Boolean) {
         val (current, fresh, retainExistingLease) = RemoteDebugSecurityTransitionGate.withLock {
@@ -72,8 +78,8 @@ internal class LocalAdbRuntime(
                     publish()
                     return@withLock
                 }
-                if (endpoint.state() == null) bootstrap()
-                if (generation.get() == current && endpoint.state() != null && healthy()) {
+                val state = currentDaemon()
+                if (generation.get() == current && state != null && healthy()) {
                     transition { generation.get() == current && endpoint.arm(fresh) }
                     publish()
                     onClosed()
@@ -86,8 +92,7 @@ internal class LocalAdbRuntime(
                     if (!healthy()) continue
                     try { effects.withLock {
                         if (generation.get() == current) {
-                            var state = endpoint.state()
-                            if (state == null && granted) { bootstrap(); state = endpoint.state() }
+                            val state = if (granted) currentDaemon() else endpoint.state()
                             if (state != null && !state.managed && !state.recoveryHold && granted) {
                                 transition { generation.get() == current && endpoint.arm(fresh) }
                                 publish()
@@ -101,6 +106,17 @@ internal class LocalAdbRuntime(
                 }
             }
         }
+    }
+
+    /** Startup proves an open recovery route before retiring a different-build owner. */
+    private fun currentDaemon(): LocalAdbState? {
+        var state = endpoint.state()
+        if (state == null || state.buildId != BuildConfig.HELPER_BUILD_ID) {
+            bootstrap()
+            state = endpoint.state()
+        }
+        // A failed bootstrap must never ARM or renew the stale owner as if replacement succeeded.
+        return state?.takeIf { it.buildId == BuildConfig.HELPER_BUILD_ID }
     }
 
     private fun transition(action: () -> Boolean): Boolean = securityTransition(action)
@@ -118,7 +134,8 @@ internal class LocalAdbRuntime(
         if (op == "adb.shell" && (command == null || command.isEmpty() || command.size > 65_536 || command.contains(0) || timeout == null || timeout !in 1..180_000)) return refused()
         fun currentRequest() = granted && generation.get() == current && nonce == requestNonce && admit()
         if (!currentRequest()) return refused("expired")
-        if (op != "adb.shell" && args.length() != 0) return refused()
+        if (op != "adb.shell" && args.length() != 0 &&
+            !(op == "adb.ready" && args.length() == 1 && args.opt("include_build_id") is Boolean)) return refused()
         return withContext(dispatcher) {
             if (op == "adb.shell" || op == "adb.recover") {
                 val digest = MessageDigest.getInstance("SHA-256").digest(command ?: ByteArray(0)).joinToString("") { "%02x".format(it) }
@@ -183,7 +200,9 @@ internal class LocalAdbRuntime(
                         "adb.prepare" -> prepare()
                         "adb.ready" -> {
                             val state = publish()
-                            JSONObject().put("ready", state != null).put("managed", state?.managed == true).put("recovery_hold", state?.recoveryHold == true).put("security_unverified", state?.securityUnverified == true)
+                            JSONObject().put("ready", state != null).put("managed", state?.managed == true).put("recovery_hold", state?.recoveryHold == true).put("security_unverified", state?.securityUnverified == true).also {
+                                if (args.opt("include_build_id") == true) it.put("build_id", state?.buildId ?: JSONObject.NULL)
+                            }
                         }
                         else -> return@withLock refused("unknown_command")
                     }
@@ -217,7 +236,7 @@ internal class LocalAdbRuntime(
                         main.post { if (acknowledgement.isActive) acknowledgement.resume(true) }
                     }
                 } == true
-            })
+            }, rootKnownUnusable = { Su.rootKnownUnusable() })
         }
     }
 }
@@ -331,7 +350,7 @@ internal class RootLocalAdbEndpoint : LocalAdbEndpoint {
             writeRequest(socket, "STATUS\n".toByteArray())
             val fields = line(socket.inputStream).split(' ')
             check(fields.size == 6 && fields[0] == "READY" && fields[1] == "1" && fields[2].matches(Regex("[0-9a-f]{64}")) && fields[3] in listOf("0", "1") && fields[4] in listOf("0", "1") && fields[5] in listOf("0", "1"))
-            LocalAdbState(fields[3] == "1", fields[4] == "1", fields[5] == "1")
+            LocalAdbState(fields[3] == "1", fields[4] == "1", fields[5] == "1", fields[2])
         }
     }.getOrNull()
     override fun arm(nonce: String): Boolean = command("ARM $nonce") == true

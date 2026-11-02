@@ -122,6 +122,17 @@ internal fun normalizeConfigPostParameters(
                     return ConfigPostParameters.Bad(
                         "ha_url_handover_reason: the panel's own verification writes this",
                     )
+                // Only the default can be asked for: any other port is chosen by the panel when the
+                // default is busy. The request takes effect the next time the HTTP server starts.
+                name == "http_port" -> {
+                    if (value.trim().toIntOrNull() != io.panelassistant.android.Config.DEFAULT_PORT) {
+                        return ConfigPostParameters.Bad(
+                            "http_port: only ${io.panelassistant.android.Config.DEFAULT_PORT} can be set; " +
+                                "the panel picks another port itself when it is busy",
+                        )
+                    }
+                    io.panelassistant.android.Config.DEFAULT_PORT.toString()
+                }
                 name == "http_allowed_hosts" -> {
                     val trimmed = value.trim()
                     if (trimmed.length > 4_096) {

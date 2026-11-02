@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import { loadTransport } from './page-transport.mjs';
+import { loadTransport, textElement } from './page-transport.mjs';
 
 const source = fs.readFileSync(process.argv[2], 'utf8');
 
@@ -16,23 +16,15 @@ const focused = [];
 const VIEWPORT = 800;
 
 function element(name = '') {
-  const listeners = new Map();
-  const value = {
-    name,
-    dataset: {}, className: '', textContent: '', innerHTML: '', checked: false, disabled: false,
-    indeterminate: false, value: '', children: [], hidden: false, top: 0,
-    classList: { toggle() {}, remove() {}, add() {} },
-    addEventListener(type, listener) { listeners.set(type, listener); },
-    appendChild(child) { this.children.push(child); return child; },
-    querySelector() { return element(); }, querySelectorAll() { return []; },
-    matches() { return false; }, closest() { return null; },
-    getAttribute(key) { return this.dataset[key.replace('data-', '')]; },
-    setAttribute() {},
-    focus() { focused.push(this.name); },
-    getBoundingClientRect() { return { top: this.top, bottom: this.top + 400, left: 0, right: 800 }; },
-    scrollIntoView(options) { scrolls.push({ name: this.name, options }); },
-    async fire(type, event = {}) { const listener = listeners.get(type); return listener && listener.call(this, event); },
-  };
+  const value = textElement(name);
+  value.indeterminate = false;
+  value.top = 0;
+  value.querySelector = () => element();
+  value.matches = () => false;
+  value.getAttribute = key => value.dataset[key.replace('data-', '')];
+  value.focus = () => { focused.push(name); };
+  value.getBoundingClientRect = () => ({ top: value.top, bottom: value.top + 400, left: 0, right: 800 });
+  value.scrollIntoView = options => { scrolls.push({ name, options }); };
   return value;
 }
 
@@ -58,7 +50,7 @@ function section(table, short, filter, top) {
     thead: element(`${table}-thead`), 'button[data-all-candidates]': element(`${table}-all`),
   };
   card.querySelector = (selector) => parts[selector] || null;
-  card.querySelectorAll = (selector) => (selector === 'button[data-bulk]' ? [] : []);
+  card.querySelectorAll = () => [];
   return { card, parts };
 }
 
@@ -77,7 +69,8 @@ global.document = {
   getElementById: (id) => ids[id],
   querySelector: () => null,
   querySelectorAll: (selector) => (selector === '.entity-list' ? sections.map((s) => s.card) : []),
-  createElement: () => element('tr'),
+  createElement: tag => element(tag),
+  createTextNode: text => { const node = element('#text'); node.textContent = text; return node; },
 };
 // The page refreshes in the background from its `entities` subscription, which the page transport polls at
 // the family's floor; those timers are held here and fired by backgroundRefresh(), the others run for real.
@@ -196,6 +189,7 @@ listRequests.length = 0;
 await backgroundRefresh();
 await settle();
 const polled = listRequests.find((entry) => entry.filter === 'candidate');
+assert.ok(polled, 'the background refresh re-reads the Suggested section');
 assert.equal(polled.offset, '100', 'a poll must keep the current page');
 assert.equal(polled.sort, 'access_1h', 'a poll must keep the chosen sort column');
 assert.equal(polled.dir, 'desc');

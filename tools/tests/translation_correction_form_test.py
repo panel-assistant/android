@@ -1,5 +1,8 @@
 """Contract tests binding the translation-correction form to catalogue policy.
 
+Source-text reason: GitHub renders this published form; locale choices, required fields
+and contributor confirmations are the submitted-input contract.
+
 This deliberately is not a general YAML parser.  The checked-in issue form has a small,
 stable indentation contract: body items start at two spaces, their IDs at four spaces,
 and option entries at eight spaces.  Extracting only those sections keeps the test in the

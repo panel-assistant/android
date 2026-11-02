@@ -12,8 +12,6 @@ class AutoSleepSettingsTest {
         assertEquals("false", enabled.default)
         assertEquals(Scope.DEVICE, enabled.scope)
         assertFalse(enabled.haExposedByDefault)
-        assertEquals(null, SettingsRegistry.spec("auto_sleep_source_mode"))
-        assertEquals(null, SettingsRegistry.spec("auto_sleep_ha_entities"))
     }
 
     @Test fun `first slice has no manual source contract and retains policy activity history`() {

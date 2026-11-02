@@ -3,6 +3,7 @@
 #include "identity.h"
 #include "version.h"
 #include <errno.h>
+#include <dirent.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <poll.h>
@@ -12,10 +13,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/file.h>
 #include <sys/prctl.h>
 #include <sys/mman.h>
 #include <stdatomic.h>
 #include <stdint.h>
+#include <inttypes.h>
 #include <pthread.h>
 #include <sys/stat.h>
 #include <sys/un.h>
@@ -271,6 +274,11 @@ static int set_network(int on) {
             fprintf(stderr, "hapaneld-adb-recovery: emergency network recovery; durable security authority invalidation unavailable\n");
         }
     }
+    if (on) {
+        char state[32];
+        if (!property("init.svc.adbd", state, sizeof state) && !strcmp(state, "running") &&
+            tcp_listener(1) == 1) return 0;
+    }
     if ((on && set_property("service.adb.listen_addrs", "")) ||
         set_property("service.adb.tcp.port", on ? "5555" : "-1") ||
         set_property(on ? "ctl.restart" : "ctl.stop", "adbd")) return -1;
@@ -342,9 +350,301 @@ static pid_t start_guardian(int server) {
     }
     return guardian;
 }
+#ifndef ADB_RECOVERY_DIRECTORY
+#define ADB_RECOVERY_DIRECTORY "/data/local/panel-assistant-adb-recovery"
+#endif
+/* Capture the pathname before inspecting its inode. A bootstrap may replace "helper" at
+ * any time; only the privately named captured inode belongs to this retirement. */
+static int restore_custody(int directory, const char *custody) {
+    /* linkat cannot replace a newer bootstrap's canonical executable. The source is
+     * already inside our exclusive private directory, not the live pathname. */
+    if (linkat(directory, custody, directory, "helper", 0)) return -1;
+    return unlinkat(directory, custody, 0);
+}
+static int restore_executable(int directory, int executable, const char *custody) {
+    if (!restore_custody(directory, custody) || errno == EEXIST) return 0;
+    if (errno != ENOENT) return -1;
+    int output = openat(directory, "helper", O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0700);
+    if (output < 0) return errno == EEXIST ? 0 : -1;
+    int result = 0;
+    char bytes[8192]; ssize_t count;
+    if (lseek(executable, 0, SEEK_SET) < 0) result = -1;
+    while (!result && (count = read(executable, bytes, sizeof bytes)) != 0) {
+        if (count < 0) { if (errno == EINTR) continue; result = -1; break; }
+        ssize_t used = 0;
+        while (used < count) {
+            ssize_t written = write(output, bytes + used, (size_t)(count - used));
+            if (written < 0 && errno == EINTR) continue;
+            if (written <= 0) { result = -1; break; }
+            used += written;
+        }
+    }
+    if (fsync(output)) result = -1;
+    close(output);
+    if (result) (void)unlinkat(directory, "helper", 0);
+    return result;
+}
+/* A cancelled retirement may have restored a byte-identical copy with a new inode. */
+static int same_executable(int executable, int directory, const char *name, off_t size) {
+    int file = openat(directory, name, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    if (file < 0) return 0;
+    struct stat metadata;
+    int same = !fstat(file, &metadata) && S_ISREG(metadata.st_mode) && metadata.st_size == size;
+    for (off_t offset = 0; same && offset < size;) {
+        unsigned char a[8192], b[8192];
+        size_t bytes = size - offset > (off_t)sizeof a ? sizeof a : (size_t)(size - offset);
+        ssize_t first = pread(executable, a, bytes, offset);
+        if (first < 0 && errno == EINTR) continue;
+        ssize_t second = pread(file, b, bytes, offset);
+        if (second < 0 && errno == EINTR) continue;
+        if (first != (ssize_t)bytes || second != first || memcmp(a, b, bytes)) same = 0;
+        offset += (off_t)bytes;
+    }
+    close(file); return same;
+}
+static int retire_files(void) {
+    int directory = open(ADB_RECOVERY_DIRECTORY, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (directory < 0) return errno == ENOENT ? 0 : -1;
+    int executable = open("/proc/self/exe", O_RDONLY | O_CLOEXEC);
+    if (executable < 0) { close(directory); return -1; }
+    char holder[64], custody[80];
+    snprintf(holder, sizeof holder, ".retiring-%ld-%lld", (long)getpid(), now_ms());
+    snprintf(custody, sizeof custody, "%s/helper", holder);
+    int result = -1, captured = 0, removed = 0;
+    struct stat self, installed;
+    if (!helper_app_data_absent() || mkdirat(directory, holder, 0700)) goto done;
+    /* The newly created root-only directory gives renameat an unoccupied target
+     * on Android kernels predating renameat2. Capture precedes the inode check. */
+    if (renameat(directory, "helper", directory, custody)) {
+        if (errno == ENOENT && helper_app_data_absent()) result = 0;
+        goto done;
+    }
+    captured = 1;
+    if (fstat(executable, &self) || fstatat(directory, custody, &installed, AT_SYMLINK_NOFOLLOW) ||
+        !helper_app_data_absent()) goto done;
+    if (!S_ISREG(installed.st_mode) ||
+        ((installed.st_dev != self.st_dev || installed.st_ino != self.st_ino) &&
+         !same_executable(executable, directory, custody, self.st_size))) {
+        /* A newer/foreign executable belongs to its bootstrap, not this obsolete owner. */
+        if (!restore_custody(directory, custody) || errno == EEXIST) {
+            captured = 0;
+            if (helper_app_data_absent()) result = 0;
+        }
+        goto done;
+    }
+    if (unlinkat(directory, custody, 0)) goto done;
+    removed = 1;
+    if (unlinkat(directory, holder, AT_REMOVEDIR)) goto done;
+    if (!helper_app_data_absent()) goto done;
+    if (rmdir(ADB_RECOVERY_DIRECTORY) && errno != ENOENT && errno != ENOTEMPTY) goto done;
+    if (helper_app_data_absent()) result = 0;
+    else {
+        if (mkdir(ADB_RECOVERY_DIRECTORY, 0700) && errno != EEXIST) goto done;
+        close(directory);
+        directory = open(ADB_RECOVERY_DIRECTORY, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+        if (directory < 0) { close(executable); return -1; }
+    }
+ done:
+    if (result && captured) {
+        if (removed) (void)restore_executable(directory, executable, custody);
+        else (void)restore_custody(directory, custody);
+    }
+    (void)unlinkat(directory, holder, AT_REMOVEDIR);
+    close(executable); close(directory); return result;
+}
 static int owner_actuator(void) {
     int expected = 0;
     return atomic_compare_exchange_strong(&lease->actuator, &expected, 1);
+}
+/* Serialize launchers on the existing root-owned directory, leaving no retirement artifact. */
+static int replacement_directory(void) {
+    int fd = open(ADB_RECOVERY_DIRECTORY, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    struct stat st;
+    if (fd < 0) return -1;
+    if (fstat(fd, &st) || st.st_uid || st.st_gid || (st.st_mode & 07777) != 0700) {
+        close(fd); return -1;
+    }
+    long long until = now_ms() + 2000;
+    while (flock(fd, LOCK_EX | LOCK_NB)) {
+        if ((errno != EWOULDBLOCK && errno != EINTR) || now_ms() >= until) { close(fd); return -1; }
+        usleep(20000);
+    }
+    return fd;
+}
+static int process_state(int process, char *state, unsigned long long *started) {
+    int fd = openat(process, "stat", O_RDONLY | O_CLOEXEC);
+    char line[4096];
+    ssize_t n = fd < 0 ? -1 : read(fd, line, sizeof line - 1);
+    if (fd >= 0) close(fd);
+    if (n <= 0) return -1;
+    line[n] = 0;
+    char *at = strrchr(line, ')');
+    if (!at || at[1] != ' ') return -1;
+    at += 2; *state = *at;
+    for (int field = 3; field < 22; field++) {
+        at = strchr(at, ' ');
+        if (!at) return -1;
+        at++;
+    }
+    char *end;
+    *started = strtoull(at, &end, 10);
+    return end == at || (*end != ' ' && *end != '\n') ? -1 : 0;
+}
+/* Waiting on the stale executable, rather than a pre-signal child snapshot, also covers
+ * a guardian or worker forked immediately before its owner dies. Never signal these children. */
+static int stale_processes(const struct stat *old) {
+    DIR *proc = opendir("/proc");
+    if (!proc) return -1;
+    struct dirent *entry; int found = 0;
+    for (;;) {
+        errno = 0;
+        entry = readdir(proc);
+        if (!entry) { if (errno) found = -1; break; }
+        char *end; long pid = strtol(entry->d_name, &end, 10);
+        if (!entry->d_name[0] || *end || pid <= 0) continue;
+        int process = openat(dirfd(proc), entry->d_name, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+        if (process < 0) {
+            if (errno == ENOENT || errno == ESRCH || errno == ENOTDIR) continue;
+            found = -1; break;
+        }
+        struct stat st; char state; unsigned long long started;
+        if (fstat(process, &st)) { close(process); found = -1; break; }
+        /* Native guardians and workers retain root; unrelated unprivileged processes
+         * may legitimately deny /proc/exe inspection (e.g. dropped-privilege daemons). */
+        if (st.st_uid) { close(process); continue; }
+        if (fstatat(process, "exe", &st, 0)) {
+            int vanished = errno == ENOENT || errno == ESRCH;
+            close(process);
+            if (vanished) continue; /* exited processes and kernel threads have no executable */
+            found = -1; break;
+        }
+        if (st.st_dev == old->st_dev && st.st_ino == old->st_ino) {
+            if (process_state(process, &state, &started)) { close(process); found = -1; break; }
+            if (state != 'Z') found++;
+        }
+        close(process);
+    }
+    closedir(proc); return found;
+}
+#define REPLACEMENT_RETIRING ".replacement-retiring"
+/* This is only the inode still owed a drain, not a process id or permission to signal.
+ * A durable receipt prevents a failed launcher from losing custody after its owner exits. */
+static int retiring_inode(int directory, struct stat *old, struct stat *receipt) {
+    int fd = openat(directory, REPLACEMENT_RETIRING, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC);
+    if (fd < 0) return errno == ENOENT ? 0 : -1;
+    struct stat metadata;
+    char text[128], expected[128]; uintmax_t device, inode; char extra;
+    if (fstat(fd, &metadata) || !S_ISREG(metadata.st_mode) || metadata.st_uid || metadata.st_gid ||
+        metadata.st_nlink != 1 || (metadata.st_mode & 07777) != 0600) { close(fd); return -1; }
+    ssize_t n = read(fd, text, sizeof text - 1);
+    close(fd);
+    if (n <= 0 || metadata.st_size != n) return -1;
+    text[n] = 0;
+    if (sscanf(text, "RETIRING 1 %ju %ju%c", &device, &inode, &extra) != 3 || extra != '\n' || !inode) return -1;
+    int count = snprintf(expected, sizeof expected, "RETIRING 1 %ju %ju\n", device, inode);
+    if (count != n || memcmp(text, expected, (size_t)n) ||
+        (uintmax_t)(dev_t)device != device || (uintmax_t)(ino_t)inode != inode) return -1;
+    struct stat named;
+    if (fstatat(directory, REPLACEMENT_RETIRING, &named, AT_SYMLINK_NOFOLLOW) ||
+        named.st_dev != metadata.st_dev || named.st_ino != metadata.st_ino) return -1;
+    memset(old, 0, sizeof *old); old->st_dev = (dev_t)device; old->st_ino = (ino_t)inode;
+    if (receipt) *receipt = metadata;
+    return 1;
+}
+static int record_retiring_inode(int directory, const struct stat *old) {
+    struct stat recorded, receipt;
+    int existing = retiring_inode(directory, &recorded, &receipt);
+    if (existing < 0 || (existing && (recorded.st_dev != old->st_dev || recorded.st_ino != old->st_ino))) return -1;
+    if (existing) {
+        int fd = openat(directory, REPLACEMENT_RETIRING, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC);
+        struct stat metadata;
+        int failed = fd < 0 || fstat(fd, &metadata) || metadata.st_dev != receipt.st_dev ||
+            metadata.st_ino != receipt.st_ino || fsync(fd);
+        if (fd >= 0 && close(fd)) failed = 1;
+        return failed || fsync(directory) ? -1 : 0;
+    }
+    int fd = openat(directory, REPLACEMENT_RETIRING, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
+    if (fd < 0) return -1;
+    struct stat metadata;
+    char text[128];
+    int count = snprintf(text, sizeof text, "RETIRING 1 %ju %ju\n", (uintmax_t)old->st_dev, (uintmax_t)old->st_ino);
+    int failed = fstat(fd, &metadata) || !S_ISREG(metadata.st_mode) || metadata.st_uid || metadata.st_gid ||
+        metadata.st_nlink != 1 || (metadata.st_mode & 07777) != 0600 ||
+        write(fd, text, (size_t)count) != count || fsync(fd);
+    if (close(fd)) failed = 1;
+    return failed || fsync(directory) ? -1 : 0;
+}
+static int drain_retiring_inode(int directory, const struct stat *old) {
+    struct stat recorded, receipt, current;
+    if (retiring_inode(directory, &recorded, &receipt) != 1 ||
+        recorded.st_dev != old->st_dev || recorded.st_ino != old->st_ino) return -1;
+    int result = -1;
+    long long until = now_ms() + 6000;
+    while (now_ms() < until) {
+        int remaining = stale_processes(old);
+        if (!remaining) { result = 0; break; }
+        if (remaining < 0) break;
+        usleep(20000);
+    }
+    if (!result && (retiring_inode(directory, &recorded, &current) != 1 ||
+        current.st_dev != receipt.st_dev || current.st_ino != receipt.st_ino ||
+        recorded.st_dev != old->st_dev || recorded.st_ino != old->st_ino ||
+        unlinkat(directory, REPLACEMENT_RETIRING, 0) || fsync(directory))) result = -1;
+    return result;
+}
+/* 1: already current; 0: safely retired; -1: refuse. RECOVER is supported by shipped daemons. */
+static int replace_incumbent(const struct sockaddr_un *address, socklen_t length, int directory) {
+    int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0), process = -1, result = -1;
+    if (fd < 0) return -1;
+    if (connect(fd, (const struct sockaddr *)address, length)) goto done;
+    struct timeval timeout = { .tv_sec = 5 };
+    (void)setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof timeout);
+    struct ucred peer; socklen_t size = sizeof peer;
+    if (getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &peer, &size) || peer.uid || peer.pid <= 1) goto done;
+    pid_t owner = peer.pid;
+    char path[64], executable[PATH_MAX];
+    snprintf(path, sizeof path, "/proc/%ld", (long)owner);
+    process = open(path, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (process < 0) goto done;
+    ssize_t n = readlinkat(process, "exe", executable, sizeof executable - 1);
+    if (n < 0) goto done;
+    executable[n] = 0;
+    char canonical[PATH_MAX];
+    if (snprintf(canonical, sizeof canonical, "%s/helper", ADB_RECOVERY_DIRECTORY) >= (int)sizeof canonical) goto done;
+    size_t canonical_length = strlen(canonical);
+    if (strncmp(executable, canonical, canonical_length) ||
+        (executable[canonical_length] && strcmp(executable + canonical_length, " (deleted)"))) goto done;
+    struct stat old, current; char state; unsigned long long started, checked;
+    if (fstatat(process, "exe", &old, 0) || !S_ISREG(old.st_mode) || old.st_uid || old.st_gid ||
+        (old.st_mode & 07777) != 0700 || old.st_nlink > 1 ||
+        process_state(process, &state, &started) || state == 'Z') goto done;
+    char response[160], build[65], extra; int managed, hold, security;
+    read_deadline = now_ms() + 5000;
+    if (write_all(fd, "STATUS\n", 7) || read_line(fd, response, sizeof response) ||
+        sscanf(response, "READY 1 %64s %d %d %d %c", build, &managed, &hold, &security, &extra) != 4 ||
+        !nonce_valid(build) || managed < 0 || managed > 1 || hold < 0 || hold > 1 || security < 0 || security > 1) goto done;
+    if (!strcmp(build, helper_build_id())) { result = 1; goto done; }
+    close(fd); fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    if (fd < 0 || connect(fd, (const struct sockaddr *)address, length) ||
+        getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &peer, &size) || peer.uid || peer.pid != owner) goto done;
+    (void)setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof timeout);
+    read_deadline = now_ms() + 5000;
+    const char *recover = "RECOVER 0000000000000000000000000000000000000000000000000000000000000000\n";
+    if (write_all(fd, recover, strlen(recover)) || read_line(fd, response, sizeof response) || strcmp(response, "OK")) goto done;
+    char service[32];
+    if (property("init.svc.adbd", service, sizeof service) || strcmp(service, "running") || tcp_listener(1) != 1) goto done;
+    /* Older Android kernels lack pidfd. Recheck retained /proc identity and executable
+     * immediately before signalling, as in the ordinary helper replacement discipline. */
+    if (record_retiring_inode(directory, &old)) goto done;
+    struct stat pinned, reached;
+    if (fstat(process, &pinned) || stat(path, &reached) || pinned.st_dev != reached.st_dev || pinned.st_ino != reached.st_ino ||
+        fstatat(process, "exe", &current, 0) || current.st_dev != old.st_dev || current.st_ino != old.st_ino ||
+        process_state(process, &state, &checked) || checked != started || state == 'Z' || kill(owner, SIGTERM)) goto done;
+    result = drain_retiring_inode(directory, &old);
+ done:
+    if (process >= 0) close(process);
+    if (fd >= 0) close(fd);
+    return result;
 }
 int adb_recovery_main(void) {
     if (geteuid()) return 1;
@@ -354,11 +654,32 @@ int adb_recovery_main(void) {
     size_t socket_length = strlen(ADB_RECOVERY_SOCKET);
     if (socket_length + 1 > sizeof address.sun_path) return 1;
     memcpy(address.sun_path + 1, ADB_RECOVERY_SOCKET, socket_length);
-    if (server < 0 || bind(server, (struct sockaddr *)&address,
-            offsetof(struct sockaddr_un, sun_path) + 1 + socket_length) || listen(server, 8)) {
-        if (server >= 0) close(server);
-        return 1;
+    socklen_t address_length = offsetof(struct sockaddr_un, sun_path) + 1 + socket_length;
+    if (server < 0) return 1;
+    int directory = replacement_directory();
+    if (directory < 0) { close(server); return 1; }
+    struct stat retiring;
+    int pending = retiring_inode(directory, &retiring, NULL);
+    if (pending < 0) { close(directory); close(server); return 1; }
+    if (pending) {
+        /* A previous launcher may have died before signalling its owner, or while its
+         * guardian drained. Resume either case before even trying an uncontended bind. */
+        (void)replace_incumbent(&address, address_length, directory);
+        pending = retiring_inode(directory, &retiring, NULL);
+        if (pending < 0 || (pending && drain_retiring_inode(directory, &retiring))) {
+            close(directory); close(server); return 1;
+        }
     }
+    if (bind(server, (struct sockaddr *)&address, address_length)) {
+        if (errno != EADDRINUSE) { close(directory); close(server); return 1; }
+        int replaced = replace_incumbent(&address, address_length, directory);
+        if (replaced || bind(server, (struct sockaddr *)&address, address_length)) {
+            close(directory); close(server); return replaced == 1 ? 0 : 1;
+        }
+    }
+    /* Every launcher, including a currently free bind, retains custody through publication. */
+    if (listen(server, 8)) { close(directory); close(server); return 1; }
+    close(directory);
     lease = mmap(NULL, sizeof *lease, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
     if (lease == MAP_FAILED) { close(server); return 1; }
     memset(lease, 0, sizeof *lease);
@@ -366,6 +687,7 @@ int adb_recovery_main(void) {
     if (guardian < 0) { close(server); return 1; }
     char nonce[65] = ""; long long renewed = 0;
     int managed = 0, hold = 0, recovery_pending = 0;
+    long long retirement_after_ms = 0;
     pid_t workers[MAX_EXECUTORS] = {0};
     for (;;) {
         if (atomic_load(&lease->recovered)) managed = 0;
@@ -386,9 +708,36 @@ int adb_recovery_main(void) {
                 if (done < 0 || !WIFEXITED(status) || WEXITSTATUS(status)) recovery_pending = 1;
             }
         }
-        if (managed && (now_ms() - renewed >= ADB_RECOVERY_LEASE_MS || helper_app_data_absent())) recovery_pending = 1;
-        if (recovery_pending) {
+        int absent = helper_app_data_absent();
+        if (!absent) retirement_after_ms = 0;
+        if (managed && (now_ms() - renewed >= ADB_RECOVERY_LEASE_MS || absent)) recovery_pending = 1;
+        if (recovery_pending && (!absent || now_ms() >= retirement_after_ms)) {
             if (!set_network(1)) { managed = 0; recovery_pending = 0; atomic_store(&lease->armed, 0); }
+            else if (absent) retirement_after_ms = now_ms() + 1000;
+        }
+        if (absent && now_ms() >= retirement_after_ms && owner_actuator()) {
+            retirement_after_ms = now_ms() + 1000;
+            /* Reopen and prove the surviving route even if this owner was never armed. */
+            if (!set_network(1) && helper_app_data_absent()) {
+                atomic_store(&lease->armed, 0);
+                managed = 0;
+                if (guardian > 0) {
+                    (void)kill(guardian, SIGKILL);
+                    while (waitpid(guardian, NULL, 0) < 0 && errno == EINTR) {}
+                    guardian = -1;
+                }
+                for (int i = 0; i < MAX_EXECUTORS; i++) {
+                    int group = atomic_exchange(&lease->groups[i], 0);
+                    if (group > 1) (void)kill(-group, SIGKILL);
+                    if (workers[i] > 0) {
+                        (void)kill(workers[i], SIGKILL);
+                        while (waitpid(workers[i], NULL, 0) < 0 && errno == EINTR) {}
+                        workers[i] = 0;
+                    }
+                }
+                if (!retire_files()) { close(server); return 0; }
+            }
+            atomic_store(&lease->actuator, 0);
         }
         struct pollfd pfd = { .fd = server, .events = POLLIN };
         if (poll(&pfd, 1, 100) <= 0) continue;

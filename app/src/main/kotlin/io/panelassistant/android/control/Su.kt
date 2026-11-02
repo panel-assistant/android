@@ -275,6 +275,7 @@ private fun errorNumber(error: Exception): String? =
 object Su : RootShell by productionSu {
     fun availableIsolated(timeoutMs: Long = CMD_TIMEOUT_MS): Boolean = productionSu.availableIsolated(timeoutMs)
     fun availableCachedIsolated(): Boolean = productionSu.availableCachedIsolated()
+    fun rootKnownUnusable(): Boolean = productionSu.rootKnownUnusable()
     fun runLong(cmd: String, timeoutMs: Long): Boolean = productionSu.runLong(cmd, timeoutMs)
     fun runWithStdinLong(cmd: String, input: File, timeoutMs: Long): String? =
         productionSu.runWithStdinLong(cmd, input, timeoutMs)
@@ -452,6 +453,13 @@ internal class SuShell(
         runOutputIsolatedBounded("true", 1L, timeoutMs) != null
 
     override fun available(): Boolean = run("true")
+
+    /**
+     * Whether an earlier launch proved root structurally unusable ([SuExecFailureCache]): no `su` binary, or
+     * one this app may not execute. Answers from the cache alone, never starting `su`, so a caller on a
+     * latency-sensitive path (the Panel Assistant hello) can ask it. False until a launch has failed that way.
+     */
+    fun rootKnownUnusable(): Boolean = execFailureCache.shouldSkipExec()
 
     // Every render-time root gate and privileged-route observation share one bounded, single-flight
     // probe here rather than each layer (formerly the HTTP server) wrapping [availableIsolated] in its

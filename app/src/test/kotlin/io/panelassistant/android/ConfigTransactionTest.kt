@@ -2359,17 +2359,36 @@ class ConfigTransactionTest {
     }
 
     @Test fun credentialGroupsAreReadFromOneImmutablePreferenceSnapshot() {
-        val prefs = fakePreferences(initial = mapOf(
-            "ha_url" to "https://ha.local",
-            "ha_token" to "access",
-            "ha_refresh_token" to "refresh",
-            "ha_token_expiry" to 1234L,
-            "ha_client_id" to "client",
-        ))
+        val replacement = mapOf(
+            "ha_url" to "https://other.local",
+            "ha_token" to "other-access",
+            "ha_refresh_token" to "other-refresh",
+            "ha_token_expiry" to 5678L,
+            "ha_client_id" to "other-client",
+        )
+        var afterIndividualRead: () -> Unit = {}
+        val prefs = fakePreferences(
+            initial = mapOf(
+                "ha_url" to "https://ha.local",
+                "ha_token" to "access",
+                "ha_refresh_token" to "refresh",
+                "ha_token_expiry" to 1234L,
+                "ha_client_id" to "client",
+            ),
+            onGetString = { _, _ -> afterIndividualRead() },
+        )
         val config = Config(prefs.instance)
+        // A preference generation can change between separate reads. The authentication caller must
+        // receive one complete generation, never the first address paired with another account's token.
+        afterIndividualRead = { prefs.values.putAll(replacement) }
 
         assertEquals(
             HaAuthSnapshot("https://ha.local", "access", "refresh", 1234L, "client"),
+            config.haAuthSnapshot(),
+        )
+        prefs.values.putAll(replacement)
+        assertEquals(
+            HaAuthSnapshot("https://other.local", "other-access", "other-refresh", 5678L, "other-client"),
             config.haAuthSnapshot(),
         )
     }

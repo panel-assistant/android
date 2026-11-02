@@ -308,6 +308,24 @@ class NoticeTest {
     }
 
     /**
+     * The engine check is advisory, so it never becomes the journey's next stage: the standing screen must
+     * name a too-old engine whatever stage setup is at, or a panel below the floor never says so.
+     */
+    @Test
+    fun aPanelWithATooOldEngineSaysSoWhileSetupAsksForTheAddress() {
+        val journey = SetupJourney.evaluate(configuredInputs().copy(haUrl = "", webViewTooOld = true))
+        assertEquals(SetupJourney.Stage.HA_URL, journey.next)
+        assertEquals(SetupStageLine(R.string.browser_engine_too_old, R.string.browser_engine_too_old_hint), stageFor(journey))
+        assertEquals(R.string.notice_pill_setup, pillFor(journey, everCompleted = false))
+    }
+
+    @Test
+    fun aPanelWithATooOldEngineStillShowsItsNotSetUpLine() {
+        val journey = SetupJourney.evaluate(configuredInputs().copy(identityConfirmed = false, webViewTooOld = true))
+        assertEquals(SetupStageLine(R.string.panel_not_set_up, R.string.panel_not_set_up_hint), stageFor(journey))
+    }
+
+    /**
      * The standing screen of a panel that is not set up prints no address (only the QR code and the Set up
      * button), so its one line must not send anyone to one, in any language the panel ships.
      */

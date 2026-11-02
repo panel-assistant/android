@@ -291,6 +291,24 @@ class PaneldServer internal constructor(
         return true
     }
 
+    /**
+     * A direct ON while Panel Assistant manages network ADB is refused rather than journalled: the app cannot
+     * apply it (AdbController.set), so a queued ON would read as pending for good and could open port 5555
+     * later without a new action from the owner. Restores and imports keep the hardened check only.
+     */
+    private suspend fun rejectDirectNetworkAdb(call: OpCall, requested: String?): Boolean {
+        if (rejectHardenedNetworkAdb(call, requested)) return true
+        if (!io.panelassistant.android.control.ManagedNetworkAdb.managed ||
+            SettingValue.parseBool(requested.orEmpty()) != true
+        ) return false
+        call.respondText(
+            """{"ok":false,"error":"network-adb-managed-by-panel-assistant","message":"Panel Assistant manages network ADB on this panel."}""",
+            ContentType.Application.Json,
+            HttpStatusCode.Conflict,
+        )
+        return true
+    }
+
 
 
     // Per-INSTALL build token (changes on every (re)install, not just a version bump) so an open info
@@ -405,9 +423,12 @@ class PaneldServer internal constructor(
         stopping = false
         pendingApks.open()
         val listener = PaneldListener(
-            scope, { config.httpPort }, { listenerOffLan(config) },
+            // A requested port is tried first at this start only; a later rebind keeps the bound port.
+            scope, { config.httpPortRequest ?: config.httpPort }, { listenerOffLan(config) },
             onBindFailure = { Log.e(TAG, "HTTP bind on :${config.httpPort} failed", it) },
             onBound = { port ->
+                // Consumed by this start whether it got the requested port or fell back from it.
+                if (this.listener == null && config.httpPortRequest != null) config.setHttpPortRequest(null)
                 if (config.httpPort != port) {
                     config.httpPort = port
                     if (this.listener != null) onReconfigure(setOf("http_port"))
@@ -705,6 +726,7 @@ class PaneldServer internal constructor(
                 homeUiProofJson(proof.state, proof.reason, proof.evidence)
             }) else null,
             english = catalogueLoader.strings(AppLocale.ENGLISH),
+            profileId = { profile.id },
             webView = { webViewUpdate.observe().toString() },
         )
     }
@@ -759,6 +781,7 @@ class PaneldServer internal constructor(
         radioStatus = radioStatus,
         dashboardRecoveryState = pageHealth::dashboardRecoveryState,
         appSizingReady = density::appSizingReady,
+        profileId = { profile.id },
     )
 
     private fun dashboardPageHandler() = DashboardPageHandler(
@@ -932,7 +955,7 @@ class PaneldServer internal constructor(
         onboarding = DirectConfigOnboarding(config),
         capabilities = { liveCapabilities(managementObservations.snapStaleOk().caps) },
         authorizeSensitive = ::authorizeSensitive,
-        rejectHardenedNetworkAdb = ::rejectHardenedNetworkAdb,
+        rejectHardenedNetworkAdb = ::rejectDirectNetworkAdb,
         onHaAreaCommitted = { haArea.onHaAreaCommitted() },
     )
 

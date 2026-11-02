@@ -36,6 +36,7 @@ class ManagementStatusProximityTest {
                 permissions = { emptyMap() },
                 proximity = proximity,
                 english = englishCatalogue,
+                profileId = { "generic" },
             ),
         )
     }

@@ -8,22 +8,9 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import { loadTransport } from './page-transport.mjs';
+import { loadTransport, textElement as element } from './page-transport.mjs';
 
 const source = fs.readFileSync(process.argv[2], 'utf8');
-
-function element(name = '') {
-  return {
-    name,
-    dataset: {}, className: '', textContent: '', innerHTML: '', checked: false, disabled: false,
-    value: '', children: [], hidden: false,
-    classList: { toggle() {}, remove() {}, add() {} },
-    addEventListener() {},
-    appendChild(child) { this.children.push(child); return child; },
-    querySelector() { return null; }, querySelectorAll() { return []; },
-    matches() { return false; }, closest() { return null; },
-  };
-}
 
 const strategy = (ignored) => ({
   type: 'unbounded_selector', blocking: !ignored, ignored, ignorable: true, fingerprint: `strategy-${ignored}`,
@@ -55,6 +42,7 @@ async function render({ items, strategySelectorIgnored }) {
     querySelector: () => null,
     querySelectorAll: () => [],
     createElement: (tag) => element(tag),
+    createTextNode: (text) => { const node = element('#text'); node.textContent = text; return node; },
   };
   global.setInterval = () => 0;
   global.confirm = () => false;
@@ -86,39 +74,38 @@ const noteNeedle = 'Home Assistant builds this dashboard from a strategy';
 
 // Allowed strategy check under a filtered stream: the status line says so once, in the hot style.
 let ids = await render({ items: [strategy(true)], strategySelectorIgnored: true });
-assert.equal(occurrences(ids['entity-status'].innerHTML, statusNeedle), 1, 'the status line names the strategy consequence once');
-assert.match(ids['entity-status'].innerHTML, new RegExp(`<span class="hot">${statusNeedle}</span>`));
+assert.equal(occurrences(ids['entity-status'].textContent, statusNeedle), 1, 'the status line names the strategy consequence once');
+assert.ok(ids['entity-status'].querySelectorAll('.hot').some(node => node.textContent === statusNeedle), 'the consequence has warning emphasis');
 
 // ...and its row explains why nothing can list the missing entities, and what to pin and how.
 let rows = ids['entity-issues-list'].children;
 assert.equal(rows.length, 1);
 assert.equal(rows[0].className, 'entity-issue allowed');
-assert.equal(occurrences(rows[0].innerHTML, noteNeedle), 1, 'the allowed strategy row carries the note exactly once');
-assert.match(rows[0].innerHTML, /<p class="entity-issue-strategy-note">/);
-assert.match(rows[0].innerHTML, /gets no card here and is never learned, so this page cannot list what is missing/);
-assert.match(rows[0].innerHTML, /pin the entity behind every card that is missing here/);
+assert.equal(occurrences(rows[0].textContent, noteNeedle), 1, 'the allowed strategy row carries the note exactly once');
+assert.match(rows[0].textContent, /gets no card here and is never learned, so this page cannot list what is missing/);
+assert.match(rows[0].textContent, /pin the entity behind every card that is missing here/);
 // The note comes before the general allow note and its catalogue route, which it relies on.
-assert.ok(rows[0].innerHTML.indexOf(noteNeedle) < rows[0].innerHTML.indexOf('Allowing this check never adds entities'));
-assert.equal(occurrences(rows[0].innerHTML, 'Search the entity catalogue'), 1);
+assert.ok(rows[0].textContent.indexOf(noteNeedle) < rows[0].textContent.indexOf('Allowing this check never adds entities'));
+assert.equal(occurrences(rows[0].textContent, 'Search the entity catalogue'), 1);
 
 // The same strategy check still awaiting a choice has not dropped anything yet: no note, no status part.
 ids = await render({ items: [strategy(false)], strategySelectorIgnored: false });
-assert.equal(occurrences(ids['entity-status'].innerHTML, statusNeedle), 0);
+assert.equal(occurrences(ids['entity-status'].textContent, statusNeedle), 0);
 rows = ids['entity-issues-list'].children;
 assert.equal(rows.length, 1);
 assert.equal(rows[0].className, 'entity-issue blocking');
-assert.equal(occurrences(rows[0].innerHTML, noteNeedle), 0, 'a pending strategy check makes no missing-card claim');
+assert.equal(occurrences(rows[0].textContent, noteNeedle), 0, 'a pending strategy check makes no missing-card claim');
 
 // Any other allowed check keeps the general note only.
 ids = await render({ items: [otherAllowed], strategySelectorIgnored: false });
-assert.equal(occurrences(ids['entity-status'].innerHTML, statusNeedle), 0);
+assert.equal(occurrences(ids['entity-status'].textContent, statusNeedle), 0);
 rows = ids['entity-issues-list'].children;
-assert.equal(occurrences(rows[0].innerHTML, noteNeedle), 0, 'another allowed check makes no strategy claim');
-assert.equal(occurrences(rows[0].innerHTML, 'Allowing this check never adds entities'), 1);
+assert.equal(occurrences(rows[0].textContent, noteNeedle), 0, 'another allowed check makes no strategy claim');
+assert.equal(occurrences(rows[0].textContent, 'Allowing this check never adds entities'), 1);
 
 // The status line follows the server's flag, not the row: an unfiltered stream loses nothing.
 ids = await render({ items: [strategy(true)], strategySelectorIgnored: false });
-assert.equal(occurrences(ids['entity-status'].innerHTML, statusNeedle), 0, 'no status claim unless the server reports it');
+assert.equal(occurrences(ids['entity-status'].textContent, statusNeedle), 0, 'no status claim unless the server reports it');
 
 console.log('entity strategy allowed cases passed');
 window.PaneldTransport.close();

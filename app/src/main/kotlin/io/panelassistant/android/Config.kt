@@ -170,6 +170,18 @@ class Config private constructor(
         }
 
     /**
+     * A port asked for through `/api/v1/config`, tried first the next time the HTTP server starts and then
+     * cleared. [httpPort] stays the port actually listening until then, so nothing reads a port that does
+     * not answer yet.
+     */
+    val httpPortRequest: Int?
+        get() = prefs.getInt(HTTP_PORT_REQUEST_PREF, 0).takeIf { it in 1024..65535 }
+
+    internal fun setHttpPortRequest(value: Int?) {
+        edit { if (value == null) remove(HTTP_PORT_REQUEST_PREF) else putInt(HTTP_PORT_REQUEST_PREF, value) }
+    }
+
+    /**
      * Device-local control-plane posture. This key deliberately lives outside SettingsRegistry, so a
      * remote config import, backup restore, HTTP request, or Home Assistant command cannot enable or disable it.
      * The non-exported native settings activity is the only UI that changes it.
@@ -1640,6 +1652,7 @@ class Config private constructor(
             "prox_sensitivity",
         )
         const val DEFAULT_PORT = 8888
+        const val HTTP_PORT_REQUEST_PREF = "http_port_request"
         const val VERSION = BuildConfig.VERSION_NAME
         const val MDNS_SERVICE_TYPE = "_ha-paneld._tcp.local."
     }
