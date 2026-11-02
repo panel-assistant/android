@@ -79,7 +79,7 @@ class DataDeviceProfile internal constructor(
     override val manufacturer = document.identity.manufacturer
     override val model = document.identity.model
     override val evdevButtons = document.input.evdevButtons.map {
-        EvdevButton(it.node, it.code, it.grab, it.eventType, it.sw)
+        EvdevButton(it.node, it.code, it.grab, it.eventType, it.sw, it.release)
     }
     override val cpuGovernors = document.cpu.governors
     override fun displayGeometry(physicalWidthPx: Int, physicalHeightPx: Int) =

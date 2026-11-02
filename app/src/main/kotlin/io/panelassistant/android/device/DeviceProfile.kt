@@ -433,6 +433,8 @@ data class EvdevButton(
     val grab: Boolean,
     val eventType: String,
     val sw: Boolean = false,
+    /** Also emit on the up edge as `<eventType>_RELEASED`. Off by default (press-only). */
+    val release: Boolean = false,
 )
 
 /**

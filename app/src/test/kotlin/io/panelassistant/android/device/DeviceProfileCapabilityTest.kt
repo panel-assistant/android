@@ -42,7 +42,7 @@ class DeviceProfileCapabilityTest {
         }
         assertEquals(
             "helper-backed evdev hardware changed",
-            setOf("tpa10", "wf1589t"),
+            setOf("s9e", "tpa10", "wf1589t"),
             all.filter { it.evdevButtons.isNotEmpty() }.mapTo(mutableSetOf()) { it.id },
         )
     }
