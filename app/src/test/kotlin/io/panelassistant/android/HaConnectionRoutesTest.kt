@@ -176,6 +176,25 @@ class HaConnectionRoutesTest {
         native.owner.close()
     }
 
+    @Test fun aReusedConnectionThatStopsAnsweringDoesNotMoveTheRendererOffAWorkingRoute() {
+        val configured = StallingEndpoint(instance).also { servers += it }
+        val peer = server()
+        val (config, values) = config(configured.url)
+        values["ha_token_expiry"] = Long.MAX_VALUE
+        assertTrue(learn(config, peer.url))
+        val before = HaConnectionRoutes.current(config)
+        assertEquals(configured.url, HaCredentialManager.resolve(config).route?.url)
+        // The network silently drops the kept-alive connection, as it did every existing socket on
+        // ha-integration #25, while a new connection to the same address is answered at once.
+        val renderer = HaCredentialManager.resolve(config)
+        val after = HaConnectionRoutes.current(config)
+        assertEquals(configured.url, renderer.route?.url)
+        assertEquals("the route and its epoch hold", before, after)
+        assertEquals(emptyList<RendererRebuildCause>(), rebuildCauses(before, after))
+        assertEquals("the stalled connection was retried on a fresh one", 2, configured.connections.get())
+        assertTrue("the peer was never needed", peer.requests.isEmpty())
+    }
+
     @Test fun reusedAccessTokenStillRequiresInstanceProof() {
         val endpoint = server()
         val (config, values) = config(endpoint.url)
@@ -435,7 +454,43 @@ class HaConnectionRoutesTest {
     }
 
     private data class Request(val path: String, val body: String, val authorization: String?, val cookie: String?)
-    private class Endpoint : AutoCloseable {
+    /** Answers one instance proof per connection and keeps the connection open, then never answers on it again. */
+    private class StallingEndpoint(private val answered: String) : Endpoint() {
+        val connections = java.util.concurrent.atomic.AtomicInteger()
+        private val socket = java.net.ServerSocket(0, 16, java.net.InetAddress.getByName("127.0.0.1"))
+        private val accepted = CopyOnWriteArrayList<java.net.Socket>()
+        override val url = "http://127.0.0.1:${socket.localPort}"
+
+        init {
+            Thread {
+                while (!socket.isClosed) {
+                    val client = runCatching { socket.accept() }.getOrNull() ?: break
+                    connections.incrementAndGet()
+                    accepted += client
+                    Thread {
+                        runCatching {
+                            val reader = client.getInputStream().bufferedReader()
+                            while (reader.readLine()?.isNotEmpty() == true) Unit
+                            val body = """{"instance_id":"$answered"}"""
+                            client.getOutputStream().write(("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n" +
+                                "Content-Length: ${body.length}\r\nConnection: keep-alive\r\n\r\n$body").toByteArray())
+                            client.getOutputStream().flush()
+                            // A second request on this connection is read and never answered.
+                            reader.readLine()
+                        }
+                    }.apply { isDaemon = true; start() }
+                }
+            }.apply { isDaemon = true; start() }
+        }
+
+        override fun close() {
+            runCatching { socket.close() }
+            accepted.forEach { runCatching { it.close() } }
+            super.close()
+        }
+    }
+
+    private open class Endpoint : AutoCloseable {
         @Volatile var status = 200
         @Volatile var tokenStatus = 200
         @Volatile var identity = "a".repeat(32)
@@ -461,7 +516,7 @@ class HaConnectionRoutesTest {
             }
             start()
         }
-        val url = "http://127.0.0.1:${server.address.port}"
+        open val url = "http://127.0.0.1:${server.address.port}"
         override fun close() { holdToken.countDown(); server.stop(0); executor.shutdownNow() }
     }
 

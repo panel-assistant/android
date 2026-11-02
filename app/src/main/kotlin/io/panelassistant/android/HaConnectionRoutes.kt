@@ -196,16 +196,38 @@ internal object HaConnectionRoutes {
         config.commitHaConnectionRecord(expected, stored.toString(), changedRoute = true)
     }
 
-    private fun proves(base: String, instance: String): Boolean = runCatching {
+    /**
+     * Whether [base] answers as [instance]. A kept-alive connection the network dropped without a word (every
+     * existing socket stalling while a new one is answered, ha-integration #25) times out and proves nothing
+     * about the route, so a proof that fails in transport is asked once more on a fresh connection before the
+     * route yields to a peer.
+     */
+    private fun proves(base: String, instance: String): Boolean {
+        val normalized = normalize(base) ?: return false
+        return prove(normalized, instance) ?: run {
+            proofClient.connectionPool.evictAll()
+            prove(normalized, instance) == true
+        }
+    }
+
+    /** The instance answer, or null when the request failed in transport once a connection may have been reused. */
+    private fun prove(base: String, instance: String): Boolean? = try {
         // No cookies, Authorization, supplied UUID, redirects or cached replies. This endpoint returns
         // the server's own UUID; a 401 or another instance is not credential authority.
-        val normalized = normalize(base) ?: return false
-        val request = okhttp3.Request.Builder().url("$normalized/api/panel_assistant/instance")
+        val request = okhttp3.Request.Builder().url("$base/api/panel_assistant/instance")
             .header("Cache-Control", "no-cache").build()
         proofClient.newCall(request).execute().use { response ->
             response.code == 200 && response.body.byteStream().use {
                 JSONObject(String(BoundedStreams.readBytes(it, 4096), Charsets.UTF_8)).opt("instance_id") == instance
             }
         }
-    }.getOrDefault(false)
+    } catch (_: java.net.UnknownHostException) {
+        false
+    } catch (_: java.net.ConnectException) {
+        false
+    } catch (_: java.io.IOException) {
+        null
+    } catch (_: Exception) {
+        false
+    }
 }
