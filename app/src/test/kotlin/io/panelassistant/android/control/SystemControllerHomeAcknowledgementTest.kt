@@ -49,7 +49,10 @@ class SystemControllerHomeAcknowledgementTest {
                 env.home = env.homeActivities().single { it.component == command.removePrefix(prefix) }
             }
         })
-        return SystemController(env, root, FakeDaemon(available = false)) to root
+        return SystemController(
+            env, root, FakeDaemon(available = false),
+            acquireHomeLock = { AutoCloseable {} },
+        ) to root
     }
 
     private fun assertAcknowledged(env: HomeEnvironment, expected: ActivityRef) {

@@ -517,6 +517,7 @@ val buildHostJniLibraries = tasks.register<Exec>("buildHostJniLibraries") {
     inputs.files(
         file("src/test/native"),
         file("src/main/cpp/led_jni.c"),
+        file("src/main/cpp/home_lock_jni.c"),
         file("src/main/cpp/microwakeword/MicroWakeWord_jni.cpp"),
         file("src/main/cpp/microwakeword/MicroWakeWordEngine.h"),
         file("src/main/cpp/microwakeword/MicroFrontendWrapper.h"),

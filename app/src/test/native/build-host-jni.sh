@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the two JNI libraries' binding code for the host JVM, so a unit test can load them against the
+# Build JNI binding code for the host JVM, so a unit test can load them against the
 # real Kotlin classes: libhapaneld_mww registers its natives by class name in JNI_OnLoad and
 # libhapaneld_led exports Java_<package>_<class>_<method> symbols, and a package or class rename that
 # misses either fails only at load time on a panel, where the wake word silently reports unavailable.
@@ -20,6 +20,9 @@ java_home=${JAVA_HOME:-$(dirname "$(dirname "$(readlink -f "$(command -v javac)"
 jni=(-I"$java_home/include" -I"$java_home/include/linux")
 
 mkdir -p "$out"
+# The host has no /system. Use its immutable root-owned executable directory with the same C code.
+cc -shared -fPIC -Wall -Werror "${jni[@]}" -DHOME_LOCK_PATH='"/usr/bin"' \
+  "$cpp/home_lock_jni.c" -o "$out/libhapaneld_home.so"
 cc -shared -fPIC -Wall -Werror "${jni[@]}" -I"$here/include" \
   "$cpp/led_jni.c" -o "$out/libhapaneld_led.so"
 c++ -std=c++17 -shared -fPIC -Wall -Wno-write-strings "${jni[@]}" -I"$mww" \

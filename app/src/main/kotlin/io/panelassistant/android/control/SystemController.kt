@@ -10,6 +10,7 @@ import io.panelassistant.android.platform.AccessibilityActions
 import io.panelassistant.android.platform.ActivityRef
 import io.panelassistant.android.platform.Daemon
 import io.panelassistant.android.platform.DaemonLongResult
+import io.panelassistant.android.platform.NativeHomeLock
 import io.panelassistant.android.platform.RootShell
 import io.panelassistant.android.platform.SystemEnv
 import io.panelassistant.android.platform.endDream
@@ -60,6 +61,7 @@ class SystemController(
     private val rebootWindowMs: Long = REBOOT_SU_WINDOW_MS,
     // Reads and ends a screensaver in front, which hides any dashboard start (ha-integration #15).
     private val accessibility: AccessibilityActions = PanelAccessibilityService,
+    private val acquireHomeLock: () -> AutoCloseable? = NativeHomeLock::tryAcquire,
 ) {
 
     // Native descriptor checks run on every live transport wake. Reuse one bounded observation of the
@@ -359,6 +361,21 @@ class SystemController(
         if (!restoringHome && !env.homeTakeoverAllowed()) return false
         if (!AndroidInput.isComponent(component)) return false
         if (!env.preservePreviousHome()) return false
+        // Keep incumbent helpers compatible: exclusion belongs to the app's existing actuator call,
+        // not a new helper command. Pending intent has already been cleared before this handback.
+        val homeLock = if (restoringHome) acquireHomeLock() ?: return false else null
+        try {
+            return setHomeActivityWithRoute(component, admittedRoute, restoringHome)
+        } finally {
+            homeLock?.close()
+        }
+    }
+
+    private fun setHomeActivityWithRoute(
+        component: String,
+        admittedRoute: PrivilegeRoute?,
+        restoringHome: Boolean,
+    ): Boolean {
         // The ordered DAEMON→SU route definitions live once; the admitted-route path runs exactly the
         // one admitted attempt (never falling through to another transport), while the automatic path
         // tries them in order via the shared router.
