@@ -167,6 +167,24 @@ internal class NetworkRuntimeRenameTest : io.panelassistant.android.testsupport.
         }
     }
 
+    /**
+     * Meta answers on its own thread, so an older rename can report success after a newer one has started.
+     * That late success must not mark its name verified: Meta may now show the newer attempt's result.
+     */
+    @Test fun aLateSuccessForASupersededRenameNeverMarksItsNameVerified() {
+        withPortal(storedName = "Old name") { rig ->
+            offer(rig, "Kitchen")
+            offer(rig, "Garden")
+            rig.vendorCallbacks[0](true, "native result")
+            assertEquals("Pending native verification", read(rig.service, "portalNameStatus"))
+            rig.vendorCallbacks[1](false, "native result")
+            assertEquals("Failed: native result", read(rig.service, "portalNameStatus"))
+            offer(rig, "Kitchen")
+            assertEquals(listOf("Kitchen", "Garden", "Kitchen"), rig.vendorRequests.toList())
+            assertEquals(3, rig.vendorCallbacks.size)
+        }
+    }
+
     private fun withPortal(storedName: String, block: (PortalRenameRig) -> Unit) {
         val rig = PortalRenameRig("meta-portal", storedName)
         try { block(rig) } finally { rig.owner.shutdown(5_000L) {} }
@@ -205,6 +223,8 @@ internal class NetworkRuntimeRenameTest : io.panelassistant.android.testsupport.
         val vendorRequests = CopyOnWriteArrayList<String>()
         /** What Meta's editor reports for each request; null leaves the request unanswered. */
         @Volatile var vendorResult: Boolean? = null
+        /** Each request's completion, so a test can answer it later and in any order. */
+        val vendorCallbacks = CopyOnWriteArrayList<(Boolean, String) -> Unit>()
         val reconfigured = CopyOnWriteArrayList<Set<String>>()
         val core = idleCore(config)
         val commands = idleCommands()
@@ -232,6 +252,7 @@ internal class NetworkRuntimeRenameTest : io.panelassistant.android.testsupport.
                         vendorRequests += args!![0] as String
                         @Suppress("UNCHECKED_CAST")
                         val finished = args[1] as (Boolean, String) -> Unit
+                        vendorCallbacks += finished
                         vendorResult?.let { finished(it, "native result") }
                         true
                     }

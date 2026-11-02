@@ -419,7 +419,10 @@ class PaneldService : Service() {
         private set
     // The name Meta's editor last verified in this process. Panel Assistant offers the same name on every
     // new session; once Meta has verified it, opening the editor again would only cover the dashboard.
-    @Volatile private var portalNameVerified: String? = null
+    // Guarded by portalNameLock with the generation: Meta answers on its own thread, and a late answer
+    // must not mark its name verified after a newer attempt has started.
+    private var portalNameVerified: String? = null
+    private val portalNameLock = Any()
     // Outlives runtime generations: each new state core binds its converger here, and the transport owner
     // reports what it records only on a session Panel Assistant accepts. The button event's types include
     // the active profile's.
@@ -1293,18 +1296,23 @@ class PaneldService : Service() {
                 io.panelassistant.android.input.PortalStartupOverlayDismissal.supportsProfile(profile.id)) {
                 val name = config.chosenFriendlyName?.takeIf { it.isNotBlank() }
                 if (name == null) {
-                    portalNameGeneration.incrementAndGet()
+                    synchronized(portalNameLock) { portalNameGeneration.incrementAndGet() }
                     portalNameAccessibility.cancelPortalRename()
                     portalNameStatus = "No chosen name"
-                } else if (name != portalNameVerified) {
-                    val generation = portalNameGeneration.incrementAndGet()
-                    // A new attempt may leave Meta's name anywhere until it reports back.
-                    portalNameVerified = null
-                    portalNameStatus = "Pending native verification"
-                    if (!portalNameAccessibility.renamePortal(name) { success, reason ->
-                            if (generation == portalNameGeneration.get()) {
-                                portalNameStatus = if (success) "Verified: $reason" else "Failed: $reason"
-                                if (success) portalNameVerified = name
+                } else {
+                    val generation = synchronized(portalNameLock) {
+                        if (name == portalNameVerified) return@synchronized null
+                        // A new attempt may leave Meta's name anywhere until it reports back.
+                        portalNameVerified = null
+                        portalNameStatus = "Pending native verification"
+                        portalNameGeneration.incrementAndGet()
+                    }
+                    if (generation != null && !portalNameAccessibility.renamePortal(name) { success, reason ->
+                            synchronized(portalNameLock) {
+                                if (generation == portalNameGeneration.get()) {
+                                    portalNameStatus = if (success) "Verified: $reason" else "Failed: $reason"
+                                    if (success) portalNameVerified = name
+                                }
                             }
                             if (success) Log.i(TAG, "Meta Portal name: $reason")
                             else Log.w(TAG, "Meta Portal name not verified: $reason")
