@@ -1728,14 +1728,13 @@ class PaneldService : Service() {
             )
             // Learning resolves the HA instance identity through this runtime. Start mDNS before either
             // the initial learner sync or a borrowed renderer commit can notify the learner of a target.
-            if (!config.setupEverCompleted && AppIdentity.isPanelApp(controls.tame.observeDefaultHome().orEmpty())) {
-                val handback = io.panelassistant.android.control.handBackHomeController(
+            handBackUnfinishedSetupHome(config.setupEverCompleted, controls.tame::observeDefaultHome, profile.tameVendorCandidates) {
+                io.panelassistant.android.control.handBackHomeController(
                     config, controls.tame,
                     { controls.system.setHomeActivity(it, restoringHome = true) },
                     packageName, clearDesiredState = { true },
-                ).handBack(profile.tameVendorCandidates.map { it.pkg }.toSet())
-                Log.i(TAG, "unfinished setup HOME restoration: $handback")
-            }
+                ).handBack(it)
+            }?.let { Log.i(TAG, "unfinished setup HOME restoration: $it") }
             val rendererResult = prepareEntityLearningStartup(
                 startMdns = activeRuntime.mdns::start,
                 reconcileRenderer = {
@@ -2720,4 +2719,19 @@ internal fun <T : Any> requestLocalObservation(
 ) {
     val observed = runtime.observe() ?: return
     core(observed.value).requestLocalObservation { runtime.isCurrent(observed) }
+}
+
+/**
+ * A setup that never completed must not leave the panel app holding HOME: at startup, while the panel app
+ * is the observed HOME, HOME goes back to the recorded previous HOME with the profile's vendor packages as
+ * known candidates. Null when the gate does not apply; HOME is only observed for an unfinished setup.
+ */
+internal fun <T> handBackUnfinishedSetupHome(
+    setupEverCompleted: Boolean,
+    observeDefaultHome: () -> String?,
+    vendorCandidates: List<io.panelassistant.android.device.TameCandidate>,
+    handBack: (Set<String>) -> T,
+): T? {
+    if (setupEverCompleted || !AppIdentity.isPanelApp(observeDefaultHome().orEmpty())) return null
+    return handBack(vendorCandidates.map { it.pkg }.toSet())
 }
