@@ -471,6 +471,114 @@ browserTest('Install Backup, Export and Import failures localize prefixes and is
   })), { backup: 'undefined', export: 'undefined', import: 'undefined' });
 });
 
+browserTest('Install Backup failures preserve controlled evidence and allow a later archive download', async (t) => {
+  const hostile = '<img src=x onerror=window.__backupOwned=1>';
+  const failures = [
+    { status: 507, body: { ok: false, error: 'backup-staging-retained', message: 'Sensitive temporary backup data could not be removed. Check panel storage, then retry; no backup was downloaded.', presentation: { code: 'backup-staging-retained', params: {} } }, code: 'backup-staging-retained' },
+    { status: 413, body: { ok: false, error: 'companion-backup-too-large', presentation: { code: 'backup-companion-too-large', params: {} } }, code: 'backup-companion-too-large' },
+    { status: 507, body: { message: hostile, presentation: { code: 'backup-staging-retained', params: { unexpected: hostile } } } },
+    { status: 507, body: { message: hostile, presentation: { code: 'unknown-backup-code', params: {} } } },
+    { status: 422, body: { error: hostile } },
+  ];
+  for (const engine of ['Chromium', 'WebKit']) {
+    let requests = 0, downloads = 0;
+    const { page } = await rig(t, {
+      engine,
+      route(_request, response, url) {
+        if (url.pathname !== '/api/v1/backup') return false;
+        const failure = failures[requests++];
+        if (failure) {
+          response.writeHead(failure.status, { 'content-type': 'application/json' });
+          response.end(JSON.stringify(failure.body));
+        } else {
+          response.writeHead(200, { 'content-type': 'application/octet-stream' }); response.end('backup archive');
+        }
+        return true;
+      },
+      extraStrings: { 'install.backup.dynamic.backup_failed_prefix': 'LOC backup failed:', 'install.backup.dynamic.downloaded_encrypted': 'LOC downloaded' },
+      html: '<input id="bk-pw" value="secret"><input id="bk-plain" type="checkbox"><input id="bk-comp" type="checkbox"><button id="backup" onclick="doBackup(this)">Backup</button><div id="bk-msg"></div>',
+    });
+    page.on('download', () => { downloads++; });
+    await page.evaluate(() => {
+      window.__archiveUrls = 0;
+      const create = URL.createObjectURL.bind(URL);
+      URL.createObjectURL = blob => { window.__archiveUrls++; return create(blob); };
+    });
+    for (const failure of failures) {
+      await page.click('#backup');
+      await page.waitForFunction(() => !document.getElementById('backup').disabled);
+      const actual = await page.locator('#bk-msg').textContent();
+      if (failure.code) {
+        assert.ok(actual.startsWith('LOC backup failed: LOC:' + failure.code + ':'), engine + ': controlled backup failure: ' + actual);
+        assert.equal(await page.locator('#bk-msg [lang="en"]').count(), 0);
+      } else {
+        assert.equal(actual, 'LOC backup failed: ' + hostile);
+        assert.equal(await page.locator('#bk-msg [lang="en"]').textContent(), hostile);
+      }
+      assert.equal(await page.locator('#bk-msg img').count(), 0);
+      assert.equal(await page.evaluate(() => typeof window.__backupOwned), 'undefined');
+      assert.equal(downloads, 0, engine + ': failed backup must not download');
+      assert.equal(await page.evaluate(() => window.__archiveUrls), 0, engine + ': failed backup must not create an archive URL');
+    }
+    const downloadEvent = page.waitForEvent('download');
+    await page.click('#backup');
+    const download = await downloadEvent;
+    assert.ok(download.suggestedFilename().endsWith('.hpb'));
+    await page.waitForFunction(() => !document.getElementById('backup').disabled);
+    assert.equal(await page.locator('#bk-msg').textContent(), 'LOC downloaded');
+    assert.equal(downloads, 1);
+    assert.equal(await page.evaluate(() => window.__archiveUrls), 1);
+    assert.equal(requests, failures.length + 1);
+  }
+});
+
+browserTest('Install Restore confirms show preflight refusals after the passphrase changes without starting work', async (t) => {
+  const hostile = '<img src=x onerror=window.__restoreOwned=1>';
+  const failures = [
+    { passphrase: '', body: { ok: false, error: 'this bundle is encrypted — enter its passphrase', presentation: { code: 'restore-passphrase-required', params: {} } }, code: 'restore-passphrase-required' },
+    { passphrase: 'wrong', body: { ok: false, error: 'wrong passphrase or corrupt bundle', presentation: { code: 'restore-passphrase-or-bundle-invalid', params: {} } }, code: 'restore-passphrase-or-bundle-invalid' },
+    { passphrase: 'wrong', body: { ok: false, error: hostile, presentation: { code: 'restore-passphrase-required', params: { unexpected: hostile } } } },
+    { passphrase: 'wrong', body: { ok: false, error: hostile } },
+  ];
+  for (const engine of ['Chromium', 'WebKit']) {
+    const starts = [], polls = [];
+    let previews = 0;
+    const { page } = await rig(t, {
+      engine,
+      route(request, response, url) {
+        if (url.pathname === '/api/v1/install/status') { polls.push(url.pathname); response.writeHead(200, { 'content-type': 'application/json' }); response.end('{}'); return true; }
+        if (url.pathname !== '/api/v1/restore') return false;
+        request.resume();
+        const preview = url.searchParams.get('dry_run') === '1';
+        if (preview) previews++;
+        const body = preview ? { ok: true, panel_id: 'test panel', config_keys: 1, companion_files: 0 } : failures[starts.length].body;
+        if (!preview) starts.push(request.headers['x-backup-passphrase'] || '');
+        response.writeHead(preview ? 200 : 400, { 'content-type': 'application/json' }); response.end(JSON.stringify(body)); return true;
+      },
+      html: '<input id="rs-pw" value="correct"><input id="rs-file" type="file" onchange="restorePick(this)"><div id="rs-preview"></div><div id="bk-msg"></div>',
+    });
+    await page.locator('#rs-file').setInputFiles({ name: 'panel.hpb', mimeType: 'application/octet-stream', buffer: Buffer.from('sealed backup fixture') });
+    await page.locator('#rs-preview button').waitFor();
+    page.once('dialog', dialog => dialog.dismiss());
+    await page.locator('#rs-preview button').click();
+    assert.deepEqual(starts, [], engine + ': cancelled confirmation sends nothing');
+    page.on('dialog', dialog => dialog.accept());
+    for (const failure of failures) {
+      await page.locator('#rs-pw').fill(failure.passphrase);
+      await page.locator('#rs-preview button').click();
+      await page.waitForFunction(() => !document.querySelector('#rs-preview button').disabled);
+      const actual = await page.locator('#bk-msg').textContent();
+      if (failure.code) assert.ok(actual.startsWith('LOC:' + failure.code + ':'), engine + ': controlled restore refusal: ' + actual);
+      else assert.equal(actual, 'Could not start: error');
+      assert.equal(await page.locator('#bk-msg img').count(), 0);
+      assert.equal(await page.evaluate(() => typeof window.__restoreOwned), 'undefined');
+    }
+    assert.equal(previews, 1);
+    assert.deepEqual(starts, failures.map(failure => failure.passphrase));
+    assert.deepEqual(polls, [], engine + ': preflight refusals never poll or apply a restore');
+  }
+});
+
 browserTest('Install power-safety alerts localize repair and acknowledgement states', async (t) => {
   const source = await readFile(powerAsset, 'utf8');
   const strings = {

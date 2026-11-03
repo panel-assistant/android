@@ -721,7 +721,9 @@
         var d = approvalAwareJson(r);
         if (r.outcome === 'applied' && r.result instanceof Blob) return r.result;
         if (r.outcome === 'applied') throw new Error(d.message || d.error || t('install.backup.dynamic.accepted_without_archive', 'Backup was accepted without an archive.'));
-        throw new Error(d.message || d.error || t('install.backup.dynamic.request_failed', 'request failed'));
+        var failure = new Error(d.message || d.error || t('install.backup.dynamic.request_failed', 'request failed'));
+        failure.presentation = d.presentation;
+        throw failure;
       }).then(function (b) {
         var a = document.createElement('a'), url = URL.createObjectURL(b);
         var switcher = document.getElementById('pswitch'), panelName = switcher && switcher.dataset && switcher.dataset.selfName;
@@ -733,7 +735,11 @@
         bkMsg(pw ? t('install.backup.dynamic.downloaded_encrypted', 'Backup downloaded (encrypted) — keep the passphrase.') : t('install.backup.dynamic.downloaded_plain', 'Backup downloaded (unencrypted ZIP).')); btn.disabled = false;
       }).catch(function (e) {
         if (e && e.approvalRequired) bkMsg(e.message);
-        else { renderFailure(document.getElementById('bk-msg'), 'install.backup.dynamic.backup_failed_prefix', 'Backup failed:', e && e.message); scheduleInstallColumnAlignment(); }
+        else {
+          if (e && e.presentation) renderPresentedEvidence(document.getElementById('bk-msg'), e.presentation, e.message, 'install.backup.dynamic.backup_failed_prefix', 'Backup failed:');
+          else renderFailure(document.getElementById('bk-msg'), 'install.backup.dynamic.backup_failed_prefix', 'Backup failed:', e && e.message);
+          scheduleInstallColumnAlignment();
+        }
         btn.disabled = false;
       });
   };
@@ -798,7 +804,7 @@
     btn.disabled = true; bkMsg(t('install.backup.dynamic.restoring', 'Restoring…'));
     approved('restore', { passphrase: pw, blob: rsFile }, bkMsg).then(function (d) {
         if (d.status === 'busy') { bkMsg(t('install.progress.operation_busy', 'Another operation is running — try again shortly.')); btn.disabled = false; return; }
-        if (d.status !== 'started') { bkMsg(t('install.progress.could_not_start', 'Could not start: {status}', { status: closedToken(COMPONENT_STATUS, d.status || 'error') })); btn.disabled = false; return; }
+        if (d.status !== 'started') { setPresented(document.getElementById('bk-msg'), d.presentation, t('install.progress.could_not_start', 'Could not start: {status}', { status: closedToken(COMPONENT_STATUS, d.status || 'error') })); scheduleInstallColumnAlignment(); btn.disabled = false; return; }
         pollRestore();
       }).catch(function (error) { bkMsg(requestFailure(error, t('install.backup.dynamic.restore_start_failed', 'Restore failed to start.'))); btn.disabled = false; });
   };
