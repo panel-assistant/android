@@ -638,7 +638,7 @@
   };
 
   function pollApk() {
-    watchInstall(function () { apkMsg(t('install.apk.dynamic.installing', 'Installing…')); }, function (d) {
+    watchInstall(function (d) { apkMsg(presentation(d.presentation, t('install.apk.dynamic.installing', 'Installing…')).text); }, function (d) {
       var node = document.getElementById('apk-msg');
       if (node) { renderPresentedEvidence(node, d.presentation, d.message || 'done', 'install.apk.dynamic.result_label', 'Result:'); scheduleInstallColumnAlignment(); }
     }, function () { apkMsg(t('install.apk.dynamic.lost_contact', 'Lost contact.')); }, 50000);

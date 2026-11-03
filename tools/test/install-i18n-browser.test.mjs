@@ -409,6 +409,49 @@ browserTest('Install APK and uninstall results localize their controlled summary
   assert.equal(await page.locator('#uninst-msg i').count(), 0, 'raw uninstall evidence must remain inert text');
 });
 
+browserTest('Install APK progress shows panel confirmation instructions and keeps generic running fallbacks', async (t) => {
+  const hostile = '<img src=x onerror=window.__apkOwned=1>';
+  const statuses = [
+    { running: true, message: 'Tap Install on the panel to finish the update', presentation: { code: 'install-awaiting-confirmation', params: { component: 'apk' } } },
+    { running: true, message: hostile, presentation: { code: 'install-awaiting-confirmation', params: { component: 'apk', unexpected: hostile } } },
+    { running: true, message: hostile, presentation: { code: 'unknown-running-code', params: {} } },
+    { running: true, message: hostile },
+    { running: false, message: hostile, presentation: { code: 'managed-install-committed', params: { component: 'apk', version: '1.2.3' } } },
+  ];
+  for (const engine of ['Chromium', 'WebKit']) {
+    let current = 0, commits = 0, reads = 0;
+    const { page } = await rig(t, {
+      engine,
+      route(_request, response, url) {
+        if (url.pathname === '/api/v1/install/apk/commit') {
+          commits++; response.writeHead(200, { 'content-type': 'application/json' }); response.end('{"status":"started"}'); return true;
+        }
+        if (url.pathname !== '/api/v1/install/status') return false;
+        reads++; response.writeHead(200, { 'content-type': 'application/json' }); response.end(JSON.stringify(statuses[current])); return true;
+      },
+      extraStrings: { 'install.presentation.install_awaiting_confirmation': 'LOC confirm {component} on the panel', 'install.apk.dynamic.installing': 'LOC installing', 'install.apk.dynamic.result_label': 'LOC result:' },
+      html: '<div id="apk-msg"></div><div id="apk-preview"><button id="install" data-token="token" onclick="apkInstall(this)">Install</button><button id="discard">Discard</button></div>',
+    });
+    for (current = 0; current < statuses.length; current++) {
+      const nextStatus = page.waitForResponse(response => new URL(response.url()).pathname === '/api/v1/install/status');
+      if (current === 0) await page.click('#install');
+      await (await nextStatus).finished();
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      const text = await page.locator('#apk-msg').textContent();
+      if (current === 0) assert.equal(text, 'LOC confirm APK on the panel', engine + ': pending system confirmation must tell the operator what to do');
+      else if (statuses[current].running) assert.equal(text, 'LOC installing', engine + ': invalid or absent running presentation keeps the localized generic fallback');
+      else assert.match(text, /^LOC result: LOC:managed-install-committed:/);
+      assert.equal(await page.locator('#apk-msg').getAttribute('lang'), null);
+      assert.equal(await page.locator('#apk-msg img').count(), 0);
+      assert.equal(await page.evaluate(() => typeof window.__apkOwned), 'undefined');
+      assert.equal(await page.locator('#install').isDisabled(), true);
+      assert.equal(await page.locator('#discard').isDisabled(), true);
+    }
+    assert.equal(commits, 1, engine + ': progress does not repeat the admitted install');
+    assert.equal(reads, statuses.length);
+  }
+});
+
 browserTest('Install protected-form success keeps the supported explicit language in its card redirect', async (t) => {
   const route = (_request, response, url) => {
     if (url.pathname !== '/api/v1/display/density') return false;
