@@ -5,6 +5,7 @@ import io.panelassistant.android.control.TameController
 import io.panelassistant.android.control.HandBackHomeController
 import io.panelassistant.android.control.handBackHomeController
 import io.panelassistant.android.control.HandBackHomePolicy
+import io.panelassistant.android.panelassistant.PanelAssistantTransportProtocol
 import io.panelassistant.android.security.SensitiveOperation
 import io.panelassistant.android.util.AndroidInput
 import io.panelassistant.android.util.Json
@@ -47,7 +48,7 @@ internal fun Route.handBackHomeRoutes(dependencies: HandBackHomeRouteDependencie
          * ownership records and device profile, never from anything a caller names. A caller who could name
          * packages could enable something ha-paneld never disabled, which is the one thing this must not do.
          */
-        post("/hand-back-home") {
+        post("/hand-back-home", name = PanelAssistantTransportProtocol.MANAGE_HAND_BACK_HOME) {
             if (!dependencies.authorize(
                     call,
                     SensitiveOperation.HOME_ROLE_HAND_BACK,

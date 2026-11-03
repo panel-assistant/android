@@ -5,7 +5,13 @@ import android.content.pm.PackageManager
 import io.panelassistant.android.Config
 import io.panelassistant.android.control.TameController
 import io.panelassistant.android.i18n.CatalogueLoader
+import io.panelassistant.android.panelassistant.PanelAssistantManagement
+import io.panelassistant.android.panelassistant.PanelAssistantManagementRequests
+import io.panelassistant.android.panelassistant.PanelAssistantSession
+import io.panelassistant.android.panelassistant.PanelAssistantSessionEvent
+import io.panelassistant.android.panelassistant.PanelAssistantTransportProtocol
 import io.panelassistant.android.security.LocalApprovalBroker
+import io.panelassistant.android.sensors.HaApiSessionProvider
 import io.ktor.client.request.header
 import io.ktor.client.request.get
 import io.ktor.client.request.post
@@ -18,6 +24,11 @@ import io.ktor.server.application.ApplicationCallPipeline
 import io.ktor.server.plugins.mutableOriginConnectionPoint
 import io.ktor.server.testing.testApplication
 import java.io.File
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import org.json.JSONObject
 import org.junit.Test
 import sun.misc.Unsafe
@@ -189,6 +200,79 @@ class TameFullMountTest {
         }
     }
 
+    /**
+     * Removal from a panel whose ADB is closed asks for the hand back over Panel Assistant's session, so the
+     * request has to pass the session parser and the dispatcher's command rule and reach the real route; the
+     * route's refusal body is what Panel Assistant names the problem from.
+     */
+    @Test fun `Panel Assistant's hand back request over its session reaches the route and returns its answer`() {
+        PaneldServerHttpFixture().use { fixture ->
+            prepare(fixture)
+            testApplication {
+                application { fixture.mount(this) }
+                startApplication()
+                val auth = HaApiSessionProvider { error("Hand back moves no blobs") }
+                val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+                val requests = PanelAssistantManagementRequests(
+                    scope,
+                    PanelAssistantManagement.of(
+                        { error("no snapshot") }, { _, _ -> error("no settings") }, { fixture.door },
+                        serve = { op, args, onPending -> fixture.server.managementRequest(op, args, onPending, auth) },
+                    ),
+                    PanelAssistantSession(5, SESSION, listOf("management", "local_adb"), "1.0.0"),
+                    { System.nanoTime() / 1_000_000 },
+                )
+                var messageId = 2L
+                // As Panel Assistant's local_adb.async_hand_back_home sends it: the op, empty args and a deadline.
+                fun deliver(commandId: String, op: String): PanelAssistantSessionEvent.Manage {
+                    val frame = JSONObject().put("id", 1).put("type", "event").put(
+                        "event",
+                        JSONObject().put("kind", "manage").put("command_id", commandId).put("session", SESSION)
+                            .put("op", op).put("args", JSONObject()).put("deadline_ms", 30_000),
+                    )
+                    val event = PanelAssistantTransportProtocol.sessionEvent(frame, 1L) as PanelAssistantSessionEvent.Manage
+                    requests.onRequest(event)
+                    return event
+                }
+                suspend fun answer(commandId: String): JSONObject {
+                    val until = System.nanoTime() + 15_000_000_000L
+                    while (System.nanoTime() < until) {
+                        while (true) {
+                            val sent = JSONObject(requests.next(messageId++) ?: break)
+                            if (sent.optString("command_id") == commandId && !sent.optBoolean("interim")) return sent
+                        }
+                        delay(10)
+                    }
+                    throw AssertionError("no answer to $commandId")
+                }
+                try {
+                    // The name is Panel Assistant's wire contract, so it is written out rather than read from the app.
+                    deliver("h1", "hand_back_home")
+                    val handed = answer("h1")
+                    // The fixture cannot read the package inventory, so the real controller refuses with
+                    // package-state-unknown; only the route itself writes that body.
+                    assertEquals("package-state-unknown", handed.optJSONObject("result")?.optString("error"))
+                    assertEquals(listOf("refused", "not_commandable"), listOf(handed.optString("outcome"), handed.optString("code")))
+
+                    // The path's own spelling is not an operation name: the parser empties it, so nothing runs.
+                    assertEquals("", deliver("h2", "hand-back-home").op)
+                    val hyphenated = answer("h2")
+                    assertEquals(listOf("refused", "unknown_command"), listOf(hyphenated.optString("outcome"), hyphenated.optString("code")))
+
+                    // Hand back is the one command Panel Assistant may send this way; any other stays refused unrun.
+                    deliver("h3", "tame.record")
+                    val other = answer("h3")
+                    assertEquals(listOf("refused", "not_commandable"), listOf(other.optString("outcome"), other.optString("code")))
+                    assertEquals(null, other.opt("result"))
+                    assertEquals(emptyList(), fixture.config.tameVendorPackages)
+                } finally {
+                    requests.close()
+                    scope.cancel()
+                }
+            }
+        }
+    }
+
     private fun prepare(fixture: PaneldServerHttpFixture, onObservation: () -> Unit = {}) {
         // Source-text reason: load the shipped locale data as runtime input, not a code-shape assertion.
         field(fixture.server, "catalogueLoader\$delegate", lazyOf(CatalogueLoader {
@@ -220,6 +304,7 @@ class TameFullMountTest {
     }
 
     private companion object {
+        const val SESSION = "session-1"
         val unsafe = Unsafe::class.java.getDeclaredField("theUnsafe").run {
             isAccessible = true
             get(null) as Unsafe

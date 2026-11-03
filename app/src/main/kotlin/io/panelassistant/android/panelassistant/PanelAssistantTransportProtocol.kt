@@ -198,6 +198,11 @@ internal object PanelAssistantTransportProtocol {
     const val MANAGE_SETTINGS = "settings"
     /** Read the Area from Home Assistant again now; it carries no value, the panel keeps its own rule. */
     const val MANAGE_HA_AREA_REFRESH = "ha_area.refresh"
+    /**
+     * Give HOME back before removal: the one command Panel Assistant may send through the dispatcher's table,
+     * where `POST /api/v1/hand-back-home` registers it under this name.
+     */
+    const val MANAGE_HAND_BACK_HOME = "hand_back_home"
 
     const val OUTCOME_APPLIED = "applied"
     const val OUTCOME_SUPERSEDED = "superseded"

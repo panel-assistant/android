@@ -912,8 +912,9 @@ class PaneldServer internal constructor(
     private suspend fun manageThroughDispatcher(op: String, args: JSONObject, onPending: () -> Unit): PanelAssistantManageReply? {
         val kind = manageTable[op]?.kind ?: return null
         // Panel Assistant changes this panel only through its own operations above and the settings allowlist
-        // (protocol section 20.2); through this fall-through it may read, never command.
-        if (kind != io.panelassistant.android.ManageKind.READ && op != "hand-back-home") {
+        // (protocol section 20.2); through this fall-through it may read, never command, except hand HOME back
+        // before it removes the app from a panel whose ADB is closed.
+        if (kind != io.panelassistant.android.ManageKind.READ && op != PanelAssistantTransportProtocol.MANAGE_HAND_BACK_HOME) {
             return PanelAssistantManageReply(
                 PanelAssistantTransportProtocol.OUTCOME_REFUSED,
                 io.panelassistant.android.panelassistant.PanelAssistantCommandProcessor.CODE_NOT_COMMANDABLE,
