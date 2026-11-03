@@ -459,7 +459,7 @@ internal class PanelAssistantTransportOwner(
                 // a lost socket and retries like one.
                 currentCoroutineContext().ensureActive()
                 lifecycleCurrent(run, onLifecycleDisconnected)
-                attemptedRoute?.let(onTransportFailure)
+                if (!hadSession) attemptedRoute?.let(onTransportFailure)
                 Retry.Fast(REFUSAL_TRANSPORT).also {
                     log("native transport attempt failed: ${cancelled.javaClass.simpleName}")
                 }
@@ -473,10 +473,14 @@ internal class PanelAssistantTransportOwner(
                 }
             } catch (failure: Exception) {
                 lifecycleCurrent(run, onLifecycleDisconnected)
-                attemptedRoute?.let(onTransportFailure)
+                // A route that carried an accepted session reached Home Assistant; the session's end (a stall,
+                // a dropped socket, a Core restart) is not the route's fault. Marking it failed sent the
+                // reconnect to a peer address, and the dashboard rebuilt on every blip (ha-integration #25).
+                // The reconnect still proves each address first, so a route that is really gone still yields.
+                if (!hadSession) attemptedRoute?.let(onTransportFailure)
                 // Network, TLS, frame bound, closed socket, malformed reply or liveness: never parks.
                 Retry.Fast(REFUSAL_TRANSPORT).also {
-                    log("native transport attempt failed: ${failure.javaClass.simpleName}")
+                    log("native transport attempt failed: ${failure.javaClass.simpleName}: ${failure.message.orEmpty()}")
                 }
             } finally {
                 // A known-ended session cannot authorize updates while bounded socket cleanup waits.

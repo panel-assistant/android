@@ -33,6 +33,7 @@ internal data class HaConnectionAdvertisement(val instanceId: String, val userId
 internal object HaConnectionRoutes {
     const val RECORD_KEY = "device_local_ha_connection_routes"
     const val EPOCH_KEY = "device_local_ha_route_epoch"
+    private const val TAG = "ha-paneld/routes"
     private const val CHECK_INTERVAL_MS = 60_000L
     private const val RETURN_HOLD_MS = 5 * 60_000L
     private val selectionLock = Any()
@@ -145,6 +146,7 @@ internal object HaConnectionRoutes {
             if (!proves(url, known.instanceId)) continue
             if (!isCurrent(config, route)) return null
             if (url == route.url) return route
+            android.util.Log.i(TAG, "Home Assistant route moves from ${route.url} to $url")
             stored.put("selected", url)
             if (!config.commitHaConnectionRecord(route, stored.toString(), changedRoute = true)) return null
             return current(config)
@@ -196,16 +198,56 @@ internal object HaConnectionRoutes {
         config.commitHaConnectionRecord(expected, stored.toString(), changedRoute = true)
     }
 
-    private fun proves(base: String, instance: String): Boolean = runCatching {
+    /**
+     * Whether [base] answers as [instance]. A kept-alive connection the network dropped without a word (every
+     * existing socket stalling while a new one is answered, ha-integration #25) times out and proves nothing
+     * about the route, so a proof that fails in transport is asked once more on a new socket before the route
+     * yields to a peer. The retry gets a pool of its own: evicting idle connections clears them only at that
+     * instant, and a concurrent proof can return another stale socket to the shared pool before the retry
+     * takes one.
+     */
+    private fun proves(base: String, instance: String): Boolean {
+        val normalized = normalize(base) ?: return false
+        return prove(proofClient, normalized, instance) ?: run {
+            proofClient.connectionPool.evictAll()
+            // The retry also waits out one lost SYN: Linux resends it after 1 s and 3 s, and a Wi-Fi panel's
+            // capture showed answers 1.3 to 2.8 s after the first SYN, past the 2 s window of a first attempt.
+            val fresh = proofClient.newBuilder()
+                .connectionPool(okhttp3.ConnectionPool(0, 1, java.util.concurrent.TimeUnit.MILLISECONDS))
+                .connectTimeout(4, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(3, java.util.concurrent.TimeUnit.SECONDS)
+                .callTimeout(6, java.util.concurrent.TimeUnit.SECONDS)
+                .build()
+            prove(fresh, normalized, instance) == true
+        }
+    }
+
+    /** Why a proof did not succeed, for the route log; every answer is logged only when it fails. */
+    private fun refused(base: String, reason: String): Boolean {
+        android.util.Log.i(TAG, "Home Assistant route $base did not prove itself: $reason")
+        return false
+    }
+
+    /** The instance answer, or null when the request failed in transport once a connection may have been reused. */
+    private fun prove(client: okhttp3.OkHttpClient, base: String, instance: String): Boolean? = try {
         // No cookies, Authorization, supplied UUID, redirects or cached replies. This endpoint returns
         // the server's own UUID; a 401 or another instance is not credential authority.
-        val normalized = normalize(base) ?: return false
-        val request = okhttp3.Request.Builder().url("$normalized/api/panel_assistant/instance")
+        val request = okhttp3.Request.Builder().url("$base/api/panel_assistant/instance")
             .header("Cache-Control", "no-cache").build()
-        proofClient.newCall(request).execute().use { response ->
-            response.code == 200 && response.body.byteStream().use {
+        client.newCall(request).execute().use { response ->
+            if (response.code != 200) return refused(base, "HTTP ${response.code}")
+            response.body.byteStream().use {
                 JSONObject(String(BoundedStreams.readBytes(it, 4096), Charsets.UTF_8)).opt("instance_id") == instance
-            }
+            } || refused(base, "another instance")
         }
-    }.getOrDefault(false)
+    } catch (failure: java.net.UnknownHostException) {
+        refused(base, failure.javaClass.simpleName)
+    } catch (failure: java.net.ConnectException) {
+        refused(base, "${failure.javaClass.simpleName}: ${failure.message.orEmpty()}")
+    } catch (failure: java.io.IOException) {
+        refused(base, "${failure.javaClass.simpleName}: ${failure.message.orEmpty()}")
+        null
+    } catch (failure: Exception) {
+        refused(base, failure.javaClass.simpleName)
+    }
 }
