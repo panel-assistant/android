@@ -982,7 +982,7 @@ class AutoSleepControllerTest {
         h.closeWithVirtualTime(::runCurrent)
     }
 
-    @Test fun `a presence gap past its grace wakes the screen and the returning feed starts a fresh lease`() = runTest {
+    @Test fun `a presence gap past its grace wakes the screen for one lease that the returning feed keeps`() = runTest {
         val h = virtualHarness()
         val request = h.start()
         h.offer(aggregate(request, 0L, HaPresenceValue.OFF))
@@ -995,13 +995,15 @@ class AutoSleepControllerTest {
         assertTrue("a gap shorter than the grace holds the screen", h.screen.isIntendedOff())
         elapse(h, 10 * MINUTE + PRESENCE_GAP_GRACE_MS)
         h.await { !h.screen.isIntendedOff() }
+        elapse(h, h.now.get() + MINUTE)
 
-        val returnedAt = h.now.get()
+        val wokenAt = 10 * MINUTE + PRESENCE_GAP_GRACE_MS
         h.offer(aggregate(request, 0L, HaPresenceValue.OFF, feed = 2L))
         h.await { h.status().getString("phase") == "live" }
-        elapse(h, returnedAt + 10 * MINUTE - 1L)
+        assertEquals("source_loss_wake", h.status().getString("reason"))
+        elapse(h, wokenAt + 10 * MINUTE - 1L)
         assertFalse(h.screen.isIntendedOff())
-        elapse(h, returnedAt + 10 * MINUTE)
+        elapse(h, wokenAt + 10 * MINUTE)
         h.await { h.screen.isIntendedOff() }
         h.closeWithVirtualTime(::runCurrent)
     }

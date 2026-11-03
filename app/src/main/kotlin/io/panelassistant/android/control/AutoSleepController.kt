@@ -583,9 +583,8 @@ internal class AutoSleepController private constructor(
             }
             Slot.PRESENCE_GAP -> if (entry.value == presenceGapToken && presenceGapJob != null) {
                 endPresenceGap()
-                // Past the grace the feed is lost: today's wake, and its return hydrates as a first connection.
-                policy = null
-                decision = null
+                // Past the grace the feed is lost: wake as for any source loss. The wake grants its own lease
+                // (booked as source_loss_wake), which the returning feed then resumes.
                 releaseForPresenceLoss(transient = true)
             }
             Slot.TERMINAL -> Unit
