@@ -6731,7 +6731,7 @@
     "install.presentation.backup_staging_retained": {
       "sourceHash": "ac442bd0592e6dc5bdd5116ed7abb908d496d12e7cd1ae6a15ff94234dfb7945",
       "state": "machine-cross-checked",
-      "text": "无法删除敏感的临时备份数据。请检查面板存储空间后重试；备份未下载。"
+      "text": "无法删除敏感的临时备份数据。请检查面板存储后重试；未下载任何备份。"
     },
     "install.presentation.companion_helper_busy": {
       "text": "Home Assistant 配套应用辅助程序正忙",

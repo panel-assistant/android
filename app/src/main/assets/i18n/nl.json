@@ -11504,7 +11504,7 @@
    "state": "machine-cross-checked"
   },
   "install.presentation.restore_completed_state_unavailable": {
-   "text": "Herstel voltooid; deze back-up bevatte geen opgeslagen paneelgegevens",
+   "text": "Herstel voltooid; deze back-up bevatte geen paneelstatus",
    "sourceHash": "634e79faec27e14712a5c81b756955e808723baecd2c66159561ef8722a138fb",
    "state": "machine-cross-checked"
   },
