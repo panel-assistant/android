@@ -353,7 +353,7 @@ class DashboardActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // While a HOME-task dashboard is alive the app returns to it with the HOME intent (builtinInHomeTask).
+        // Android 9 and older return to a live HOME-task dashboard with the HOME intent (builtinInHomeTask).
         countedInHomeTask = intent.isHomeLaunch()
         if (countedInHomeTask) BuiltinDashboard.homeTaskActivityCreated()
         if (maintenanceFence.stop(this)) return

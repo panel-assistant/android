@@ -1,6 +1,9 @@
 package io.panelassistant.android
 
+import android.content.Context
 import android.content.Intent
+import io.panelassistant.android.control.SystemController
+import io.panelassistant.android.platform.AndroidSystemEnv
 import io.panelassistant.android.platform.EXTRA_DASHBOARD_RETURN
 
 internal fun shouldRouteDashboardHomeToAdmin(
@@ -26,3 +29,12 @@ internal fun isHomeLaunch(action: String?, categories: Set<String>?, hasDataOrTy
     action == Intent.ACTION_MAIN && categories == setOf(Intent.CATEGORY_HOME) && !hasDataOrType
 
 internal fun Intent?.isHomeLaunch(): Boolean = this != null && isHomeLaunch(action, categories, data != null || type != null)
+
+/** The built-in dashboard, opened from a visible activity of this app: through the HOME intent while
+ *  [SystemController.builtinInHomeTask] says so, which reaches or creates the HOME task Home returns to;
+ *  an explicit start would put a new dashboard in a task of its own. */
+internal fun Context.builtinDashboardIntent(): Intent {
+    val env = AndroidSystemEnv(this)
+    return if (SystemController(env).builtinInHomeTask(foreground = true)) env.dashboardHomeIntent()
+    else Intent(this, DashboardActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+}

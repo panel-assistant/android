@@ -3,6 +3,7 @@ package io.panelassistant.android.platform
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.provider.Settings
 import io.panelassistant.android.Config
 import io.panelassistant.android.preservePreviousHome
 import io.panelassistant.android.setupEverCompleted
@@ -57,6 +58,9 @@ interface SystemEnv {
     /** Whether Android accepted [AndroidSystemEnv.dashboardHomeIntent], which brings the dashboard's HOME
      *  task forward. False keeps the explicit start. */
     fun startDashboardHome(): Boolean = false
+
+    /** Whether Android 10 to 14 let this app start an activity from the background: the overlay grant. */
+    fun backgroundStartsAllowed(): Boolean = false
 }
 
 /** Real [SystemEnv] over the Android PackageManager + Context. */
@@ -105,4 +109,6 @@ class AndroidSystemEnv(private val context: Context) : SystemEnv {
     }
 
     override fun startDashboardHome(): Boolean = runCatching { context.startActivity(dashboardHomeIntent()) }.isSuccess
+
+    override fun backgroundStartsAllowed(): Boolean = Settings.canDrawOverlays(context)
 }
