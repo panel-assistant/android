@@ -59,7 +59,7 @@
     <string name="approval_op_dashboard_storage_clear">Browserdaten des Dashboards löschen</string>
     <string name="approval_op_display_configuration">Anzeigegröße ändern</string>
     <string name="approval_op_power_configuration">Energieschutzmaßnahmen des Panels ändern</string>
-    <string name="approval_op_power_safety_ack">Einen ganz bestimmten Vorsichtshinweis zum Energieschutz ausblenden</string>
+    <string name="approval_op_power_safety_ack">Diesen Warnhinweis zur Stromversorgung ausblenden</string>
     <string name="approval_op_guard_db">Datenbankwiederherstellung fortsetzen</string>
     <string name="approval_op_camera_enable">Panel-Kamera aktivieren</string>
 
