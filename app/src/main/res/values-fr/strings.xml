@@ -57,7 +57,7 @@
     <string name="approval_op_device_reboot">Redémarrer le panneau</string>
     <string name="approval_op_companion_repair">Réparer la configuration de Companion</string>
     <string name="approval_op_dashboard_storage_clear">Effacer les données de navigation du tableau de bord</string>
-    <string name="approval_op_display_configuration">Modifier les dimensions d’affichage</string>
+    <string name="approval_op_display_configuration">Modifier l’échelle d’affichage</string>
     <string name="approval_op_power_configuration">Modifier les garde-fous de gestion de l’alimentation du panneau</string>
     <string name="approval_op_power_safety_ack">Masquer un avertissement précis concernant la sécurité de l’alimentation</string>
     <string name="approval_op_guard_db">Faire progresser la récupération de la base de données</string>
