@@ -6749,7 +6749,7 @@
       "state": "machine-cross-checked"
     },
     "install.presentation.companion_marker_failed": {
-      "text": "Le marqueur de sécurité de l’opération Home Assistant Companion n’a pas pu être conservé",
+      "text": "Impossible d’enregistrer durablement le marqueur de sécurité de l’opération Home Assistant Companion",
       "sourceHash": "f65b8b9d86d0c4b38165568e1757d591e3195c8bd37731b4bcaf6461d891a9f0",
       "state": "machine-cross-checked"
     },
@@ -6769,7 +6769,7 @@
       "state": "machine-cross-checked"
     },
     "install.presentation.companion_rejected_before_commit": {
-      "text": "restauration refusée avant l’enregistrement",
+      "text": "restauration refusée avant application définitive",
       "sourceHash": "d5a6ebcb9867def3e5afd89d8d608f6690e7e298c6c89490a1f5139e9ec93d7e",
       "state": "machine-cross-checked"
     },
