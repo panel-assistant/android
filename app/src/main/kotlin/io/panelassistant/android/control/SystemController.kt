@@ -154,14 +154,22 @@ class SystemController(
         return launchComponent(AppIdentity.component(env.ownPackage, ".DashboardActivity"), "builtin dashboard")
     }
 
-    /** True while the built-in dashboard lives in Android's HOME task: an activity created from a HOME
-     *  intent is alive and the dashboard is still the default HOME. Only a HOME intent reaches that task; a
-     *  component-explicit start made while the update's MainActivity task exists opens a second dashboard
-     *  there, which can stay on "Preparing dashboard…" because the renderer belongs to the other.
-     *  Android 9 and older only: that update path exists only through Android 8.1 (BootReceiver), and from
-     *  Android 10 a background HOME start can be dropped without an error, which the explicit start is not. */
-    fun builtinInHomeTask(): Boolean = sdkInt <= Build.VERSION_CODES.P &&
-        BuiltinDashboard.homeTaskActivityAlive && isOwnDashboard(env.defaultHome())
+    /** True when the built-in dashboard is started with the HOME intent rather than its component, so it
+     *  lives in Android's HOME task. Only while the dashboard is the default HOME: otherwise the intent
+     *  opens another app.
+     *  Android 9 and older: only while an activity created from a HOME intent is alive. A component-explicit
+     *  start made while the update's MainActivity task exists opens a second dashboard there, which can stay
+     *  on "Preparing dashboard…" because the renderer belongs to the other (BootReceiver, through 8.1).
+     *  Android 10 and later: always, so Home finds it. A component start puts a dashboard started while none
+     *  is alive in an ordinary task, which a HOME press never reuses: Home built a second dashboard and
+     *  reloaded the page (bench Shelly X2i, 2026-11-03). From the background this needs the overlay grant
+     *  (Android 10 to 14), or Android drops the start without an error; without it the privileged explicit
+     *  start stays. [foreground] callers are a visible activity of this app. */
+    fun builtinInHomeTask(foreground: Boolean = false): Boolean = isOwnDashboard(env.defaultHome()) && when {
+        sdkInt <= Build.VERSION_CODES.P -> BuiltinDashboard.homeTaskActivityAlive
+        foreground -> true
+        else -> sdkInt <= Build.VERSION_CODES.UPSIDE_DOWN_CAKE && env.backgroundStartsAllowed()
+    }
 
     private fun isOwnDashboard(activity: ActivityRef?): Boolean =
         activity?.pkg == env.ownPackage && activity.cls.endsWith("DashboardActivity")

@@ -14,6 +14,8 @@ import io.panelassistant.android.util.RendererPreparationState
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -58,7 +60,7 @@ class BuiltinDashboardHomeTaskTest {
         assertEquals(emptyList<String>(), daemon.sent.filter { it.startsWith("START ") })
     }
 
-    /** A dashboard only ever started explicitly lives in an ordinary task, which the explicit start reaches. */
+    /** Android 9 and older: a dashboard only ever started explicitly lives in an ordinary task, which the explicit start reaches. */
     @Test fun aDashboardStartedExplicitlyIsStillStartedExplicitly() = runBlocking {
         changeTheme()
         assertEquals(0, env.homeStarts)
@@ -74,13 +76,49 @@ class BuiltinDashboardHomeTaskTest {
         assertEquals(listOf(dashboardStart), daemon.sent.filter { it.startsWith("START ") })
     }
 
-    /** From Android 10 a background HOME start can be dropped silently; the privileged explicit start is not. */
-    @Test fun android10AndNewerKeepTheExplicitStart() = runBlocking {
-        homeTaskDashboardAlive()
+    /** Android 10 and later: a dashboard the app starts while none is alive must be created in the HOME task,
+     *  or Home builds a second one and reloads the page (bench Shelly X2i, 2026-11-03). */
+    @Test fun android10StartsTheDashboardInTheHomeTaskWhenNoneIsAlive() {
+        env.backgroundStartsAllowed = true
+        system = SystemController(env, FakeRootShell(runResult = false), daemon, sdkInt = 30)
+        system.launchHome(SystemController.BUILTIN_DASHBOARD)
+        assertEquals(1, env.homeStarts)
+        assertEquals(emptyList<String>(), daemon.sent.filter { it.startsWith("START ") })
+        assertEquals(emptyList<String>(), env.directStarts)
+    }
+
+    @Test fun android10SettingsChangeAlsoUsesTheHomeTask() = runBlocking {
+        env.backgroundStartsAllowed = true
         system = SystemController(env, FakeRootShell(runResult = false), daemon, sdkInt = 29)
         changeTheme()
+        assertEquals(1, env.homeStarts)
+        assertEquals(emptyList<String>(), daemon.sent.filter { it.startsWith("START ") })
+    }
+
+    /** Without the overlay grant Android drops a background HOME start silently; the privileged explicit start is not. */
+    @Test fun android10WithoutBackgroundStartsKeepsTheExplicitStart() {
+        system = SystemController(env, FakeRootShell(runResult = false), daemon, sdkInt = 30)
+        system.launchHome(SystemController.BUILTIN_DASHBOARD)
         assertEquals(0, env.homeStarts)
         assertEquals(listOf(dashboardStart), daemon.sent.filter { it.startsWith("START ") })
+    }
+
+    /** Android 15 lets an overlay-granted app start from the background only while its overlay shows. */
+    @Test fun android15KeepsTheExplicitStart() {
+        env.backgroundStartsAllowed = true
+        system = SystemController(env, FakeRootShell(runResult = false), daemon, sdkInt = 35)
+        system.launchHome(SystemController.BUILTIN_DASHBOARD)
+        assertEquals(0, env.homeStarts)
+        assertEquals(listOf(dashboardStart), daemon.sent.filter { it.startsWith("START ") })
+    }
+
+    /** A visible activity of this app (MainActivity, the admin launcher's Dashboard tile) needs no grant. */
+    @Test fun android10ForegroundCallersUseTheHomeIntent() {
+        system = SystemController(env, FakeRootShell(runResult = false), daemon, sdkInt = 30)
+        assertTrue(system.builtinInHomeTask(foreground = true))
+        assertFalse(system.builtinInHomeTask())
+        env.default = ActivityRef(own, "io.panelassistant.android.AdminLauncherActivity")
+        assertFalse(system.builtinInHomeTask(foreground = true))
     }
 
     private suspend fun changeTheme() = PaneldServerHttpFixture().use { fixture ->

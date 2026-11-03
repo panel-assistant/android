@@ -256,9 +256,11 @@ class FakeSystemEnv(
     var preserveHomeSucceeds: Boolean = true,
     var homeTakeoverAllowed: Boolean = true,
     var pendingHomeTakeover: Boolean = false,
+    var backgroundStartsAllowed: Boolean = false,
 ) : SystemEnv {
     val directStarts = mutableListOf<String>()
     var homeStarts = 0
+    override fun backgroundStartsAllowed() = backgroundStartsAllowed
     override fun startDashboardHome(): Boolean {
         homeStarts++
         return true

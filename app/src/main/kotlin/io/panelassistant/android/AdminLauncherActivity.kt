@@ -180,7 +180,7 @@ class AdminLauncherActivity : AppCompatActivity() {
     private fun adminTiles(dashboardTarget: RendererTarget?): List<Tile> = buildList {
         when (dashboardTarget) {
             RendererTarget.Builtin -> add(Tile(getString(R.string.dashboard), appIcon(packageName), "HA") {
-                startSafely(Intent(this@AdminLauncherActivity, DashboardActivity::class.java))
+                startSafely(builtinDashboardIntent())
             })
             is RendererTarget.Foreign -> add(Tile(getString(R.string.dashboard), appIcon(dashboardTarget.packageName), "HA") {
                 packageManager.getLaunchIntentForPackage(dashboardTarget.packageName)?.let(::startSafely)
