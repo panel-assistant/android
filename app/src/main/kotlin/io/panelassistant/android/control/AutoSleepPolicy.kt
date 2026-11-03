@@ -131,9 +131,11 @@ internal object AutoSleepPolicyReducer {
         if (healthy == 0 || states.values.any { it == AutoSleepSourceState.ON }) {
             return next.copy(awakeUntilMs = null)
         }
+        // A new generation of a feed already hydrated is a reconnect, not activity: only the first
+        // hydration, a changed source state or a new activity edge starts a lease.
         val anchor = when {
-            current.startsAsleep && current.feed == null -> null
-            newGeneration || changed -> current.lastEventAtMs
+            current.feed == null -> if (current.startsAsleep) null else current.lastEventAtMs
+            changed -> current.lastEventAtMs
             activityChanged -> marker.atMs
             else -> null
         } ?: return next

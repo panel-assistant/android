@@ -101,7 +101,8 @@ internal class AutoSleepController private constructor(
     sourceManagerFactory: ((HaPresenceAggregate) -> Boolean) -> AutoSleepManagerHandle,
 ) {
     private enum class Slot {
-        CONFIGURE, RESTORED, AGGREGATE, TOUCH, TAP_WAKE, PROXIMITY, SCREEN_WAKE, DEADLINE, REDISCOVER, TERMINAL,
+        CONFIGURE, RESTORED, AGGREGATE, TOUCH, TAP_WAKE, PROXIMITY, SCREEN_WAKE, DEADLINE, REDISCOVER, PRESENCE_GAP,
+        TERMINAL,
     }
     private enum class Admission { OPEN, CLOSING, CLOSED }
     private data class Entry(val sequence: Long, val slot: Slot, val value: Any?)
@@ -215,6 +216,9 @@ internal class AutoSleepController private constructor(
     private var rediscoveryToken = 0L
     private var rediscoveryJob: Job? = null
     private var noAreaFailOffRequested = false
+    /** A presence-feed gap held for [PRESENCE_GAP_GRACE_MS] instead of treated as presence lost; null while none. */
+    private var presenceGapJob: Job? = null
+    private var presenceGapToken = 0L
     /** Set by [wakeOwnedScreen] so the wake it causes is not booked as a touch. */
     private var ownWakePending = false
 
@@ -472,6 +476,7 @@ internal class AutoSleepController private constructor(
         if (first) {
             deadlineJob?.cancel()
             rediscoveryJob?.cancel()
+            presenceGapJob?.cancel()
             touchSubscription?.close()
             touchSubscription = null
             runCatching(manager.close)
@@ -576,6 +581,13 @@ internal class AutoSleepController private constructor(
                     scheduleRediscovery(rediscover.epoch, rediscover.token)
                 }
             }
+            Slot.PRESENCE_GAP -> if (entry.value == presenceGapToken && presenceGapJob != null) {
+                endPresenceGap()
+                // Past the grace the feed is lost: today's wake, and its return hydrates as a first connection.
+                policy = null
+                decision = null
+                releaseForPresenceLoss(transient = true)
+            }
             Slot.TERMINAL -> Unit
         }
     }
@@ -589,8 +601,12 @@ internal class AutoSleepController private constructor(
         val sourceChanged = configured.source != next.value.source
         val touchDelayChanged = next.value.source == "touch" &&
             configured.touchDelaySeconds != next.value.touchDelaySeconds
+        // Another Home Assistant or another Area is a new presence source; a route or credential is not.
+        val presenceOriginChanged = next.value.source == "home_assistant" &&
+            (normalizedHaUrl(configured.haUrl) != normalizedHaUrl(next.value.haUrl) ||
+                configured.haArea != next.value.haArea)
         configured = next.value
-        if (sourceChanged) {
+        if (sourceChanged || presenceOriginChanged) {
             wakeOwnedScreen()
             policy = null
             decision = null
@@ -642,6 +658,7 @@ internal class AutoSleepController private constructor(
                 }
             }
         }
+        if (policy == null) endPresenceGap()
         manager.configure(HaPresenceRequest(
             enabled = next.value.enabled && next.value.source == "home_assistant",
             controllerEpoch = next.epoch,
@@ -675,11 +692,15 @@ internal class AutoSleepController private constructor(
                 policy = AutoSleepPolicyReducer.initial(
                     setOf(LOCAL_SOURCE), AutoSleepPolicyConfig(learnedLeaseMs = learned.leaseMs),
                 )
+                applyPanelPresence(null, eventTime())
             } else {
+                // A refresh for Home Assistant keys leaves the proximity reading and its lease alone.
                 reduce(AutoSleepEvent.LearnedLeaseChanged(eventTime(), learned.leaseMs), actuate = false)
             }
-            applyPanelPresence(null, eventTime())
-        } else if (next.value.enabled) scheduleRediscovery(next.epoch, rediscoveryToken)
+        } else if (next.value.enabled) {
+            decision?.let { acceptDecision(it, shouldActuate = false) }
+            scheduleRediscovery(next.epoch, rediscoveryToken)
+        }
     }
 
     private fun scheduleRediscovery(epoch: Long, token: Long) {
@@ -704,12 +725,13 @@ internal class AutoSleepController private constructor(
         ) {
             acceptedManagerGeneration = next.managerGeneration
             aggregate = next
-            deadlineJob?.cancel()
-            deadlineToken++
+            if (holdsPresenceGap(next)) {
+                publishProjection()
+                return
+            }
             // The stream reports DISABLED before it subscribes, so only a resolved missing Area releases an
             // adopted off here; turning auto-sleep off goes through configure(), which always releases it.
-            wakeOwnedScreen(transient = next.phase != HaPresencePhase.NO_AREA)
-            publishProjection()
+            releaseForPresenceLoss(transient = next.phase != HaPresencePhase.NO_AREA)
             if (configured.enabled && next.phase == HaPresencePhase.NO_AREA && !noAreaFailOffRequested) {
                 noAreaFailOffRequested = true
                 runCatching { onNoArea(next.controllerEpoch) }.onFailure {
@@ -718,6 +740,7 @@ internal class AutoSleepController private constructor(
             }
             return
         }
+        endPresenceGap()
         val states = next.selectedEntityIds.associateWith { id ->
             when (next.finalStates[id] ?: HaPresenceValue.UNAVAILABLE) {
                 HaPresenceValue.ON -> AutoSleepSourceState.ON
@@ -740,7 +763,7 @@ internal class AutoSleepController private constructor(
         inheritedEpoch = null
         if (sourceChanged) {
             partition = buildString {
-                append(configured.haUrl.trim().lowercase(Locale.ROOT).trimEnd('/'))
+                append(normalizedHaUrl(configured.haUrl))
                 append('|')
                 append(next.selectedEntityIds.sorted().joinToString(","))
                 append("|v1")
@@ -781,6 +804,45 @@ internal class AutoSleepController private constructor(
             suppressionSawAllOff = true
         }
     }
+
+    /**
+     * A reconnect, a route change or a refresh of the same Home Assistant and Area passes through these
+     * phases. While a live policy exists, hold its decision, its deadline and an automatic-off screen for
+     * [PRESENCE_GAP_GRACE_MS]: actuation stays refused until the feed is LIVE again, and its return resumes
+     * the lease. A discovery that could not reach Home Assistant is part of the same gap; a resolved outcome
+     * (no Area, no sources, refused sign-in, an unusable registry) is not held.
+     */
+    private fun holdsPresenceGap(next: HaPresenceAggregate): Boolean {
+        val transit = next.phase in PRESENCE_TRANSIT_PHASES ||
+            next.phase == HaPresencePhase.DISCOVERY_FAILED && next.detail in DISCOVERY_TRANSPORT_FAILURES
+        if (!configured.enabled || policy == null || !transit) {
+            endPresenceGap()
+            return false
+        }
+        if (presenceGapJob == null) {
+            val token = ++presenceGapToken
+            presenceGapJob = scope.launch(workerDispatcher) {
+                delay(PRESENCE_GAP_GRACE_MS)
+                admit(Slot.PRESENCE_GAP, token)
+            }
+        }
+        return true
+    }
+
+    private fun endPresenceGap() {
+        presenceGapJob?.cancel()
+        presenceGapJob = null
+        presenceGapToken++
+    }
+
+    private fun releaseForPresenceLoss(transient: Boolean) {
+        deadlineJob?.cancel()
+        deadlineToken++
+        wakeOwnedScreen(transient)
+        publishProjection()
+    }
+
+    private fun normalizedHaUrl(url: String) = url.trim().lowercase(Locale.ROOT).trimEnd('/')
 
     private fun applyTouch(touch: Touch) {
         val expected = touch.expectedOffGeneration
@@ -1028,6 +1090,17 @@ internal class AutoSleepController private constructor(
         const val HISTORY_WARMUP_MS = HOUR_MS
         const val MAX_SOURCE_LABEL_CHARS = 96
         const val MAX_SOURCE_CELLS = 12_000L
+        val PRESENCE_TRANSIT_PHASES = setOf(
+            HaPresencePhase.AUTHENTICATING,
+            HaPresencePhase.DISCOVERING,
+            HaPresencePhase.LEARNING,
+            HaPresencePhase.CONNECTING,
+            HaPresencePhase.SYNCHRONIZING,
+            HaPresencePhase.RECONNECTING,
+            HaPresencePhase.LIVE,
+        )
+        /** [HaPresenceSourceManager] discovery failure codes that mean Home Assistant could not be reached. */
+        val DISCOVERY_TRANSPORT_FAILURES = setOf("registry_transport", "history_transport", "discovery_failed")
         val HISTORY_EXCLUSIONS = listOf(
             "past_touch",
             "panel_proximity",
@@ -1053,6 +1126,13 @@ internal class AutoSleepController private constructor(
         val projectionRevision: Long = 0L,
     )
 }
+
+/**
+ * How long a presence-feed gap from the same Home Assistant and Area holds the current decision. Longer than
+ * one worst-case stream reconnect (60 s backoff ceiling, 15 s connect, 35 s subscribe, 20 s hydration =
+ * 130 s) and a Home Assistant Core restart; shorter than the 10-minute minimum lease.
+ */
+internal const val PRESENCE_GAP_GRACE_MS = 5L * 60_000L
 
 /** Gap between startup adoption attempts; two retries still land before the never-blank guard's 15 s first check. */
 internal const val ADOPTION_RETRY_MS = 4_000L

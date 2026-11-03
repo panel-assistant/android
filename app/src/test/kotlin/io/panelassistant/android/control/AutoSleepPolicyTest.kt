@@ -150,7 +150,7 @@ class AutoSleepPolicyTest {
     }
 
     @Test
-    fun `new feed generation rehydrates unchanged sources while duplicate snapshots remain idempotent`() {
+    fun `a new feed generation with unchanged sources resumes the lease while duplicates stay idempotent`() {
         val initial = AutoSleepPolicyReducer.initial(setOf("one"))
         val first = AutoSleepPolicyReducer.reduce(
             initial,
@@ -160,28 +160,41 @@ class AutoSleepPolicyTest {
                 AutoSleepFeedPosition(1L, 1L),
             ),
         )
-        val expired = AutoSleepPolicyReducer.reduce(first.state, AutoSleepEvent.TimeAdvanced(16 * MINUTE))
+        assertEquals(10 * MINUTE, first.decision.nextDeadlineMs)
+        // A reconnect inside the lease: the deadline stays where the last real change put it.
+        val reconnected = AutoSleepPolicyReducer.reduce(
+            first.state,
+            AutoSleepEvent.SourcesHydrated(
+                4 * MINUTE,
+                first.state.sources,
+                AutoSleepFeedPosition(2L, 0L),
+            ),
+        )
+        assertEquals(10 * MINUTE, reconnected.decision.nextDeadlineMs)
+        val expired = AutoSleepPolicyReducer.reduce(reconnected.state, AutoSleepEvent.TimeAdvanced(16 * MINUTE))
         assertEquals(AutoSleepOutput.ALLOW_SLEEP, expired.decision.output)
 
+        // A reconnect after expiry is not activity: the screen may stay asleep.
         val rehydrated = AutoSleepPolicyReducer.reduce(
             expired.state,
             AutoSleepEvent.SourcesHydrated(
                 20 * MINUTE,
                 expired.state.sources,
-                AutoSleepFeedPosition(2L, 0L),
+                AutoSleepFeedPosition(3L, 0L),
             ),
         )
-        assertEquals(30 * MINUTE, rehydrated.decision.nextDeadlineMs)
+        assertEquals(AutoSleepOutput.ALLOW_SLEEP, rehydrated.decision.output)
+        assertEquals(null, rehydrated.decision.nextDeadlineMs)
 
         val duplicate = AutoSleepPolicyReducer.reduce(
             rehydrated.state,
             AutoSleepEvent.SourcesHydrated(
                 21 * MINUTE,
                 rehydrated.state.sources,
-                AutoSleepFeedPosition(2L, 0L),
+                AutoSleepFeedPosition(3L, 0L),
             ),
         )
-        assertEquals(30 * MINUTE, duplicate.decision.nextDeadlineMs)
+        assertEquals(AutoSleepOutput.ALLOW_SLEEP, duplicate.decision.output)
         assertFailsWith<IllegalArgumentException> {
             AutoSleepPolicyReducer.reduce(
                 duplicate.state,
@@ -192,6 +205,17 @@ class AutoSleepPolicyTest {
                 ),
             )
         }
+        // A real change on the new feed still starts a lease from that change.
+        val left = AutoSleepPolicyReducer.reduce(
+            AutoSleepPolicyReducer.reduce(
+                duplicate.state,
+                AutoSleepEvent.SourcesHydrated(23 * MINUTE, mapOf("one" to AutoSleepSourceState.ON),
+                    AutoSleepFeedPosition(3L, 1L)),
+            ).state,
+            AutoSleepEvent.SourcesHydrated(24 * MINUTE, mapOf("one" to AutoSleepSourceState.OFF),
+                AutoSleepFeedPosition(4L, 0L)),
+        )
+        assertEquals(34 * MINUTE, left.decision.nextDeadlineMs)
     }
 
     @Test
