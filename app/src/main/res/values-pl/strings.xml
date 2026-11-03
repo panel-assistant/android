@@ -26,7 +26,7 @@
     <string name="unable_stop_remote_debugging">Nie można zatrzymać zdalnego debugowania</string>
     <string name="unable_stop_remote_debugging_detail">Tryb Hardened nie został włączony, ponieważ panel nie mógł potwierdzić, że przekaźnik LAN DevTools i jego proces nasłuchujący zostały zatrzymane. Uruchom ponownie panel, a potem spróbuj jeszcze raz.</string>
     <string name="unable_stop_remote_adb">Nie można zatrzymać zdalnego ADB</string>
-    <string name="unable_stop_remote_adb_detail">Tryb Hardened nie został włączony, ponieważ Panel Assistant nie mógł trwale wyczyścić i zweryfikować całego należącego do niego stanu sieciowego ADB (klasycznego/TLS). Wyłączanie pozostaje w toku, więc zostanie ponowione przy uruchomieniu; sprawdź Opcje programisty, a potem spróbuj jeszcze raz.</string>
+    <string name="unable_stop_remote_adb_detail">Tryb Hardened nie został włączony, ponieważ Panel Assistant nie mógł trwale wyczyścić i zweryfikować całego należącego do niego stanu sieciowego ADB (klasycznego/TLS). Operacja wyłączania nadal ma status oczekujący, więc zostanie ponowiona przy uruchomieniu; sprawdź Opcje programisty, a potem spróbuj jeszcze raz.</string>
     <string name="unable_verify_remote_adb">Nie można zweryfikować zdalnego ADB</string>
     <string name="unable_verify_remote_adb_detail">Tryb Hardened nie został włączony, ponieważ panel nie mógł potwierdzić, że klasyczne sieciowe ADB i debugowanie bezprzewodowe Androida są wyłączone. Wyłącz obie ścieżki zdalnego sterowania w opcjach programisty Androida, a potem spróbuj jeszcze raz.</string>
     <string name="turn_off_remote_adb_first">Najpierw wyłącz zdalne ADB</string>

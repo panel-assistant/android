@@ -184,7 +184,7 @@
     <string name="guard_db_deadline">Harte Frist: %1$d vergangene ms</string>
     <string name="guard_db_forward_deadline">" · vorwärts: %1$d"</string>
     <string name="guard_db_unreachable">Der Root-Helfer wird neu gestartet oder ist nicht erreichbar. Es ist keine Änderung erlaubt.</string>
-    <string name="guard_db_malformed">Die Antwort des Root-Journals ist fehlerhaft. Die Wiederherstellung wird angehalten.</string>
+    <string name="guard_db_malformed">Die Antwort des Root-Journals hat ein ungültiges Format. Die Wiederherstellung ist angehalten.</string>
     <string name="guard_db_unsupported">Der installierte Helfer kann diese Wiederherstellung nicht ausführen. Die Wiederherstellung wird angehalten.</string>
     <string name="no_pending_physical_approval">Keine ausstehende physische Bestätigung.</string>
     <string name="pending_physical_approval">Ausstehende physische Bestätigung</string>

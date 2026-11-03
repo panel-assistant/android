@@ -176,8 +176,8 @@
     <string name="guard_db_deadline">Strikte deadline: %1$d elapsed-ms</string>
     <string name="guard_db_forward_deadline">" · vooruit: %1$d"</string>
     <string name="guard_db_unreachable">De root-helper wordt opnieuw opgestart of is niet bereikbaar. Er zijn geen wijzigingen toegestaan.</string>
-    <string name="guard_db_malformed">Het antwoord van het root-logboek is onjuist opgebouwd. Het herstel wordt uitgesteld.</string>
-    <string name="guard_db_unsupported">De geïnstalleerde helper kan dit herstelproces niet uitvoeren. Het herstelproces wordt uitgesteld.</string>
+    <string name="guard_db_malformed">Het antwoord van het root-logboek is onjuist opgebouwd. Het herstel is opgeschort.</string>
+    <string name="guard_db_unsupported">De geïnstalleerde helper kan dit herstel niet uitvoeren. Het herstel is opgeschort.</string>
     <string name="no_pending_physical_approval">Geen openstaande fysieke goedkeuring.</string>
     <string name="pending_physical_approval">Openstaande fysieke goedkeuring</string>
     <string name="approval_exact_detail">Bekijk de actie en de exacte bewijsstukken van het verzoek voordat je het goedkeurt.\n\nDetails van het verzoek (Engels):\n%1$s\n\nExact verzoek van %2$s. Goedkeuring is eenmalig en verloopt.</string>
