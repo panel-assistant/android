@@ -6351,7 +6351,7 @@
     "install.backup.restore.description.config_only": {
       "sourceHash": "179a9889a2016aaba29633013b5b7209063b1891b1614fee38ae14a28e916d1e",
       "state": "machine-cross-checked",
-      "text": "remplace la configuration de ce panneau ; vous pourrez prévisualiser le contenu du paquet avant son application."
+      "text": "remplace la configuration de ce panneau ; vous verrez un aperçu du contenu du paquet avant son application."
     },
     "install.backup.restore.description.with_companion": {
       "text": "remplace la configuration de ce panneau et réécrit la connexion à Home Assistant Companion (dont l’arrêt est forcé) ; vous verrez un aperçu du contenu du paquet avant son application.",

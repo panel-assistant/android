@@ -6269,7 +6269,7 @@
       "state": "machine-cross-checked"
     },
     "install.backup.dynamic.restore_confirm": {
-      "text": "Obnovení přepíše konfiguraci tohoto panelu a přihlašovací údaje do aplikace Home Assistant Companion. Pokračovat?",
+      "text": "Obnovení přepíše konfiguraci tohoto panelu a přihlášení aplikace Home Assistant Companion. Pokračovat?",
       "sourceHash": "32087960356ef1d2c9018eaa9b545af85eeb57391006937a001b622259587b55",
       "state": "machine-cross-checked"
     },

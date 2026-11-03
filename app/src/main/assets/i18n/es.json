@@ -6331,7 +6331,7 @@
     "install.backup.plaintext_zip": {
       "sourceHash": "10683becdcd51177371bbb7dc6e59d3867fe28461c903e261c4258d7db617b34",
       "state": "machine-cross-checked",
-      "text": "Crear en su lugar un archivo ZIP sin cifrar (contiene credenciales)"
+      "text": "Crear en su lugar un archivo ZIP en texto plano sin cifrar (contiene credenciales)"
     },
     "install.backup.preview_files.one": {
       "sourceHash": "9ff7fb9b7b88fc94010ff7fd055dd1d1efd32b34a26f466917f9cfc447513a65",
