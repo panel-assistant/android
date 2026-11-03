@@ -4749,7 +4749,7 @@
       "state": "machine-cross-checked"
     },
     "entities.bulk.pin_all_suggested": {
-      "text": "Připnout všechny návrhy",
+      "text": "Připnout všechny navržené",
       "sourceHash": "a065b473d105e06ffe8a8f0ea34c19753f14452c09493e24901c6b1073aeaa50",
       "state": "machine-cross-checked"
     },

@@ -11834,7 +11834,7 @@
       "state": "machine-cross-checked"
     },
     "setup.renderer.failure.explanation": {
-      "text": "Escolha o renderizador integrado do Panel Assistant (ou outro app instalado) no cartão Painel de Todas as configurações e volte aqui.",
+      "text": "Escolha o renderizador integrado do Panel Assistant (ou outro app instalado) no cartão Dashboard de Todas as configurações e volte aqui.",
       "sourceHash": "89457edb6167b9b02c6b64d12b9b1816eb9f7fec76ba11facc009ebd59d1d9fa",
       "state": "machine-cross-checked"
     },
@@ -11844,7 +11844,7 @@
       "state": "machine-cross-checked"
     },
     "setup.renderer.failure.title": {
-      "text": "O app do dashboard selecionado não está disponível.",
+      "text": "O app selecionado para o dashboard não está disponível.",
       "sourceHash": "f124b11bac29595c963cc2bec57abe03fe65161d516c1286e2b3f30659aebfa5",
       "state": "machine-cross-checked"
     },

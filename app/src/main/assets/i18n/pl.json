@@ -7764,7 +7764,7 @@
    "state": "machine-cross-checked"
   },
   "profiles.issue.unknown-core-transfer": {
-   "text": "Nieznana funkcja przejścia LED Panel Assistant '{value}'.",
+   "text": "Nieznana funkcja przenoszenia LED Panel Assistant '{value}'.",
    "sourceHash": "6a3e772e15e7b18ac0876316d778ec45d862e0f7d31346d2b0a1135f619507bd",
    "state": "machine-cross-checked"
   },

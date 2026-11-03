@@ -11856,7 +11856,7 @@
     "setup.sign_in.state.in_progress": {
       "sourceHash": "036ad1c96e2d2814578a7aec0bc7526208edfed6775f97427f055a327914486c",
       "state": "machine-cross-checked",
-      "text": "Il pannello mostra un accesso a Home Assistant. Accedi lì oppure usa questo browser."
+      "text": "Il pannello mostra la pagina di accesso a Home Assistant. Accedi lì oppure usa questo browser."
     },
     "setup.sign_in.state.waiting": {
       "sourceHash": "d6dfb33f6411d1945de51bbd39f41ea4eac18e28b1050ff36036a809768fec9f",
