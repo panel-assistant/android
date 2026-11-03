@@ -191,7 +191,7 @@
     <string name="storage_pressure_body">Obciążenie pamięci lub plików bazy danych jest krytyczne%1$s. Otwórz Panel Assistant i sprawdź wolne miejsce oraz przyrost WAL przed zmianą konfiguracji.</string>
     <string name="database_attention_title">Baza danych panelu wymaga uwagi</string>
     <string name="database_during_suffix">" podczas %1$s"</string>
-    <string name="database_full_body">Zapis do bazy danych panelu%1$s nie powiódł się, ponieważ pamięć była pełna. Otwórz Panel Assistant; odzyskiwanie nie zostało jeszcze zweryfikowane.</string>
+    <string name="database_full_body">Zapis do bazy danych panelu%1$s nie powiódł się, gdy pamięć masowa była pełna. Otwórz Panel Assistant; odzyskiwanie nie zostało jeszcze zweryfikowane.</string>
     <string name="database_io_body">Baza danych panelu zgłosiła błąd operacji wejścia/wyjścia na dysku%1$s. Otwórz Panel Assistant; spróbuj ponownie dopiero po usunięciu przyczyny.</string>
     <string name="database_corruption_body">Baza danych panelu nie przeszła kontroli integralności%1$s. Zachowaj ją i otwórz diagnostykę Panel Assistant przed kolejnymi zapisami.</string>
     <string name="database_busy_body">Baza danych panelu pozostała zajęta lub zablokowana%1$s. Otwórz diagnostykę Panel Assistant i poczekaj na czysty wynik kontroli przed ponowną próbą.</string>

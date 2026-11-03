@@ -207,7 +207,7 @@
     <string name="database_busy_body">Die Panel-Datenbank blieb beschäftigt oder gesperrt%1$s. Öffne die Panel Assistant-Diagnose und warte vor einem erneuten Versuch auf eine fehlerfreie Prüfung.</string>
     <string name="database_failure_body">Die Panel-Datenbank hat einen Fehler gemeldet%1$s. Bewahre sie auf und öffne vor einem erneuten Versuch die Panel Assistant-Diagnose.</string>
     <string name="database_recovery_channel">Datenbankwiederherstellung</string>
-    <string name="database_recovery_notification">Die Wiederherstellung im selben Startvorgang ist aktiv; normale Panel-Dienste sind pausiert</string>
+    <string name="database_recovery_notification">Die Wiederherstellung in derselben Boot-Sitzung ist aktiv; normale Panel-Dienste sind pausiert</string>
     <string name="starting">Wird gestartet…</string>
     <string name="listening_on_port">Lauscht auf :%1$d</string>
     <string name="degraded_profile_startup">Eingeschränkt · Profilstart fehlgeschlagen</string>

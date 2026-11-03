@@ -57,7 +57,7 @@
     <string name="approval_op_device_reboot">Reiniciar el panel</string>
     <string name="approval_op_companion_repair">Reparar la configuración de Companion</string>
     <string name="approval_op_dashboard_storage_clear">Borrar los datos de navegación del panel de control</string>
-    <string name="approval_op_display_configuration">Cambiar el tamaño de la pantalla</string>
+    <string name="approval_op_display_configuration">Cambiar la escala de visualización</string>
     <string name="approval_op_power_configuration">Cambiar las protecciones de seguridad de alimentación del panel</string>
     <string name="approval_op_power_safety_ack">Ocultar una advertencia concreta sobre la seguridad de la alimentación eléctrica</string>
     <string name="approval_op_guard_db">Avanzar la recuperación de la base de datos</string>
