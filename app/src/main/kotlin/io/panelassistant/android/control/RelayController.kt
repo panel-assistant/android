@@ -55,6 +55,7 @@ class RelayController(profile: DeviceProfile, private val root: RootShell = Su) 
         if (resolvedRelayCount != null || !allowRootProbe) return
         val cost = FeatureCosts.registry.span(FeatureCostOperation.RELAY_TOPOLOGY_DISCOVERY)
         try {
+            var probeFailed = false
             for (candidate in candidateBases) {
                 val count = try {
                     relayNodeCount(candidate)
@@ -62,8 +63,8 @@ class RelayController(profile: DeviceProfile, private val root: RootShell = Su) 
                     null
                 }
                 if (count == null) {
-                    cost.outcome(FeatureCostOutcome.FAILURE)
-                    return
+                    probeFailed = true
+                    continue
                 }
                 if (count > 0) {
                     resolvedBase = candidate
@@ -72,7 +73,9 @@ class RelayController(profile: DeviceProfile, private val root: RootShell = Su) 
                     return
                 }
             }
-            resolvedRelayCount = 0
+            // A failed listing may be an absent firmware-specific directory or a transient root
+            // failure. Try declared fallbacks, but cache absence only after every probe succeeded.
+            if (probeFailed) cost.outcome(FeatureCostOutcome.FAILURE) else resolvedRelayCount = 0
         } finally {
             cost.close()
         }

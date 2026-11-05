@@ -5,6 +5,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.Rule
+import org.junit.rules.TemporaryFolder
+import java.io.File
 import java.util.concurrent.Callable
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -30,6 +33,89 @@ class RelayControllerTest {
             fakeProfile(relayBase = relayBase, relayBaseFallbacks = fallbacks, buttonLedGpioBase = ledBase),
             root,
         ) to root
+    }
+
+    @get:Rule val sysfs = TemporaryFolder()
+
+    private val fallback = "/sys/class/st_relay"
+
+    /** Execute production RootShell commands; only the root launch and sysfs mount are substituted. */
+    private inner class DirectoryRootShell : RootShell {
+        var reachable = true
+        var rejectListing = false
+        override fun available() = reachable
+        override fun run(cmd: String): Boolean = execute(cmd)?.first == 0
+        override fun runOutput(cmd: String): String? = execute(cmd)?.let { (exit, out) ->
+            out.takeIf { exit == 0 }
+        }
+        override fun runBytes(cmd: String): ByteArray? = null
+        private fun execute(cmd: String): Pair<Int, String>? {
+            if (!reachable) return null
+            // A present directory whose listing fails must not be mistaken for proved absence.
+            val translated = cmd.replace("/sys/class/", "${sysfs.root.absolutePath}/")
+            val shell = if (rejectListing) "ls() { return 1; }; $translated" else translated
+            val process = ProcessBuilder("sh", "-c", shell).redirectErrorStream(true).start()
+            val output = process.inputStream.bufferedReader().use { it.readText() }
+            return process.waitFor() to output
+        }
+    }
+
+    private fun directoryController(root: DirectoryRootShell) = RelayController(
+        fakeProfile(relayBase = base, relayBaseFallbacks = listOf(fallback)), root,
+    )
+
+    private fun relayDirectory(name: String, vararg nodes: String) {
+        val directory = sysfs.newFolder(name)
+        nodes.forEach { File(directory, it).writeText("0") }
+    }
+
+    @Test fun absentPrimaryReachesDeclaredFallbackThroughRootCommands() {
+        relayDirectory("st_relay", "relay1", "relay2")
+        val r = directoryController(DirectoryRootShell())
+
+        assertEquals(2, r.count())
+        assertTrue(r.set(2, true))
+        assertEquals("1", File(sysfs.root, "st_relay/relay2").readText())
+        assertEquals(true, r.read(2))
+    }
+
+    @Test fun presentPrimaryWinsOverDeclaredFallbackThroughRootCommands() {
+        relayDirectory("strelay", "relay1")
+        relayDirectory("st_relay", "relay1", "relay2")
+        val r = directoryController(DirectoryRootShell())
+
+        assertEquals(1, r.count())
+        assertTrue(r.set(1, true))
+        assertEquals("1", File(sysfs.root, "strelay/relay1").readText())
+        assertEquals("0", File(sysfs.root, "st_relay/relay1").readText())
+    }
+
+    @Test fun emptyPrimaryReachesDeclaredFallbackThroughRootCommands() {
+        relayDirectory("strelay")
+        relayDirectory("st_relay", "relay1", "relay2")
+
+        assertEquals(2, directoryController(DirectoryRootShell()).count())
+    }
+
+    @Test fun rootFailureRemainsRetryableThroughRootCommands() {
+        relayDirectory("st_relay", "relay1", "relay2")
+        val root = DirectoryRootShell().apply { reachable = false }
+        val r = directoryController(root)
+
+        assertEquals(0, r.count())
+        root.reachable = true
+        assertEquals(2, r.count())
+    }
+
+    @Test fun failedListingsRemainRetryableThroughRootCommands() {
+        relayDirectory("strelay", "relay1")
+        relayDirectory("st_relay", "relay1", "relay2")
+        val root = DirectoryRootShell().apply { rejectListing = true }
+        val r = directoryController(root)
+
+        assertEquals(0, r.count())
+        root.rejectListing = false
+        assertEquals(1, r.count())
     }
 
     @Test fun countsRelayNodesUnderTheBase() {
