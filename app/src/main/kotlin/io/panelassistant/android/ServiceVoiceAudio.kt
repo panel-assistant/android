@@ -115,7 +115,7 @@ internal class ServiceVoiceAudio(
             scope = scope,
             configuration = ::voiceConfiguration,
             onAnnouncement = { announcement ->
-                val done = { panelAssistantVoice.played(announcement.announceId) }
+                val done = { stopped: Boolean -> panelAssistantVoice.played(announcement.announceId, stopped) }
                 if (::voice.isInitialized) {
                     voice.announce(
                         io.panelassistant.android.assist.VoiceAnnouncement(
@@ -124,7 +124,7 @@ internal class ServiceVoiceAudio(
                         ),
                     )
                 } else {
-                    done()
+                    done(false)
                 }
             },
             log = { message -> Log.i(TAG, message) },

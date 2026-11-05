@@ -1055,9 +1055,9 @@ class VoiceAssistantCoordinatorTest {
     fun `an announcement plays its chime then its message with the listener paused, then reports it played`() {
         val c = coordinator()
         c.start()
-        val done = CompletableDeferred<Unit>()
-        c.announce(VoiceAnnouncement("message.mp3", "chime.mp3", listenAfter = false) { done.complete(Unit) })
-        runBlocking { withTimeout(2_000) { done.await() } }
+        val done = CompletableDeferred<Boolean>()
+        c.announce(VoiceAnnouncement("message.mp3", "chime.mp3", listenAfter = false) { done.complete(it) })
+        assertFalse("played to the end, not stopped", runBlocking { withTimeout(2_000) { done.await() } })
         awaitRunFinished(c)
         assertEquals(listOf("chime.mp3", "message.mp3"), played)
         assertEquals("the panel must not hear itself", listOf(true, true), pausedWhilePlaying)

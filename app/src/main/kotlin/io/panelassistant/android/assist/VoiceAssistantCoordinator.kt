@@ -151,8 +151,8 @@ internal data class VoiceAnnouncement(
     val stream: String? = null,
     /** The announcement's text, when Panel Assistant sends it. */
     val text: String? = null,
-    /** Called once the announcement has played, or could not be. */
-    val done: () -> Unit,
+    /** Called once the announcement has played, or could not be; true when the owner stopped it. */
+    val done: (stopped: Boolean) -> Unit,
 )
 
 /**
@@ -400,7 +400,7 @@ class VoiceAssistantCoordinator internal constructor(
      * panel never wakes itself; with [VoiceAnnouncement.listenAfter] a turn follows, as after a wake word.
      */
     internal fun announce(announcement: VoiceAnnouncement) {
-        if (closed.get()) return announcement.done()
+        if (closed.get()) return announcement.done(false)
         scope.launch {
             repeat(ANNOUNCE_ADMISSION_ATTEMPTS) {
                 val previous = synchronized(lock) { runJob }
@@ -408,10 +408,10 @@ class VoiceAssistantCoordinator internal constructor(
                 when (beginRun(activation = null, settings(), null, announcement)) {
                     RunAdmission.STARTED -> return@launch
                     RunAdmission.BUSY -> Unit
-                    else -> return@launch announcement.done()
+                    else -> return@launch announcement.done(false)
                 }
             }
-            announcement.done()
+            announcement.done(false)
         }
     }
 
@@ -450,8 +450,9 @@ class VoiceAssistantCoordinator internal constructor(
             runJob = scope.launch {
                 var failed = false
                 var stop: StopWord? = null
+                val stopped = AtomicBoolean(false)
                 try {
-                    stop = if (hearsStop && mic != null) stopWord(mic, coroutineContext.job) else null
+                    stop = if (hearsStop && mic != null) stopWord(mic, coroutineContext.job, stopped) else null
                     val speaker = stop?.let { heardBy(it.listener) } ?: playback
                     if (announcement != null) {
                         announcement.text?.let { stop?.listener?.reply(it) }
@@ -466,7 +467,7 @@ class VoiceAssistantCoordinator internal constructor(
                                 speaker.play(announcement.url)
                             }
                         }
-                        announcement.done()
+                        announcement.done(stopped.get())
                         played.exceptionOrNull()?.let { if (it is CancellationException) throw it }
                     }
                     if (listens && mic != null) {
@@ -505,8 +506,13 @@ class VoiceAssistantCoordinator internal constructor(
     }
 
     /** The stop word for one run, heard from its start: it cancels [run] and silences what [run] is playing. */
-    private inner class StopWord(mic: MicrophoneSource, model: LoadedWakeWordModel, run: Job) : AutoCloseable {
-        val listener = StopWordListener(model, state::current, onStop = { stopHeard(run) }, log)
+    private inner class StopWord(
+        mic: MicrophoneSource,
+        model: LoadedWakeWordModel,
+        run: Job,
+        stopped: AtomicBoolean,
+    ) : AutoCloseable {
+        val listener = StopWordListener(model, state::current, onStop = { stopHeard(run, stopped) }, log)
         private val lease = mic.lease(MicPurpose.WAKE_WORD, consumer = listener)
 
         override fun close() {
@@ -515,7 +521,8 @@ class VoiceAssistantCoordinator internal constructor(
         }
     }
 
-    private fun stopWord(mic: MicrophoneSource, run: Job): StopWord? = stopWordModel()?.let { StopWord(mic, it, run) }
+    private fun stopWord(mic: MicrophoneSource, run: Job, stopped: AtomicBoolean): StopWord? =
+        stopWordModel()?.let { StopWord(mic, it, run, stopped) }
 
     /** [playback] as one run uses it, with the stop word told each time a sound starts. */
     private fun heardBy(stop: StopWordListener) = object : AssistPlayback {
@@ -537,11 +544,12 @@ class VoiceAssistantCoordinator internal constructor(
      * the run's cancellation alone would leave playing. The run's own cleanup cancels the pipeline in Home
      * Assistant, tells it the reply is over, and gives back the microphone and the panel's media.
      */
-    private fun stopHeard(run: Job) {
+    private fun stopHeard(run: Job, stopped: AtomicBoolean) {
         // Under the lock, so no later run can have been admitted and started a sound of its own. Cancelled
         // first, so a run that sees its sound end already knows it was stopped, not finished.
         synchronized(lock) {
             if (runJob !== run) return
+            stopped.set(true)
             run.cancel()
             playback.silence()
         }
