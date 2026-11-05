@@ -120,7 +120,7 @@
     <string name="ha_transport_not_ready">З’єднання з Home Assistant ще не готове.</string>
     <string name="ha_transport_tls_trust">Сертифікат сервера не визнано надійним. Перевірте ланцюжок сертифікатів та годинник панелі.</string>
     <string name="ha_transport_tls_other">Не вдалося встановити безпечне з’єднання. Перевірте конфігурацію TLS сервера.</string>
-    <string name="ha_transport_dns">Не вдалося визначити ім’я хоста Home Assistant. Перевірте DNS і налаштовану адресу.</string>
+    <string name="ha_transport_dns">Не вдалося визначити адресу за іменем хоста Home Assistant. Перевірте DNS і налаштовану адресу.</string>
     <string name="ha_transport_timeout">Час очікування з’єднання вичерпано. Перевірте маршрутизацію, Wi-Fi, а також чи відповідає Home Assistant.</string>
     <string name="ha_transport_refused">Хост відмовив у з’єднанні. Перевірте, чи Home Assistant працює на налаштованому порту.</string>
     <string name="ha_transport_unreachable">У мережі немає маршруту до Home Assistant. Перевірте налаштування мережі та сімейства адрес панелі.</string>
