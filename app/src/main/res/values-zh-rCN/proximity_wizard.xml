@@ -4,6 +4,8 @@
     <string name="proximity_wizard_wave_twice_hint">快速挥手两次，然后移开。</string>
     <string name="proximity_wizard_normal_position">请回到平时站立的位置</string>
     <string name="proximity_wizard_hands_down">请将双手放下。</string>
+    <string name="proximity_wizard_presence_refused_hint">传感器无法可靠地判断您是否站在这里，因此在场检测保持关闭。请将双手放下。</string>
+    <string name="proximity_wizard_speech_wave_baseline_refused">传感器无法可靠地判断您是否站在平时使用面板的位置，因此在场检测将保持关闭。请留在原地并放下双手。接下来我将改为测试挥手。</string>
     <string name="proximity_wizard_review_wave_only">在场检测不可用。\n挥手已验证。</string>
     <string name="proximity_wizard_review_neither">在场检测和挥手均未验证。将保留原有设置。</string>
     <string name="proximity_wizard_saved_wave_only">挥手设置已保存。\n在场检测不可用。</string>

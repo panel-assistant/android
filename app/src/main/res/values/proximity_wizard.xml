@@ -4,6 +4,8 @@
     <string name="proximity_wizard_wave_twice_hint">Two quick waves, then move clear.</string>
     <string name="proximity_wizard_normal_position">Return to your normal position</string>
     <string name="proximity_wizard_hands_down">Keep your hands down.</string>
+    <string name="proximity_wizard_presence_refused_hint">The sensor cannot reliably tell when you stand here, so presence stays off. Keep your hands down.</string>
+    <string name="proximity_wizard_speech_wave_baseline_refused">The sensor could not reliably tell when you are standing where you normally use the panel, so presence detection will stay off. Stay where you are and keep your hands down. Next I will test a hand wave instead.</string>
     <string name="proximity_wizard_review_wave_only">Presence unavailable.\nWave verified.</string>
     <string name="proximity_wizard_review_neither">Neither presence nor wave was verified. Your previous settings will be kept.</string>
     <string name="proximity_wizard_saved_wave_only">Wave settings saved.\nPresence detection is unavailable.</string>

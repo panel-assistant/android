@@ -4,6 +4,8 @@
     <string name="proximity_wizard_wave_twice_hint">Dos gestos rápidos y luego aleja la mano.</string>
     <string name="proximity_wizard_normal_position">Vuelve a tu posición normal</string>
     <string name="proximity_wizard_hands_down">Mantén las manos abajo.</string>
+    <string name="proximity_wizard_presence_refused_hint">El sensor no detecta con fiabilidad cuándo estás aquí, así que la presencia queda desactivada. Mantén las manos abajo.</string>
+    <string name="proximity_wizard_speech_wave_baseline_refused">El sensor no pudo detectar con fiabilidad cuándo estás donde sueles usar el panel, así que la detección de presencia quedará desactivada. Quédate donde estás y mantén las manos abajo. A continuación probaré un gesto con la mano.</string>
     <string name="proximity_wizard_review_wave_only">Presencia no disponible.\nGesto verificado.</string>
     <string name="proximity_wizard_review_neither">No se verificó la presencia ni el gesto. Se conservarán los ajustes anteriores.</string>
     <string name="proximity_wizard_saved_wave_only">Ajustes del gesto guardados.\nLa detección de presencia no está disponible.</string>

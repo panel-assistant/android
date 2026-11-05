@@ -244,8 +244,7 @@ internal class ProximityCalibrationEngine(
             }
             Stage.NEAR -> {
                 if (stageAge >= APPROACH_TIMEOUT_MS) {
-                    presenceStatus = CapabilityStatus.NOT_DETECTED
-                    transition(Stage.WAVE_BASELINE, now, "Your normal approach was not detected. Stay at your normal position while hand-wave support is tested.")
+                    refuseApproach(now)
                     return
                 }
                 if (stageAge < COUNTDOWN_MS) return
@@ -261,12 +260,14 @@ internal class ProximityCalibrationEngine(
                         return
                     }
                     // A separation too small to hold the drift margin is not a weaker calibration to
-                    // save; it is one this position never produced. Keep measuring until it does or
-                    // the approach times out into NOT_DETECTED.
+                    // save. Measured where the person stands, it is the answer for this position, so
+                    // the approach is refused now: measuring again only restarts the countdown for the
+                    // rest of the approach window, and stepping closer to pass would save a boundary
+                    // at a place they do not stand.
                     val proposed = Calibration(mode = mode(clear, near), clearRaw = clear, nearRaw = near)
                     val margined = driftMargined(proposed, driftMargin, driftDeclaredRange)
                     if (margined == null) {
-                        nearSamples.clear(); captureStarted = null
+                        refuseApproach(now)
                         return
                     }
                     candidate = margined
@@ -297,7 +298,10 @@ internal class ProximityCalibrationEngine(
                 if (stageAge < COUNTDOWN_MS) return
                 val presence = candidate?.takeIf { presenceStatus == CapabilityStatus.VALIDATED }
                 val atBaseline = when {
-                    presence == null -> abs(raw - checkNotNull(clearSamples.median())) <= max(clearSamples.spread() * 1.5f, separationFloor(raw, checkNotNull(clearSamples.median())))
+                    // Without presence the hand starts from the clear floor, or from where the person was
+                    // told to stay: a normal position measured above the floor, but not far enough to be
+                    // presence, is still a still body with its hands down.
+                    presence == null -> atSamples(raw, clearSamples) || atSamples(raw, nearSamples)
                     requestedWavePattern == WavePattern.DOUBLE -> presence.level(raw) <= presence.clearExit * 100f
                     else -> presence.level(raw) >= presence.nearEnter * 100f
                 }
@@ -373,6 +377,14 @@ internal class ProximityCalibrationEngine(
         if (captureStarted == null) captureStarted = now
         if (live || samples.size == 0) samples.add(raw)
         return now - checkNotNull(captureStarted) >= CAPTURE_HOLD_MS
+    }
+    private fun refuseApproach(now: Long) {
+        presenceStatus = CapabilityStatus.NOT_DETECTED
+        transition(Stage.WAVE_BASELINE, now, "Your normal approach was not detected. Stay at your normal position while hand-wave support is tested.")
+    }
+    private fun atSamples(raw: Float, samples: Samples): Boolean {
+        val median = samples.median() ?: return false
+        return abs(raw - median) <= max(samples.spread() * 1.5f, separationFloor(raw, median))
     }
     private fun separated(clear: Samples, near: Samples, span: Float): Boolean = span.isFinite() && span > separationFloor(clear.median()!!, near.median()!!) &&
         clear.spread() <= span * .5f && near.spread() <= span * .5f && clear.spread() + near.spread() <= span * .75f

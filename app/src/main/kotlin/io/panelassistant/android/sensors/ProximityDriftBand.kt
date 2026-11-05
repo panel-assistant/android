@@ -21,6 +21,17 @@ internal fun proximityDriftMargin(acquisition: ProximityAcquisition): Float = wh
 }
 
 /**
+ * Whether a calibration saved before the band, and sitting inside it, is kept as it was saved rather than set
+ * aside for a new setup. A setup is only worth asking for where it can save something better. On the raw16 route
+ * a person reads thousands of counts above the floor, so a new setup clears the band easily. Through an
+ * Android HAL a person where they normally stand reads tens of counts above it (an NSPanel 86's saved
+ * calibration separates by about 26, against a 100-count band), so the new setup would refuse them, and
+ * setting their calibration aside would leave the owner with none. New setups on every route still hold the band.
+ */
+internal fun proximityKeepsStoredInsideDriftBand(acquisition: ProximityAcquisition): Boolean =
+    acquisition == ProximityAcquisition.ANDROID_HAL
+
+/**
  * The range above which this route's readings are counts, the band's unit, rather than centimetres. The raw16
  * sysfs route is counts by construction. An Android HAL is centimetres up to its declared maximum range by
  * contract, so only a reading beyond that range proves counts; the measured NSPanel 86 HAL declares 9 and

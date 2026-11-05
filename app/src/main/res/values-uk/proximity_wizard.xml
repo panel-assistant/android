@@ -4,6 +4,8 @@
     <string name="proximity_wizard_wave_twice_hint">Два швидкі помахи, потім відійдіть.</string>
     <string name="proximity_wizard_normal_position">Поверніться у звичайне положення</string>
     <string name="proximity_wizard_hands_down">Тримайте руки опущеними.</string>
+    <string name="proximity_wizard_presence_refused_hint">Датчик не може надійно визначити, що ви тут стоїте, тому присутність залишається вимкненою. Тримайте руки опущеними.</string>
+    <string name="proximity_wizard_speech_wave_baseline_refused">Датчик не зміг надійно визначити, що ви стоїте там, де зазвичай користуєтеся панеллю, тому виявлення присутності залишиться вимкненим. Залишайтеся на місці й тримайте руки опущеними. Далі я натомість перевірю помах рукою.</string>
     <string name="proximity_wizard_review_wave_only">Присутність недоступна.\nПомах підтверджено.</string>
     <string name="proximity_wizard_review_neither">Ані присутність, ані помах не вдалося підтвердити. Ваші попередні налаштування буде збережено.</string>
     <string name="proximity_wizard_saved_wave_only">Налаштування помаху збережено.\nВиявлення присутності недоступне.</string>

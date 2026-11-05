@@ -4,6 +4,8 @@
     <string name="proximity_wizard_wave_twice_hint">Twee snelle zwaaien, ga dan weg.</string>
     <string name="proximity_wizard_normal_position">Keer terug naar je normale positie</string>
     <string name="proximity_wizard_hands_down">Houd je handen omlaag.</string>
+    <string name="proximity_wizard_presence_refused_hint">De sensor ziet niet betrouwbaar dat je hier staat, dus aanwezigheid blijft uit. Houd je handen omlaag.</string>
+    <string name="proximity_wizard_speech_wave_baseline_refused">De sensor kon niet betrouwbaar zien dat je staat waar je het paneel normaal gebruikt, dus aanwezigheidsdetectie blijft uit. Blijf staan waar je bent en houd je handen omlaag. Hierna test ik in plaats daarvan een handzwaai.</string>
     <string name="proximity_wizard_review_wave_only">Aanwezigheid niet beschikbaar.\nZwaai geverifieerd.</string>
     <string name="proximity_wizard_review_neither">Noch aanwezigheid, noch zwaai kon worden geverifieerd. Je vorige instellingen blijven behouden.</string>
     <string name="proximity_wizard_saved_wave_only">Zwaai-instellingen opgeslagen.\nAanwezigheidsdetectie is niet beschikbaar.</string>
