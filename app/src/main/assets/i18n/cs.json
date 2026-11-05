@@ -2328,11 +2328,6 @@
       "sourceHash": "72d0f08eee13ed1268875490b1f5cdc24e103edcb2a16d55862ace2c9223aa63",
       "state": "machine-cross-checked"
     },
-    "dashboard.banner.webview_old.engine_note": {
-      "text": "Ověřeno podle skutečné verze jádra (z WebView UA), nikoli pouze podle verze uvedené na balíčku — takže Cromite/LineageOS SystemWebView tuto chybu nevyvolají.",
-      "sourceHash": "03639d66ebce5ea8cce72dd876874ae458b40ddd0eccf06217a459eab4a5134a",
-      "state": "machine-cross-checked"
-    },
     "dashboard.banner.webview_old.explanation": {
       "text": "ovládací panel Home Assistant se může zobrazit prázdný nebo chybně.",
       "sourceHash": "ff191e5d689ffb361fc76cbffb902c16185f7355b227ddccb705d42aed4b54f1",

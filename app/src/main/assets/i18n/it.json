@@ -2348,11 +2348,6 @@
       "state": "machine-cross-checked",
       "text": "Ignora questa versione"
     },
-    "dashboard.banner.webview_old.engine_note": {
-      "sourceHash": "03639d66ebce5ea8cce72dd876874ae458b40ddd0eccf06217a459eab4a5134a",
-      "state": "machine-cross-checked",
-      "text": "Verificato rispetto alla versione reale del motore (dalla WebView UA), non solo alla versione indicata del pacchetto — quindi un Cromite/LineageOS SystemWebView non attiverà l’avviso."
-    },
     "dashboard.banner.webview_old.explanation": {
       "text": "la plancia di Home Assistant potrebbe apparire vuota o non funzionare.",
       "sourceHash": "ff191e5d689ffb361fc76cbffb902c16185f7355b227ddccb705d42aed4b54f1",

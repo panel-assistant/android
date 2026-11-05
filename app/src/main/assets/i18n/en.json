@@ -6355,27 +6355,6 @@
       "softMaxChars": 27,
       "hardMaxChars": 38
     },
-    "dashboard.banner.webview_old.engine_note": {
-      "text": "Checked against the real engine version (from the WebView UA), not just the stamped package version — so a Cromite/LineageOS SystemWebView won't trip this.",
-      "sourceHash": "03639d66ebce5ea8cce72dd876874ae458b40ddd0eccf06217a459eab4a5134a",
-      "surface": "dashboard",
-      "context": "Dashboard webview old banner text; preserve the remediation meaning, runtime placeholders and link-boundary grammar, and render as text, not HTML.",
-      "risk": "consequential",
-      "siblings": [
-        "dashboard.banner.webview_old.explanation",
-        "dashboard.banner.webview_old.target",
-        "dashboard.banner.webview_old.title",
-        "dashboard.banner.webview_old.update_action"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "LineageOS SystemWebView",
-        "WebView UA",
-        "Cromite"
-      ],
-      "softMaxChars": 217,
-      "hardMaxChars": 310
-    },
     "dashboard.banner.webview_old.explanation": {
       "text": "the Home Assistant dashboard may render blank or broken.",
       "sourceHash": "ff191e5d689ffb361fc76cbffb902c16185f7355b227ddccb705d42aed4b54f1",
@@ -6383,7 +6362,6 @@
       "context": "Dashboard webview old banner text; preserve the remediation meaning, runtime placeholders and link-boundary grammar, and render as text, not HTML.",
       "risk": "consequential",
       "siblings": [
-        "dashboard.banner.webview_old.engine_note",
         "dashboard.banner.webview_old.target",
         "dashboard.banner.webview_old.title",
         "dashboard.banner.webview_old.update_action"
@@ -6402,7 +6380,6 @@
       "context": "Dashboard webview old banner text; preserve the remediation meaning, runtime placeholders and link-boundary grammar, and render as text, not HTML.",
       "risk": "consequential",
       "siblings": [
-        "dashboard.banner.webview_old.engine_note",
         "dashboard.banner.webview_old.explanation",
         "dashboard.banner.webview_old.title",
         "dashboard.banner.webview_old.update_action"
@@ -6423,7 +6400,6 @@
       "context": "Dashboard webview old banner text; preserve the remediation meaning, runtime placeholders and link-boundary grammar, and render as text, not HTML.",
       "risk": "consequential",
       "siblings": [
-        "dashboard.banner.webview_old.engine_note",
         "dashboard.banner.webview_old.explanation",
         "dashboard.banner.webview_old.target",
         "dashboard.banner.webview_old.update_action"
@@ -6442,7 +6418,6 @@
       "context": "Dashboard webview old banner text; preserve the remediation meaning, runtime placeholders and link-boundary grammar, and render as text, not HTML.",
       "risk": "consequential",
       "siblings": [
-        "dashboard.banner.webview_old.engine_note",
         "dashboard.banner.webview_old.explanation",
         "dashboard.banner.webview_old.target",
         "dashboard.banner.webview_old.title"

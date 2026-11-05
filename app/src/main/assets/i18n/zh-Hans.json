@@ -2348,11 +2348,6 @@
       "state": "machine-cross-checked",
       "text": "忽略此版本"
     },
-    "dashboard.banner.webview_old.engine_note": {
-      "sourceHash": "03639d66ebce5ea8cce72dd876874ae458b40ddd0eccf06217a459eab4a5134a",
-      "state": "machine-cross-checked",
-      "text": "此项依据实际引擎版本（取自 WebView UA）进行检查，而非只看软件包标注的版本，因此 Cromite 或 LineageOS SystemWebView 不会误触发此警告。"
-    },
     "dashboard.banner.webview_old.explanation": {
       "sourceHash": "ff191e5d689ffb361fc76cbffb902c16185f7355b227ddccb705d42aed4b54f1",
       "state": "machine-cross-checked",
