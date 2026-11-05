@@ -78,7 +78,9 @@
             android:name="io.panelassistant.android.PANEL_ASSISTANT_PROTOCOL"
             android:value="${panelAssistantProtocol}" />
         <!-- The same two values under their pre-0.9.11 names, read by the installer of the build this
-             one replaces (0.9.10 and earlier look only for these). Remove in 1.0. -->
+             one replaces (0.9.10 and earlier look only for these). Frozen on purpose: do not remove
+             them in 1.0 or later, because an older installer cannot admit this build without them.
+             DatabaseCompatibilityApkContractTest pins both names to the current values. -->
         <meta-data
             android:name="io.github.maxlyth.hapaneld.DATABASE_COMPATIBILITY"
             android:value="${databaseCompatibility}" />
