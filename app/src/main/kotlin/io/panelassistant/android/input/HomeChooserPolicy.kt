@@ -22,8 +22,8 @@ internal data class ChooserWindow(
  *
  * A chooser it showed can be read before its list has loaded, with Always disabled and no title (a Meta
  * Portal, 2026-10-28: read 1.1 s after HOME was pressed, dismissed, and HOME left on the chooser after
- * the update). So it is looked at again every [LOOK_MS], at most [LOOKS] times per show, and dismissed
- * only if it is still not answerable then.
+ * the update). So it is looked at again every [LOOK_MS], at most [LOOKS] times per connection, and
+ * dismissed only if it is still not answerable then.
  */
 internal class HomeChooserAnswer(
     private val appName: String,
@@ -67,7 +67,6 @@ internal class HomeChooserAnswer(
             HomeChooserPolicy.Step.NONE -> Unit
             HomeChooserPolicy.Step.SHOW_CHOOSER -> {
                 shown = true
-                looks = 0
                 acted = showChooser()
                 log("HOME is unowned; showing the chooser=$acted")
             }
