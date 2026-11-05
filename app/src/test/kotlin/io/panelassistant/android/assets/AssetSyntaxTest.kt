@@ -300,12 +300,12 @@ class AssetSyntaxTest {
             const fs=require('fs'),vm=require('vm');
             const mode=process.argv[2];let submitHandler;
             function element(tag){return {tagName:(tag||'').toUpperCase(),style:{},dataset:{},textContent:'',disabled:false,children:[],
-              appendChild(v){this.children.push(v);return v},querySelector(){return null},setAttribute(){},removeAttribute(){},addEventListener(){}}}
+              appendChild(v){this.children.push(v);return v},querySelector(){return null},setAttribute(k,v){this[k]=v},removeAttribute(k){delete this[k]},addEventListener(){}}}
             const note=element('p'),submit=element('button');
-            const form=element('form');form.action='http://panel/api/v1/'+(mode==='failure'?'display/density':'tame');form.querySelector=sel=>sel==='.protected-form-result'?note:null;form.appendChild=v=>v;
+            const form=element('form');form.action=submit;form.getAttribute=k=>k==='action'?'http://panel/api/v1/'+(mode==='failure'?'display/density':'tame'):null;form.querySelector=sel=>sel==='.protected-form-result'?note:null;form.appendChild=v=>v;
             global.window=global;global.location={href:'http://panel/install',search:''};
             global.document={title:'Panel',baseURI:'http://panel/',body:element('body'),getElementById(){return null},querySelector(){return null},querySelectorAll(){return []},
-              createElement:tag=>element(tag),addEventListener(k,v){if(k==='submit')submitHandler=v}};
+              createElement:tag=>element(tag),createTextNode:text=>({textContent:text}),addEventListener(k,v){if(k==='submit')submitHandler=v}};
             global.FormData=class{*[Symbol.iterator](){yield ['density','240']}forEach(fn){for(const [k,v] of this)fn(v,k)}};
             global.setTimeout=fn=>{setImmediate(fn);return 1};
             global.fetch=(url,opts)=>{
@@ -317,7 +317,7 @@ class AssetSyntaxTest {
             submitHandler({target:form,submitter:submit,preventDefault(){}});
             setImmediate(()=>setImmediate(()=>{
               if(mode==='failure'){
-                if(note.textContent!=='Display command was rejected.'||location.href!=='http://panel/install'||submit.disabled)process.exit(2);
+                if(note.children[0]?.textContent!=='Could not apply this change.'||note.children[2]?.textContent!=='Display command was rejected.'||note.children[2]?.lang!=='en'||location.href!=='http://panel/install'||submit.disabled)process.exit(2);
               }else if(location.href!=='install#cfg-tame'||!note.textContent.includes('Taming started.'))process.exit(3);
             }));
         """.trimIndent()

@@ -871,7 +871,7 @@
     // Compare resolved URLs, not pathnames: behind Panel Assistant's proxy the base is not the origin root.
     var path, tame = 'tame', density = 'display.density';
     try {
-      path = new URL(form.action, document.baseURI).pathname;
+      path = new URL(form.getAttribute('action'), document.baseURI).pathname;
       path = /\/tame$/.test(path) ? tame : /\/display\/density$/.test(path) ? density : null;
     } catch (_) { return; }
     if (!path) return;
@@ -898,7 +898,8 @@
       var target = installCardHref(path === tame ? '#cfg-tame' : '#cfg-display');
       setTimeout(function () { location.href = target; }, path === tame ? 1800 : 900);
     }).catch(function (error) {
-      note.textContent = error && error.message ? error.message : t('install.backup.dynamic.form_failed', 'Could not apply this change.');
+      if (error && error.approvalRequired) note.textContent = error.message;
+      else renderFailure(note, 'install.backup.dynamic.form_failed', 'Could not apply this change.', error && error.message ? error.message : error);
       if (submitter && submitter.id === 'tame-package-submit' && typeof updateTamePackageSubmit === 'function') {
         updateTamePackageSubmit();
       } else if (submitter) submitter.disabled = false;

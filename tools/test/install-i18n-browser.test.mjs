@@ -452,23 +452,88 @@ browserTest('Install APK progress shows panel confirmation instructions and keep
   }
 });
 
-browserTest('Install protected-form success keeps the supported explicit language in its card redirect', async (t) => {
-  const route = (_request, response, url) => {
-    if (url.pathname !== '/api/v1/display/density') return false;
-    response.writeHead(200, { 'content-type': 'application/json' });
-    response.end(JSON.stringify({ ok: true, message: 'Applied.' })); return true;
-  };
-  for (const locale of ['zh-Hans', 'cs', 'pt-BR']) {
-    const { page } = await rig(t, {
-      route,
-      query: `?lang=${locale}`,
-      html: '<form action="/api/v1/display/density"><button id="density-submit" type="submit">Apply</button></form>',
-    });
-    await page.click('#density-submit');
-    await page.waitForURL((url) => url.pathname === '/install' && url.searchParams.get('lang') === locale && url.hash === '#cfg-display', { timeout: 3_000 });
-    assert.equal(new URL(page.url()).searchParams.get('lang'), locale);
-  }
-});
+for (const engine of ['Chromium', 'WebKit']) for (const [endpoint, fragment, fieldsHtml] of [
+  ['/api/v1/display/density', '#cfg-display', '<input name="density" value="240"><button name="action" value="reset">Reset</button>'],
+  ['/api/v1/tame', '#cfg-tame', '<input name="pkg" value="io.example.vendor"><input type="hidden" name="action" value="tame"><button>Tame</button>'],
+]) {
+  browserTest(`Install protected-form ${endpoint} success keeps the supported explicit language in ${engine}`, async (t) => {
+    const route = (_request, response, url) => {
+      if (url.pathname !== endpoint) return false;
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ ok: true, message: 'Applied.' })); return true;
+    };
+    for (const locale of ['zh-Hans', 'cs', 'pt-BR']) {
+      await t.test(locale, async (t) => {
+        const { page } = await rig(t, {
+          engine, route, query: `?lang=${locale}`,
+          html: `<form action="${endpoint}" method="post">${fieldsHtml}</form>`,
+        });
+        await page.locator('form button').click();
+        await page.waitForURL((url) => url.pathname === '/install' && url.searchParams.get('lang') === locale && url.hash === fragment, { timeout: 3_000 });
+        assert.equal(new URL(page.url()).searchParams.get('lang'), locale);
+      });
+    }
+  });
+}
+
+for (const engine of ['Chromium', 'WebKit']) for (const [endpoint, fields] of [
+  ['/api/v1/display/density', { density: '240', font: '1', action: 'reset' }],
+  ['/api/v1/tame', { pkg: 'io.example.vendor', action: 'tame' }],
+]) {
+  browserTest(`Protected forms ${endpoint} localize failures and preserve approval guidance in ${engine}`, async (t) => {
+    for (const locale of ['de', 'es', 'fr', 'it', 'nl', 'pl', 'uk', 'cs', 'pt-BR', 'zh-Hans']) {
+      await t.test(locale, async (t) => {
+        const projection = await realCatalogueProjection(locale, ['install.']);
+        const { page } = await rig(t, {
+          engine, projection, query: `?lang=${locale}`,
+          html: '<form action="/api/v1/display/density" method="post"><input name="density" value="240"><input name="font" value="1"><button name="action" value="reset">Reset</button></form>' +
+            '<form action="/api/v1/tame" method="post"><input name="pkg" value="io.example.vendor"><input type="hidden" name="action" value="tame"><button>Tame</button></form>',
+        });
+        await page.evaluate(() => document.body.setAttribute('data-hardened', ''));
+        const form = page.locator(`form[action="${endpoint}"]`), button = form.locator('button');
+        const note = form.locator('.protected-form-result');
+        const diagnostic = '<img src=x onerror=window.__formOwned=1> exact failure';
+        for (const [kind, status, body, expected] of [
+          ['network', 0, null, engine === 'WebKit' ? 'Load failed' : 'Failed to fetch'],
+          ['rejected', 500, { message: diagnostic }, diagnostic],
+          ['challenge', 202, { error: 'approval-required' }, projection.strings['install.progress.approval_retry']],
+        ]) {
+          const requests = [];
+          let answer;
+          await page.route(`**${endpoint}`, async (route) => {
+            requests.push({ method: route.request().method(), fields: Object.fromEntries(new URLSearchParams(route.request().postData())) });
+            await new Promise((resolve) => { answer = resolve; });
+            if (kind === 'network') await route.abort('failed');
+            else await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+          });
+          await button.click();
+          assert.equal(await button.isDisabled(), true, `${locale}/${kind}: submission is held`);
+          assert.equal(await note.textContent(), projection.strings['install.approval.waiting']);
+          assert.ok(answer, 'the actual HTTP request reached the route');
+          answer();
+          await button.waitFor({ state: 'visible' });
+          await page.waitForFunction((action) => !document.querySelector(`form[action="${action}"] button`).disabled, endpoint);
+          if (kind === 'network' || kind === 'rejected') {
+            assert.equal(await note.locator('[lang="en"]').count(), 1, 'a failure keeps its exact diagnostic separate from localized framing');
+            assert.equal(await note.locator('span').first().textContent(), projection.strings['install.backup.dynamic.form_failed']);
+            assert.equal(await note.locator('[lang="en"]').textContent(), expected);
+            assert.equal(await note.getAttribute('lang'), null);
+            assert.equal(await note.locator('img').count(), 0);
+            assert.equal(await page.evaluate(() => window.__formOwned), undefined);
+          } else {
+            assert.equal(await note.textContent(), expected, `${locale}/${kind}: keep localized approval guidance`);
+            assert.equal(await note.locator('[lang="en"]').count(), 0);
+          }
+          // Check for an immediate retry or navigation after the failed submission.
+          await page.waitForTimeout(120);
+          assert.deepEqual(requests, [{ method: 'POST', fields }]);
+          assert.equal(new URL(page.url()).pathname, '/');
+          await page.unroute(`**${endpoint}`);
+        }
+      });
+    }
+  });
+}
 
 browserTest('Install Backup, Export and Import failures localize prefixes and isolate exact diagnostics', async (t) => {
   const route = (_request, response, url) => {
