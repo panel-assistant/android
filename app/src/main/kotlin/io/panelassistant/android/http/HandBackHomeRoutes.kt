@@ -34,6 +34,7 @@ internal data class HandBackHomeRouteDependencies(
     val handBack: (Set<String>) -> HandBackHomeController.Result,
     /** Record that something outside the app disabled `pkg`, so hand-back can reverse it later. */
     val recordTamed: (pkg: String) -> HandBackHomePolicy.RecordOutcome,
+    val restoreVendorBrightness: () -> String = { "untouched" },
     val authorize: suspend (OpCall, SensitiveOperation, String, String) -> Boolean =
         { _, _, _, _ -> true },
 )
@@ -68,6 +69,15 @@ internal fun Route.handBackHomeRoutes(dependencies: HandBackHomeRouteDependencie
                     HttpStatusCode.Conflict,
                 )
                 is HandBackHomeController.Result.Done -> {
+                    val vendorBrightness = withContext(Dispatchers.IO) { dependencies.restoreVendorBrightness() }
+                    if (vendorBrightness == "unrestored") {
+                        call.respondText(
+                            """{"ok":false,"error":"vendor-brightness-unrestored"}""",
+                            ContentType.Application.Json,
+                            HttpStatusCode.Conflict,
+                        )
+                        return@post
+                    }
                     val outcome = result.outcome
                     call.respondText(
                         buildString {
@@ -80,6 +90,7 @@ internal fun Route.handBackHomeRoutes(dependencies: HandBackHomeRouteDependencie
                             outcome.homeHandedTo?.let {
                                 append(""","home_handed_to":""").append(Json.str(it))
                             }
+                            append(",\"vendor_brightness\":").append(Json.str(vendorBrightness))
                             append("}")
                         },
                         ContentType.Application.Json,
@@ -162,6 +173,23 @@ internal fun handBackHomeDependencies(
                 setHome = setHome,
                 ownPackage = ownPackage(),
             ).handBack(profileKnown)
+        },
+        restoreVendorBrightness = {
+            synchronized(io.panelassistant.android.platform.LocalRpcVendorScreen.CUSTODY_LOCK) {
+                config.profile?.vendorService?.let {
+                    io.panelassistant.android.platform.LocalRpcVendorScreen(it.port, config.vendorBrightnessCustody())
+                        .restoreBrightness()
+                } ?: config.vendorBrightnessCustody().let { custody ->
+                    val state = custody.read()
+                    when (state) {
+                        null, "pending", "restored:untouched" ->
+                            if (custody.write("restored:untouched")) "untouched" else "unrestored"
+                        "unknown", "restoring:unknown" ->
+                            if (custody.write("restoring:unknown")) "unknown" else "unrestored"
+                        else -> "unrestored"
+                    }
+                }
+            }
         },
         recordTamed = { pkg ->
             val tame = tameController()

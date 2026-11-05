@@ -1,5 +1,6 @@
 package io.panelassistant.android.platform
 
+import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -38,24 +39,84 @@ object NoVendorScreen : VendorScreen {
  * it writes the backlight node the app cannot; it writes it behind Android's back, so `SCREEN_BRIGHTNESS`
  * is unchanged and only the node shows the result. Blocking; never call it on the main thread.
  */
-class LocalRpcVendorScreen(private val port: Int) : VendorScreen {
+interface VendorBrightnessCustody {
+    fun read(): String?
+    fun write(value: String): Boolean
+    val freshInstall: Boolean
+}
+
+class LocalRpcVendorScreen(
+    private val port: Int,
+    private val custody: VendorBrightnessCustody,
+) : VendorScreen {
     override fun set(on: Boolean): Boolean = call("Ui.Screen.Set?on=$on")
 
-    // Measured on the X2i: with `brightness.auto` off, Stargate's level follows SCREEN_BRIGHTNESS.
-    override fun holdBrightness(): Boolean =
-        call("Ui.SetConfig?config=" + URLEncoder.encode("""{"brightness":{"auto":false}}""", "UTF-8"))
+    // Serialize both instances (service and removal), including the RPC and durable fence.
+    override fun holdBrightness(): Boolean = synchronized(CUSTODY_LOCK) {
+        var state = custody.read()
+        if (state == null) {
+            state = if (custody.freshInstall) "pending" else "unknown"
+            if (!custody.write(state)) return@synchronized false
+        }
+        if (state == "pending") {
+            val original = autoBrightness() ?: return@synchronized false
+            state = "active:$original"
+            if (!custody.write(state)) return@synchronized false
+        }
+        if (state != "unknown" && state !in listOf("active:true", "active:false")) {
+            return@synchronized false
+        }
+        setAutoBrightness(false)
+    }
 
-    private fun call(method: String): Boolean = runCatching {
+    /** Fence runtime writes before restoring. A missing historical baseline is never guessed. */
+    fun restoreBrightness(): String = synchronized(CUSTODY_LOCK) {
+        var state = custody.read()
+        if (state == null || state == "pending") {
+            // No takeover with this version occurred. Existing versions may have changed it already.
+            state = if (state == "pending" || custody.freshInstall) "untouched" else "unknown"
+        }
+        if (state == "untouched" || state == "unknown" || state == "restoring:unknown" || state == "restored:untouched") {
+            val result = if (state == "untouched" || state == "restored:untouched") "untouched" else "unknown"
+            if (!custody.write(if (result == "untouched") "restored:untouched" else "restoring:unknown")) {
+                return@synchronized "unrestored"
+            }
+            return@synchronized result
+        }
+        val original = when (state) {
+            "active:true", "restoring:true", "restored:true" -> true
+            "active:false", "restoring:false", "restored:false" -> false
+            else -> return@synchronized "unrestored"
+        }
+        if (!custody.write("restoring:$original")) return@synchronized "unrestored"
+        if (setAutoBrightness(original) && autoBrightness() == original && custody.write("restored:$original")) {
+            "restored"
+        } else "unrestored"
+    }
+
+    private fun autoBrightness(): Boolean? = runCatching {
+        JSONObject(request("Ui.GetConfig") ?: return null)
+            .getJSONObject("brightness").get("auto") as? Boolean
+    }.getOrNull()
+
+    private fun setAutoBrightness(auto: Boolean): Boolean =
+        call("Ui.SetConfig?config=" + URLEncoder.encode("""{"brightness":{"auto":$auto}}""", "UTF-8"))
+
+    private fun call(method: String): Boolean = request(method) != null
+
+    private fun request(method: String): String? = runCatching {
         val connection = URL("http://127.0.0.1:$port/rpc/$method").openConnection() as HttpURLConnection
         connection.connectTimeout = TIMEOUT_MS
         connection.readTimeout = TIMEOUT_MS
         try {
-            // A Gen2 error is a 200-free reply or a body carrying `code`; a success carries neither.
-            connection.responseCode == 200 && !connection.inputStream.bufferedReader().readText().contains("\"code\"")
+            if (connection.responseCode != 200) null else {
+                connection.inputStream.bufferedReader().use { it.readText() }
+                    .takeUnless { JSONObject(it).has("code") }
+            }
         } finally {
             connection.disconnect()
         }
-    }.getOrDefault(false)
+    }.getOrNull()
 
     override fun level(): Int? = runCatching {
         File(BACKLIGHT_CLASS).listFiles()?.sortedBy { it.name }?.firstNotNullOfOrNull { dir ->
@@ -63,7 +124,8 @@ class LocalRpcVendorScreen(private val port: Int) : VendorScreen {
         }
     }.getOrNull()
 
-    private companion object {
+    internal companion object {
+        val CUSTODY_LOCK = Any()
         const val BACKLIGHT_CLASS = "/sys/class/backlight"
         const val TIMEOUT_MS = 2_000
     }

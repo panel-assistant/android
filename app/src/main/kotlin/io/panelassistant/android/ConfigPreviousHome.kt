@@ -36,15 +36,27 @@ internal fun Config.preservePreviousHome(
     home: ActivityRef?,
     candidates: List<ActivityRef>,
     armTakeover: Boolean = false,
-): Boolean = synchronizedTransaction {
-    val original = previousHomeComponent
-    if (original != null && (!armTakeover || homeTakeoverPending)) return@synchronizedTransaction true
-    if (home == null) return@synchronizedTransaction false
-    val realHome = !AppIdentity.isPanelApp(home.pkg) && !TamePackagePolicy.isCritical(home.pkg) && home.pkg != "android"
-    if (realHome && (home !in candidates || !AndroidInput.isComponent(home.component))) return@synchronizedTransaction false
-    if (original == null && !realHome && !armTakeover) return@synchronizedTransaction true
-    durableCommit {
-        if (original == null && realHome) putString("device_local_previous_home_component", home.component)
-        if (armTakeover) putBoolean("device_local_home_takeover_pending", true)
+): Boolean = synchronized(io.panelassistant.android.platform.LocalRpcVendorScreen.CUSTODY_LOCK) {
+    synchronizedTransaction {
+        val original = previousHomeComponent
+        if (original != null && (!armTakeover || homeTakeoverPending)) return@synchronizedTransaction true
+        if (home == null) return@synchronizedTransaction false
+        val realHome = !AppIdentity.isPanelApp(home.pkg) && !TamePackagePolicy.isCritical(home.pkg) && home.pkg != "android"
+        if (realHome && (home !in candidates || !AndroidInput.isComponent(home.component))) return@synchronizedTransaction false
+        if (original == null && !realHome && !armTakeover) return@synchronizedTransaction true
+        durableCommit {
+            if (original == null && realHome) putString("device_local_previous_home_component", home.component)
+            if (armTakeover) {
+                putBoolean("device_local_home_takeover_pending", true)
+                // An explicit new setup may acquire brightness again after a completed handback.
+                // A failed restore keeps its original record and fence for the next removal attempt.
+                val brightness = prefs.getString("device_local_vendor_brightness_custody", null)
+                if (brightness?.startsWith("restored:") == true) {
+                    putString("device_local_vendor_brightness_custody", "pending")
+                } else if (brightness == "restoring:unknown") {
+                    putString("device_local_vendor_brightness_custody", "unknown")
+                }
+            }
+        }
     }
 }
