@@ -490,7 +490,7 @@
           var path = String(dashboard && dashboard.path || "").trim();
           if (!path || dashboardPaths[path]) return;
           dashboardPaths[path] = true;
-          var title = String(dashboard.title || "").trim() || path;
+          var title = window.HaDashboardTitles.panelTitle(dashboard) || String(dashboard.title || "").trim() || path;
           var option = cfg.el("option", { value: path, text: title + " · " + path });
           if (path === currentDashboard) option.selected = true;
           host.appendChild(option);

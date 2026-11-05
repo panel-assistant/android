@@ -582,6 +582,14 @@ class EntityLearningProtocolTest {
         )
     }
 
+    @Test fun untitledDefaultDashboardIsCalledOverview() {
+        val dashboards = JSONArray("""[{"url_path":"","title":""},{"url_path":"alpha","title":""}]""")
+        assertEquals(
+            listOf("Overview", "alpha"),
+            EntityLearningProtocol.homeDashboardChoices(dashboards, isAdmin = true).map { it.title },
+        )
+    }
+
     @Test fun homeDashboardChoicesCarrySanitizedIconsForThePicker() {
         // The picker renders each dashboard's own mdi icon like HA does; a malformed icon value must reduce
         // to blank (client falls back to mdi:view-dashboard) rather than reach innerHTML.
