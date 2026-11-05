@@ -192,7 +192,6 @@ internal fun localizedProximitySummary(summary: String, strings: AppStrings): St
         strings.get("dashboard.proximity.waiting_first_reading")
     "Checking the previous learned range against live readings" ->
         strings.get("dashboard.proximity.checking_previous_range")
-    "Learning the clear-room baseline" -> strings.get("dashboard.proximity.learning_baseline")
     "Baseline learned; waiting for complete near-and-clear movements" ->
         strings.get("dashboard.proximity.waiting_movements")
     "Adapting safely to a changed proximity signal" -> strings.get("dashboard.proximity.adapting")

@@ -1368,11 +1368,6 @@
       "sourceHash": "ad661665ed155a3a035fc1fe7b20240364695b1fbf2ca09fad9f3717050b6813",
       "state": "machine-cross-checked"
     },
-    "configure.proximity.action.cancel_test": {
-      "text": "Annulla test",
-      "sourceHash": "f730c75d143a282732e8dc9877674289fce72909ba390d952e010ec8f464c626",
-      "state": "machine-cross-checked"
-    },
     "configure.proximity.action.forget": {
       "text": "Cancella la prossimità appresa",
       "sourceHash": "927b237d21171bc190bb81d522ccb3d7fa3d7cd7ca4853cc7fed49379993b308",
@@ -1381,11 +1376,6 @@
     "configure.proximity.action.teach": {
       "text": "Insegna un gesto",
       "sourceHash": "c3ce1f1ebb479291e2a6c9b790d389ae27fa94edee81cdfa95d16f37310d1eae",
-      "state": "machine-cross-checked"
-    },
-    "configure.proximity.action.test": {
-      "text": "Prova un gesto",
-      "sourceHash": "ee35b5ba6bbec49d91a9e6ea8738f3bf366490c750ef14712585693584857581",
       "state": "machine-cross-checked"
     },
     "configure.proximity.detail.local": {
@@ -1493,11 +1483,6 @@
       "sourceHash": "d8a9caf85e0e234df680e0b9ea81a471baadef083322a0d1dd2367d0c48b22d2",
       "state": "machine-cross-checked"
     },
-    "configure.proximity.message.teach_instruction": {
-      "text": "Lascia brevemente libero lo spazio, esegui un gesto deliberato e allontanati di nuovo.",
-      "sourceHash": "4ff0bd8149854f23a250825b02589c3e2b8dc2e22e573e020e925a01d85b69ec",
-      "state": "machine-cross-checked"
-    },
     "configure.proximity.message.teaching_cancelled": {
       "text": "Apprendimento annullato.",
       "sourceHash": "ae7ec0fba98e202fa471d4f9344d0d75ee940031bbd155719cc45ac775025a7e",
@@ -1523,11 +1508,6 @@
       "sourceHash": "5693506fc01c3d423c82245de21ec2bd42dff5f3e85309ae2be4dd29d8f754c6",
       "state": "machine-cross-checked"
     },
-    "configure.proximity.message.test_no_wave": {
-      "text": "Durante il test non è stato rilevato alcun gesto completo.",
-      "sourceHash": "571b5b2ffb9ef0caacb18f9d8e6030bdb31169090c9b9500f965df8d44d1c288",
-      "state": "machine-cross-checked"
-    },
     "configure.proximity.message.touch_until_ready": {
       "text": "Non serve alcuna configurazione. Tocca lo schermo per riattivarlo finché l’apprendimento non è pronto.",
       "sourceHash": "4f35417beb53edd5c6cf243e99715270cd1b458e0f0c5fbd8c92db6377409d07",
@@ -1541,16 +1521,6 @@
     "configure.proximity.message.waiting_trustworthy": {
       "text": "In attesa di una lettura affidabile dalla sorgente di prossimità del pannello.",
       "sourceHash": "0840e1126e15a510d0b8b587ef7ee68d998919adab5d1f7c9caf962a5fdee649",
-      "state": "machine-cross-checked"
-    },
-    "configure.proximity.message.wave_accepted": {
-      "text": "Gesto accettato ({seen}/{required}). Allontanati, attendi due secondi e ripeti il gesto.",
-      "sourceHash": "013f7396cc1d09581949a6c69cd3195b348af4a5e33a04710d1a284f017fa076",
-      "state": "machine-cross-checked"
-    },
-    "configure.proximity.message.wave_detected": {
-      "text": "Gesto rilevato correttamente.",
-      "sourceHash": "8a4c9034c9fb8da8161a0c8a2e8d9550f388cf8eca8e699b270c3fab983deba1",
       "state": "machine-cross-checked"
     },
     "configure.proximity.mode.binary": {
@@ -1606,11 +1576,6 @@
     "configure.proximity.phase.rebasing": {
       "text": "Adattamento a un cambiamento della stanza o del sensore",
       "sourceHash": "34b2195dd8edc9d5ead3aea7232f21d2ee782d6beca635cf4c6987bd0534ce72",
-      "state": "machine-cross-checked"
-    },
-    "configure.proximity.phase.validating": {
-      "text": "Verifica del modello appreso durante l’uso normale",
-      "sourceHash": "211f3a7a2446382fc6db365e7283e10bb861d176c9805aa2787eedb24ee4d378",
       "state": "machine-cross-checked"
     },
     "configure.proximity.phase.waiting_for_reading": {
@@ -3742,11 +3707,6 @@
       "text": "Confronto dell’intervallo appreso in precedenza con le letture in tempo reale",
       "sourceHash": "8d149efcb95a9578c5e158fd8a4d47127baa8205ce8152bc0e3e4c44d0aad38f",
       "state": "machine-cross-checked"
-    },
-    "dashboard.proximity.learning_baseline": {
-      "sourceHash": "594eb724417419650ee78b54e4ec36f2f63982f7d3ed747dd4779caa2821584b",
-      "state": "machine-cross-checked",
-      "text": "Apprendimento del riferimento a stanza libera"
     },
     "dashboard.proximity.learning_gestures": {
       "sourceHash": "bcfb4fefb4dc05108ad8035b32a4497a4dcfe27d324c457a8095d64a40494080",
