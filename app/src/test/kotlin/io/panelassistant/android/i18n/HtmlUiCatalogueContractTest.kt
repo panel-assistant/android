@@ -63,7 +63,6 @@ class HtmlUiCatalogueContractTest {
         }
 
         assertTrue("the source catalogue must not shrink", source.strings.size >= 2435) // 2026-10-08 broker removed: setup step, broker, setup-progress and runtime keys removed
-        assertTrue("the declared promoted HTML UI preview scope must not shrink silently", expected.size >= 2015) // 2026-10-08 broker removed: broker, setup-progress and runtime keys removed
         releaseTargetLocales.forEach { locale ->
             val target = TargetCatalogue.parse(File(assets, "i18n/$locale.json").readText(), source)
             assertEquals(

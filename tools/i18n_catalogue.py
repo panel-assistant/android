@@ -324,7 +324,6 @@ TARGET_LITERAL_EXCEPTIONS = {
     ("uk", "install.presentation.backup_companion_too_large"): ("Companion",),
     ("uk", "install.companion.urls_repaired.other"): ("Companion",),
     ("uk", "install.companion.urls_repaired.one"): ("Companion",),
-    ("uk", "install.companion.error.marker_failed"): ("Companion",),
     ("uk", "install.companion.error.helper_unavailable"): ("Companion",),
     ("uk", "install.companion.error.helper_busy"): ("Companion",),
     ("uk", "install.backup.restore.description.with_companion"): ("Companion",),

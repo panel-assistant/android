@@ -1383,11 +1383,6 @@
       "sourceHash": "ad661665ed155a3a035fc1fe7b20240364695b1fbf2ca09fad9f3717050b6813",
       "state": "machine-cross-checked"
     },
-    "configure.proximity.action.cancel_test": {
-      "text": "Cancelar teste",
-      "sourceHash": "f730c75d143a282732e8dc9877674289fce72909ba390d952e010ec8f464c626",
-      "state": "machine-cross-checked"
-    },
     "configure.proximity.action.forget": {
       "text": "Esquecer proximidade aprendida",
       "sourceHash": "927b237d21171bc190bb81d522ccb3d7fa3d7cd7ca4853cc7fed49379993b308",
@@ -1396,16 +1391,6 @@
     "configure.proximity.action.teach": {
       "text": "Ensinar um aceno",
       "sourceHash": "c3ce1f1ebb479291e2a6c9b790d389ae27fa94edee81cdfa95d16f37310d1eae",
-      "state": "machine-cross-checked"
-    },
-    "configure.proximity.action.test": {
-      "text": "Testar um aceno",
-      "sourceHash": "ee35b5ba6bbec49d91a9e6ea8738f3bf366490c750ef14712585693584857581",
-      "state": "machine-cross-checked"
-    },
-    "configure.proximity.confirm.forget": {
-      "text": "Afaste-se do painel. Deseja então excluir o histórico de proximidade aprendido deste sensor? O despertar por toque continua disponível durante o novo aprendizado.",
-      "sourceHash": "e4ed73da8434174e02d6aa4413c24c088aad8fc6b39f214146bc5f74813288e5",
       "state": "machine-cross-checked"
     },
     "configure.proximity.detail.local": {
@@ -1483,26 +1468,6 @@
       "sourceHash": "5d60de1f3671ac47cb6c50a451f4fce201f137e1bdf481b4a6b0e7adfa43445b",
       "state": "machine-cross-checked"
     },
-    "configure.proximity.message.clear_failed": {
-      "text": "Não foi possível limpar o histórico de proximidade; o modelo existente não foi alterado.",
-      "sourceHash": "2473034f5750212d7d622823322d1ce10a6e8451550f6e39d49a990f15a34b0b",
-      "state": "machine-cross-checked"
-    },
-    "configure.proximity.message.clear_safely_failed": {
-      "text": "Não foi possível limpar o histórico de proximidade com segurança; o modelo existente não foi alterado.",
-      "sourceHash": "51c2e6b636842da7c9ca7763425f174d767bd02d82cdb7ae74542abd16c6612f",
-      "state": "machine-cross-checked"
-    },
-    "configure.proximity.message.cleared": {
-      "text": "Histórico de proximidade aprendido apagado. O aprendizado foi reiniciado.",
-      "sourceHash": "ae0015059a409e4fc04f8f92d73307645ef268433c4a495c24e720b7732b37dd",
-      "state": "machine-cross-checked"
-    },
-    "configure.proximity.message.learning_clear_baseline": {
-      "text": "Nenhuma configuração é necessária. Mantenha a área livre por um breve período para que o painel aprenda sua referência.",
-      "sourceHash": "f14cf2497d96832b03c9b3442247990bf8e72648d8802d9c50cdb4d375a08455",
-      "state": "machine-cross-checked"
-    },
     "configure.proximity.message.movement_not_armed": {
       "text": "Movimento observado, mas não foi um aceno intencional no estado armado. Afaste-se por dois segundos e tente novamente.",
       "sourceHash": "7a9e061dc272218bd2b9d8ab7c199fa3fcdb5e03aafece54180f0702d99b0e1d",
@@ -1523,11 +1488,6 @@
       "sourceHash": "94a80a00c1a8148b468b8ff46ceb445bc941b0ce3e8ff77b862edd9740064e12",
       "state": "machine-cross-checked"
     },
-    "configure.proximity.message.safety_reset_failed": {
-      "text": "Os gestos de despertar estão desabilitados porque não foi possível salvar sua redefinição de segurança.",
-      "sourceHash": "55bb82eb35b87d2b225546553ab840b4f2334c5dd08eabf69f717560cf3e5ead",
-      "state": "machine-cross-checked"
-    },
     "configure.proximity.message.signal_changed_paused": {
       "text": "O sinal mudou. O envio de informações ao Home Assistant e o despertar por aceno estão pausados enquanto uma nova faixa segura é aprendida.",
       "sourceHash": "640ef548d9152bca5c18d4c3321aef87170832e4aa156270fa4dccca4b7db38d",
@@ -1536,11 +1496,6 @@
     "configure.proximity.message.signal_changed_restart": {
       "text": "O sinal de proximidade mudou. Afaste-se por um breve período e recomece os acenos intencionais.",
       "sourceHash": "d8a9caf85e0e234df680e0b9ea81a471baadef083322a0d1dd2367d0c48b22d2",
-      "state": "machine-cross-checked"
-    },
-    "configure.proximity.message.teach_instruction": {
-      "text": "Deixe a área livre por um breve período, faça um aceno intencional e afaste-se novamente.",
-      "sourceHash": "4ff0bd8149854f23a250825b02589c3e2b8dc2e22e573e020e925a01d85b69ec",
       "state": "machine-cross-checked"
     },
     "configure.proximity.message.teaching_cancelled": {
@@ -1568,11 +1523,6 @@
       "sourceHash": "5693506fc01c3d423c82245de21ec2bd42dff5f3e85309ae2be4dd29d8f754c6",
       "state": "machine-cross-checked"
     },
-    "configure.proximity.message.test_no_wave": {
-      "text": "Nenhum aceno completo foi detectado durante o teste.",
-      "sourceHash": "571b5b2ffb9ef0caacb18f9d8e6030bdb31169090c9b9500f965df8d44d1c288",
-      "state": "machine-cross-checked"
-    },
     "configure.proximity.message.touch_until_ready": {
       "text": "Nenhuma configuração é necessária. Toque na tela para despertá-la até que o aprendizado esteja pronto.",
       "sourceHash": "4f35417beb53edd5c6cf243e99715270cd1b458e0f0c5fbd8c92db6377409d07",
@@ -1586,16 +1536,6 @@
     "configure.proximity.message.waiting_trustworthy": {
       "text": "Aguardando uma leitura confiável da fonte de proximidade do painel.",
       "sourceHash": "0840e1126e15a510d0b8b587ef7ee68d998919adab5d1f7c9caf962a5fdee649",
-      "state": "machine-cross-checked"
-    },
-    "configure.proximity.message.wave_accepted": {
-      "text": "Aceno aceito ({seen}/{required}). Afaste-se, espere dois segundos e acene novamente.",
-      "sourceHash": "013f7396cc1d09581949a6c69cd3195b348af4a5e33a04710d1a284f017fa076",
-      "state": "machine-cross-checked"
-    },
-    "configure.proximity.message.wave_detected": {
-      "text": "Aceno detectado com sucesso.",
-      "sourceHash": "8a4c9034c9fb8da8161a0c8a2e8d9550f388cf8eca8e699b270c3fab983deba1",
       "state": "machine-cross-checked"
     },
     "configure.proximity.mode.binary": {
@@ -1651,11 +1591,6 @@
     "configure.proximity.phase.rebasing": {
       "text": "Adaptando-se a uma mudança no ambiente ou no sensor",
       "sourceHash": "34b2195dd8edc9d5ead3aea7232f21d2ee782d6beca635cf4c6987bd0534ce72",
-      "state": "machine-cross-checked"
-    },
-    "configure.proximity.phase.validating": {
-      "text": "Verificando o padrão aprendido durante o uso normal",
-      "sourceHash": "211f3a7a2446382fc6db365e7283e10bb861d176c9805aa2787eedb24ee4d378",
       "state": "machine-cross-checked"
     },
     "configure.proximity.phase.waiting_for_reading": {
@@ -2391,11 +2326,6 @@
     "dashboard.banner.update.ignore": {
       "text": "Ignorar esta versão",
       "sourceHash": "72d0f08eee13ed1268875490b1f5cdc24e103edcb2a16d55862ace2c9223aa63",
-      "state": "machine-cross-checked"
-    },
-    "dashboard.banner.webview_old.engine_note": {
-      "text": "Verificado pela versão real do mecanismo (do WebView UA), não só pela versão marcada no pacote — assim, um Cromite/LineageOS SystemWebView não aciona este aviso.",
-      "sourceHash": "03639d66ebce5ea8cce72dd876874ae458b40ddd0eccf06217a459eab4a5134a",
       "state": "machine-cross-checked"
     },
     "dashboard.banner.webview_old.explanation": {
@@ -3796,11 +3726,6 @@
     "dashboard.proximity.checking_previous_range": {
       "text": "Verificando a faixa aprendida anteriormente com leituras ao vivo",
       "sourceHash": "8d149efcb95a9578c5e158fd8a4d47127baa8205ce8152bc0e3e4c44d0aad38f",
-      "state": "machine-cross-checked"
-    },
-    "dashboard.proximity.learning_baseline": {
-      "text": "Aprendendo a referência com o ambiente vazio",
-      "sourceHash": "594eb724417419650ee78b54e4ec36f2f63982f7d3ed747dd4779caa2821584b",
       "state": "machine-cross-checked"
     },
     "dashboard.proximity.learning_gestures": {
@@ -6408,11 +6333,6 @@
       "sourceHash": "91c572b84e2e5f12f23152ddd4e4e399b6d8cb5ea58449f7254e5096f0b05192",
       "state": "machine-cross-checked"
     },
-    "install.companion.error.marker_failed": {
-      "text": "Não foi possível persistir o marcador de segurança da operação do Home Assistant Companion",
-      "sourceHash": "f65b8b9d86d0c4b38165568e1757d591e3195c8bd37731b4bcaf6461d891a9f0",
-      "state": "machine-cross-checked"
-    },
     "install.companion.urls_repaired.one": {
       "text": "{count} servidor reparado — URL interna definida como a URL externa; Home Assistant Companion reaberto",
       "sourceHash": "2e0bb1dd0e69e1022aa67cf1bfbb97102454607c03b2f95b8d5a3d82c846e29a",
@@ -7451,11 +7371,6 @@
     "install.shared.not_installed": {
       "text": "não instalado",
       "sourceHash": "e9363f76e1145505f670e682d00a8497f163aa9aa81034d513260edf155923c9",
-      "state": "machine-cross-checked"
-    },
-    "install.shared.operation_busy": {
-      "text": "Outra operação em andamento.",
-      "sourceHash": "2f3ade1aef148c86c17bce8fa9a7ef17a6f1faa35db5cea5966f69dd03544349",
       "state": "machine-cross-checked"
     },
     "install.shared.version": {

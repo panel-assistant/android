@@ -3716,18 +3716,6 @@
       "softMaxChars": 30,
       "hardMaxChars": 45
     },
-    "configure.proximity.action.cancel_test": {
-      "text": "Cancel test",
-      "sourceHash": "f730c75d143a282732e8dc9877674289fce72909ba390d952e010ec8f464c626",
-      "surface": "configure",
-      "context": "Configure proximity-learning card; preserve safety meaning, gesture state, and named placeholders; render as text, not HTML.",
-      "risk": "ordinary",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 22,
-      "hardMaxChars": 33
-    },
     "configure.proximity.action.forget": {
       "text": "Forget learned proximity",
       "sourceHash": "927b237d21171bc190bb81d522ccb3d7fa3d7cd7ca4853cc7fed49379993b308",
@@ -3751,30 +3739,6 @@
       "frozen": [],
       "softMaxChars": 24,
       "hardMaxChars": 36
-    },
-    "configure.proximity.action.test": {
-      "text": "Test a wave",
-      "sourceHash": "ee35b5ba6bbec49d91a9e6ea8738f3bf366490c750ef14712585693584857581",
-      "surface": "configure",
-      "context": "Configure proximity-learning card; preserve safety meaning, gesture state, and named placeholders; render as text, not HTML.",
-      "risk": "ordinary",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 22,
-      "hardMaxChars": 33
-    },
-    "configure.proximity.confirm.forget": {
-      "text": "Move clear of the panel, then delete learned proximity history for this sensor? Touch-to-wake remains available while it relearns.",
-      "sourceHash": "e4ed73da8434174e02d6aa4413c24c088aad8fc6b39f214146bc5f74813288e5",
-      "surface": "configure",
-      "context": "Configure proximity-learning card; preserve safety meaning, gesture state, and named placeholders; render as text, not HTML.",
-      "risk": "consequential",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 260,
-      "hardMaxChars": 390
     },
     "configure.proximity.detail.local": {
       "text": "Learning runs locally. Touch-to-wake remains available while it learns.",
@@ -3968,54 +3932,6 @@
       "softMaxChars": 162,
       "hardMaxChars": 243
     },
-    "configure.proximity.message.clear_failed": {
-      "text": "Could not clear proximity history; the existing model is unchanged.",
-      "sourceHash": "2473034f5750212d7d622823322d1ce10a6e8451550f6e39d49a990f15a34b0b",
-      "surface": "configure",
-      "context": "Configure proximity-learning card; preserve safety meaning, gesture state, and named placeholders; render as text, not HTML.",
-      "risk": "consequential",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 134,
-      "hardMaxChars": 201
-    },
-    "configure.proximity.message.clear_safely_failed": {
-      "text": "Could not safely clear proximity history; the existing model is unchanged.",
-      "sourceHash": "51c2e6b636842da7c9ca7763425f174d767bd02d82cdb7ae74542abd16c6612f",
-      "surface": "configure",
-      "context": "Configure proximity-learning card; preserve safety meaning, gesture state, and named placeholders; render as text, not HTML.",
-      "risk": "consequential",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 148,
-      "hardMaxChars": 222
-    },
-    "configure.proximity.message.cleared": {
-      "text": "Learned proximity history cleared. Learning has restarted.",
-      "sourceHash": "ae0015059a409e4fc04f8f92d73307645ef268433c4a495c24e720b7732b37dd",
-      "surface": "configure",
-      "context": "Configure proximity-learning card; preserve safety meaning, gesture state, and named placeholders; render as text, not HTML.",
-      "risk": "consequential",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 116,
-      "hardMaxChars": 174
-    },
-    "configure.proximity.message.learning_clear_baseline": {
-      "text": "No setup is required. Keep the area clear briefly so the panel can learn its baseline.",
-      "sourceHash": "f14cf2497d96832b03c9b3442247990bf8e72648d8802d9c50cdb4d375a08455",
-      "surface": "configure",
-      "context": "Configure proximity-learning card; preserve safety meaning, gesture state, and named placeholders; render as text, not HTML.",
-      "risk": "consequential",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 172,
-      "hardMaxChars": 258
-    },
     "configure.proximity.message.movement_not_armed": {
       "text": "Movement seen, but it was not an armed deliberate wave. Move clear for two seconds, then try again.",
       "sourceHash": "7a9e061dc272218bd2b9d8ab7c199fa3fcdb5e03aafece54180f0702d99b0e1d",
@@ -4068,18 +3984,6 @@
       "softMaxChars": 152,
       "hardMaxChars": 228
     },
-    "configure.proximity.message.safety_reset_failed": {
-      "text": "Wake gestures are disabled because their safety reset could not be saved.",
-      "sourceHash": "55bb82eb35b87d2b225546553ab840b4f2334c5dd08eabf69f717560cf3e5ead",
-      "surface": "configure",
-      "context": "Configure proximity-learning card; preserve safety meaning, gesture state, and named placeholders; render as text, not HTML.",
-      "risk": "consequential",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 146,
-      "hardMaxChars": 219
-    },
     "configure.proximity.message.signal_changed_paused": {
       "text": "The signal changed. Home Assistant reporting and wave wake are paused while a new safe range is learned.",
       "sourceHash": "640ef548d9152bca5c18d4c3321aef87170832e4aa156270fa4dccca4b7db38d",
@@ -4105,18 +4009,6 @@
       "frozen": [],
       "softMaxChars": 160,
       "hardMaxChars": 240
-    },
-    "configure.proximity.message.teach_instruction": {
-      "text": "Leave the area clear briefly, then make a deliberate wave and move clear again.",
-      "sourceHash": "4ff0bd8149854f23a250825b02589c3e2b8dc2e22e573e020e925a01d85b69ec",
-      "surface": "configure",
-      "context": "Configure proximity-learning card; preserve safety meaning, gesture state, and named placeholders; render as text, not HTML.",
-      "risk": "ordinary",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 158,
-      "hardMaxChars": 237
     },
     "configure.proximity.message.teaching_cancelled": {
       "text": "Teaching cancelled.",
@@ -4178,18 +4070,6 @@
       "softMaxChars": 128,
       "hardMaxChars": 192
     },
-    "configure.proximity.message.test_no_wave": {
-      "text": "No complete wave was detected during the test.",
-      "sourceHash": "571b5b2ffb9ef0caacb18f9d8e6030bdb31169090c9b9500f965df8d44d1c288",
-      "surface": "configure",
-      "context": "Configure proximity-learning card; preserve safety meaning, gesture state, and named placeholders; render as text, not HTML.",
-      "risk": "ordinary",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 92,
-      "hardMaxChars": 138
-    },
     "configure.proximity.message.touch_until_ready": {
       "text": "No setup is required. Touch the screen to wake it until learning is ready.",
       "sourceHash": "4f35417beb53edd5c6cf243e99715270cd1b458e0f0c5fbd8c92db6377409d07",
@@ -4225,33 +4105,6 @@
       "frozen": [],
       "softMaxChars": 136,
       "hardMaxChars": 204
-    },
-    "configure.proximity.message.wave_accepted": {
-      "text": "Wave accepted ({seen}/{required}). Move clear, wait two seconds, then wave again.",
-      "sourceHash": "013f7396cc1d09581949a6c69cd3195b348af4a5e33a04710d1a284f017fa076",
-      "surface": "configure",
-      "context": "Configure proximity-learning card; preserve safety meaning, gesture state, and named placeholders; render as text, not HTML.",
-      "risk": "ordinary",
-      "siblings": [],
-      "placeholders": [
-        "{seen}",
-        "{required}"
-      ],
-      "frozen": [],
-      "softMaxChars": 162,
-      "hardMaxChars": 243
-    },
-    "configure.proximity.message.wave_detected": {
-      "text": "Wave detected successfully.",
-      "sourceHash": "8a4c9034c9fb8da8161a0c8a2e8d9550f388cf8eca8e699b270c3fab983deba1",
-      "surface": "configure",
-      "context": "Configure proximity-learning card; preserve safety meaning, gesture state, and named placeholders; render as text, not HTML.",
-      "risk": "ordinary",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 54,
-      "hardMaxChars": 81
     },
     "configure.proximity.mode.binary": {
       "text": "binary",
@@ -4384,18 +4237,6 @@
       "frozen": [],
       "softMaxChars": 70,
       "hardMaxChars": 105
-    },
-    "configure.proximity.phase.validating": {
-      "text": "Checking the learned pattern during normal use",
-      "sourceHash": "211f3a7a2446382fc6db365e7283e10bb861d176c9805aa2787eedb24ee4d378",
-      "surface": "configure",
-      "context": "Configure proximity-learning card; preserve safety meaning, gesture state, and named placeholders; render as text, not HTML.",
-      "risk": "ordinary",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 92,
-      "hardMaxChars": 138
     },
     "configure.proximity.phase.waiting_for_reading": {
       "text": "Waiting for the sensor’s first reading",
@@ -6427,27 +6268,6 @@
       "softMaxChars": 27,
       "hardMaxChars": 38
     },
-    "dashboard.banner.webview_old.engine_note": {
-      "text": "Checked against the real engine version (from the WebView UA), not just the stamped package version — so a Cromite/LineageOS SystemWebView won't trip this.",
-      "sourceHash": "03639d66ebce5ea8cce72dd876874ae458b40ddd0eccf06217a459eab4a5134a",
-      "surface": "dashboard",
-      "context": "Dashboard webview old banner text; preserve the remediation meaning, runtime placeholders and link-boundary grammar, and render as text, not HTML.",
-      "risk": "consequential",
-      "siblings": [
-        "dashboard.banner.webview_old.explanation",
-        "dashboard.banner.webview_old.target",
-        "dashboard.banner.webview_old.title",
-        "dashboard.banner.webview_old.update_action"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "LineageOS SystemWebView",
-        "WebView UA",
-        "Cromite"
-      ],
-      "softMaxChars": 217,
-      "hardMaxChars": 310
-    },
     "dashboard.banner.webview_old.explanation": {
       "text": "the Home Assistant dashboard may render blank or broken.",
       "sourceHash": "ff191e5d689ffb361fc76cbffb902c16185f7355b227ddccb705d42aed4b54f1",
@@ -6455,7 +6275,6 @@
       "context": "Dashboard webview old banner text; preserve the remediation meaning, runtime placeholders and link-boundary grammar, and render as text, not HTML.",
       "risk": "consequential",
       "siblings": [
-        "dashboard.banner.webview_old.engine_note",
         "dashboard.banner.webview_old.target",
         "dashboard.banner.webview_old.title",
         "dashboard.banner.webview_old.update_action"
@@ -6474,7 +6293,6 @@
       "context": "Dashboard webview old banner text; preserve the remediation meaning, runtime placeholders and link-boundary grammar, and render as text, not HTML.",
       "risk": "consequential",
       "siblings": [
-        "dashboard.banner.webview_old.engine_note",
         "dashboard.banner.webview_old.explanation",
         "dashboard.banner.webview_old.title",
         "dashboard.banner.webview_old.update_action"
@@ -6495,7 +6313,6 @@
       "context": "Dashboard webview old banner text; preserve the remediation meaning, runtime placeholders and link-boundary grammar, and render as text, not HTML.",
       "risk": "consequential",
       "siblings": [
-        "dashboard.banner.webview_old.engine_note",
         "dashboard.banner.webview_old.explanation",
         "dashboard.banner.webview_old.target",
         "dashboard.banner.webview_old.update_action"
@@ -6514,7 +6331,6 @@
       "context": "Dashboard webview old banner text; preserve the remediation meaning, runtime placeholders and link-boundary grammar, and render as text, not HTML.",
       "risk": "consequential",
       "siblings": [
-        "dashboard.banner.webview_old.engine_note",
         "dashboard.banner.webview_old.explanation",
         "dashboard.banner.webview_old.target",
         "dashboard.banner.webview_old.title"
@@ -10438,7 +10254,6 @@
       "risk": "ordinary",
       "siblings": [
         "dashboard.proximity.checking_previous_range",
-        "dashboard.proximity.learning_baseline",
         "dashboard.proximity.learning_gestures",
         "dashboard.proximity.mode.binary",
         "dashboard.proximity.mode.graded",
@@ -10461,7 +10276,6 @@
       "risk": "ordinary",
       "siblings": [
         "dashboard.proximity.adapting",
-        "dashboard.proximity.learning_baseline",
         "dashboard.proximity.learning_gestures",
         "dashboard.proximity.mode.binary",
         "dashboard.proximity.mode.graded",
@@ -10476,29 +10290,6 @@
       "softMaxChars": 80,
       "hardMaxChars": 114
     },
-    "dashboard.proximity.learning_baseline": {
-      "text": "Learning the clear-room baseline",
-      "sourceHash": "594eb724417419650ee78b54e4ec36f2f63982f7d3ed747dd4779caa2821584b",
-      "surface": "dashboard",
-      "context": "Dashboard proximity-learning closed-state summary; preserve readiness and calibration distinctions and render as text, not HTML.",
-      "risk": "ordinary",
-      "siblings": [
-        "dashboard.proximity.adapting",
-        "dashboard.proximity.checking_previous_range",
-        "dashboard.proximity.learning_gestures",
-        "dashboard.proximity.mode.binary",
-        "dashboard.proximity.mode.graded",
-        "dashboard.proximity.no_source",
-        "dashboard.proximity.ready",
-        "dashboard.proximity.waiting_first_reading",
-        "dashboard.proximity.waiting_movements",
-        "dashboard.proximity.waiting_readings"
-      ],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 45,
-      "hardMaxChars": 64
-    },
     "dashboard.proximity.learning_gestures": {
       "text": "Presence ready; learning deliberate wake gestures",
       "sourceHash": "bcfb4fefb4dc05108ad8035b32a4497a4dcfe27d324c457a8095d64a40494080",
@@ -10508,7 +10299,6 @@
       "siblings": [
         "dashboard.proximity.adapting",
         "dashboard.proximity.checking_previous_range",
-        "dashboard.proximity.learning_baseline",
         "dashboard.proximity.mode.binary",
         "dashboard.proximity.mode.graded",
         "dashboard.proximity.no_source",
@@ -10531,7 +10321,6 @@
       "siblings": [
         "dashboard.proximity.adapting",
         "dashboard.proximity.checking_previous_range",
-        "dashboard.proximity.learning_baseline",
         "dashboard.proximity.learning_gestures",
         "dashboard.proximity.mode.graded",
         "dashboard.proximity.no_source",
@@ -10554,7 +10343,6 @@
       "siblings": [
         "dashboard.proximity.adapting",
         "dashboard.proximity.checking_previous_range",
-        "dashboard.proximity.learning_baseline",
         "dashboard.proximity.learning_gestures",
         "dashboard.proximity.mode.binary",
         "dashboard.proximity.no_source",
@@ -10577,7 +10365,6 @@
       "siblings": [
         "dashboard.proximity.adapting",
         "dashboard.proximity.checking_previous_range",
-        "dashboard.proximity.learning_baseline",
         "dashboard.proximity.learning_gestures",
         "dashboard.proximity.mode.binary",
         "dashboard.proximity.mode.graded",
@@ -10600,7 +10387,6 @@
       "siblings": [
         "dashboard.proximity.adapting",
         "dashboard.proximity.checking_previous_range",
-        "dashboard.proximity.learning_baseline",
         "dashboard.proximity.learning_gestures",
         "dashboard.proximity.mode.binary",
         "dashboard.proximity.mode.graded",
@@ -10625,7 +10411,6 @@
       "siblings": [
         "dashboard.proximity.adapting",
         "dashboard.proximity.checking_previous_range",
-        "dashboard.proximity.learning_baseline",
         "dashboard.proximity.learning_gestures",
         "dashboard.proximity.mode.binary",
         "dashboard.proximity.mode.graded",
@@ -10648,7 +10433,6 @@
       "siblings": [
         "dashboard.proximity.adapting",
         "dashboard.proximity.checking_previous_range",
-        "dashboard.proximity.learning_baseline",
         "dashboard.proximity.learning_gestures",
         "dashboard.proximity.mode.binary",
         "dashboard.proximity.mode.graded",
@@ -10671,7 +10455,6 @@
       "siblings": [
         "dashboard.proximity.adapting",
         "dashboard.proximity.checking_previous_range",
-        "dashboard.proximity.learning_baseline",
         "dashboard.proximity.learning_gestures",
         "dashboard.proximity.mode.binary",
         "dashboard.proximity.mode.graded",
@@ -18692,20 +18475,6 @@
       "softMaxChars": 31,
       "hardMaxChars": 56
     },
-    "install.companion.error.marker_failed": {
-      "text": "Home Assistant Companion operation safety marker could not be persisted",
-      "sourceHash": "f65b8b9d86d0c4b38165568e1757d591e3195c8bd37731b4bcaf6461d891a9f0",
-      "surface": "install",
-      "context": "Home Assistant Companion repair/restore outcome shown in the Install page.",
-      "risk": "consequential",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [
-        "Home Assistant"
-      ],
-      "softMaxChars": 56,
-      "hardMaxChars": 101
-    },
     "install.companion.urls_repaired.one": {
       "text": "repaired {count} server — internal URL set to the external URL; Home Assistant Companion relaunched",
       "sourceHash": "2e0bb1dd0e69e1022aa67cf1bfbb97102454607c03b2f95b8d5a3d82c846e29a",
@@ -21454,18 +21223,6 @@
       "frozen": [],
       "softMaxChars": 20,
       "hardMaxChars": 40
-    },
-    "install.shared.operation_busy": {
-      "text": "Another operation is running.",
-      "sourceHash": "2f3ade1aef148c86c17bce8fa9a7ef17a6f1faa35db5cea5966f69dd03544349",
-      "surface": "install",
-      "context": "Install operation result shown to the panel administrator.",
-      "risk": "consequential",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 29,
-      "hardMaxChars": 53
     },
     "install.shared.version": {
       "text": "Version",
