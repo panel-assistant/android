@@ -182,11 +182,15 @@
       return zoomKids;
     }
     if (f.key === "camera_enabled") {
-      // The RTSP link uses whatever host this page was reached on, which is the address that will
-      // also work from Home Assistant.
-      return [cfg.el("p", {}, linkifyWords(f.help, [
-        ["RTSP", "rtsp://" + location.hostname + ":" + CAMERA_RTSP_PORT + "/live"],
-      ]))];
+      // The page is panel-rendered even in Home Assistant's sidebar, whose document host is HA.
+      // Keep the panel's endpoint in that rendering context rather than borrowing the iframe's host.
+      var panelUrl = helpPop && helpPop.getAttribute("data-panel-url");
+      var host = "";
+      try { if (panelUrl) host = new URL(panelUrl).hostname; } catch (_) {}
+      if (!host && !cfg.EMBEDDED) host = location.hostname;
+      return [cfg.el("p", {}, linkifyWords(f.help, host ? [
+        ["RTSP", "rtsp://" + host + ":" + CAMERA_RTSP_PORT + "/live"],
+      ] : []))];
     }
     return renderHelpMarkdown(f.help);
   }
