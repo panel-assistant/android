@@ -15,6 +15,7 @@ import io.panelassistant.android.control.FakeScreenPower
 import io.panelassistant.android.control.FakeWakeTap
 import io.panelassistant.android.control.MAX_AUTO_SLEEP_LEASE_MS
 import io.panelassistant.android.control.MIN_AUTO_SLEEP_LEASE_MS
+import io.panelassistant.android.control.PRESENCE_GAP_GRACE_MS
 import io.panelassistant.android.control.ScreenController
 import io.panelassistant.android.device.ScreenOff
 import kotlinx.coroutines.CompletableDeferred
@@ -906,11 +907,15 @@ class HaPresenceSourceManagerTest {
         assertEquals(2, panel.status().getInt("source_count"))
     }
 
-    @Test fun `failed rediscovery wakes the slept screen and the status names that wake`() = runTest {
+    @Test fun `failed rediscovery wakes the slept screen after the gap grace and the status names that wake`() = runTest {
         val panel = sleepingPanel()
 
         panel.discovery.registryFailure = true
         panel.registryChanged()
+        // Home Assistant unreachable is a gap in the same Area's feed: held, then released past the grace.
+        assertTrue(panel.screen.isIntendedOff())
+        advanceTimeBy(PRESENCE_GAP_GRACE_MS)
+        runCurrent()
         assertFalse(panel.screen.isIntendedOff())
         assertEquals("discovery_failed", panel.status().getString("phase"))
 

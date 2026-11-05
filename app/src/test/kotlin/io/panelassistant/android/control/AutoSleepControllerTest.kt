@@ -841,11 +841,271 @@ class AutoSleepControllerTest {
         val request = h.prepareAutomaticSleep()
         h.offer(aggregate(request, 1L, HaPresenceValue.OFF,
             phase = HaPresencePhase.RECONNECTING, hydrated = false))
+        advanceTimeBy(PRESENCE_GAP_GRACE_MS)
         h.await { !h.screen.isIntendedOff() }
 
         h.controller.noteTouchForTest(h.now.incrementAndGet(), null)
         h.settle()
         assertTrue(h.learning.corrections.isEmpty())
+        h.closeWithVirtualTime(::runCurrent)
+    }
+
+    // GH25b: a connection drop or a route change is not a presence change. PaneldService refreshes the
+    // controller when the route epoch moves (refresh(), then the current proximity reading in panel mode),
+    // and the presence manager answers a refreshed request with AUTHENTICATING, CONNECTING, then a new feed.
+
+    @Test fun `a presence socket drop leaves an auto-slept screen off and does not restart its lease`() = runTest {
+        val h = virtualHarness()
+        val request = h.start()
+        h.offer(aggregate(request, 0L, HaPresenceValue.OFF))
+        h.await { h.status().getString("phase") == "live" }
+        elapse(h, 10 * MINUTE)
+        h.await { h.screen.isIntendedOff() }
+        val off = h.screen.currentOffGeneration()
+
+        elapse(h, 12 * MINUTE)
+        h.offer(aggregate(request, 1L, HaPresenceValue.OFF, phase = HaPresencePhase.RECONNECTING, hydrated = false))
+        h.settle()
+        assertTrue("a dropped presence socket must not wake the screen", h.screen.isIntendedOff())
+        elapse(h, 12 * MINUTE + 20_000L)
+        h.offer(aggregate(request, 2L, HaPresenceValue.OFF))
+        h.await { h.status().getString("phase") == "live" }
+        elapse(h, 30 * MINUTE)
+        assertTrue("the reconnected feed must not grant a new lease", h.screen.isIntendedOff())
+        assertEquals(off, h.screen.currentOffGeneration())
+        h.closeWithVirtualTime(::runCurrent)
+    }
+
+    @Test fun `a presence socket drop during a lease keeps its deadline`() = runTest {
+        val h = virtualHarness()
+        val request = h.start()
+        h.offer(aggregate(request, 0L, HaPresenceValue.OFF))
+        h.await { h.status().getString("phase") == "live" }
+        elapse(h, 4 * MINUTE)
+        h.offer(aggregate(request, 1L, HaPresenceValue.OFF, phase = HaPresencePhase.RECONNECTING, hydrated = false))
+        elapse(h, 5 * MINUTE)
+        h.offer(aggregate(request, 0L, HaPresenceValue.OFF, feed = 2L))
+        h.await { h.status().getString("phase") == "live" }
+
+        elapse(h, 10 * MINUTE - 1L)
+        assertFalse(h.screen.isIntendedOff())
+        elapse(h, 10 * MINUTE)
+        h.await { h.screen.isIntendedOff() }
+        h.closeWithVirtualTime(::runCurrent)
+    }
+
+    @Test fun `a route change leaves an auto-slept screen off and does not restart its lease`() = runTest {
+        val h = virtualHarness()
+        val first = h.start()
+        h.offer(aggregate(first, 0L, HaPresenceValue.OFF))
+        h.await { h.status().getString("phase") == "live" }
+        elapse(h, 10 * MINUTE)
+        h.await { h.screen.isIntendedOff() }
+        val off = h.screen.currentOffGeneration()
+
+        elapse(h, 12 * MINUTE)
+        assertTrue(h.controller.refresh())
+        val second = h.awaitRequest(2)
+        h.offer(aggregate(second, 0L, HaPresenceValue.UNAVAILABLE, manager = 2L, feed = -1L,
+            phase = HaPresencePhase.AUTHENTICATING, hydrated = false, sources = emptySet()))
+        h.settle()
+        assertTrue("a route change must not wake the screen", h.screen.isIntendedOff())
+        h.offer(aggregate(second, 0L, HaPresenceValue.OFF, manager = 2L, feed = -1L,
+            phase = HaPresencePhase.CONNECTING, hydrated = false))
+        h.settle()
+        assertTrue(h.screen.isIntendedOff())
+        elapse(h, 12 * MINUTE + 20_000L)
+        h.offer(aggregate(second, 0L, HaPresenceValue.OFF, manager = 2L, feed = 2L))
+        h.await { h.status().getString("phase") == "live" }
+        elapse(h, 30 * MINUTE)
+        assertTrue("the new route's feed must not grant a new lease", h.screen.isIntendedOff())
+        assertEquals(off, h.screen.currentOffGeneration())
+        h.closeWithVirtualTime(::runCurrent)
+    }
+
+    @Test fun `a route change during a lease keeps its deadline`() = runTest {
+        val h = virtualHarness()
+        val first = h.start()
+        h.offer(aggregate(first, 0L, HaPresenceValue.OFF))
+        h.await { h.status().getString("phase") == "live" }
+        elapse(h, 4 * MINUTE)
+        assertTrue(h.controller.refresh())
+        val second = h.awaitRequest(2)
+        h.offer(aggregate(second, 0L, HaPresenceValue.UNAVAILABLE, manager = 2L, feed = -1L,
+            phase = HaPresencePhase.AUTHENTICATING, hydrated = false, sources = emptySet()))
+        elapse(h, 5 * MINUTE)
+        h.offer(aggregate(second, 0L, HaPresenceValue.OFF, manager = 2L, feed = 2L))
+        h.await { h.status().getString("phase") == "live" }
+
+        elapse(h, 10 * MINUTE - 1L)
+        assertFalse(h.screen.isIntendedOff())
+        elapse(h, 10 * MINUTE)
+        h.await { h.screen.isIntendedOff() }
+        h.closeWithVirtualTime(::runCurrent)
+    }
+
+    @Test fun `in panel mode a route change and a presence socket drop leave an auto-slept screen off`() = runTest {
+        val h = virtualHarness(source = "panel")
+        h.start()
+        assertTrue(h.controller.noteProximityState(false))
+        h.await { h.status().getBoolean("available") }
+        elapse(h, 10 * MINUTE)
+        h.await { h.screen.isIntendedOff() }
+        val off = h.screen.currentOffGeneration()
+
+        elapse(h, 12 * MINUTE)
+        assertTrue(h.controller.refresh())
+        assertTrue(h.controller.noteProximityState(false))
+        val second = h.awaitRequest(2)
+        h.offer(aggregate(second, 1L, HaPresenceValue.OFF, manager = 2L,
+            phase = HaPresencePhase.RECONNECTING, hydrated = false))
+        h.settle()
+        assertTrue("panel mode must ignore the Home Assistant connection", h.screen.isIntendedOff())
+        assertEquals(off, h.screen.currentOffGeneration())
+        h.closeWithVirtualTime(::runCurrent)
+    }
+
+    @Test fun `in panel mode a route change during a lease keeps its deadline`() = runTest {
+        val h = virtualHarness(source = "panel")
+        h.start()
+        assertTrue(h.controller.noteProximityState(false))
+        h.await { h.status().getBoolean("available") }
+        elapse(h, 4 * MINUTE)
+        assertTrue(h.controller.refresh())
+        assertTrue(h.controller.noteProximityState(false))
+        h.settle()
+
+        elapse(h, 10 * MINUTE - 1L)
+        assertFalse(h.screen.isIntendedOff())
+        elapse(h, 10 * MINUTE)
+        h.await { h.screen.isIntendedOff() }
+        h.closeWithVirtualTime(::runCurrent)
+    }
+
+    @Test fun `a presence gap past its grace wakes the screen for one lease that the returning feed keeps`() = runTest {
+        val h = virtualHarness()
+        val request = h.start()
+        h.offer(aggregate(request, 0L, HaPresenceValue.OFF))
+        h.await { h.status().getString("phase") == "live" }
+        elapse(h, 10 * MINUTE)
+        h.await { h.screen.isIntendedOff() }
+
+        h.offer(aggregate(request, 1L, HaPresenceValue.OFF, phase = HaPresencePhase.RECONNECTING, hydrated = false))
+        elapse(h, 10 * MINUTE + PRESENCE_GAP_GRACE_MS - 1L)
+        assertTrue("a gap shorter than the grace holds the screen", h.screen.isIntendedOff())
+        elapse(h, 10 * MINUTE + PRESENCE_GAP_GRACE_MS)
+        h.await { !h.screen.isIntendedOff() }
+        elapse(h, h.now.get() + MINUTE)
+
+        val wokenAt = 10 * MINUTE + PRESENCE_GAP_GRACE_MS
+        h.offer(aggregate(request, 0L, HaPresenceValue.OFF, feed = 2L))
+        h.await { h.status().getString("phase") == "live" }
+        assertEquals("source_loss_wake", h.status().getString("reason"))
+        elapse(h, wokenAt + 10 * MINUTE - 1L)
+        assertFalse(h.screen.isIntendedOff())
+        elapse(h, wokenAt + 10 * MINUTE)
+        h.await { h.screen.isIntendedOff() }
+        h.closeWithVirtualTime(::runCurrent)
+    }
+
+    @Test fun `another Area or another Home Assistant re-evaluates and wakes an auto-slept screen`() = runTest {
+        val h = virtualHarness()
+        var request = h.start()
+        var manager = 1L
+        fun sleepOnLiveFeed(sources: Set<String>) {
+            h.offer(aggregate(request, 0L, HaPresenceValue.OFF, manager = manager, feed = manager, sources = sources))
+            h.await { h.status().getString("phase") == "live" }
+            elapse(h, h.now.get() + 10 * MINUTE)
+            h.await { h.screen.isIntendedOff() }
+        }
+        sleepOnLiveFeed(setOf(SOURCE))
+        listOf<() -> Unit>({ h.moveTo(area = "Kitchen") }, { h.moveTo(url = "https://other-ha") }).forEach { move ->
+            move()
+            manager++
+            request = h.awaitRequest(manager.toInt())
+            h.offer(aggregate(request, 0L, HaPresenceValue.UNAVAILABLE, manager = manager, feed = -1L,
+                phase = HaPresencePhase.AUTHENTICATING, hydrated = false, sources = emptySet()))
+            h.await { !h.screen.isIntendedOff() }
+            sleepOnLiveFeed(setOf(OTHER_SOURCE))
+        }
+        assertEquals("Kitchen", h.requests.last().preferredAreaName)
+        h.closeWithVirtualTime(::runCurrent)
+    }
+
+    @Test fun `a route change that finds other sources in the Area re-evaluates and wakes an auto-slept screen`() =
+        runTest {
+            val h = virtualHarness()
+            val first = h.start()
+            h.offer(aggregate(first, 0L, HaPresenceValue.OFF))
+            h.await { h.status().getString("phase") == "live" }
+            elapse(h, 10 * MINUTE)
+            h.await { h.screen.isIntendedOff() }
+
+            assertTrue(h.controller.refresh())
+            val second = h.awaitRequest(2)
+            h.offer(aggregate(second, 0L, HaPresenceValue.UNAVAILABLE, manager = 2L, feed = -1L,
+                phase = HaPresencePhase.AUTHENTICATING, hydrated = false, sources = emptySet()))
+            h.offer(aggregate(second, 0L, HaPresenceValue.OFF, manager = 2L, feed = 2L,
+                sources = setOf(SOURCE, OTHER_SOURCE)))
+            h.await { !h.screen.isIntendedOff() }
+            assertEquals("source_activity_lease", h.status().getString("reason"))
+            h.closeWithVirtualTime(::runCurrent)
+        }
+
+    @Test fun `a discovery that cannot reach Home Assistant after a route change is held like the drop`() = runTest {
+        val h = virtualHarness()
+        val request = h.prepareAutomaticSleep()
+        assertTrue(h.controller.refresh())
+        val second = h.awaitRequest(2)
+        h.offer(aggregate(second, 0L, HaPresenceValue.UNAVAILABLE, manager = 2L, feed = -1L,
+            phase = HaPresencePhase.DISCOVERY_FAILED, detail = "registry_transport", hydrated = false,
+            sources = emptySet()))
+        h.settle()
+        assertTrue(h.screen.isIntendedOff())
+        assertEquals(request.preferredAreaName, second.preferredAreaName)
+        h.closeWithVirtualTime(::runCurrent)
+    }
+
+    @Test fun `a resolved presence outcome wakes an auto-slept screen without waiting for the grace`() {
+        listOf(
+            HaPresencePhase.AUTH_FAILED to "",
+            HaPresencePhase.NO_INCLUDED_SOURCES to "",
+            HaPresencePhase.NO_CREDIBLE_SOURCES to "no_device_source",
+            HaPresencePhase.DISCOVERY_FAILED to "registry_projection",
+            HaPresencePhase.NO_AREA to "no_area",
+            HaPresencePhase.STOPPED to "",
+            HaPresencePhase.DISABLED to "",
+        ).forEach { (phase, detail) ->
+            runTest {
+                val h = virtualHarness()
+                val request = h.prepareAutomaticSleep()
+                h.offer(aggregate(request, 1L, HaPresenceValue.UNAVAILABLE, manager = 2L, phase = phase,
+                    detail = detail, hydrated = false, sources = emptySet()))
+                h.settle()
+                assertFalse("$phase must not be held", h.screen.isIntendedOff())
+                h.closeWithVirtualTime(::runCurrent)
+            }
+        }
+    }
+
+    @Test fun `a held gap ends when auto-sleep moves to the panel sensor`() = runTest {
+        val h = virtualHarness()
+        val request = h.start()
+        h.offer(aggregate(request, 0L, HaPresenceValue.OFF))
+        h.await { h.status().getString("phase") == "live" }
+        h.offer(aggregate(request, 1L, HaPresenceValue.OFF, phase = HaPresencePhase.RECONNECTING, hydrated = false))
+        h.settle()
+
+        h.sourceSetting.set("panel")
+        assertTrue(h.controller.refresh())
+        assertTrue(h.controller.noteProximityState(false))
+        h.await { h.status().getString("source") == "panel" && h.status().getBoolean("available") }
+        elapse(h, 10 * MINUTE)
+        h.await { h.screen.isIntendedOff() }
+        val off = h.screen.currentOffGeneration()
+        elapse(h, 10 * MINUTE + PRESENCE_GAP_GRACE_MS + MINUTE)
+        assertTrue("the Home Assistant gap must not reach the panel policy", h.screen.isIntendedOff())
+        assertEquals(off, h.screen.currentOffGeneration())
         h.closeWithVirtualTime(::runCurrent)
     }
 
@@ -1037,6 +1297,15 @@ class AutoSleepControllerTest {
         }
     }
 
+    /** Moves the panel clock and the virtual scheduler together, so a scheduled deadline fires on its own. */
+    private fun TestScope.elapse(h: Harness, toMs: Long) {
+        val step = toMs - h.now.get()
+        require(step >= 0L)
+        h.now.set(toMs)
+        advanceTimeBy(step)
+        runCurrent()
+    }
+
     private fun TestScope.virtualHarness(
         enabled: Boolean = true,
         onNoArea: (Long) -> Unit = {},
@@ -1086,11 +1355,14 @@ class AutoSleepControllerTest {
         val managerRefreshes = AtomicLong()
         private val enabledState = AtomicBoolean(enabled)
         private val touchDelaySeconds = java.util.concurrent.atomic.AtomicInteger(30)
+        val sourceSetting = java.util.concurrent.atomic.AtomicReference(source)
+        private val haUrl = java.util.concurrent.atomic.AtomicReference("https://ha")
+        private val haArea = java.util.concurrent.atomic.AtomicReference("")
         private lateinit var aggregateOffer: (HaPresenceAggregate) -> Boolean
         val controller = AutoSleepController(
             scope = scope,
             screen = screen,
-            configuration = { AutoSleepRuntimeConfig(enabledState.get(), "https://ha", source = source,
+            configuration = { AutoSleepRuntimeConfig(enabledState.get(), haUrl.get(), haArea.get(), source = sourceSetting.get(),
                 touchDelaySeconds = touchDelaySeconds.get()) },
             learning = learning,
             onNoArea = onNoArea,
@@ -1143,6 +1415,13 @@ class AutoSleepControllerTest {
 
         fun setTouchDelaySeconds(seconds: Int) {
             touchDelaySeconds.set(seconds)
+            controller.refresh()
+        }
+
+        /** A real change of where presence comes from: another Home Assistant or another Area. */
+        fun moveTo(url: String = haUrl.get(), area: String = haArea.get()) {
+            haUrl.set(url)
+            haArea.set(area)
             controller.refresh()
         }
 
@@ -1207,6 +1486,7 @@ class AutoSleepControllerTest {
 
     companion object {
         private const val SOURCE = "binary_sensor.presence"
+        private const val OTHER_SOURCE = "binary_sensor.kitchen_motion"
         private const val MINUTE = 60_000L
         private const val DAY = 24L * 60L * MINUTE
 
