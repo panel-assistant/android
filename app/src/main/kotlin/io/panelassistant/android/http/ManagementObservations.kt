@@ -78,8 +78,7 @@ internal class ManagementObservations(
         TermuxBridgeProbe.collect(
             termuxUid = runCatching<Int?> { appContext.packageManager.getApplicationInfo("com.termux", 0).uid }
                 .recoverCatching { if (it is android.content.pm.PackageManager.NameNotFoundException) null else throw it },
-            routes = { privilegeObservation().let { it.directSuReady to it.helperRootReady } },
-            rootRun = Su::runOutputIsolatedBounded,
+            helperReady = { privilegeObservation().helperRootReady },
             helperRun = { HelperClient.sendBytes(it)?.toString(Charsets.UTF_8) },
         )
     }
