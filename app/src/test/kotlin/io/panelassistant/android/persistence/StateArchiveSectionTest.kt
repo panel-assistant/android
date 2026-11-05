@@ -20,7 +20,7 @@ class StateArchiveSectionTest {
 
         assertNull("a panel with no stored rows still writes no state section", empty)
         val failure = JSONObject(requireNotNull(failed))
-        assertEquals(setOf("error"), failure.keySet())
+        assertEquals(setOf("error"), failure.keys().asSequence().toSet())
         assertEquals("capture-failed", failure.get("error"))
         assertNotEquals("an unreadable database must be distinguishable from an empty one", empty, failed)
     }
@@ -29,7 +29,7 @@ class StateArchiveSectionTest {
         val section = JSONObject(requireNotNull(
             StateArchiveSection.manifestFragment(entry, bytes = 4096, rows = 76, captureFailed = false),
         ))
-        assertEquals(setOf("entry", "size", "rows"), section.keySet())
+        assertEquals(setOf("entry", "size", "rows"), section.keys().asSequence().toSet())
         assertEquals(entry, section.get("entry"))
         assertEquals(4096, section.get("size"))
         assertEquals(76, section.get("rows"))
@@ -40,7 +40,7 @@ class StateArchiveSectionTest {
         val section = JSONObject(requireNotNull(
             StateArchiveSection.manifestFragment(oddEntry, bytes = 1, rows = 1, captureFailed = false),
         ))
-        assertEquals(setOf("entry", "size", "rows"), section.keySet())
+        assertEquals(setOf("entry", "size", "rows"), section.keys().asSequence().toSet())
         assertEquals(oddEntry, section.get("entry"))
         assertEquals(1, section.get("size"))
         assertEquals(1, section.get("rows"))
