@@ -278,6 +278,49 @@ class AcceptedRestoreTransactionTest {
         }
     }
 
+    @Test fun aRestoredCalibrationIsSavedAndTakenUpBeforeTheConfigurationCommits() = runBlocking {
+        // Android kills the app when an app-op changes; on 2026-11-03 that landed 7 s into a restore on the
+        // bench X2i, after its configuration was durable, and the calibration the backup carried was lost.
+        PaneldServerHttpFixture().use { fixture ->
+            fixture.config.setRaw(requireNotNull(SettingsRegistry.spec("friendly_name")), "Restore contract panel")
+            val snapshot = ProximityCalibrationRuntime.encode(
+                ProximityCalibrationEngine.Calibration(mode = ProximityCalibrationEngine.Mode.RANGED, clearRaw = 120f, nearRaw = 900f),
+            )
+            val saved = EntityCatalogStore.ProximityModelRow(
+                "a".repeat(64), ProximityCalibrationRuntime.STORAGE_VERSION, "explicit-calibration-v2", snapshot, true, 1000L,
+            )
+            val manifest = JSONObject("{" + ProximityCalibrationBackup.manifestFragment(listOf(saved)).removePrefix(",") + "}")
+            val database = File(fixture.directory, "calibrations.db")
+            var reloads = 0
+            var atCommit: Pair<List<EntityCatalogStore.ProximityModelRow>, Int>? = null
+            val executor = restoreExecutor(
+                fixture, capabilities = { Capabilities() }, persist = { true },
+                calibrations = SqliteCalibrations(database),
+                onDurableStateRestored = { reloads++ },
+                // Runs once the configuration is durable and before anything the restore does after it:
+                // what a process killed at the commit has kept.
+                onReconfigure = { if (atCommit == null) atCommit = SqliteCalibrations(database).export() to reloads },
+            )
+            val ticket = requireNotNull(InstallProgress.start("restore"))
+            try {
+                executor.execute(
+                    RestoreConfigPlan(mapOf("panel_id" to "restored", "dashboard_zoom" to "120"), emptyList(), emptyList()),
+                    null, null, null, null, emptyList(), false,
+                    emptyList(), null, ticket,
+                    restorableCalibrations = ProximityCalibrationBackup.restorable(manifest, samePanel = true),
+                )
+                val result = JSONObject(InstallProgress.json()).getJSONObject("result")
+                assertEquals(result.toString(), "restored", fixture.config.panelId)
+                assertEquals(listOf(saved) to 1, atCommit)
+                assertEquals(1, reloads)
+                assertEquals(result.toString(), "succeeded", result.getString("status"))
+                assertEquals(1, result.getJSONObject("state").getInt("items"))
+            } finally {
+                InstallProgress.finish(ticket, "test cleanup")
+            }
+        }
+    }
+
     // JVM SQLite custody uses the production table schema and missing-only contract. Android's
     // CatalogProximityCalibrationCustody adapter is reviewed statically, not executed here.
     private class SqliteCalibrations(private val database: File) : ProximityCalibrationCustody {
