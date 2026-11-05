@@ -174,6 +174,32 @@ class ProximityNspanel86SetupTest {
         panel.runtime.close()
     }
 
+    /**
+     * Only a completed hold that the band refused is a place to start the hand wave from. A hand raised while the
+     * approach window runs out is a hold no one checked for stillness: taking it as the start would measure the
+     * hand going down as a wave, and save a model under which the room and the person both read near.
+     */
+    @Test fun aHoldCutShortByTheApproachWindowIsNeverTheWaveStart() {
+        val panel = Panel(Backing())
+        panel.begin(CLEAR)
+        panel.capture(CLEAR)
+        assertEquals("near", panel.stage())
+        val nearStarted = panel.now
+        panel.advance(ProximityCalibrationEngine.COUNTDOWN_MS, CLEAR)
+        while (panel.now - nearStarted < ProximityCalibrationEngine.APPROACH_TIMEOUT_MS - 4_000L) panel.advance(1_000, CLEAR)
+        repeat(5) { panel.advance(1_000, HAND) }
+        assertEquals("wave_baseline", panel.stage())
+        assertEquals("not_detected", panel.status().getString("presenceStatus"))
+
+        panel.advance(ProximityCalibrationEngine.COUNTDOWN_MS, HAND)
+        repeat(6) { panel.advance(1_000, HAND) }
+        assertEquals("the raised hand is not the starting position", "wave_baseline", panel.stage())
+
+        // Lowered, the person is back at the empty room's reading, which is still a valid start.
+        panel.capture(CLEAR)
+        assertEquals("wave_capture", panel.stage())
+    }
+
     private class Panel(backing: Backing, acquisition: ProximityAcquisition = ProximityAcquisition.ANDROID_HAL) {
         var now = 1_000L
         // The three route rules SensorReporter.prepare() gives the runtime.

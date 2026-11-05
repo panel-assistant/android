@@ -235,7 +235,8 @@ internal class ProximityCalibrationRuntime(
      * Takes up a calibration a restore has just written to the store. Only a stored calibration that differs
      * from the one running is adopted: a read that fails or finds nothing leaves the panel exactly as it was,
      * and so does a setup in progress. A restored calibration passes the same drift check as one read at
-     * start, so reloading now leaves the panel where a restart would: one inside the band is declined.
+     * start, so reloading now leaves the panel where a restart would: one inside the band is declined, or on
+     * a route that keeps such calibrations, kept as saved.
      */
     @Synchronized
     fun reloadStored(): Boolean {

@@ -122,6 +122,8 @@ internal class ProximityCalibrationEngine(
     private var stageStarted = 0L
     private var captureStarted: Long? = null
     private var returnClearSince: Long? = null
+    /** Median and spread of the completed hold whose separation the drift band refused. */
+    private var refusedPosition: Pair<Float, Float>? = null
     private var wavePeak: Float? = null
     private var waveStarted: Long? = null
     private var observedNonBinary = observedSourceMode == Mode.RANGED
@@ -267,6 +269,7 @@ internal class ProximityCalibrationEngine(
                     val proposed = Calibration(mode = mode(clear, near), clearRaw = clear, nearRaw = near)
                     val margined = driftMargined(proposed, driftMargin, driftDeclaredRange)
                     if (margined == null) {
+                        refusedPosition = near to nearSamples.spread()
                         refuseApproach(now)
                         return
                     }
@@ -299,9 +302,11 @@ internal class ProximityCalibrationEngine(
                 val presence = candidate?.takeIf { presenceStatus == CapabilityStatus.VALIDATED }
                 val atBaseline = when {
                     // Without presence the hand starts from the clear floor, or from where the person was
-                    // told to stay: a normal position measured above the floor, but not far enough to be
-                    // presence, is still a still body with its hands down.
-                    presence == null -> atSamples(raw, clearSamples) || atSamples(raw, nearSamples)
+                    // told to stay after a completed hold refused their approach: a still body, hands down,
+                    // above the floor but not far enough to be presence. Never from a hold the approach
+                    // window cut short, which no one checked for stillness.
+                    presence == null -> atSamples(raw, clearSamples) ||
+                        refusedPosition?.let { (median, spread) -> abs(raw - median) <= max(spread * 1.5f, separationFloor(raw, median)) } == true
                     requestedWavePattern == WavePattern.DOUBLE -> presence.level(raw) <= presence.clearExit * 100f
                     else -> presence.level(raw) >= presence.nearEnter * 100f
                 }
@@ -418,7 +423,7 @@ internal class ProximityCalibrationEngine(
     private fun discardCandidate() {
         candidate = null; candidateWave = null; candidateWaveMode = null; candidateDetector = null; pendingCandidatePulse = null
         clearSamples.clear(); nearSamples.clear(); waveBaselineSamples.clear()
-        captureStarted = null; returnClearSince = null; waveStarted = null; wavePeak = null
+        captureStarted = null; returnClearSince = null; waveStarted = null; wavePeak = null; refusedPosition = null
         observedNonBinary = observedSourceMode == Mode.RANGED; presenceStatus = CapabilityStatus.NOT_TESTED; waveStatus = CapabilityStatus.NOT_TESTED
     }
     private fun expire(now: Long) {
