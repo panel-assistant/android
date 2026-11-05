@@ -9,6 +9,8 @@ internal class ProximityCalibrationEngine(
     initial: Calibration? = null,
     private val requestedWavePattern: WavePattern = WavePattern.SINGLE,
     private val observedSourceMode: Mode? = null,
+    private val driftMargin: Float = 0f,
+    private val driftDeclaredRange: Float = 0f,
     private val commit: (Calibration) -> Boolean = { true },
 ) {
     enum class Mode { BINARY, RANGED }
@@ -258,7 +260,16 @@ internal class ProximityCalibrationEngine(
                         nearSamples.clear(); captureStarted = null
                         return
                     }
-                    candidate = Calibration(mode = mode(clear, near), clearRaw = clear, nearRaw = near)
+                    // A separation too small to hold the drift margin is not a weaker calibration to
+                    // save; it is one this position never produced. Keep measuring until it does or
+                    // the approach times out into NOT_DETECTED.
+                    val proposed = Calibration(mode = mode(clear, near), clearRaw = clear, nearRaw = near)
+                    val margined = driftMargined(proposed, driftMargin, driftDeclaredRange)
+                    if (margined == null) {
+                        nearSamples.clear(); captureStarted = null
+                        return
+                    }
+                    candidate = margined
                     transition(Stage.RETURN_CLEAR, now, "Move away again. The panel will confirm that your presence clears.")
                 }
             }
@@ -313,7 +324,9 @@ internal class ProximityCalibrationEngine(
                     val peak = checkNotNull(wavePeak)
                     waveStarted = null; wavePeak = null
                     if (duration !in MINIMUM_NEAR_MS..MAXIMUM_NEAR_MS) return
-                    val wave = WaveCalibration(pattern = requestedWavePattern, clearRaw = baseline, nearRaw = peak)
+                    val wave = driftMargined(
+                        WaveCalibration(pattern = requestedWavePattern, clearRaw = baseline, nearRaw = peak), driftMargin, driftDeclaredRange,
+                    ) ?: return
                     candidateWave = wave
                     candidateWaveMode = mode(wave.clearRaw, wave.nearRaw)
                     candidateDetector = Detector(wave.model(checkNotNull(candidateWaveMode))).also { it.observe(raw, now, false) }
@@ -340,10 +353,13 @@ internal class ProximityCalibrationEngine(
                     accepted++
                     if (accepted >= REQUIRED_WAVES) {
                         val presence = candidate?.takeIf { presenceStatus == CapabilityStatus.VALIDATED }
-                        candidate = presence?.copy(wave = wave) ?: Calibration(
-                            mode = checkNotNull(candidateWaveMode), clearRaw = wave.clearRaw, nearRaw = wave.nearRaw,
-                            presenceSupported = false, wave = wave,
-                        )
+                        candidate = presence?.copy(wave = wave) ?: driftMargined(
+                            Calibration(
+                                mode = checkNotNull(candidateWaveMode), clearRaw = wave.clearRaw, nearRaw = wave.nearRaw,
+                                presenceSupported = false, wave = wave,
+                            ),
+                            driftMargin, driftDeclaredRange,
+                        ) ?: return
                         waveStatus = CapabilityStatus.VALIDATED
                         transition(Stage.REVIEW, now, "Measurements complete. Review presence and wave support, then Save on the panel.")
                     }
@@ -596,5 +612,70 @@ internal class ProximityCalibrationEngine(
         private const val MAXIMUM_NEAR_MS = 4_000L
         private fun isBinaryPair(clear: Float, near: Float) = (clear == 0f && near == 1f) || (clear == 1f && near == 0f)
         private fun separationFloor(a: Float, b: Float) = max(Math.ulp(a), Math.ulp(b)) * 4f
+
+        /** Enter near no closer to the clear observation than this multiple of the drift band. */
+        const val NEAR_ENTER_DRIFT_HEADROOM = 1.5f
+
+        /** A boundary above this fraction of the span is indistinguishable from the near observation. */
+        const val MAXIMUM_NEAR_ENTER = .85f
+
+        /**
+         * Whether these readings are counts, the unit the band is measured in, rather than centimetres.
+         *
+         * The Android proximity contract is centimetres up to the sensor's declared maximum range, and a
+         * conforming HAL reports something like 0 and 5. Five centimetres cannot hold a hundred-count band,
+         * so imposing it there would refuse every calibration on hardware that worked. The panels the band
+         * was measured on report counts far beyond their own declared range: a Sonoff NSPanel 86 declares
+         * 9 and reads 3 to 485 from an empty room. A reading above the declared range cannot be
+         * centimetres, so that is the test. Magnitude alone is not: those panels' readings sit below any
+         * size threshold the band could set, which once exempted exactly the panels that stick at near.
+         * A route that is counts by construction passes a declared range of 0.
+         */
+        private fun countedBeyondDeclaredRange(clear: Float, near: Float, declaredRange: Float): Boolean =
+            max(abs(clear), abs(near)) > declaredRange
+
+        /**
+         * Hold both decision boundaries above the source's own multi-day clear-floor drift.
+         *
+         * The fractions alone place the boundary relative to whichever clear floor one five-second
+         * capture happened to see, so a session that measured a weak near observation leaves the
+         * boundary sitting inside a day's ordinary drift. `margin` is that drift band, in the
+         * source's own raw units. Raising `clearExit` matters as much as raising `nearEnter`: a
+         * floor that drifts past the exit boundary while someone is present leaves the panel near
+         * after they leave, which is the state in which auto-sleep cannot sleep and a
+         * single-approach wake cannot rearm.
+         *
+         * Returns null when the two observations are too close together to hold a margined
+         * boundary. That is not a calibration to weaken; it is a separation that was not measured.
+         * Fractions only ever rise, so a calibration with room to spare is returned unchanged.
+         */
+        fun driftMargined(value: Calibration, margin: Float, declaredRange: Float = 0f): Calibration? {
+            if (margin <= 0f || value.mode == Mode.BINARY ||
+                !countedBeyondDeclaredRange(value.clearRaw, value.nearRaw, declaredRange)
+            ) return value
+            val span = abs(value.nearRaw - value.clearRaw)
+            if (!span.isFinite() || span <= 0f) return null
+            val nearEnter = max(value.nearEnter, margin * NEAR_ENTER_DRIFT_HEADROOM / span)
+            if (!(nearEnter <= MAXIMUM_NEAR_ENTER)) return null
+            val wave = value.wave?.let { driftMargined(it, margin, declaredRange) ?: return null }
+            // A boundary pair the model itself refuses is not a calibration to fall back on.
+            return runCatching {
+                value.copy(nearEnter = nearEnter, clearExit = max(value.clearExit, margin / span), wave = wave)
+            }.getOrNull()
+        }
+
+        /** The same rule for a deliberate wave, whose baseline drifts exactly as the clear floor does. */
+        fun driftMargined(value: WaveCalibration, margin: Float, declaredRange: Float = 0f): WaveCalibration? {
+            if (margin <= 0f || isBinaryPair(value.clearRaw, value.nearRaw) ||
+                !countedBeyondDeclaredRange(value.clearRaw, value.nearRaw, declaredRange)
+            ) return value
+            val span = abs(value.nearRaw - value.clearRaw)
+            if (!span.isFinite() || span <= 0f) return null
+            val waveNearEnter = max(value.nearEnter, margin * NEAR_ENTER_DRIFT_HEADROOM / span)
+            if (!(waveNearEnter <= MAXIMUM_NEAR_ENTER)) return null
+            return runCatching {
+                value.copy(nearEnter = waveNearEnter, clearExit = max(value.clearExit, margin / span))
+            }.getOrNull()
+        }
     }
 }

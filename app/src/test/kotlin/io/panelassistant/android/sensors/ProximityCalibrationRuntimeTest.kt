@@ -178,6 +178,43 @@ class ProximityCalibrationRuntimeTest {
         assertEquals("calibration_required", JSONObject(empty.statusJson()).getString("state"))
     }
 
+    /** Resetting to the profile removes the declined calibration, so the panel stops reporting it. */
+    @Test fun aResetAfterADeclinedCalibrationClearsTheDriftFlag() {
+        val backing = Backing(row(Calibration(mode = Mode.RANGED, clearRaw = 100f, nearRaw = 95f)))
+        val fixture = Fixture(backing, driftMargin = 10f)
+        assertTrue(fixture.status().getBoolean("calibrationDriftUnsafe"))
+        assertEquals("profile", fixture.status().getString("calibrationSource"))
+        assertTrue(fixture.runtime.resetToProfile())
+        assertFalse(fixture.status().getBoolean("calibrationDriftUnsafe"))
+        assertEquals("profile", fixture.status().getString("calibrationSource"))
+    }
+
+    /** A calibration found under the old revision key passes the same drift check as one under the current key. */
+    @Test fun aCarriedCalibrationInsideTheDriftBandIsDeclined() {
+        val old = row(Calibration(mode = Mode.RANGED, clearRaw = 100f, nearRaw = 95f))
+            .copy(fingerprint = ProximityCalibrationRuntime.fingerprint("$PROFILE|rev-1|$SOURCE"))
+        val backing = Backing(old)
+        val carried = Fixture(backing, revision = "rev-1", driftMargin = 10f)
+        assertEquals("profile", carried.status().getString("calibrationSource"))
+        assertTrue(carried.status().getBoolean("calibrationDriftUnsafe"))
+        assertEquals(old, backing.row)
+        assertEquals(0, backing.writes)
+    }
+
+    /** A declined calibration asks for setup again; once setup saves one that holds the band, the panel no
+     *  longer reports the declined one. */
+    @Test fun aSetupSavedAfterADeclinedCalibrationClearsTheDriftFlag() {
+        val backing = Backing(row(Calibration(mode = Mode.RANGED, clearRaw = 974f, nearRaw = 995f)))
+        val fixture = Fixture(backing, driftMargin = 100f)
+        assertTrue(fixture.status().getBoolean("calibrationDriftUnsafe"))
+        fixture.toReview(974f, 3_413f, null)
+        fixture.advance(1)
+        assertTrue(fixture.runtime.localAction("save"))
+        assertEquals("user", fixture.status().getString("calibrationSource"))
+        assertFalse(fixture.status().getBoolean("calibrationDriftUnsafe"))
+        assertEquals(1, backing.writes)
+    }
+
     /** A restore writes the calibration to the store while the runtime runs; the reload takes it up at once,
      *  except during a setup, which keeps the panel. */
     @Test fun reloadTakesUpARestoredCalibrationButNeverInterruptsSetup() {
@@ -680,12 +717,12 @@ class ProximityCalibrationRuntimeTest {
 
     private class Fixture(
         val backing: Backing = Backing(), source: String = SOURCE, profile: String = PROFILE,
-        private val pattern: WavePattern = WavePattern.SINGLE, revision: String? = null,
+        private val pattern: WavePattern = WavePattern.SINGLE, revision: String? = null, driftMargin: Float = 0f,
     ) {
         var now = 1_000L
         val runtime = ProximityCalibrationRuntime(source, profile, legacy(), Store(backing),
             elapsed = { now }, wall = { 1_800_000_000_000L + now }, requestedWavePattern = pattern,
-            profileRevision = revision)
+            profileRevision = revision, driftMargin = driftMargin)
         var session = ""
         fun status() = JSONObject(runtime.json())
         fun stage() = status().getString("stage")
