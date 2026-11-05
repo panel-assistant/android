@@ -14,32 +14,10 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 class BrightnessHardwareWriterTest {
-    @Test fun successfulSuWriteShortCircuitsHelper() {
-        val root = FakeRootShell(runResult = true)
-        val daemon = FakeDaemon()
-
-        val route = BrightnessHardwareWriter(root, daemon).write(128, BacklightNode("/sys/backlight/", 100))
-
-        assertEquals(BrightnessWriteRoute.SU, route)
-        assertEquals(listOf("echo 50 > /sys/backlight/brightness"), root.ran)
-        assertTrue(daemon.sent.isEmpty())
-    }
-
-    @Test fun failedSuWriteFallsThroughToHelperResult() {
-        val root = FakeRootShell(runResult = false)
-        val daemon = FakeDaemon(mapOf("BLREAD" to "25 200", "BLSET 100" to "OK"))
-
-        val route = BrightnessHardwareWriter(root, daemon).write(128, BacklightNode("/sys/backlight/", 100))
-
-        assertEquals(BrightnessWriteRoute.HELPER, route)
-        assertEquals(listOf("echo 50 > /sys/backlight/brightness"), root.ran)
-        assertEquals(listOf("BLREAD", "BLSET 100"), daemon.sent)
-    }
-
-    @Test fun absentSuNodeUsesHelperAndClampsInput() {
+    @Test fun helperWriteClampsInputToTheNodeMaximum() {
         val daemon = FakeDaemon(mapOf("BLREAD" to "0 80", "BLSET 80" to "OK"))
 
-        val route = BrightnessHardwareWriter(FakeRootShell(), daemon).write(999, null)
+        val route = BrightnessHardwareWriter(daemon).write(999)
 
         assertEquals(BrightnessWriteRoute.HELPER, route)
         assertEquals(listOf("BLREAD", "BLSET 80"), daemon.sent)
@@ -47,23 +25,24 @@ class BrightnessHardwareWriterTest {
 
     @Test fun defaultWriterKeepsTheHistoricLinearNodeValue() {
         for (level in intArrayOf(0, 1, 10, 64, 128, 200, 255)) {
-            val root = FakeRootShell(runResult = true)
-            BrightnessHardwareWriter(root, FakeDaemon()).write(level, BacklightNode("/sys/bl/", 1023))
-            assertEquals(listOf("echo ${level * 1023 / 255} > /sys/bl/brightness"), root.ran)
+            val expected = level * 1023 / 255
+            val daemon = FakeDaemon(mapOf("BLREAD" to "0 1023", "BLSET $expected" to "OK"))
+            assertEquals(BrightnessWriteRoute.HELPER, BrightnessHardwareWriter(daemon).write(level))
         }
     }
 
-    @Test fun profileCurveShapesTheNodeValueOnBothLegs() {
+    @Test fun profileCurveShapesTheNodeValue() {
         val curve = TransferCurve.Gamma(2.2, floor = 12 / 255.0)
-        val root = FakeRootShell(runResult = true)
-        BrightnessHardwareWriter(root, FakeDaemon(), curve).write(128, BacklightNode("/sys/bl/", 255))
-        assertEquals(listOf("echo 65 > /sys/bl/brightness"), root.ran)   // 12 + 243 · 0.502^2.2 = 65.4
+        val daemon = FakeDaemon(mapOf("BLREAD" to "0 255", "BLSET 65" to "OK", "BLSET 12" to "OK", "BLSET 0" to "OK"))
+        val writer = BrightnessHardwareWriter(daemon, curve)
+        assertEquals(BrightnessWriteRoute.HELPER, writer.write(128))   // 12 + 243 · 0.502^2.2 = 65.4
+        assertEquals(BrightnessWriteRoute.HELPER, writer.write(1))
+        assertEquals(BrightnessWriteRoute.HELPER, writer.write(0))
+        assertEquals(listOf("BLREAD", "BLSET 65", "BLREAD", "BLSET 12", "BLREAD", "BLSET 0"), daemon.sent)
+    }
 
-        val daemon = FakeDaemon(mapOf("BLREAD" to "0 255", "BLSET 12" to "OK", "BLSET 0" to "OK"))
-        val writer = BrightnessHardwareWriter(FakeRootShell(), daemon, curve)
-        assertEquals(BrightnessWriteRoute.HELPER, writer.write(1, null))
-        assertEquals(BrightnessWriteRoute.HELPER, writer.write(0, null))
-        assertEquals(listOf("BLREAD", "BLSET 12", "BLREAD", "BLSET 0"), daemon.sent)
+    @Test fun anUnreachableHelperLeavesNoHardwareRoute() {
+        assertEquals(BrightnessWriteRoute.NONE, BrightnessHardwareWriter(FakeDaemon()).write(128))
     }
 
     @Test fun malformedReadOrFailedSetHasNoSuccessfulRoute() {
@@ -75,7 +54,7 @@ class BrightnessHardwareWriterTest {
             FakeDaemon(mapOf("BLREAD" to "10 100 extra")) to listOf("BLREAD"),
             FakeDaemon(mapOf("BLREAD" to "10 100", "BLSET 50" to "ERR")) to listOf("BLREAD", "BLSET 50"),
         ).forEach { (daemon, expectedCalls) ->
-            assertEquals(BrightnessWriteRoute.NONE, BrightnessHardwareWriter(FakeRootShell(), daemon).write(128, null))
+            assertEquals(BrightnessWriteRoute.NONE, BrightnessHardwareWriter(daemon).write(128))
             assertEquals(expectedCalls, daemon.sent)
         }
     }
@@ -202,13 +181,13 @@ class BrightnessHardwareWriterTest {
         }
     }
 
-    @Test fun unavailableBacklightDiscoveryRetriesWithBoundedBackoffThenSticksOnSuccess() {
+    @Test fun anUnavailableProbeRetriesWithBoundedBackoffThenSticksOnSuccess() {
         var now = 10_000L
         var calls = 0
         val probe = SuccessStickyProbe(
             probe = {
                 calls++
-                if (calls < 3) null else BacklightNode("/sys/class/backlight/panel/", 255)
+                if (calls < 3) null else "/sys/class/backlight/panel/"
             },
             nowMs = { now },
             initialBackoffMs = 100L,
@@ -226,9 +205,9 @@ class BrightnessHardwareWriterTest {
         assertEquals(null, probe.get())
         assertEquals(2, calls)
         now += 1
-        assertEquals(BacklightNode("/sys/class/backlight/panel/", 255), probe.get())
+        assertEquals("/sys/class/backlight/panel/", probe.get())
         now += 60_000
-        assertEquals(BacklightNode("/sys/class/backlight/panel/", 255), probe.get())
+        assertEquals("/sys/class/backlight/panel/", probe.get())
         assertEquals(3, calls)
     }
 }

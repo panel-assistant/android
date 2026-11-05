@@ -1,6 +1,5 @@
 package io.panelassistant.android.control
 
-import io.panelassistant.android.device.ScreenOff
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -16,8 +15,9 @@ import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * A panel whose SuperSU daemon dies while the app runs: `su` still starts,
- * then exits 1 with no output. Driven through the screen controller's backlight read, the state loop's
- * root call, over the real [SuShell] with only process launch and the clock replaced.
+ * then exits 1 with no output. Driven through a repeated sysfs read over the real [SuShell] with only
+ * process launch and the clock replaced. (The screen controller's backlight read that used to drive this
+ * now goes to the root helper only; the shell's loss and recovery behaviour still serves rare callers.)
  */
 class SuLostRootTest {
 
@@ -27,9 +27,11 @@ class SuLostRootTest {
     private val shells = mutableListOf<FakeSuShellProcess>()
 
     private val su = SuShell(launch = ::launch, nowMs = { now })
-    private val screen = ScreenController(
-        FakeBacklight(), FakeScreenPower(), su, FakeDaemon(), FakeWakeTap(), ScreenOff.SU_BLPOWER,
-    )
+
+    /** A root read of the backlight power node: true when powered, null when root did not answer. */
+    private val screen = object {
+        fun observedLit(): Boolean? = su.runOutput("cat /sys/class/backlight/bl/bl_power")?.trim()?.toIntOrNull()?.let { it == 0 }
+    }
 
     @After
     fun closeShells() = shells.forEach { it.destroy() }

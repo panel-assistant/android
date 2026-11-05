@@ -211,10 +211,12 @@ internal abstract class PanelRuntimeRig {
         screenOffTimeout: io.panelassistant.android.control.ScreenTimeoutController? = null,
         brightnessSetting: io.panelassistant.android.control.BrightnessSetting? = null,
         /** The screen-off route a profile declares, the backlight the screen controller reads (a test
-         *  moves its level as a vendor brightness writer would) and the root shell it powers it through. */
+         *  moves its level as a vendor brightness writer would), the root shell it powers it through when
+         *  no helper answers, and the root helper that reads and powers it. */
         screenOff: ScreenOff = ScreenOff.BRIGHTNESS_ZERO,
         screenBacklight: FakeBacklight = FakeBacklight(160),
         screenRoot: RootShell = FakeRootShell(),
+        screenDaemon: io.panelassistant.android.platform.Daemon = FakeDaemon(),
         /** Boot-chime hardware; null keeps the inert controller. When given, the controller persists its
          *  setting in this rig's Config, as production does. */
         bootChimeHardware: BootChimeHardware? = null,
@@ -274,11 +276,11 @@ internal abstract class PanelRuntimeRig {
             sysfs,
         )
         val brightness = if (brightnessSetting != null) {
-            BrightnessController(context, FakeRootShell(), FakeDaemon(), setting = brightnessSetting)
-        } else screenOffTimeout?.let { BrightnessController(context, FakeRootShell(), FakeDaemon(), screenTimeout = it) }
-            ?: BrightnessController(context, FakeRootShell(), FakeDaemon())
+            BrightnessController(context, FakeDaemon(), setting = brightnessSetting)
+        } else screenOffTimeout?.let { BrightnessController(context, FakeDaemon(), screenTimeout = it) }
+            ?: BrightnessController(context, FakeDaemon())
         val screen = ScreenController(
-            if (brightnessSetting != null) brightness else screenBacklight, FakeScreenPower(), screenRoot, FakeDaemon(), FakeWakeTap(),
+            if (brightnessSetting != null) brightness else screenBacklight, FakeScreenPower(), screenRoot, screenDaemon, FakeWakeTap(),
             screenOff, nap = {}, accessibility = io.panelassistant.android.control.FakeDreamAccessibility(false),
         )
         val companion = "io.homeassistant.companion.android.minimal"

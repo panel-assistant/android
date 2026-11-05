@@ -6,7 +6,6 @@ import android.os.SystemClock
 import android.util.Log
 import io.panelassistant.android.Config
 import io.panelassistant.android.platform.Daemon
-import io.panelassistant.android.platform.RootShell
 import io.panelassistant.android.util.AccessDenialMemo
 import io.panelassistant.android.util.Cached
 import io.panelassistant.android.util.HelperClient
@@ -107,16 +106,16 @@ internal fun preventIdleDimDiagnostic(enabled: Boolean, timeoutMs: Int): String 
  */
 class BrightnessController internal constructor(
     private val context: Context,
-    private val root: RootShell = Su,
     private val daemon: Daemon = HelperClient,
     private val scale: BacklightScale = BacklightScale.IDENTITY,
     private val setting: BrightnessSetting = SystemBrightnessSetting(context),
     // The SCREEN_OFF_TIMEOUT boundary prevent_idle_dim writes; a seam so a JVM test can refuse the write.
     private val screenTimeout: ScreenTimeoutController = systemScreenTimeout(context),
 ) : Backlight {
-    constructor(context: Context) : this(context, Su, HelperClient, BacklightScale.IDENTITY)
+    constructor(context: Context) : this(context, HelperClient, BacklightScale.IDENTITY)
 
-    private val hardwareWriter = BrightnessHardwareWriter(root, daemon, scale.nodeCurve)
+    private val hardwareWriter = BrightnessHardwareWriter(daemon, scale.nodeCurve)
+    @Volatile private var loggedNoHardwareRoute = false
     private val successfulWrites = BacklightWriteTracker()
     private val writeSequencer = BrightnessWriteSequencer(
         actuator = BrightnessWriteSequencer.Actuator(::applyBrightnessUnserialized),
@@ -126,17 +125,6 @@ class BrightnessController internal constructor(
     private val writeAttribution = BrightnessWriteAttribution()
 
     fun canWrite(): Boolean = Settings.System.canWrite(context)
-
-    // The hardware backlight node (path, max). Sonoff firmware idle-dims this sysfs node directly and does
-    // NOT honour SCREEN_BRIGHTNESS, so we read + drive it to keep HA in sync with the real backlight (and
-    // to actually move it). Null → no node or no root → fall back to the Android setting. A successful
-    // discovery is sticky, while a transient boot/root failure retries under bounded backoff.
-    private val backlight = SuccessStickyProbe(probe = {
-        val dir = root.runOutput("ls -d /sys/class/backlight/*/ 2>/dev/null | head -1")?.trim()
-        val max = dir?.takeIf(String::isNotEmpty)
-            ?.let { root.runOutput("cat ${it}max_brightness 2>/dev/null")?.trim()?.toIntOrNull() }
-        if (dir.isNullOrEmpty() || max == null || max <= 0) null else BacklightNode(dir, max)
-    })
 
     /**
      * @param level 0–255. Switches the panel to manual brightness mode and applies [level], floored at
@@ -165,13 +153,17 @@ class BrightnessController internal constructor(
             scale.recordOwned(level, v)
             writeAttribution.record(v, SystemClock.elapsedRealtime())
         }
-        // Also drive the real hardware node. A discovered su path is only a candidate: its write must
-        // succeed, otherwise the helper gets the same operation rather than being masked by stale metadata.
-        val hardwareRoute = hardwareWriter.write(v, backlight.get())
+        // Also drive the real hardware node (Sonoff firmware idle-dims it directly and does not always
+        // honour SCREEN_BRIGHTNESS). Only through the helper: these writes repeat on every ramp step, so su
+        // is never used for them. Without a helper the Android setting is the actuator; say so once.
+        val hardwareRoute = hardwareWriter.write(v)
         when (hardwareRoute) {
-            BrightnessWriteRoute.SU -> Log.d(TAG, "hardware brightness -> $v (su)")
             BrightnessWriteRoute.HELPER -> Log.d(TAG, "hardware brightness -> $v (helper)")
-            BrightnessWriteRoute.NONE -> Unit // Android setting is the legitimate actuator on many panels.
+            BrightnessWriteRoute.NONE -> if (!loggedNoHardwareRoute) {
+                loggedNoHardwareRoute = true
+                Log.i(TAG, "hardware backlight node not driven: the root helper did not accept BLREAD/BLSET; " +
+                    "the Android brightness setting is the actuator (su is not used for repeated writes)")
+            }
         }
         effective.invalidate()   // a read right after a set must see the new level, not the cache
         return settingWritten || hardwareRoute != BrightnessWriteRoute.NONE
@@ -200,12 +192,12 @@ class BrightnessController internal constructor(
         }.getOrNull()
     })
 
-    // Effective reads are cheap as plain files but an su round-trip on the fallback path, and callers
+    // Effective reads are cheap as plain files but a helper round-trip on the fallback path, and callers
     // include per-tick reconciles and UI polls — cache briefly; writes invalidate so a fresh set reads back.
     private val effective = Cached(EFFECTIVE_TTL_MS) { readEffective() }
 
     /** Sysfs actual_brightness mapped back to the HA scale through [scale] (plain file read, else the
-     *  helper, else su), or -1 when unavailable. */
+     *  helper), or -1 when unavailable. Never su: this read repeats per tick and per UI poll. */
     private fun readEffective(): Int {
         readNode.get()?.let { (f, max) ->
             runCatching { f.readText().trim().toIntOrNull() }.getOrNull()?.let {
@@ -215,11 +207,6 @@ class BrightnessController internal constructor(
         // Daemon leg (TPA10-class panels: the app is SELinux-denied on the node and has no su).
         parseBacklightReading(daemon.send("BLREAD"))?.let {
             return scale.levelFromNode(it.actual, it.maximum)
-        }
-        backlight.get()?.let { node ->
-            root.runOutput("cat ${node.directory}actual_brightness 2>/dev/null")?.trim()?.toIntOrNull()?.let {
-                return scale.levelFromNode(it, node.maximum)
-            }
         }
         return -1
     }
