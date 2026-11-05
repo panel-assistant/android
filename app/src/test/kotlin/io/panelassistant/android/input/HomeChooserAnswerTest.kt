@@ -22,6 +22,15 @@ class HomeChooserAnswerTest {
         var setupDone: Boolean? = true
         /** The chooser HOME shows while unowned; Android names the app it last chose in its title. */
         var offered = chooser
+        /**
+         * The chooser as HOME first draws it, before its list has loaded: Always present but disabled.
+         * Its window event is answered while it is still like this; it turns into [offered] once this
+         * many rechecks have fallen due. 0 means it draws loaded.
+         */
+        val loading = chooser.copy(title = null, alwaysEnabled = false)
+        var loadsAfterRechecks = 0
+        private var loadingEventAnswered = false
+        var rechecks = 0
         /** An installer sets HOME over ADB straight after the chooser is shown, before it is answered. */
         var claimedAfterShow = false
         /** The start-up's dashboard launches arriving while a tap is on its way, one per tap. */
@@ -41,7 +50,7 @@ class HomeChooserAnswerTest {
             activeWindow = { front },
             showChooser = {
                 homePresses++
-                if (home == resolver) front = offered
+                if (home == resolver) front = if (loadsAfterRechecks > 0) loading else offered
                 if (claimedAfterShow) home = dashboard
                 if (coveredShows > 0) { coveredShows--; front = dashboardWindow }
                 true
@@ -64,7 +73,15 @@ class HomeChooserAnswerTest {
             answer.answer()
             repeat(20) {
                 when {
-                    due != null -> { due = null; answer.answer() }
+                    // The chooser's window event: the service answers it after settling, which replaces a
+                    // recheck already due. Its list loads afterwards, with no further window event.
+                    front == loading && !loadingEventAnswered -> { loadingEventAnswered = true; due = null; answer.answer() }
+                    due != null -> {
+                        due = null
+                        rechecks++
+                        if (front == loading && --loadsAfterRechecks == 0) front = offered
+                        answer.answer()
+                    }
                     front == offered && !ignoredTaps -> answer.answer()
                     else -> return
                 }
@@ -133,6 +150,28 @@ class HomeChooserAnswerTest {
         portal.answer.answer()
         assertEquals(dashboardWindow, portal.front)
         assertEquals(resolver, portal.home)
+    }
+
+    @Test fun aChooserStillLoadingWhenFirstReadIsAnsweredOnceItHasLoaded() {
+        // A Meta Portal, 2026-10-28: 600 ms after HOME was pressed the chooser it showed was not yet
+        // answerable and was dismissed for good, leaving HOME on Android's chooser after the update.
+        val portal = Portal().apply { loadsAfterRechecks = 1 }
+        portal.answer.connected()
+        portal.settle()
+        assertEquals(dashboard, portal.home)
+        assertEquals(1, portal.homePresses)
+        assertEquals(1, portal.taps)
+    }
+
+    @Test fun aChooserThatNeverBecomesAnswerableIsDismissedAfterABoundedLook() {
+        val portal = Portal().apply { loadsAfterRechecks = Int.MAX_VALUE }
+        portal.answer.connected()
+        portal.settle()
+        assertEquals(resolver, portal.home)
+        assertEquals(dashboardWindow, portal.front)
+        assertEquals(1, portal.homePresses)
+        assertEquals(0, portal.taps)
+        assertEquals(4, portal.rechecks) // four looks, about three seconds
     }
 
     @Test fun anOwnedHomeIsLeftAlone() {
