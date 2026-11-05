@@ -579,9 +579,10 @@ tasks.withType<Test>().configureEach {
     outputs.dir(layout.buildDirectory.dir("test-fixtures")).withPropertyName("testFixtures")
     if (System.getProperty("os.name").startsWith("Linux", ignoreCase = true)) {
         dependsOn(buildHelperSocketTestServer)
-        systemProperty("hapaneld.helper.socketTestServer", helperSocketTestServer.absolutePath)
+        // Relative to the project directory (the Test working directory) so the cache key matches across checkouts.
+        systemProperty("hapaneld.helper.socketTestServer", helperSocketTestServer.relativeTo(projectDir).invariantSeparatorsPath)
         dependsOn(buildHostJniLibraries)
-        systemProperty("hapaneld.test.hostJniDirectory", hostJniLibraries.get().asFile.absolutePath)
+        systemProperty("hapaneld.test.hostJniDirectory", hostJniLibraries.get().asFile.relativeTo(projectDir).invariantSeparatorsPath)
     }
     // RELATIVE path sensitivity keys the fingerprint on content plus tree-relative path, so a clean
     // checkout at another location reuses the cache while any byte change invalidates it.
