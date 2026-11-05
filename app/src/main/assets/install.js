@@ -703,7 +703,21 @@
     });
     scheduleInstallColumnAlignment();
   }
-  var rsFile = null;
+  var rsSelection = null, rsPreview = null;
+  function invalidateRestorePreview() {
+    rsSelection = null; rsPreview = null;
+    var prev = document.getElementById('rs-preview');
+    if (prev) prev.textContent = '';
+    scheduleInstallColumnAlignment();
+  }
+  var restorePassphrase = document.getElementById('rs-pw');
+  if (restorePassphrase) {
+    var passphraseChanged = function () {
+      if (rsSelection && restorePassphrase.value !== rsSelection.passphrase) invalidateRestorePreview();
+    };
+    restorePassphrase.addEventListener('input', passphraseChanged);
+    restorePassphrase.addEventListener('change', passphraseChanged);
+  }
 
   window.doBackup = function (btn) {
     var pw = (document.getElementById('bk-pw') || {}).value || '';
@@ -774,12 +788,14 @@
   // Pick a bundle → preview (dry run, non-destructive) → offer a Confirm restore. Passphrase only needed
   // for an encrypted bundle (the server says so if it is one and the field is blank).
   window.restorePick = function (input) {
-    rsFile = input.files && input.files[0]; if (!rsFile) return;
-    var pw = (document.getElementById('rs-pw') || {}).value || '';
+    invalidateRestorePreview();
+    var file = input.files && input.files[0]; if (!file) return;
+    var selection = Object.freeze({ file: file, passphrase: (document.getElementById('rs-pw') || {}).value || '' });
+    rsSelection = selection;
     var prev = document.getElementById('rs-preview');
     if (prev) { prev.innerHTML = '<p class="note">' + esc(t('install.backup.dynamic.restore_reading', 'Reading preview…')) + '</p>'; scheduleInstallColumnAlignment(); }
-    api('restore', { dry_run: 1, passphrase: pw, blob: rsFile }).then(function (d) {
-        if (!prev) return;
+    api('restore', { dry_run: 1, passphrase: selection.passphrase, blob: selection.file }).then(function (d) {
+        if (rsSelection !== selection || !prev) return;
         if (!d.ok) { var refusedFallback = d.error || t('install.backup.dynamic.restore_unreadable', 'could not read bundle'); prev.textContent = ''; var refusedNode = document.createElement('p'); refusedNode.className = 'note'; setPresented(refusedNode, d.presentation, refusedFallback); prev.appendChild(refusedNode); scheduleInstallColumnAlignment(); return; }
         var comp = d.companion_files ? pluralText('install.backup.preview_files.one', 'install.backup.preview_files.other', d.companion_files, '{package} ({count} file)', '{package} ({count} files)', { package: d.companion_pkg, count: String(d.companion_files) }) : t('install.backup.dynamic.preview_none', 'none');
         prev.innerHTML = '<table class="dt"><tr><th>' + esc(t('install.backup.dynamic.preview_panel', 'Panel')) + '</th><td>' + esc(d.panel_id) + '</td></tr>' +
@@ -790,19 +806,24 @@
           (d.state_unavailable ? '<p class="note">⚠ ' + esc(t('install.backup.dynamic.preview_state_unavailable', 'This backup carries no panel state: the panel it came from could not read its own database. Restoring it will not bring panel state back.')) + '</p>' : '') +
           (d.config_warnings || []).map(function (warning) { return '<p class="note">⚠ ' + esc(warning) + '</p>'; }).join('') +
           '<button class="pbtn"' + hardenedApprovalA11yAttrs + ' style="margin-top:8px" onclick="restoreConfirm(this)">⚠ ' + esc(t('install.backup.dynamic.restore_now', 'Restore this bundle now')) + '</button>';
+        rsPreview = selection;
         scheduleInstallColumnAlignment();
       }).catch(function () {
+        if (rsSelection !== selection) return;
         if (prev) prev.innerHTML = '<p class="note">' + esc(t('install.backup.dynamic.preview_failed', 'Preview failed.')) + '</p>';
         scheduleInstallColumnAlignment();
       });
   };
 
   window.restoreConfirm = function (btn) {
-    if (!rsFile) return;
-    if (!confirm(t('install.backup.dynamic.restore_confirm', 'Restore overwrites this panel\'s config and Home Assistant Companion login. Continue?'))) return;
+    var selection = rsPreview;
+    if (!selection || selection !== rsSelection || !btn || btn.parentNode !== document.getElementById('rs-preview')) return;
+    var input = document.getElementById('rs-file');
     var pw = (document.getElementById('rs-pw') || {}).value || '';
+    if (!input || input.files[0] !== selection.file || pw !== selection.passphrase) { invalidateRestorePreview(); return; }
+    if (!confirm(t('install.backup.dynamic.restore_confirm', 'Restore overwrites this panel\'s config and Home Assistant Companion login. Continue?'))) return;
     btn.disabled = true; bkMsg(t('install.backup.dynamic.restoring', 'Restoring…'));
-    approved('restore', { passphrase: pw, blob: rsFile }, bkMsg).then(function (d) {
+    approved('restore', { passphrase: selection.passphrase, blob: selection.file }, bkMsg).then(function (d) {
         if (d.status === 'busy') { bkMsg(t('install.progress.operation_busy', 'Another operation is running — try again shortly.')); btn.disabled = false; return; }
         if (d.status !== 'started') { setPresented(document.getElementById('bk-msg'), d.presentation, t('install.progress.could_not_start', 'Could not start: {status}', { status: closedToken(COMPONENT_STATUS, d.status || 'error') })); scheduleInstallColumnAlignment(); btn.disabled = false; return; }
         pollRestore();
