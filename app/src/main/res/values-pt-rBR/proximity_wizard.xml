@@ -4,6 +4,8 @@
     <string name="proximity_wizard_wave_twice_hint">Dois acenos rápidos e depois afaste-se.</string>
     <string name="proximity_wizard_normal_position">Volte à sua posição habitual</string>
     <string name="proximity_wizard_hands_down">Mantenha as mãos abaixadas.</string>
+    <string name="proximity_wizard_presence_refused_hint">O sensor não detecta com confiabilidade quando você está aqui, então a presença fica desativada. Mantenha as mãos abaixadas.</string>
+    <string name="proximity_wizard_speech_wave_baseline_refused">O sensor não conseguiu detectar com confiabilidade quando você está onde normalmente usa o painel, então a detecção de presença ficará desativada. Fique onde está e mantenha as mãos abaixadas. Em seguida, vou testar um aceno com a mão.</string>
     <string name="proximity_wizard_review_wave_only">Presença indisponível.\nAceno verificado.</string>
     <string name="proximity_wizard_review_neither">Nem a presença nem o aceno foram verificados. Suas configurações anteriores serão mantidas.</string>
     <string name="proximity_wizard_saved_wave_only">Configurações de aceno salvas.\nA detecção de presença está indisponível.</string>

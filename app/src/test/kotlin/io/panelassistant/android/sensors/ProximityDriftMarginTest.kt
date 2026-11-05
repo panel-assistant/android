@@ -95,15 +95,15 @@ class ProximityDriftMarginTest {
         journey.begin(clearFloor)
         journey.capture(clearFloor)
         journey.capture(weakNear)
+        // Refused at the end of that hold, not measured again until the approach window runs out.
         assertEquals(
             "a separation smaller than the drift band is not a presence measurement",
-            Stage.NEAR,
+            Stage.WAVE_BASELINE,
             journey.state.stage,
         )
-        journey.tick(ProximityCalibrationEngine.APPROACH_TIMEOUT_MS)
-        assertEquals(Stage.WAVE_BASELINE, journey.state.stage)
         assertEquals(CapabilityStatus.NOT_DETECTED, journey.state.presenceStatus)
         assertFalse(journey.state.presenceSupported)
+        assertNull(journey.saved)
     }
 
     @Test fun anOccupantSeparationIsSavedAndHoldsItsBoundaryAboveTheDriftBand() {
@@ -308,7 +308,8 @@ class ProximityDriftMarginTest {
      * The NSPanel 86 shape: its HAL declares a 9 cm range and reads an empty room at 95 to 151 counts on one unit. A
      * setup there that saw 131 clear and 157 near (the separation one such unit holds today, recovered from
      * its live raw and level readings) is far smaller than the 56-count band that unit's own floor walked, so
-     * it is declined, although neither reading reaches any size a magnitude test could set from the band.
+     * a new setup refuses it, although neither reading reaches any size a magnitude test could set from the band.
+     * The calibration that unit already holds is kept as saved (ProximityNspanel86SetupTest).
      */
     @Test fun aCountingHalBelowAnySizeThresholdStillHoldsTheBand() {
         val hal = proximityDriftMargin(ProximityAcquisition.ANDROID_HAL)
@@ -319,19 +320,22 @@ class ProximityDriftMarginTest {
         // The same pair from a sensor declaring a range that covers it would be centimetres and is left alone.
         assertEquals(standing, ProximityCalibrationEngine.driftMargined(standing, hal, 200f))
 
-        // Through the runtime, as the panel loads it: declined, setup asked for, the row untouched.
+        // Through the runtime, as the panel loads one saved before the band: kept exactly as saved, the row untouched.
         val stored = row(standing)
         val backing = Backing(stored)
         val runtime = ProximityCalibrationRuntime(
             SOURCE, PROFILE, null, Store(backing), elapsed = { 1_000L }, wall = { 1_800_000_000_000L },
             observedSourceMode = Mode.RANGED, driftMargin = hal, driftDeclaredRange = NSPANEL_86_DECLARED_RANGE,
+            keepStoredInsideDriftBand = proximityKeepsStoredInsideDriftBand(ProximityAcquisition.ANDROID_HAL),
         )
         runtime.observe(140f, 1_000L, false)
         val status = JSONObject(runtime.json())
-        assertEquals("calibration_required", status.getString("phase"))
-        assertTrue(status.getBoolean("calibrationDriftUnsafe"))
+        assertEquals("ready", status.getString("phase"))
+        assertEquals("user", status.getString("calibrationSource"))
+        assertFalse(status.getBoolean("calibrationDriftUnsafe"))
         runtime.close()
         assertEquals(stored, backing.row)
+        assertEquals(0, backing.writes)
     }
 
     @Test fun onlyAHalReadsItsDeclaredRangeAsTheLimitOfCentimetres() {

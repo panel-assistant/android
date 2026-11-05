@@ -25,6 +25,8 @@ internal class ProximityCalibrationRuntime(
     private val driftMargin: Float = 0f,
     /** The source's declared maximum range; readings beyond it are counts, the band's unit. 0 = always counts. */
     private val driftDeclaredRange: Float = 0f,
+    /** Keep a stored calibration inside the band as saved, rather than decline it (`proximityKeepsStoredInsideDriftBand`). */
+    private val keepStoredInsideDriftBand: Boolean = false,
 ) : AutoCloseable {
     data class Decision(val reportMask: Int, val near: Boolean?, val normalizedLevel: Int?, val deliberateGesture: Boolean, val presenceApproach: Boolean = false)
 
@@ -85,6 +87,7 @@ internal class ProximityCalibrationRuntime(
         observedSourceMode: ProximityCalibrationEngine.Mode? = null,
         driftMargin: Float = 0f,
         driftDeclaredRange: Float = 0f,
+        keepStoredInsideDriftBand: Boolean = false,
     ) : this(
         sourceIdentity, profileId, profile?.let(::fromProfile),
         SqliteProximityModelStore(EntityCatalogStore(context.applicationContext)),
@@ -93,6 +96,7 @@ internal class ProximityCalibrationRuntime(
         profileRevision = profileRevision,
         driftMargin = driftMargin,
         driftDeclaredRange = driftDeclaredRange,
+        keepStoredInsideDriftBand = keepStoredInsideDriftBand,
     )
 
     @Synchronized
@@ -231,13 +235,14 @@ internal class ProximityCalibrationRuntime(
      * Takes up a calibration a restore has just written to the store. Only a stored calibration that differs
      * from the one running is adopted: a read that fails or finds nothing leaves the panel exactly as it was,
      * and so does a setup in progress. A restored calibration passes the same drift check as one read at
-     * start, so reloading now leaves the panel where a restart would: one inside the band is declined.
+     * start, so reloading now leaves the panel where a restart would: one inside the band is declined, or on
+     * a route that keeps such calibrations, kept as saved.
      */
     @Synchronized
     fun reloadStored(): Boolean {
         if (closed || view.active || saving) return false
         val restored = runCatching { stored(fingerprint) }.getOrNull()?.second ?: return false
-        val margined = ProximityCalibrationEngine.driftMargined(restored, driftMargin, driftDeclaredRange)
+        val margined = admitStored(restored)
         if (margined == null) {
             if (driftUnsafe && !userOverride) return false
             driftUnsafe = true
@@ -378,7 +383,7 @@ internal class ProximityCalibrationRuntime(
         }?.second ?: return baseline
         // Migration is in memory and raises boundaries only; the stored row is left exactly as the
         // user saved it, so a later release that reads it differently still has the observations.
-        val margined = ProximityCalibrationEngine.driftMargined(value, driftMargin, driftDeclaredRange)
+        val margined = admitStored(value)
         if (margined == null) {
             driftUnsafe = true
             return baseline
@@ -386,6 +391,17 @@ internal class ProximityCalibrationRuntime(
         userOverride = true
         return margined
     }
+
+    /**
+     * A stored calibration as this source runs it, at start and after a restore alike: raised above the drift band
+     * where its separation allows, kept exactly as saved where it does not and the route keeps such calibrations,
+     * and otherwise null, declined.
+     */
+    private fun admitStored(value: ProximityCalibrationEngine.Calibration): ProximityCalibrationEngine.Calibration? =
+        ProximityCalibrationEngine.driftMargined(value, driftMargin, driftDeclaredRange)
+            ?: value.takeIf { keepStoredInsideDriftBand }?.also {
+                Log.i(TAG, "saved proximity calibration sits inside this source's drift band; kept as saved")
+            }
 
     private fun stored(key: String): Pair<EntityCatalogStore.ProximityModelRow, ProximityCalibrationEngine.Calibration>? {
         val row = store.readProximityModel(key) ?: return null

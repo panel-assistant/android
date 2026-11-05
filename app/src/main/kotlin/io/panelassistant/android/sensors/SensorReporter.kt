@@ -336,6 +336,7 @@ class SensorReporter(
             observedSourceMode = if (proximityAcquisition == ProximityAcquisition.STK_RAW) ProximityCalibrationEngine.Mode.RANGED else null,
             driftMargin = proximityDriftMargin(proximityAcquisition),
             driftDeclaredRange = proximityDriftDeclaredRange(proximityAcquisition, proximitySensor?.maximumRange),
+            keepStoredInsideDriftBand = proximityKeepsStoredInsideDriftBand(proximityAcquisition),
         )
         updateLearnedEligibility()
     }
