@@ -106,6 +106,26 @@ class Config private constructor(
 ) {
     enum class SecurityMode { RELAXED, HARDENED }
 
+    // Captured before startup migrations materialise defaults. Missing custody on an existing
+    // installation cannot reconstruct what older versions changed in the vendor.
+    private val vendorBrightnessFreshInstall by lazy { prefs.all.isEmpty() }
+
+    // The previous-HOME receiver can write configuration before the service starts.
+    internal fun initializeVendorBrightnessCustody() = synchronized(io.panelassistant.android.platform.LocalRpcVendorScreen.CUSTODY_LOCK) {
+        if (!prefs.contains("device_local_vendor_brightness_custody")) {
+            vendorBrightnessCustody().write(if (vendorBrightnessFreshInstall) "pending" else "unknown")
+        }
+    }
+
+    internal fun vendorBrightnessCustody(): io.panelassistant.android.platform.VendorBrightnessCustody =
+        object : io.panelassistant.android.platform.VendorBrightnessCustody {
+            override fun read(): String? = prefs.getString("device_local_vendor_brightness_custody", null)
+            override fun write(value: String): Boolean = durableCommit {
+                putString("device_local_vendor_brightness_custody", value)
+            }
+            override val freshInstall: Boolean get() = vendorBrightnessFreshInstall
+        }
+
     private val wakeOnWaveEpoch = AtomicLong()
     internal val haOAuthAttemptEpoch = AtomicLong()
     @Volatile private var logShipAbsentProtocolFallback: String? = null
@@ -116,7 +136,9 @@ class Config private constructor(
         AppState.preferences(context, "profile-calibration"),
         AppState.preferences(context, "power-safety-acknowledgement"),
         context.applicationContext.resources,
-    )
+    ) {
+        initializeVendorBrightnessCustody()
+    }
 
     /** JVM-test seam; identity defaults that consult Android settings require the production constructor. */
     internal constructor(prefs: SharedPreferences) : this(prefs, null, prefs, prefs, null)
@@ -145,7 +167,7 @@ class Config private constructor(
      */
     internal fun migrateLogShipTcpDefault() = synchronized(CONFIG_LOCK) {
         if (prefs.getBoolean(LOG_SHIP_TCP_DEFAULT_MIGRATION_PREF, false)) return@synchronized
-        val preExisting = prefs.all.isNotEmpty()
+        val preExisting = prefs.all.keys.any { it != "device_local_vendor_brightness_custody" }
         val preserveUdp = preExisting && !prefs.contains("log_ship_protocol")
         // Establish process truth before attempting durability. A failed SQLite/preferences commit must
         // not silently retarget this running upgraded panel to TCP while the absent marker waits to retry.
