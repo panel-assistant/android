@@ -54,7 +54,7 @@ internal class ProximityCalibrationRuntime(
                     fingerprint, STORAGE_VERSION, "explicit-calibration-v2", encode(candidate), true, now,
                 ), emptyList(), emptyList(), now,
             )
-        }.isSuccess.also { if (it) { userOverride = true; readFailed = false } }
+        }.isSuccess.also { if (it) { userOverride = true; readFailed = false; driftUnsafe = false } }
     }, requestedWavePattern = requestedWavePattern, observedSourceMode = observedSourceMode, driftMargin = driftMargin)
     @Volatile private var view = engine.current()
     @Volatile private var sessionId = ""
@@ -220,16 +220,28 @@ internal class ProximityCalibrationRuntime(
     /**
      * Takes up a calibration a restore has just written to the store. Only a stored calibration that differs
      * from the one running is adopted: a read that fails or finds nothing leaves the panel exactly as it was,
-     * and so does a setup in progress.
+     * and so does a setup in progress. A restored calibration passes the same drift check as one read at
+     * start, so reloading now leaves the panel where a restart would: one inside the band is declined.
      */
     @Synchronized
     fun reloadStored(): Boolean {
         if (closed || view.active || saving) return false
         val restored = runCatching { stored(fingerprint) }.getOrNull()?.second ?: return false
-        if (restored == view.calibration) return false
+        val margined = ProximityCalibrationEngine.driftMargined(restored, driftMargin)
+        if (margined == null) {
+            if (driftUnsafe && !userOverride) return false
+            driftUnsafe = true
+            userOverride = false
+            readFailed = false
+            view = engine.reset(baseline, processingTime(elapsed()))
+            reportGate.reset()
+            return true
+        }
+        if (margined == view.calibration) return false
         userOverride = true
         readFailed = false
-        view = engine.reset(restored, processingTime(elapsed()))
+        driftUnsafe = false
+        view = engine.reset(margined, processingTime(elapsed()))
         reportGate.reset()
         return true
     }

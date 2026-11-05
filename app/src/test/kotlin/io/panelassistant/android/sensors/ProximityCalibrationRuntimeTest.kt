@@ -178,6 +178,20 @@ class ProximityCalibrationRuntimeTest {
         assertEquals("calibration_required", JSONObject(empty.statusJson()).getString("state"))
     }
 
+    /** A declined calibration asks for setup again; once setup saves one that holds the band, the panel no
+     *  longer reports the declined one. */
+    @Test fun aSetupSavedAfterADeclinedCalibrationClearsTheDriftFlag() {
+        val backing = Backing(row(Calibration(mode = Mode.RANGED, clearRaw = 974f, nearRaw = 995f)))
+        val fixture = Fixture(backing, driftMargin = 100f)
+        assertTrue(fixture.status().getBoolean("calibrationDriftUnsafe"))
+        fixture.toReview(974f, 3_413f, null)
+        fixture.advance(1)
+        assertTrue(fixture.runtime.localAction("save"))
+        assertEquals("user", fixture.status().getString("calibrationSource"))
+        assertFalse(fixture.status().getBoolean("calibrationDriftUnsafe"))
+        assertEquals(1, backing.writes)
+    }
+
     /** A restore writes the calibration to the store while the runtime runs; the reload takes it up at once,
      *  except during a setup, which keeps the panel. */
     @Test fun reloadTakesUpARestoredCalibrationButNeverInterruptsSetup() {
@@ -680,12 +694,12 @@ class ProximityCalibrationRuntimeTest {
 
     private class Fixture(
         val backing: Backing = Backing(), source: String = SOURCE, profile: String = PROFILE,
-        private val pattern: WavePattern = WavePattern.SINGLE, revision: String? = null,
+        private val pattern: WavePattern = WavePattern.SINGLE, revision: String? = null, driftMargin: Float = 0f,
     ) {
         var now = 1_000L
         val runtime = ProximityCalibrationRuntime(source, profile, legacy(), Store(backing),
             elapsed = { now }, wall = { 1_800_000_000_000L + now }, requestedWavePattern = pattern,
-            profileRevision = revision)
+            profileRevision = revision, driftMargin = driftMargin)
         var session = ""
         fun status() = JSONObject(runtime.json())
         fun stage() = status().getString("stage")

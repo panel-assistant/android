@@ -232,6 +232,38 @@ class ProximityDriftMarginTest {
         assertEquals(0, backing.writes)
     }
 
+    /** A backup restore writes the stored row while the panel runs; taking it up must leave the panel where a
+     *  restart would, so a restored calibration inside the band is declined at once, never honoured until then. */
+    @Test fun aRestoredCalibrationIsCheckedAgainstTheBandAsAStartedOneIs() {
+        val good = row(Calibration(mode = Mode.RANGED, clearRaw = clearFloor, nearRaw = occupant))
+        val backing = Backing(good)
+        val runtime = runtime(backing, driftMargin = margin)
+        runtime.observe(clearFloor, 1_000L, false)
+        assertEquals("ready", JSONObject(runtime.json()).getString("phase"))
+
+        val unsafe = row(Calibration(mode = Mode.RANGED, clearRaw = clearFloor, nearRaw = weakNear))
+        backing.row = unsafe
+        assertTrue(runtime.reloadStored())
+        runtime.observe(clearFloor, 1_000L, false)
+        val declined = JSONObject(runtime.json())
+        assertEquals("calibration_required", declined.getString("phase"))
+        assertEquals("none", declined.getString("calibrationSource"))
+        assertTrue(declined.getBoolean("calibrationDriftUnsafe"))
+        assertFalse(runtime.isPresenceReady())
+        assertFalse("a second reload of the same row changes nothing", runtime.reloadStored())
+        assertEquals(unsafe, backing.row)
+
+        backing.row = good
+        assertTrue(runtime.reloadStored())
+        runtime.observe(clearFloor, 1_000L, false)
+        val restored = JSONObject(runtime.json())
+        assertEquals("ready", restored.getString("phase"))
+        assertEquals("user", restored.getString("calibrationSource"))
+        assertFalse(restored.getBoolean("calibrationDriftUnsafe"))
+        assertEquals(0, backing.writes)
+        runtime.close()
+    }
+
     @Test fun aPanelWhoseSensorReportsNearOrClearOnlyIsUntouched() {
         val binary = Calibration(mode = Mode.BINARY, clearRaw = 0f, nearRaw = 1f)
         assertEquals(binary, ProximityCalibrationEngine.driftMargined(binary, margin))
@@ -346,6 +378,7 @@ class ProximityDriftMarginTest {
 
     private class Store(private val backing: Backing) : ProximityModelStore {
         override fun readProximityModel(fingerprint: String) = backing.row
+        override fun insertProximityModelIfAbsent(model: EntityCatalogStore.ProximityModelRow): Boolean = false
         override fun writeProximityBatch(
             model: EntityCatalogStore.ProximityModelRow,
             rollups: List<EntityCatalogStore.ProximityRollupRow>,
@@ -374,7 +407,7 @@ class ProximityDriftMarginTest {
         const val MODEST_SPAN = 700f
 
         fun row(value: Calibration) = EntityCatalogStore.ProximityModelRow(
-            ProximityCalibrationRuntime.fingerprint("$PROFILE|$SOURCE"),
+            ProximityCalibrationRuntime.calibrationKey(PROFILE, SOURCE),
             ProximityCalibrationRuntime.STORAGE_VERSION,
             "explicit-calibration-v${value.version}",
             ProximityCalibrationRuntime.encode(value), true, 1_800_000_000_000L,
