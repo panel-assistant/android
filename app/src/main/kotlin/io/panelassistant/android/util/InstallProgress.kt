@@ -40,6 +40,8 @@ object InstallProgress {
         val wakeWords: ComponentResult? = null,
         /** Admitted durable state and owner choices, with withheld/failed values accounted separately. */
         val state: ComponentResult? = null,
+        /** The operation never finished: the app process ended part way, and a later process reports it. */
+        val interrupted: Boolean = false,
     )
 
     data class PresentationSnapshot(
@@ -58,6 +60,7 @@ object InstallProgress {
     private var generation = 0L
     private var active: Ticket? = null
     private var activeConfigMutation: ConfigMutationTicket? = null
+    private var onSuperseded: (() -> Unit)? = null
 
     /**
      * Told after every claim or release of the visible operation lane, outside this object's monitor.
@@ -70,12 +73,23 @@ object InstallProgress {
     }
 
     /** Claim the operation lane for [component]. Returns null if another owner is already in flight. */
-    fun start(component: String, presentation: InstallPresentation? = null): Ticket? =
-        startLocked(component, presentation)?.also { notifyObserver() }
+    fun start(component: String, presentation: InstallPresentation? = null): Ticket? {
+        var superseded: (() -> Unit)? = null
+        val ticket = startLocked(component, presentation) { superseded = it } ?: return null
+        superseded?.let { runCatching { it() } }
+        notifyObserver()
+        return ticket
+    }
 
     @Synchronized
-    private fun startLocked(component: String, presentation: InstallPresentation?): Ticket? {
+    private fun startLocked(
+        component: String,
+        presentation: InstallPresentation?,
+        supersede: (() -> Unit) -> Unit,
+    ): Ticket? {
         if (running || activeConfigMutation != null) return null
+        onSuperseded?.let(supersede)
+        onSuperseded = null
         val ticket = Ticket(++generation)
         active = ticket
         this.component = component
@@ -155,6 +169,37 @@ object InstallProgress {
         return true
     }
 
+    /**
+     * Report a finished operation this process never ran: one an earlier process left unfinished when it
+     * ended. Nothing changes while an operation runs. [onSuperseded] runs once, when the next operation
+     * claims the lane, so the durable record behind this report outlives every restart until then.
+     */
+    fun reportFinished(
+        component: String,
+        result: String,
+        structured: OperationResult,
+        presentation: InstallPresentation,
+        onSuperseded: () -> Unit,
+    ): Boolean = reportFinishedLocked(component, result, structured, presentation, onSuperseded)
+        .also { if (it) notifyObserver() }
+
+    @Synchronized
+    private fun reportFinishedLocked(
+        component: String,
+        result: String,
+        structured: OperationResult,
+        presentation: InstallPresentation,
+        onSuperseded: () -> Unit,
+    ): Boolean {
+        if (running || activeConfigMutation != null) return false
+        this.component = component
+        this.message = result
+        this.result = structured
+        this.presentation = presentation
+        this.onSuperseded = onSuperseded
+        return true
+    }
+
     /** Ensure cancellation before a launched body begins cannot strand the process-global slot busy. */
     fun finishOnFailure(ticket: Ticket, job: Job): Job = job.also {
         it.invokeOnCompletion { cause ->
@@ -184,6 +229,7 @@ object InstallProgress {
         result.rollback?.let { append(",\"rollback\":").append(componentJson(it)) }
         result.wakeWords?.let { append(",\"wake_words\":").append(componentJson(it)) }
         result.state?.let { append(",\"state\":").append(componentJson(it)) }
+        if (result.interrupted) append(",\"interrupted\":true")
         append('}')
     }
 

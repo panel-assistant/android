@@ -425,6 +425,74 @@ class AcceptedRestoreTransactionTest {
         }
     }
 
+    @Test fun aRestoreCutShortByTheEndOfTheProcessIsReportedAtEveryStartUntilAnotherOperationRuns() = runBlocking {
+        // Android ends the app whenever one of its app-ops changes; on the bench X2i (2026-11-05) that cut a
+        // restore at its first saved configuration, and the next process reported nothing at all.
+        for (configSaved in listOf(true, false)) PaneldServerHttpFixture().use { fixture ->
+            val config = fixture.config
+            config.setRaw(requireNotNull(SettingsRegistry.spec("friendly_name")), "Restore contract panel")
+            val reached = java.util.concurrent.CountDownLatch(1)
+            val processEnds = java.util.concurrent.CountDownLatch(1)
+            fun cutHere() { reached.countDown(); processEnds.await() }
+            val executor = restoreExecutor(
+                fixture, capabilities = { Capabilities(networkAdb = true) }, persist = { true },
+                onReconfigure = { if (configSaved) cutHere() },
+                calibrations = object : ProximityCalibrationCustody {
+                    override fun export() = emptyList<EntityCatalogStore.ProximityModelRow>()
+                    override fun restore(rows: List<EntityCatalogStore.ProximityModelRow>): Int {
+                        if (!configSaved) cutHere()
+                        return 0
+                    }
+                },
+            )
+            val ticket = requireNotNull(InstallProgress.start("Restore"))
+            val restore = Thread {
+                runBlocking {
+                    executor.execute(
+                        RestoreConfigPlan(mapOf("panel_id" to "restored-panel"), emptyList(), emptyList()),
+                        null, null, null, null, emptyList(), false,
+                        emptyList(), null, ticket,
+                        restorableCalibrations = listOf(
+                            EntityCatalogStore.ProximityModelRow("a".repeat(64), 1, "explicit", "{}", true, 1L),
+                        ),
+                    )
+                }
+            }.apply { start() }
+            try {
+                assertTrue(reached.await(10, java.util.concurrent.TimeUnit.SECONDS))
+                // The process ends here, and its lane and in-memory result end with it.
+                InstallProgress.finish(ticket, "process ended")
+                fun nextStart() = io.panelassistant.android.ServiceComponentOperations(
+                    fixture.context, kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined),
+                    { config }, { error("No core") }, { error("No profile") },
+                ).run { attachSoftwareUpdateObservers(); detachSoftwareUpdateObservers() }
+                for (start in 1..2) {
+                    nextStart()
+                    val status = JSONObject(InstallProgress.json())
+                    assertFalse(status.getBoolean("running"))
+                    assertEquals("Restore", status.getString("component"))
+                    val result = status.getJSONObject("result")
+                    assertTrue(status.toString(), result.optBoolean("interrupted"))
+                    assertEquals(if (configSaved) "partial" else "failed", result.getString("status"))
+                    assertEquals(
+                        if (configSaved) "restore-partial" else "restore-failed",
+                        status.getJSONObject("presentation").getString("code"),
+                    )
+                }
+                // The owner's next operation supersedes the report, and later starts no longer make it.
+                val next = requireNotNull(InstallProgress.start("WebView"))
+                InstallProgress.finish(next, "done")
+                nextStart()
+                val status = JSONObject(InstallProgress.json())
+                assertEquals("WebView", status.getString("component"))
+                assertFalse(status.toString(), status.has("result"))
+            } finally {
+                processEnds.countDown()
+                restore.join(10_000)
+            }
+        }
+    }
+
     private fun restoreExecutor(
         fixture: PaneldServerHttpFixture,
         capabilities: () -> Capabilities,
