@@ -102,13 +102,17 @@ internal object BundledHelperInstaller {
             HelperClient.installedBuildId()?.takeIf { it != stagedBuildId } ?: return Result.FAILED
         }
         val asset = helperAssetName(Build.SUPPORTED_ABIS.asIterable()) ?: return Result.SKIPPED
+        // A journal the deleted installers left before this APK arrived can no longer stop its helper.
+        val appInstalledAt = runCatching {
+            context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime / 1000
+        }.getOrDefault(0L).coerceAtLeast(0L)
         val staged = runCatching { File.createTempFile("hapaneld-helper-", ".bin", context.cacheDir) }
             .getOrElse { return Result.FAILED }
         return try {
             context.assets.open(asset).use { input -> staged.outputStream().use(input::copyTo) }
             val expectedSha256 = AppInstaller.sha256(staged)
             val output = Su.runWithStdinLongChecked(
-                bundledHelperStageCommand(expectedSha256),
+                bundledHelperStageCommand(expectedSha256, appInstalledAtEpochSeconds = appInstalledAt),
                 staged,
                 INSTALL_TIMEOUT_MS,
             )
@@ -143,7 +147,11 @@ internal object BundledHelperInstaller {
                 }
                 BundledHelperReplacementMode.FRESH_INSTALL ->
                     if (Su.runSingleAttempt(
-                            bundledFreshHelperInstallCommand(expectedSha256, stagedBuildId),
+                            bundledFreshHelperInstallCommand(
+                                expectedSha256,
+                                stagedBuildId,
+                                appInstalledAtEpochSeconds = appInstalledAt,
+                            ),
                             LEGACY_TAKEOVER_TIMEOUT_MS,
                         )
                     ) BundledHelperReplacementSettlement.INSTALLED
@@ -515,34 +523,19 @@ internal fun bundledHelperReplacementMode(
     GuardDbMaintenanceClient.StatusProbe.Malformed -> null
 }
 
-// Every place a provisioned helper lives or boots from. A fresh install must find none of them.
-private val BUNDLED_HELPER_BOOT_AUTHORITIES = listOf(
-    "/system/bin/hapaneld-helper",
-    "/system/etc/init/hapaneld-helper.rc",
-    "/vendor/etc/init/hapaneld-helper.rc",
-    "/data/adb/hapaneld",
-    "/data/adb/service.d/hapaneld-helper.sh",
-    "/system/bin/hapaneld-ledd",
-    "/system/etc/init/hapaneld-ledd.rc",
-)
-
-// Foreign recovery authorities fence both staging and takeover, even after their writer exits.
+// Foreign recovery authorities fence takeover, even after their writer exits. Staging and a fresh
+// install retire a stale deleted-installer journal instead ([installerJournalsRetiredShell]).
 // App-owned takeover records and previous-byte custody have separate admission/resume rules.
-private val BUNDLED_HELPER_FOREIGN_JOURNALS = listOf(
-    "/data/local/.hapaneld-guard-db/replacement.v1",
-    "/data/local/.hapaneld-guard-db/.replacement.v1.tmp",
-    "/system/bin/.hapaneld-helper-upgrade",
-    "/system/bin/.hapaneld-helper-manual-upgrade",
-    "/data/adb/hapaneld/.helper-upgrade.marker",
-    "/data/adb/hapaneld/.helper-hybrid-upgrade.marker",
-    "/data/adb/hapaneld/.helper-manual-upgrade.marker",
-    "/data/local/.hapaneld-helper-manual-upgrade",
-).joinToString(" ") { "\"\$root$it\"" }
+private val BUNDLED_HELPER_FOREIGN_JOURNALS = (GUARD_REPLACEMENT_JOURNALS + DELETED_INSTALLER_JOURNALS).underRoot()
 
-/** Root stages one fixed candidate; replacement happens only through the selected exact authority. */
+/**
+ * Root stages one fixed candidate; replacement happens only through the selected exact authority.
+ * [appInstalledAtEpochSeconds] is when this APK was installed; the default 0 retires no journal.
+ */
 internal fun bundledHelperStageCommand(
     expectedSha256: String,
     filesystemRoot: String = "",
+    appInstalledAtEpochSeconds: Long = 0,
 ): String {
     require(expectedSha256.matches(Regex("[0-9a-f]{64}")))
     require(filesystemRoot.isEmpty() ||
@@ -550,6 +543,8 @@ internal fun bundledHelperStageCommand(
             SAFE_ABSOLUTE_PATH.matches(filesystemRoot) &&
             filesystemRoot.split('/').none { it == ".." }))
     val dollar = '$'
+    val installerJournalsRetired = installerJournalsRetiredShell(appInstalledAtEpochSeconds)
+    val guardJournals = GUARD_REPLACEMENT_JOURNALS.underRoot()
     return """
         root=$filesystemRoot
         data_local=${dollar}root/data/local
@@ -567,14 +562,16 @@ internal fun bundledHelperStageCommand(
         trap cleanup_stage_lock 0
         trap 'cleanup_stage_lock; trap - 0; exit 74' 1 2 3 15
         [ -d "${dollar}data_local" ] && [ ! -L "${dollar}data_local" ] || exit 1
+        $installerJournalsRetired
         other_authority_absent() {
           for authority in \
-            $BUNDLED_HELPER_FOREIGN_JOURNALS \
+            $guardJournals \
             "${dollar}root/data/local/.hapaneld-helper.legacy-takeover" \
             "${dollar}root/data/local/.hapaneld-helper.previous" \
             "${dollar}root/data/local/.hapaneld-helper.previous.tmp"; do
             [ ! -e "${dollar}authority" ] && [ ! -L "${dollar}authority" ] || return 1
           done
+          installer_journals_retired
         }
         record_tmp=${dollar}data_local/.hapaneld-helper.legacy-takeover.tmp
         other_authority_absent || exit 75
@@ -914,144 +911,6 @@ internal fun bundledLegacyHelperTakeoverCommand(
     """.trimIndent()
 }
 
-/**
- * The only helper is the one this app publishes: no boot binary, boot registration, provisioner
- * custody, recovery journal, takeover record or Guard DB state beyond its owner lock may exist, or a second root authority would appear
- * beside one that a reboot or a running transaction brings back. Under the shared helper lock the
- * staged candidate replaces any earlier `/data/local` copy that is not running (a reboot keeps the file
- * and loses the process), then supervises itself and must prove its exact bytes and Guard capabilities.
- * Refusal leaves no candidate behind; a candidate that cannot prove itself is stopped.
- */
-internal fun bundledFreshHelperInstallCommand(
-    expectedSha256: String,
-    stagedBuildId: String,
-    filesystemRoot: String = "",
-    polls: Int = LEGACY_TAKEOVER_POLLS,
-): String {
-    require(GuardDbMaintenanceProtocol.validSha256(expectedSha256))
-    require(GuardDbMaintenanceProtocol.validSha256(stagedBuildId))
-    require(filesystemRoot.isEmpty() ||
-        (filesystemRoot.startsWith("/") && !filesystemRoot.endsWith("/") &&
-            SAFE_ABSOLUTE_PATH.matches(filesystemRoot) &&
-            filesystemRoot.split('/').none { it == ".." }))
-    require(polls in 1..LEGACY_TAKEOVER_POLLS)
-    val dollar = '$'
-    val expectedCapabilities =
-        "${GuardDbMaintenanceProtocol.CAPS_REPLY} AUTONOMOUS SUPERVISED TERMINAL_RETIRE"
-    val otherHelpers = BUNDLED_HELPER_BOOT_AUTHORITIES.joinToString(" ") { "\"${dollar}root$it\"" }
-    return """
-        root=$filesystemRoot
-        data_local=${dollar}root/data/local
-        lock=${dollar}root/dev/.hapaneld-helper-transaction.lock
-        stage=${dollar}data_local/.hapaneld-helper.new
-        live=${dollar}data_local/hapaneld-helper
-        if ! mkdir "${dollar}lock" 2>/dev/null; then
-          holder=${dollar}(cat "${dollar}lock/pid" 2>/dev/null || true)
-          case "${dollar}holder" in ''|*[!0-9]*) exit 75 ;; *) [ ! -d "/proc/${dollar}holder" ] || exit 75 ;; esac
-          rm -rf "${dollar}lock" 2>/dev/null || exit 75
-          mkdir "${dollar}lock" 2>/dev/null || exit 75
-        fi
-        echo ${dollar}${dollar} > "${dollar}lock/pid" || { rm -rf "${dollar}lock"; exit 75; }
-        trap 'rm -rf "${dollar}lock"' 0
-        trap 'rm -rf "${dollar}lock"; trap - 0; exit 74' 1 2 3 15
-        [ -d "${dollar}data_local" ] && [ ! -L "${dollar}data_local" ] || exit 1
-
-        file_hash() {
-          hash=${dollar}(sha256sum "${dollar}1" 2>/dev/null || toybox sha256sum "${dollar}1" 2>/dev/null) || return 1
-          printf '%s\n' "${dollar}{hash%% *}"
-        }
-        file_meta() {
-          stat -c '%u:%g:%a:%h:%s' "${dollar}1" 2>/dev/null ||
-            toybox stat -c '%u:%g:%a:%h:%s' "${dollar}1" 2>/dev/null
-        }
-        absent() { [ ! -e "${dollar}1" ] && [ ! -L "${dollar}1" ]; }
-        exact_candidate() {
-          [ -f "${dollar}1" ] && [ ! -L "${dollar}1" ] &&
-            [ "${dollar}(file_hash "${dollar}1")" = "$expectedSha256" ] &&
-            case "${dollar}(file_meta "${dollar}1")" in 0:0:700:1:*) true ;; *) false ;; esac
-        }
-        refuse() {
-          if exact_candidate "${dollar}stage"; then rm -f "${dollar}stage"; fi
-          exit 1
-        }
-        # Guard recovery custody is durable on disk, whatever the socket or the app's own data say.
-        # Empty means what the helper itself accepts as empty: nothing but its owner lock.
-        guard_empty() {
-          guard=${dollar}data_local/.hapaneld-guard-db
-          absent "${dollar}guard" && return 0
-          [ -d "${dollar}guard" ] && [ ! -L "${dollar}guard" ] || return 1
-          entries=${dollar}(ls -A "${dollar}guard") || return 1
-          for entry in ${dollar}entries; do [ "${dollar}entry" = .owner.lock ] || return 1; done
-        }
-        no_other_authority() {
-          for authority in \
-            $BUNDLED_HELPER_FOREIGN_JOURNALS \
-            $otherHelpers \
-            "${dollar}data_local/.hapaneld-helper.legacy-takeover" \
-            "${dollar}data_local/.hapaneld-helper.legacy-takeover.tmp" \
-            "${dollar}data_local/.hapaneld-helper.previous" \
-            "${dollar}data_local/.hapaneld-helper.previous.tmp"; do
-            absent "${dollar}authority" || return 1
-          done
-          guard_empty
-        }
-        no_other_authority || refuse
-        if ! absent "${dollar}live"; then
-          [ -f "${dollar}live" ] && [ ! -L "${dollar}live" ] || refuse
-          case "${dollar}(file_meta "${dollar}live")" in 0:0:700:1:*) ;; *) refuse ;; esac
-        fi
-        exact_candidate "${dollar}stage" || exact_candidate "${dollar}live" || exit 1
-
-        live_processes() {
-          absent "${dollar}live" && return 0
-          target_inode=${dollar}(stat -c '%d:%i' "${dollar}live" 2>/dev/null || toybox stat -c '%d:%i' "${dollar}live" 2>/dev/null) || return 1
-          found=
-          for executable in /proc/[0-9]*/exe; do
-            inode=${dollar}(stat -Lc '%d:%i' "${dollar}executable" 2>/dev/null || toybox stat -L -c '%d:%i' "${dollar}executable" 2>/dev/null) || continue
-            [ "${dollar}inode" != "${dollar}target_inode" ] || found="${dollar}found ${dollar}{executable#/proc/}"
-          done
-          printf '%s\n' "${dollar}found"
-        }
-        stop_live() {
-          candidates=${dollar}(live_processes) || return 1
-          for candidate in ${dollar}candidates; do kill "${dollar}{candidate%/exe}" 2>/dev/null || true; done
-          attempt=0
-          while [ "${dollar}attempt" -lt 3 ]; do
-            candidates=${dollar}(live_processes) || return 1
-            [ -n "${dollar}candidates" ] || return 0
-            sleep 1; attempt=${dollar}((attempt + 1))
-          done
-          for candidate in ${dollar}candidates; do kill -9 "${dollar}{candidate%/exe}" 2>/dev/null || true; done
-          sleep 1
-          [ -z "${dollar}(live_processes)" ]
-        }
-
-        stop_live || exit 1
-        # A copy stopped just now may have been writing custody; nothing runs it from here on.
-        no_other_authority || refuse
-        if exact_candidate "${dollar}stage"; then mv -f "${dollar}stage" "${dollar}live" || exit 1; fi
-        sync || exit 1
-        exact_candidate "${dollar}live" && absent "${dollar}stage" || exit 1
-        candidate_bytes=${dollar}(file_meta "${dollar}live") || exit 1
-        candidate_bytes=${dollar}{candidate_bytes##*:}
-
-        "${dollar}live" --supervise >/dev/null 2>&1 &
-        attempt=0
-        while [ "${dollar}attempt" -lt $polls ]; do
-          self=${dollar}("${dollar}live" --request GUARDSELF 2>/dev/null) || self=
-          [ "${dollar}self" != "OK GUARDSELF 1 ${dollar}candidate_bytes $expectedSha256 $stagedBuildId" ] || break
-          attempt=${dollar}((attempt + 1))
-          [ "${dollar}attempt" -ge $polls ] || sleep 1
-        done
-        if [ "${dollar}self" = "OK GUARDSELF 1 ${dollar}candidate_bytes $expectedSha256 $stagedBuildId" ] &&
-           [ "${dollar}("${dollar}live" --request GUARDCAPS 2>/dev/null)" = "$expectedCapabilities" ]; then
-          exit 0
-        fi
-        stop_live || true
-        exit 1
-    """.trimIndent()
-}
-
 internal fun bundledLegacyHelperResumeCommand(
     expectedSha256: String,
     stagedBuildId: String,
@@ -1068,10 +927,10 @@ internal fun bundledLegacyHelperResumeCommand(
 )
 
 private const val MAX_STAGED_HELPER_BYTES = 16 * 1024 * 1024
-private const val LEGACY_TAKEOVER_POLLS = 8
+internal const val LEGACY_TAKEOVER_POLLS = 8
 internal const val LEGACY_TAKEOVER_TIMEOUT_MS = 120_000L
 private const val NO_RECORD_SHA256 = "0000000000000000000000000000000000000000000000000000000000000000"
-private val SAFE_ABSOLUTE_PATH = Regex("/[A-Za-z0-9._/-]+")
+internal val SAFE_ABSOLUTE_PATH = Regex("/[A-Za-z0-9._/-]+")
 private val BUNDLED_HELPER_REPLACEMENT_RANDOM = SecureRandom()
 
 internal fun freshBundledHelperReplacementNonce(): String = ByteArray(32)
