@@ -650,20 +650,8 @@
       : i18nText("setup.area.non_admin_help", "Where this panel lives. Your choice is saved and applies when the panel registers, or when a Home Assistant admin next signs in.") }));
   }
 
-  // Home Assistant's built-in dashboards arrive titled by their frontend translation key (`home`,
-  // `light`, …); show the names Home Assistant itself shows for them. Keyed by panel, not path.
-  function panelTitle(d) {
-    var key = String(d.path || "").slice(1);
-    return d.group === "panel" && Object.prototype.hasOwnProperty.call(PANEL_TITLES, key) ? PANEL_TITLES[key] : "";
-  }
-  var PANEL_TITLES = {
-    home: i18nText("setup.dashboard.panel.home", "Overview"),
-    light: i18nText("setup.dashboard.panel.light", "Lights"),
-    security: i18nText("setup.dashboard.panel.security", "Security"),
-    climate: i18nText("setup.dashboard.panel.climate", "Climate"),
-    energy: i18nText("setup.dashboard.panel.energy", "Energy"),
-    maintenance: i18nText("setup.dashboard.panel.maintenance", "Maintenance"),
-  };
+  // Built-in dashboard names come from the one shared map (HaDashboardTitles, i18n.js).
+  var panelTitle = window.HaDashboardTitles.panelTitle;
 
   function paintHomeDashboards() {
     var host = document.getElementById("hd-host");

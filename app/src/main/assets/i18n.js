@@ -101,6 +101,26 @@
   });
 })(window);
 
+// Home Assistant's built-in dashboards arrive titled by their frontend translation key (`home`,
+// `light`, ...); setup and Configure both show the names Home Assistant itself shows. Keyed by panel.
+window.HaDashboardTitles = (function () {
+  var i18nText = window.HaI18n.t;
+  var names = {
+    home: i18nText("setup.dashboard.panel.home", "Overview"),
+    light: i18nText("setup.dashboard.panel.light", "Lights"),
+    security: i18nText("setup.dashboard.panel.security", "Security"),
+    climate: i18nText("setup.dashboard.panel.climate", "Climate"),
+    energy: i18nText("setup.dashboard.panel.energy", "Energy"),
+    maintenance: i18nText("setup.dashboard.panel.maintenance", "Maintenance")
+  };
+  return Object.freeze({
+    panelTitle: function (d) {
+      var key = String(d && d.path || "").slice(1);
+      return d && d.group === "panel" && Object.prototype.hasOwnProperty.call(names, key) ? names[key] : "";
+    }
+  });
+})();
+
 // One advisory row, the twin of Notice.kt's notice(): fill(node, severity, title, detail, action) redraws
 // an existing row in place (the shell bars keep their ids); row(...) makes a new one. title and detail are
 // text or a Node; action is a Node. severity is a data-severity word ("warning", "action_needed", ...);

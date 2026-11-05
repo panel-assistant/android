@@ -175,7 +175,7 @@ $approvalKeyBefore
 $body
 $approvalKeyAfter""",
             strings = strings,
-            translationPrefixes = setOf("shell.", "$active.", "runtime."),
+            translationPrefixes = setOf("shell.", "$active.", "runtime.", "setup.dashboard.panel."),
             embed = embed,
             peer = peer,
         )
