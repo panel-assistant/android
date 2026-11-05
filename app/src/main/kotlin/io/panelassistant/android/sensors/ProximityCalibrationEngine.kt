@@ -10,6 +10,7 @@ internal class ProximityCalibrationEngine(
     private val requestedWavePattern: WavePattern = WavePattern.SINGLE,
     private val observedSourceMode: Mode? = null,
     private val driftMargin: Float = 0f,
+    private val driftDeclaredRange: Float = 0f,
     private val commit: (Calibration) -> Boolean = { true },
 ) {
     enum class Mode { BINARY, RANGED }
@@ -263,7 +264,7 @@ internal class ProximityCalibrationEngine(
                     // save; it is one this position never produced. Keep measuring until it does or
                     // the approach times out into NOT_DETECTED.
                     val proposed = Calibration(mode = mode(clear, near), clearRaw = clear, nearRaw = near)
-                    val margined = driftMargined(proposed, driftMargin)
+                    val margined = driftMargined(proposed, driftMargin, driftDeclaredRange)
                     if (margined == null) {
                         nearSamples.clear(); captureStarted = null
                         return
@@ -324,7 +325,7 @@ internal class ProximityCalibrationEngine(
                     waveStarted = null; wavePeak = null
                     if (duration !in MINIMUM_NEAR_MS..MAXIMUM_NEAR_MS) return
                     val wave = driftMargined(
-                        WaveCalibration(pattern = requestedWavePattern, clearRaw = baseline, nearRaw = peak), driftMargin,
+                        WaveCalibration(pattern = requestedWavePattern, clearRaw = baseline, nearRaw = peak), driftMargin, driftDeclaredRange,
                     ) ?: return
                     candidateWave = wave
                     candidateWaveMode = mode(wave.clearRaw, wave.nearRaw)
@@ -357,7 +358,7 @@ internal class ProximityCalibrationEngine(
                                 mode = checkNotNull(candidateWaveMode), clearRaw = wave.clearRaw, nearRaw = wave.nearRaw,
                                 presenceSupported = false, wave = wave,
                             ),
-                            driftMargin,
+                            driftMargin, driftDeclaredRange,
                         ) ?: return
                         waveStatus = CapabilityStatus.VALIDATED
                         transition(Stage.REVIEW, now, "Measurements complete. Review presence and wave support, then Save on the panel.")
@@ -618,21 +619,20 @@ internal class ProximityCalibrationEngine(
         /** A boundary above this fraction of the span is indistinguishable from the near observation. */
         const val MAXIMUM_NEAR_ENTER = .85f
 
-        /** Readings this far above the band confirm they are counted in the same unit as it. */
-        const val DRIFT_SCALE_FLOOR = 2f
-
         /**
-         * Whether these readings are denominated in the same unit as the band.
+         * Whether these readings are counts, the unit the band is measured in, rather than centimetres.
          *
-         * A band is a count of raw units on one acquisition route, and the Android proximity contract
-         * is centimetres, so a conforming HAL reports something like 0 and 5 where the panels this
-         * band was measured on report hundreds or thousands. Five centimetres cannot hold a
-         * hundred-count band, and imposing it there would refuse every calibration on hardware that
-         * worked perfectly well before. A route whose readings are not on the band's scale keeps the
-         * unmargined behaviour, because the band says nothing about it either way.
+         * The Android proximity contract is centimetres up to the sensor's declared maximum range, and a
+         * conforming HAL reports something like 0 and 5. Five centimetres cannot hold a hundred-count band,
+         * so imposing it there would refuse every calibration on hardware that worked. The panels the band
+         * was measured on report counts far beyond their own declared range: a Sonoff NSPanel 86 declares
+         * 9 and reads 3 to 485 from an empty room. A reading above the declared range cannot be
+         * centimetres, so that is the test. Magnitude alone is not: those panels' readings sit below any
+         * size threshold the band could set, which once exempted exactly the panels that stick at near.
+         * A route that is counts by construction passes a declared range of 0.
          */
-        private fun onTheBandsScale(clear: Float, near: Float, margin: Float): Boolean =
-            max(abs(clear), abs(near)) >= margin * DRIFT_SCALE_FLOOR
+        private fun countedBeyondDeclaredRange(clear: Float, near: Float, declaredRange: Float): Boolean =
+            max(abs(clear), abs(near)) > declaredRange
 
         /**
          * Hold both decision boundaries above the source's own multi-day clear-floor drift.
@@ -649,13 +649,15 @@ internal class ProximityCalibrationEngine(
          * boundary. That is not a calibration to weaken; it is a separation that was not measured.
          * Fractions only ever rise, so a calibration with room to spare is returned unchanged.
          */
-        fun driftMargined(value: Calibration, margin: Float): Calibration? {
-            if (margin <= 0f || value.mode == Mode.BINARY || !onTheBandsScale(value.clearRaw, value.nearRaw, margin)) return value
+        fun driftMargined(value: Calibration, margin: Float, declaredRange: Float = 0f): Calibration? {
+            if (margin <= 0f || value.mode == Mode.BINARY ||
+                !countedBeyondDeclaredRange(value.clearRaw, value.nearRaw, declaredRange)
+            ) return value
             val span = abs(value.nearRaw - value.clearRaw)
             if (!span.isFinite() || span <= 0f) return null
             val nearEnter = max(value.nearEnter, margin * NEAR_ENTER_DRIFT_HEADROOM / span)
             if (!(nearEnter <= MAXIMUM_NEAR_ENTER)) return null
-            val wave = value.wave?.let { driftMargined(it, margin) ?: return null }
+            val wave = value.wave?.let { driftMargined(it, margin, declaredRange) ?: return null }
             // A boundary pair the model itself refuses is not a calibration to fall back on.
             return runCatching {
                 value.copy(nearEnter = nearEnter, clearExit = max(value.clearExit, margin / span), wave = wave)
@@ -663,9 +665,9 @@ internal class ProximityCalibrationEngine(
         }
 
         /** The same rule for a deliberate wave, whose baseline drifts exactly as the clear floor does. */
-        fun driftMargined(value: WaveCalibration, margin: Float): WaveCalibration? {
+        fun driftMargined(value: WaveCalibration, margin: Float, declaredRange: Float = 0f): WaveCalibration? {
             if (margin <= 0f || isBinaryPair(value.clearRaw, value.nearRaw) ||
-                !onTheBandsScale(value.clearRaw, value.nearRaw, margin)
+                !countedBeyondDeclaredRange(value.clearRaw, value.nearRaw, declaredRange)
             ) return value
             val span = abs(value.nearRaw - value.clearRaw)
             if (!span.isFinite() || span <= 0f) return null

@@ -71,6 +71,17 @@ internal fun proximityDriftMargin(acquisition: ProximityAcquisition): Float = wh
     ProximityAcquisition.VI530X, ProximityAcquisition.GPIO, ProximityAcquisition.ABSENT -> 0f
 }
 
+/**
+ * The range above which this route's readings are counts, the band's unit, rather than centimetres. The raw16
+ * sysfs route is counts by construction. An Android HAL is centimetres up to its declared maximum range by
+ * contract, so only a reading beyond that range proves counts; the measured NSPanel 86 HAL declares 9 and
+ * reads in the hundreds.
+ */
+internal fun proximityDriftDeclaredRange(acquisition: ProximityAcquisition, halMaximumRange: Float?): Float = when (acquisition) {
+    ProximityAcquisition.ANDROID_HAL -> halMaximumRange?.takeIf { it.isFinite() && it >= 0f } ?: Float.POSITIVE_INFINITY
+    else -> 0f
+}
+
 /** HAL delivery metadata selects liveness and legacy-seed safety, never sparse learning: vendor HALs
  * commonly claim on-change while emitting densely. Reporting sparsity is classified from live cadence. */
 internal fun proximitySourcePolicy(
@@ -355,6 +366,7 @@ class SensorReporter(
             profile.proximityCalibration.takeUnless { proximityAcquisition == ProximityAcquisition.STK_RAW },
             observedSourceMode = if (proximityAcquisition == ProximityAcquisition.STK_RAW) ProximityCalibrationEngine.Mode.RANGED else null,
             driftMargin = proximityDriftMargin(proximityAcquisition),
+            driftDeclaredRange = proximityDriftDeclaredRange(proximityAcquisition, proximitySensor?.maximumRange),
         )
         updateLearnedEligibility()
     }

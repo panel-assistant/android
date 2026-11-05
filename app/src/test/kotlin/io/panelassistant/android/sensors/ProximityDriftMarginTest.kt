@@ -270,27 +270,26 @@ class ProximityDriftMarginTest {
         val wave = WaveCalibration(pattern = WavePattern.SINGLE, clearRaw = 1f, nearRaw = 0f)
         assertEquals(wave, ProximityCalibrationEngine.driftMargined(wave, margin))
         // Near-or-clear is exempt because it is near or clear, not because one and zero happen to
-        // sit below every band this project has measured. A band small enough to be on their scale
-        // must still leave them alone, or a future route in finer units silently starts margining a
-        // sensor that reports two values.
-        assertEquals(binary, ProximityCalibrationEngine.driftMargined(binary, .4f))
-        assertEquals(wave, ProximityCalibrationEngine.driftMargined(wave, .4f))
+        // sit inside a declared range. On a route that is counts by construction (declared range 0)
+        // and under a band small enough to fit between them, they must still be left alone.
+        assertEquals(binary, ProximityCalibrationEngine.driftMargined(binary, .4f, 0f))
+        assertEquals(wave, ProximityCalibrationEngine.driftMargined(wave, .4f, 0f))
     }
 
-    @Test fun aSensorReportingCentimetresIsNotOnTheBandsScaleAndKeepsWorking() {
-        // The Android proximity contract is centimetres, so a conforming HAL reports something like
-        // five and zero where every unit this band was measured on reports hundreds. A hundred-count
-        // band cannot be imposed on five centimetres without refusing every calibration on hardware
-        // that worked, so a route whose readings are not on the band's scale is left alone.
+    @Test fun aSensorReportingCentimetresWithinItsDeclaredRangeKeepsWorking() {
+        // The Android proximity contract is centimetres up to the sensor's declared maximum range, so a
+        // conforming HAL reports something like five and zero. A hundred-count band cannot be imposed on
+        // five centimetres without refusing every calibration on hardware that worked, so readings inside
+        // the declared range are left alone.
         val hal = proximityDriftMargin(ProximityAcquisition.ANDROID_HAL)
         val centimetres = Calibration(mode = Mode.RANGED, clearRaw = 5f, nearRaw = 0f)
-        assertEquals(centimetres, ProximityCalibrationEngine.driftMargined(centimetres, hal))
+        assertEquals(centimetres, ProximityCalibrationEngine.driftMargined(centimetres, hal, 5f))
         val centimetreWave = WaveCalibration(pattern = WavePattern.SINGLE, clearRaw = 5f, nearRaw = 0f)
-        assertEquals(centimetreWave, ProximityCalibrationEngine.driftMargined(centimetreWave, hal))
-        // A HAL that counts, which is what every measured unit does, still gets the band.
+        assertEquals(centimetreWave, ProximityCalibrationEngine.driftMargined(centimetreWave, hal, 5f))
+        // A HAL that counts beyond its declared range, which is what every measured unit does, gets the band.
         val counts = requireNotNull(
             ProximityCalibrationEngine.driftMargined(
-                Calibration(mode = Mode.RANGED, clearRaw = 19f, nearRaw = 900f), hal,
+                Calibration(mode = Mode.RANGED, clearRaw = 19f, nearRaw = 900f), hal, NSPANEL_86_DECLARED_RANGE,
             ),
         )
         assertTrue(
@@ -300,9 +299,46 @@ class ProximityDriftMarginTest {
         assertNull(
             "and a counting HAL whose approach is too weak is still declined",
             ProximityCalibrationEngine.driftMargined(
-                Calibration(mode = Mode.RANGED, clearRaw = 464f, nearRaw = 550f), hal,
+                Calibration(mode = Mode.RANGED, clearRaw = 464f, nearRaw = 550f), hal, NSPANEL_86_DECLARED_RANGE,
             ),
         )
+    }
+
+    /**
+     * The NSPanel 86 shape: its HAL declares a 9 cm range and reads an empty room at 95 to 151 counts on one unit. A
+     * setup there that saw 131 clear and 157 near (the separation one such unit holds today, recovered from
+     * its live raw and level readings) is far smaller than the 56-count band that unit's own floor walked, so
+     * it is declined, although neither reading reaches any size a magnitude test could set from the band.
+     */
+    @Test fun aCountingHalBelowAnySizeThresholdStillHoldsTheBand() {
+        val hal = proximityDriftMargin(ProximityAcquisition.ANDROID_HAL)
+        val standing = Calibration(mode = Mode.RANGED, clearRaw = 131f, nearRaw = 157f)
+        assertNull(ProximityCalibrationEngine.driftMargined(standing, hal, NSPANEL_86_DECLARED_RANGE))
+        val standingWave = WaveCalibration(pattern = WavePattern.SINGLE, clearRaw = 131f, nearRaw = 157f)
+        assertNull(ProximityCalibrationEngine.driftMargined(standingWave, hal, NSPANEL_86_DECLARED_RANGE))
+        // The same pair from a sensor declaring a range that covers it would be centimetres and is left alone.
+        assertEquals(standing, ProximityCalibrationEngine.driftMargined(standing, hal, 200f))
+
+        // Through the runtime, as the panel loads it: declined, setup asked for, the row untouched.
+        val stored = row(standing)
+        val backing = Backing(stored)
+        val runtime = ProximityCalibrationRuntime(
+            SOURCE, PROFILE, null, Store(backing), elapsed = { 1_000L }, wall = { 1_800_000_000_000L },
+            observedSourceMode = Mode.RANGED, driftMargin = hal, driftDeclaredRange = NSPANEL_86_DECLARED_RANGE,
+        )
+        runtime.observe(140f, 1_000L, false)
+        val status = JSONObject(runtime.json())
+        assertEquals("calibration_required", status.getString("phase"))
+        assertTrue(status.getBoolean("calibrationDriftUnsafe"))
+        runtime.close()
+        assertEquals(stored, backing.row)
+    }
+
+    @Test fun onlyAHalReadsItsDeclaredRangeAsTheLimitOfCentimetres() {
+        assertEquals(9f, proximityDriftDeclaredRange(ProximityAcquisition.ANDROID_HAL, 9f), 0f)
+        assertEquals(Float.POSITIVE_INFINITY, proximityDriftDeclaredRange(ProximityAcquisition.ANDROID_HAL, null), 0f)
+        assertEquals(Float.POSITIVE_INFINITY, proximityDriftDeclaredRange(ProximityAcquisition.ANDROID_HAL, Float.NaN), 0f)
+        assertEquals(0f, proximityDriftDeclaredRange(ProximityAcquisition.STK_RAW, 9f), 0f)
     }
 
     @Test fun aRouteWithNoMeasuredDriftBandKeepsItsCalibrationExactly() {
@@ -396,6 +432,9 @@ class ProximityDriftMarginTest {
         const val SERIES = "raw16-four-day-series.txt"
         const val SOURCE = "sysfs-stk3a5x-raw16-v1"
         const val PROFILE = "profile-r1"
+
+        /** What a Sonoff NSPanel 86's proximity HAL declares as its maximum range, read from a live unit. */
+        const val NSPANEL_86_DECLARED_RANGE = 9f
 
         /** Above this unit's clear floor and every excursion its drift ever made. */
         const val PRESENCE_FLOOR = 1_100f

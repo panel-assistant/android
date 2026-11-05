@@ -23,6 +23,8 @@ internal class ProximityCalibrationRuntime(
     private val observedSourceMode: ProximityCalibrationEngine.Mode? = null,
     profileRevision: String? = null,
     private val driftMargin: Float = 0f,
+    /** The source's declared maximum range; readings beyond it are counts, the band's unit. 0 = always counts. */
+    private val driftDeclaredRange: Float = 0f,
 ) : AutoCloseable {
     data class Decision(val reportMask: Int, val near: Boolean?, val normalizedLevel: Int?, val deliberateGesture: Boolean, val presenceApproach: Boolean = false)
 
@@ -43,7 +45,7 @@ internal class ProximityCalibrationRuntime(
 
     /** Certified defaults carry the same obligation as a wizard save: a baseline whose boundary sits
      *  inside the drift band is no baseline. */
-    private val baseline = profileBaseline?.let { ProximityCalibrationEngine.driftMargined(it, driftMargin) }
+    private val baseline = profileBaseline?.let { ProximityCalibrationEngine.driftMargined(it, driftMargin, driftDeclaredRange) }
     private val engine = ProximityCalibrationEngine(readCalibration(), commit = { candidate ->
         val now = wall()
         // This is the only calibration write. The store commits the whole row in one transaction;
@@ -55,7 +57,8 @@ internal class ProximityCalibrationRuntime(
                 ), emptyList(), emptyList(), now,
             )
         }.isSuccess.also { if (it) { userOverride = true; readFailed = false; driftUnsafe = false } }
-    }, requestedWavePattern = requestedWavePattern, observedSourceMode = observedSourceMode, driftMargin = driftMargin)
+    }, requestedWavePattern = requestedWavePattern, observedSourceMode = observedSourceMode,
+        driftMargin = driftMargin, driftDeclaredRange = driftDeclaredRange)
     @Volatile private var view = engine.current()
     @Volatile private var sessionId = ""
     @Volatile private var browserAt = 0L
@@ -77,6 +80,7 @@ internal class ProximityCalibrationRuntime(
         profile: ProfileProximityCalibration?,
         observedSourceMode: ProximityCalibrationEngine.Mode? = null,
         driftMargin: Float = 0f,
+        driftDeclaredRange: Float = 0f,
     ) : this(
         sourceIdentity, profileId, profile?.let(::fromProfile),
         SqliteProximityModelStore(EntityCatalogStore(context.applicationContext)),
@@ -84,6 +88,7 @@ internal class ProximityCalibrationRuntime(
         observedSourceMode = observedSourceMode,
         profileRevision = profileRevision,
         driftMargin = driftMargin,
+        driftDeclaredRange = driftDeclaredRange,
     )
 
     @Synchronized
@@ -227,7 +232,7 @@ internal class ProximityCalibrationRuntime(
     fun reloadStored(): Boolean {
         if (closed || view.active || saving) return false
         val restored = runCatching { stored(fingerprint) }.getOrNull()?.second ?: return false
-        val margined = ProximityCalibrationEngine.driftMargined(restored, driftMargin)
+        val margined = ProximityCalibrationEngine.driftMargined(restored, driftMargin, driftDeclaredRange)
         if (margined == null) {
             if (driftUnsafe && !userOverride) return false
             driftUnsafe = true
@@ -368,7 +373,7 @@ internal class ProximityCalibrationRuntime(
         }?.second ?: return baseline
         // Migration is in memory and raises boundaries only; the stored row is left exactly as the
         // user saved it, so a later release that reads it differently still has the observations.
-        val margined = ProximityCalibrationEngine.driftMargined(value, driftMargin)
+        val margined = ProximityCalibrationEngine.driftMargined(value, driftMargin, driftDeclaredRange)
         if (margined == null) {
             driftUnsafe = true
             return baseline
