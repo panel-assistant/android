@@ -45,7 +45,11 @@ internal class ProximityCalibrationRuntime(
 
     /** Certified defaults carry the same obligation as a wizard save: a baseline whose boundary sits
      *  inside the drift band is no baseline. */
-    private val baseline = profileBaseline?.let { ProximityCalibrationEngine.driftMargined(it, driftMargin, driftDeclaredRange) }
+    private val baseline = profileBaseline?.let { profile ->
+        ProximityCalibrationEngine.driftMargined(profile, driftMargin, driftDeclaredRange).also {
+            if (it == null) Log.w(TAG, "profile proximity calibration cannot hold this source's drift band; not used")
+        }
+    }
     private val engine = ProximityCalibrationEngine(readCalibration(), commit = { candidate ->
         val now = wall()
         // This is the only calibration write. The store commits the whole row in one transaction;
@@ -215,6 +219,7 @@ internal class ProximityCalibrationRuntime(
             }.isFailure) return false
         userOverride = false
         readFailed = false
+        driftUnsafe = false
         sessionId = ""
         failureMessage = ""
         view = engine.reset(baseline, processingTime(elapsed()))

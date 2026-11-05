@@ -178,6 +178,29 @@ class ProximityCalibrationRuntimeTest {
         assertEquals("calibration_required", JSONObject(empty.statusJson()).getString("state"))
     }
 
+    /** Resetting to the profile removes the declined calibration, so the panel stops reporting it. */
+    @Test fun aResetAfterADeclinedCalibrationClearsTheDriftFlag() {
+        val backing = Backing(row(Calibration(mode = Mode.RANGED, clearRaw = 100f, nearRaw = 95f)))
+        val fixture = Fixture(backing, driftMargin = 10f)
+        assertTrue(fixture.status().getBoolean("calibrationDriftUnsafe"))
+        assertEquals("profile", fixture.status().getString("calibrationSource"))
+        assertTrue(fixture.runtime.resetToProfile())
+        assertFalse(fixture.status().getBoolean("calibrationDriftUnsafe"))
+        assertEquals("profile", fixture.status().getString("calibrationSource"))
+    }
+
+    /** A calibration found under the old revision key passes the same drift check as one under the current key. */
+    @Test fun aCarriedCalibrationInsideTheDriftBandIsDeclined() {
+        val old = row(Calibration(mode = Mode.RANGED, clearRaw = 100f, nearRaw = 95f))
+            .copy(fingerprint = ProximityCalibrationRuntime.fingerprint("$PROFILE|rev-1|$SOURCE"))
+        val backing = Backing(old)
+        val carried = Fixture(backing, revision = "rev-1", driftMargin = 10f)
+        assertEquals("profile", carried.status().getString("calibrationSource"))
+        assertTrue(carried.status().getBoolean("calibrationDriftUnsafe"))
+        assertEquals(old, backing.row)
+        assertEquals(0, backing.writes)
+    }
+
     /** A declined calibration asks for setup again; once setup saves one that holds the band, the panel no
      *  longer reports the declined one. */
     @Test fun aSetupSavedAfterADeclinedCalibrationClearsTheDriftFlag() {
