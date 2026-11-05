@@ -19,8 +19,10 @@ import org.junit.Test
 
 class DisplayRoutesTest {
     @Test fun `full mount preserves display admission results and known sizing cache`() {
-        val root = FakeRootShell(outputs = mapOf("wm density" to "Physical density: 320\nOverride density: 240", "font_scale" to "1.0"))
-        val density = DensityController(true, root, FakeDaemon())
+        val root = FakeRootShell()
+        // Sizing reads come from the helper (never su); the writes below still take the profile's su route.
+        val helper = FakeDaemon(replies = mapOf("DENSITY" to "PHYS=320 OVER=240", "FONTSCALE" to "SCALE=1.0"))
+        val density = DensityController(true, root, helper)
         PaneldServerHttpFixture(density = density).use { fixture ->
             testApplication {
                 application { fixture.mount(this) }
