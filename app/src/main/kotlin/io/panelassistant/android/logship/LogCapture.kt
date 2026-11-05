@@ -76,6 +76,8 @@ class LogCapture(
     private val processAvailable: () -> Boolean = { true },
     private val wallMillis: () -> Long = System::currentTimeMillis,
     private val timeZone: () -> TimeZone = TimeZone::getDefault,
+    private val restartBaseMs: Long = BACKOFF_MS,
+    private val restartMaxMs: Long = BACKOFF_MAX_MS,
 ) {
     init {
         require(maxViewers > 0) { "maxViewers must be positive" }
@@ -117,6 +119,7 @@ class LogCapture(
         }
     }
     private var run: Run? = null
+    private val emitted = java.util.concurrent.atomic.AtomicLong()
     @Volatile private var closed = false
 
     /** Admission is separate from [subscribe]: remote shipping is not a browser viewer and must not
@@ -353,7 +356,9 @@ class LogCapture(
         run = r
         val producer = lineStream
         r.job = scope.launch(Dispatchers.IO) {
+            var failures = 0
             while (isActive) {
+                val emittedBefore = emitted.get()
                 try {
                     val records = if (longLogcatRecords) LongLogcatRecords { emit(r, redact(it)) } else null
                     if (producer != null && (streamCmd.isEmpty() || !processAvailable())) {
@@ -381,7 +386,11 @@ class LogCapture(
                 } catch (e: Exception) {
                     Log.w(TAG, "capture restart: ${e.message}")
                 }
-                if (isActive) delay(BACKOFF_MS)
+                // A pass that produced output was healthy; one that failed or ended silently repeats.
+                if (emitted.get() != emittedBefore) failures = 0
+                val wait = min(restartBaseMs shl min(failures, 20), restartMaxMs)
+                failures++
+                if (isActive) delay(wait)
             }
         }
     }
@@ -436,6 +445,7 @@ class LogCapture(
             // A process can produce one final buffered line after destroy(). Never let that line cross a
             // stop→start boundary into the replacement generation's ring or listeners.
             if (closed || run !== source) return
+            emitted.incrementAndGet()
             synchronized(ring) {
                 if (ring.size >= RING_CAP) ring.removeFirst()
                 ring.addLast(line)
@@ -455,6 +465,7 @@ class LogCapture(
         private const val RING_CAP = 400
         private const val DUMP_LINES = 300
         private const val BACKOFF_MS = 2_000L
+        private const val BACKOFF_MAX_MS = 60_000L
         private const val MAX_VIEWERS = 4
         private const val DUMP_TIMEOUT_MS = 3_000L
         private const val DUMP_MAX_BYTES = 256 * 1024
