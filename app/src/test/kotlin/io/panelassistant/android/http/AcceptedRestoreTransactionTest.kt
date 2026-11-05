@@ -471,6 +471,7 @@ class AcceptedRestoreTransactionTest {
                     val status = JSONObject(InstallProgress.json())
                     assertFalse(status.getBoolean("running"))
                     assertEquals("Restore", status.getString("component"))
+                    assertTrue("no result reported: $status", status.has("result"))
                     val result = status.getJSONObject("result")
                     assertTrue(status.toString(), result.optBoolean("interrupted"))
                     assertEquals(if (configSaved) "partial" else "failed", result.getString("status"))

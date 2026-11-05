@@ -54,7 +54,7 @@ class InstallProgressTest {
         InstallProgress.finish(running, "done")
 
         assertTrue(report())
-        assertEquals(true, JSONObject(InstallProgress.json()).getJSONObject("result").getBoolean("interrupted"))
+        assertTrue(InstallProgress.json(), JSONObject(InstallProgress.json()).optJSONObject("result")?.optBoolean("interrupted") == true)
         val next = InstallProgress.start("restore")!!
         assertEquals(1, superseded)
         InstallProgress.finish(next, "done")
