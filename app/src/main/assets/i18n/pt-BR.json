@@ -1403,11 +1403,6 @@
       "sourceHash": "ee35b5ba6bbec49d91a9e6ea8738f3bf366490c750ef14712585693584857581",
       "state": "machine-cross-checked"
     },
-    "configure.proximity.confirm.forget": {
-      "text": "Afaste-se do painel. Deseja então excluir o histórico de proximidade aprendido deste sensor? O despertar por toque continua disponível durante o novo aprendizado.",
-      "sourceHash": "e4ed73da8434174e02d6aa4413c24c088aad8fc6b39f214146bc5f74813288e5",
-      "state": "machine-cross-checked"
-    },
     "configure.proximity.detail.local": {
       "text": "O aprendizado ocorre localmente. O despertar por toque continua disponível durante o aprendizado.",
       "sourceHash": "ff3e4e04eb0ec954515fa15931aa7054f7e9b9506c9319cb3cf03544822ac207",
@@ -1483,26 +1478,6 @@
       "sourceHash": "5d60de1f3671ac47cb6c50a451f4fce201f137e1bdf481b4a6b0e7adfa43445b",
       "state": "machine-cross-checked"
     },
-    "configure.proximity.message.clear_failed": {
-      "text": "Não foi possível limpar o histórico de proximidade; o modelo existente não foi alterado.",
-      "sourceHash": "2473034f5750212d7d622823322d1ce10a6e8451550f6e39d49a990f15a34b0b",
-      "state": "machine-cross-checked"
-    },
-    "configure.proximity.message.clear_safely_failed": {
-      "text": "Não foi possível limpar o histórico de proximidade com segurança; o modelo existente não foi alterado.",
-      "sourceHash": "51c2e6b636842da7c9ca7763425f174d767bd02d82cdb7ae74542abd16c6612f",
-      "state": "machine-cross-checked"
-    },
-    "configure.proximity.message.cleared": {
-      "text": "Histórico de proximidade aprendido apagado. O aprendizado foi reiniciado.",
-      "sourceHash": "ae0015059a409e4fc04f8f92d73307645ef268433c4a495c24e720b7732b37dd",
-      "state": "machine-cross-checked"
-    },
-    "configure.proximity.message.learning_clear_baseline": {
-      "text": "Nenhuma configuração é necessária. Mantenha a área livre por um breve período para que o painel aprenda sua referência.",
-      "sourceHash": "f14cf2497d96832b03c9b3442247990bf8e72648d8802d9c50cdb4d375a08455",
-      "state": "machine-cross-checked"
-    },
     "configure.proximity.message.movement_not_armed": {
       "text": "Movimento observado, mas não foi um aceno intencional no estado armado. Afaste-se por dois segundos e tente novamente.",
       "sourceHash": "7a9e061dc272218bd2b9d8ab7c199fa3fcdb5e03aafece54180f0702d99b0e1d",
@@ -1521,11 +1496,6 @@
     "configure.proximity.message.normalized_ready": {
       "text": "A proximidade está normalizada para o Home Assistant, e o despertar exige um aceno intencional completo.",
       "sourceHash": "94a80a00c1a8148b468b8ff46ceb445bc941b0ce3e8ff77b862edd9740064e12",
-      "state": "machine-cross-checked"
-    },
-    "configure.proximity.message.safety_reset_failed": {
-      "text": "Os gestos de despertar estão desabilitados porque não foi possível salvar sua redefinição de segurança.",
-      "sourceHash": "55bb82eb35b87d2b225546553ab840b4f2334c5dd08eabf69f717560cf3e5ead",
       "state": "machine-cross-checked"
     },
     "configure.proximity.message.signal_changed_paused": {
@@ -6403,11 +6373,6 @@
       "sourceHash": "91c572b84e2e5f12f23152ddd4e4e399b6d8cb5ea58449f7254e5096f0b05192",
       "state": "machine-cross-checked"
     },
-    "install.companion.error.marker_failed": {
-      "text": "Não foi possível persistir o marcador de segurança da operação do Home Assistant Companion",
-      "sourceHash": "f65b8b9d86d0c4b38165568e1757d591e3195c8bd37731b4bcaf6461d891a9f0",
-      "state": "machine-cross-checked"
-    },
     "install.companion.urls_repaired.one": {
       "text": "{count} servidor reparado — URL interna definida como a URL externa; Home Assistant Companion reaberto",
       "sourceHash": "2e0bb1dd0e69e1022aa67cf1bfbb97102454607c03b2f95b8d5a3d82c846e29a",
@@ -7446,11 +7411,6 @@
     "install.shared.not_installed": {
       "text": "não instalado",
       "sourceHash": "e9363f76e1145505f670e682d00a8497f163aa9aa81034d513260edf155923c9",
-      "state": "machine-cross-checked"
-    },
-    "install.shared.operation_busy": {
-      "text": "Outra operação em andamento.",
-      "sourceHash": "2f3ade1aef148c86c17bce8fa9a7ef17a6f1faa35db5cea5966f69dd03544349",
       "state": "machine-cross-checked"
     },
     "install.shared.version": {

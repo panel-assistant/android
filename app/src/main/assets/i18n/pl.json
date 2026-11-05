@@ -1213,11 +1213,6 @@
    "sourceHash": "ee35b5ba6bbec49d91a9e6ea8738f3bf366490c750ef14712585693584857581",
    "state": "machine-cross-checked"
   },
-  "configure.proximity.confirm.forget": {
-   "text": "Odsuń się od panelu. Usunąć zapamiętaną historię zbliżeń dla tego czujnika? Funkcja „Dotknij, by wybudzić” pozostaje dostępna, dopóki czujnik uczy się od nowa.",
-   "sourceHash": "e4ed73da8434174e02d6aa4413c24c088aad8fc6b39f214146bc5f74813288e5",
-   "state": "machine-cross-checked"
-  },
   "configure.proximity.detail.local": {
    "text": "Uczenie się odbywa się lokalnie. Funkcja „dotknij, by wybudzić” działa normalnie podczas uczenia się.",
    "sourceHash": "ff3e4e04eb0ec954515fa15931aa7054f7e9b9506c9319cb3cf03544822ac207",
@@ -1293,26 +1288,6 @@
    "sourceHash": "5d60de1f3671ac47cb6c50a451f4fce201f137e1bdf481b4a6b0e7adfa43445b",
    "state": "machine-cross-checked"
   },
-  "configure.proximity.message.clear_failed": {
-   "text": "Nie udało się wyczyścić historii zbliżeń; istniejący model pozostaje bez zmian.",
-   "sourceHash": "2473034f5750212d7d622823322d1ce10a6e8451550f6e39d49a990f15a34b0b",
-   "state": "machine-cross-checked"
-  },
-  "configure.proximity.message.clear_safely_failed": {
-   "text": "Nie udało się bezpiecznie wyczyścić historii zbliżeń; istniejący model pozostaje bez zmian.",
-   "sourceHash": "51c2e6b636842da7c9ca7763425f174d767bd02d82cdb7ae74542abd16c6612f",
-   "state": "machine-cross-checked"
-  },
-  "configure.proximity.message.cleared": {
-   "text": "Zapamiętana historia zbliżeń została wyczyszczona. Uczenie rozpoczęło się od nowa.",
-   "sourceHash": "ae0015059a409e4fc04f8f92d73307645ef268433c4a495c24e720b7732b37dd",
-   "state": "machine-cross-checked"
-  },
-  "configure.proximity.message.learning_clear_baseline": {
-   "text": "Nie trzeba niczego konfigurować. Przez chwilę zadbaj, by przestrzeń przed panelem była wolna, aby mógł nauczyć się poziomu odniesienia.",
-   "sourceHash": "f14cf2497d96832b03c9b3442247990bf8e72648d8802d9c50cdb4d375a08455",
-   "state": "machine-cross-checked"
-  },
   "configure.proximity.message.movement_not_armed": {
    "text": "Wykryto ruch, ale nie było to celowe machnięcie po uzbrojeniu wykrywania. Odsuń się na dwie sekundy, a potem spróbuj jeszcze raz.",
    "sourceHash": "7a9e061dc272218bd2b9d8ab7c199fa3fcdb5e03aafece54180f0702d99b0e1d",
@@ -1331,11 +1306,6 @@
   "configure.proximity.message.normalized_ready": {
    "text": "Zbliżenie jest normalizowane dla Home Assistant, a wybudzenie wymaga pełnego, celowego machnięcia ręką.",
    "sourceHash": "94a80a00c1a8148b468b8ff46ceb445bc941b0ce3e8ff77b862edd9740064e12",
-   "state": "machine-cross-checked"
-  },
-  "configure.proximity.message.safety_reset_failed": {
-   "text": "Gesty wybudzania są wyłączone, ponieważ nie udało się zapisać resetu zabezpieczającego.",
-   "sourceHash": "55bb82eb35b87d2b225546553ab840b4f2334c5dd08eabf69f717560cf3e5ead",
    "state": "machine-cross-checked"
   },
   "configure.proximity.message.signal_changed_paused": {
@@ -5823,11 +5793,6 @@
    "sourceHash": "91c572b84e2e5f12f23152ddd4e4e399b6d8cb5ea58449f7254e5096f0b05192",
    "state": "machine-cross-checked"
   },
-  "install.companion.error.marker_failed": {
-   "text": "Nie udało się zapisać znacznika bezpieczeństwa operacji Home Assistant Companion",
-   "sourceHash": "f65b8b9d86d0c4b38165568e1757d591e3195c8bd37731b4bcaf6461d891a9f0",
-   "state": "machine-cross-checked"
-  },
   "install.companion.urls_repaired.one": {
    "text": "naprawiono serwer ({count}) — wewnętrzny URL ustawiono na zewnętrzny URL; ponownie uruchomiono Home Assistant Companion",
    "sourceHash": "2e0bb1dd0e69e1022aa67cf1bfbb97102454607c03b2f95b8d5a3d82c846e29a",
@@ -6666,11 +6631,6 @@
   "install.shared.not_installed": {
    "text": "nie zainstalowano",
    "sourceHash": "e9363f76e1145505f670e682d00a8497f163aa9aa81034d513260edf155923c9",
-   "state": "machine-cross-checked"
-  },
-  "install.shared.operation_busy": {
-   "text": "Trwa inna operacja.",
-   "sourceHash": "2f3ade1aef148c86c17bce8fa9a7ef17a6f1faa35db5cea5966f69dd03544349",
    "state": "machine-cross-checked"
   },
   "install.shared.version": {
