@@ -52,6 +52,7 @@ internal class RestoreExecutor(
     private val dashboardIssues: io.panelassistant.android.persistence.DashboardIssueCustody =
         io.panelassistant.android.persistence.CatalogDashboardIssueCustody(appContext),
     private val applyState: (List<ConfigVault.StateRow>) -> Int = { AppState.applyRestoredRows(appContext, it) },
+    private val journal: RestoreJournal = RestoreJournal { appContext.filesDir },
 ) {
     suspend fun execute(
         configPlan: RestoreConfigPlan,
@@ -115,6 +116,8 @@ internal class RestoreExecutor(
         var companionResult: CompanionApplyResult? = null
         var profileResult: ProfileBackupRestoreResult? = null
         var appliedRevisionHash: String? = null
+        // Before the first durable write below: if the process ends part way, the next start reports it.
+        journal.begin()
         // Before the configuration, so a restored `voice_wake_words` selecting an imported id finds
         // its model when the listener rearms. Additive and never fatal: a model the engine refuses is
         // reported in the result, and a later configuration rollback leaves these imports in place,
@@ -147,6 +150,7 @@ internal class RestoreExecutor(
                     configCommitted = true
                     appliedRevisionHash = appliedHash
                     configReceipt = receipt
+                    journal.configSaved()
                 },
                 afterCommitBeforeRenderer = { effects, appliedHash ->
                     appliedRevisionHash = appliedHash
@@ -277,6 +281,9 @@ internal class RestoreExecutor(
             )
         }
         Log.i(TAG, "restore: ${operation.message}")
+        // Every write is done, so the note goes while this restore still holds the lane: once finish
+        // releases it, the next restore may write its own note at once, which this one must not remove.
+        journal.end()
         InstallProgress.finish(
             progress,
             operation.message,

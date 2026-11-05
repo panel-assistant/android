@@ -39,6 +39,29 @@ class InstallProgressTest {
         assertEquals("done", InstallProgress.message)
     }
 
+    @Test fun aReportedEarlierOperationNeverDisplacesARunningOneAndIsSupersededOnceByTheNext() {
+        var superseded = 0
+        fun report() = InstallProgress.reportFinished(
+            "Restore", "Restore interrupted",
+            InstallProgress.OperationResult(InstallProgress.Outcome.PARTIAL, interrupted = true),
+            InstallPresentation("restore-partial"),
+        ) { superseded++ }
+        val running = InstallProgress.start("WebView")!!
+        assertFalse(report())
+        assertTrue(InstallProgress.running)
+        assertEquals("WebView", InstallProgress.component)
+        assertFalse(JSONObject(InstallProgress.json()).has("result"))
+        InstallProgress.finish(running, "done")
+
+        assertTrue(report())
+        assertTrue(InstallProgress.json(), JSONObject(InstallProgress.json()).optJSONObject("result")?.optBoolean("interrupted") == true)
+        val next = InstallProgress.start("restore")!!
+        assertEquals(1, superseded)
+        InstallProgress.finish(next, "done")
+        InstallProgress.finish(InstallProgress.start("again")!!, "done")
+        assertEquals(1, superseded)
+    }
+
     @Test fun structuredResultIsFixedShapeBoundedAndClearedByNextOwner() {
         val ticket = InstallProgress.start("restore")!!
         InstallProgress.finish(
