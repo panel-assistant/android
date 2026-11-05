@@ -249,6 +249,16 @@ internal object BundledHelperInstaller {
 }
 
 /**
+ * A current helper still needs root to read any legacy takeover custody. That one start-up `su true` is
+ * also what proves su for this process, so the status views ([io.panelassistant.android.platform.RootShell.observedUsable])
+ * report root without probing it themselves.
+ */
+internal fun currentHelperProvesRoot(
+    result: BundledHelperInstaller.Result,
+    root: io.panelassistant.android.platform.RootShell = Su,
+): Boolean = result == BundledHelperInstaller.Result.ALREADY_CURRENT && root.available()
+
+/**
  * Whether this migration may proceed, and why not when it may not.
  *
  * Deliberately takes no device-profile argument. The profile's `app_can_su` is an attempt-order hint,
@@ -262,16 +272,6 @@ internal object BundledHelperInstaller {
  *
  * Returns the terminal result, or null when the caller should continue with the install.
  */
-/**
- * A current helper still needs root to read any legacy takeover custody. That one start-up `su true` is
- * also what proves su for this process, so the status views ([io.panelassistant.android.platform.RootShell.observedUsable])
- * report root without probing it themselves.
- */
-internal fun currentHelperProvesRoot(
-    result: BundledHelperInstaller.Result,
-    root: io.panelassistant.android.platform.RootShell = Su,
-): Boolean = result == BundledHelperInstaller.Result.ALREADY_CURRENT && root.available()
-
 internal fun bundledHelperAdmission(
     bundledBuildMatches: Boolean,
     companionSupported: Boolean,

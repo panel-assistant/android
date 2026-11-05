@@ -107,9 +107,9 @@ class SuRecoveryProofTest {
 
     @Test fun `a recorded loss re-arms the schedule and root recovers without another root caller`() = runTest {
         assertTrue(currentHelperProvesRoot(BundledHelperInstaller.Result.ALREADY_CURRENT, shell))
+        val proven = su.attempts.get()
         startProof()
         advanceTimeBy(700_000L)
-        val proven = su.attempts.get()
         assertEquals("no proof runs while su answers", proven, su.attempts.get())
 
         // su dies; the next real root call finds out and records the loss.
