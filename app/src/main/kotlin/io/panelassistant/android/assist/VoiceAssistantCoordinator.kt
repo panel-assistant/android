@@ -207,6 +207,8 @@ class VoiceAssistantCoordinator internal constructor(
     private var engine: WakeWordEngine? = null
     private var wakeLease: MicLease? = null
     private var runJob: Job? = null
+    // Set while the run plays an announcement: the owner stopping it marks it stopped.
+    private var announcementStopped: AtomicBoolean? = null
     private var retryJob: Job? = null
     private var foregroundClaimed = false
     private val closed = AtomicBoolean(false)
@@ -323,6 +325,14 @@ class VoiceAssistantCoordinator internal constructor(
         }
         job?.cancel()
         state.set(VoiceState.OFF)
+    }
+
+    /**
+     * The owner stopped the panel's sound some other way than the stop word (the media player's Stop): an
+     * announcement playing now reports it was stopped. The caller silences the sound itself.
+     */
+    fun ownerStopped() {
+        synchronized(lock) { announcementStopped?.set(true) }
     }
 
     /** Press-to-talk: start one run with the preferred pipeline, as if a wake word had fired. */
@@ -455,6 +465,7 @@ class VoiceAssistantCoordinator internal constructor(
                     stop = if (hearsStop && mic != null) stopWord(mic, coroutineContext.job, stopped) else null
                     val speaker = stop?.let { heardBy(it.listener) } ?: playback
                     if (announcement != null) {
+                        synchronized(lock) { announcementStopped = stopped }
                         announcement.text?.let { stop?.listener?.reply(it) }
                         state.set(VoiceState.RESPONDING)
                         val played = runCatching {
@@ -467,6 +478,7 @@ class VoiceAssistantCoordinator internal constructor(
                                 speaker.play(announcement.url)
                             }
                         }
+                        synchronized(lock) { announcementStopped = null }
                         announcement.done(stopped.get())
                         played.exceptionOrNull()?.let { if (it is CancellationException) throw it }
                     }

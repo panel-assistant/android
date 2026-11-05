@@ -10,6 +10,7 @@ import io.panelassistant.android.audio.MicrophoneSource
 import io.panelassistant.android.audio.PcmConsumer
 import io.panelassistant.android.audio.PcmFrame
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -111,11 +112,15 @@ class VoiceAssistantCoordinatorTest {
 
     /** The `listen_after` of each streamed announcement's `voice_stream_end`. */
     @Volatile private var streamListenAfter = true
+
+    /** When set, each sound plays until it completes, as the media player's Stop would end it. */
+    @Volatile private var sounding: CompletableDeferred<Unit>? = null
     private val playback = object : AssistPlayback {
         override suspend fun play(url: String) {
             played += url
             mic.leases.firstOrNull()?.let { pausedWhilePlaying += it.paused }
             state.set(VoiceState.RESPONDING)
+            sounding?.await()
         }
 
         override suspend fun playStream(streamId: String): Boolean {
@@ -1063,6 +1068,20 @@ class VoiceAssistantCoordinatorTest {
         assertEquals("the panel must not hear itself", listOf(true, true), pausedWhilePlaying)
         assertFalse(mic.leases[0].paused)
         assertTrue("an announcement alone asks nothing of Home Assistant", runners.isEmpty())
+    }
+
+    @Test
+    fun `an announcement the owner stops with the media player's Stop reports it stopped`() {
+        val c = coordinator()
+        c.start()
+        val sound = CompletableDeferred<Unit>().also { sounding = it }
+        val done = CompletableDeferred<Boolean>()
+        c.announce(VoiceAnnouncement("ring.flac", null, listenAfter = false) { done.complete(it) })
+        runBlocking { withTimeout(2_000) { while ("ring.flac" !in played) delay(10) } }
+        c.ownerStopped()
+        sound.complete(Unit)
+        assertTrue("Panel Assistant hears the owner stopped it", runBlocking { withTimeout(2_000) { done.await() } })
+        awaitRunFinished(c)
     }
 
     @Test

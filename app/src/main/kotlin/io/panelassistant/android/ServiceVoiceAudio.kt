@@ -155,7 +155,10 @@ internal class ServiceVoiceAudio(
             announce = { url, stream ->
                 if (stream != null && ::voice.isInitialized) voice.announceStreamedMedia(url, stream) else (if (stream != null) audio.submitStreamForGeneration(stream) else audio.submitForGeneration(url, speech = true)) != null
             },
-            cancelAnnouncement = { audio.snapshot().let { audio.cancelGeneration(it.generation) } },
+            cancelAnnouncement = {
+                if (::voice.isInitialized) voice.ownerStopped()
+                audio.snapshot().let { audio.cancelGeneration(it.generation) }
+            },
             muted = volume()::isMuted,
             setMuted = volume()::setMuted,
             log = { Log.w(TAG, it) },
