@@ -17,6 +17,7 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.flow.first
 
 internal enum class SuExecFailure {
     FIRST_MISSING,
@@ -276,6 +277,8 @@ object Su : RootShell by productionSu {
     fun availableIsolated(timeoutMs: Long = CMD_TIMEOUT_MS): Boolean = productionSu.availableIsolated(timeoutMs)
     fun availableCachedIsolated(): Boolean = productionSu.availableCachedIsolated()
     fun rootKnownUnusable(): Boolean = productionSu.rootKnownUnusable()
+    /** The service's bounded start-up and loss recovery proof for the production shell. */
+    internal fun recoveryProof(): SuRecoveryProof = SuRecoveryProof.of(productionSu)
     fun runLong(cmd: String, timeoutMs: Long): Boolean = productionSu.runLong(cmd, timeoutMs)
     fun runWithStdinLong(cmd: String, input: File, timeoutMs: Long): String? =
         productionSu.runWithStdinLong(cmd, input, timeoutMs)
@@ -472,6 +475,8 @@ internal class SuShell(
      *
      * Not synchronized, so a status read never waits behind a command on the persistent shell.
      */
+    // A stale true (su died since the last real call) only leaves a capability advertised; the action
+    // behind it runs su, finds it gone through [rootAnswering], and records the loss.
     override fun observedUsable(): Boolean =
         !execFailureCache.shouldSkipExec() && formState.working() && lastAnswer != false
 
@@ -479,8 +484,16 @@ internal class SuShell(
     // uninstall, an install route check) share one bounded, single-flight probe. Passive surfaces must
     // not call it: they read [observedUsable]. Isolated so the probe never waits behind the
     // synchronized persistent control shell.
-    private val availabilityCache = newAvailabilityCache(nowMs = nowMs, probe = { availableIsolated().also(::noteAnswering) })
+    private val availabilityCache = newAvailabilityCache(nowMs = nowMs, probe = {
+        val startedAt = answerStamp()
+        availableIsolated().also { noteAnswering(it, startedAt) }
+    })
     @Volatile private var lastAnswer: Boolean? = null
+    /** Bumped by every recorded outcome, so a slow probe that started earlier cannot overwrite a newer one. */
+    private val answerLock = Any()
+    private var answerStampValue = 0L
+    /** Counts transitions from answering to not answering; [SuRecoveryProof] re-arms on each. */
+    private val losses = kotlinx.coroutines.flow.MutableStateFlow(0L)
 
     internal fun newAvailabilityCache(
         ttlMs: Long = AVAILABILITY_TTL_MS,
@@ -508,15 +521,48 @@ internal class SuShell(
         return false
     }
 
-    /** One line when proven root stops answering and one when it answers again. */
-    private fun noteAnswering(answering: Boolean) {
+    private fun answerStamp(): Long = synchronized(answerLock) { answerStampValue }
+
+    /**
+     * Record whether su answered, and log one line when proven root stops answering and one when it
+     * answers again. [startedAt] is the stamp a probe read before it ran: when another outcome was
+     * recorded meanwhile, this older result is dropped rather than overwriting the newer one.
+     */
+    private fun noteAnswering(answering: Boolean, startedAt: Long? = null) = synchronized(answerLock) {
+        if (startedAt != null && startedAt != answerStampValue) return@synchronized
+        answerStampValue++
         val previous = lastAnswer
         lastAnswer = answering
         if (previous != false && !answering && formState.working()) {
-            Log.w(TAG, "su does not answer; root-only operations are skipped and su is re-checked every minute")
+            losses.value = losses.value + 1
+            Log.w(TAG, "su does not answer; root-only operations are skipped until su is proven again")
         } else if (previous == false && answering) {
             Log.i(TAG, "su answers again; root-only operations resume")
         }
+    }
+
+    /**
+     * Whether the service's bounded recovery proof has anything to learn: su may be executed, and it is
+     * either unproven in this process (a start-up check that lost the race with the root manager) or was
+     * last seen not answering. A panel without su is latched by the exec-failure cache and needs nothing.
+     */
+    fun needsRecoveryProof(): Boolean =
+        !execFailureCache.shouldSkipExec() && (!formState.working() || lastAnswer == false)
+
+    /** One bounded isolated `su true`, recorded like any outcome; a success also clears the lost-root gate. */
+    fun proveNow(): Boolean {
+        val startedAt = answerStamp()
+        val ok = availableIsolated()
+        noteAnswering(ok, startedAt)
+        if (ok) availabilityCache.invalidate()
+        return ok
+    }
+
+    fun lossCount(): Long = losses.value
+
+    /** Suspend until a loss newer than [seen] has been recorded. */
+    suspend fun awaitLossAfter(seen: Long) {
+        losses.first { it > seen }
     }
 
     // --- persistent shell ---

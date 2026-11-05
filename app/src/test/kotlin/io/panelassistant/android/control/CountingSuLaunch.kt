@@ -20,6 +20,8 @@ internal class CountingSuLaunch {
 
     @Volatile var mode = Mode.WORKING
     val launches = AtomicInteger()
+    /** Every launch attempt, including those refused before a process existed (no su binary). */
+    val attempts = AtomicInteger()
     val shellCommands = AtomicInteger()
     private val shells = mutableListOf<Process>()
 
@@ -29,6 +31,7 @@ internal class CountingSuLaunch {
     fun close() = synchronized(shells) { shells.forEach { it.destroy() } }
 
     fun launch(argv: Array<String>): Process {
+        attempts.incrementAndGet()
         if (mode == Mode.ABSENT) throw IOException("Cannot run program \"su\": error=2, No such file or directory")
         launches.incrementAndGet()
         if (mode == Mode.DEAD) return Exited(1)

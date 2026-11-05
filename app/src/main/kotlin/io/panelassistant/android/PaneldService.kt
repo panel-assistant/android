@@ -607,6 +607,9 @@ class PaneldService : Service() {
             BundledHelperInstaller.Result.ALREADY_CURRENT,
             BundledHelperInstaller.Result.SKIPPED -> Unit
         }
+        // Status reads never probe su; this bounded schedule proves it when the check above lost the
+        // race with the root manager, and again after a recorded loss. A few su starts per process at most.
+        scope.launch { Su.recoveryProof().run() }
         if (GuardDbProcessAdmission.ordinaryMutationsAllowed() && !teardownBoundary.isStopping) {
             PanelPermissionRepair.repair(
                 this@PaneldService, voiceAudio.microphonePresence(resolvedProfile.profile).offered,

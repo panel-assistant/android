@@ -61,7 +61,7 @@ internal object BundledHelperInstaller {
             guardSupported = guardSupported,
             rootObserved = { Su.available() },
         )?.let {
-            if (it == Result.ALREADY_CURRENT && Su.available()) {
+            if (currentHelperProvesRoot(it)) {
                 currentBundledLegacyTakeoverRecordResult(BuildConfig.HELPER_BUILD_ID)?.let { result ->
                     Log.w(TAG, "current helper has legacy takeover custody requiring $result")
                     return result
@@ -262,6 +262,16 @@ internal object BundledHelperInstaller {
  *
  * Returns the terminal result, or null when the caller should continue with the install.
  */
+/**
+ * A current helper still needs root to read any legacy takeover custody. That one start-up `su true` is
+ * also what proves su for this process, so the status views ([io.panelassistant.android.platform.RootShell.observedUsable])
+ * report root without probing it themselves.
+ */
+internal fun currentHelperProvesRoot(
+    result: BundledHelperInstaller.Result,
+    root: io.panelassistant.android.platform.RootShell = Su,
+): Boolean = result == BundledHelperInstaller.Result.ALREADY_CURRENT && root.available()
+
 internal fun bundledHelperAdmission(
     bundledBuildMatches: Boolean,
     companionSupported: Boolean,
