@@ -1,5 +1,8 @@
 package io.panelassistant.android.http
 
+import io.panelassistant.android.util.LocalAdminEndpoint
+import io.panelassistant.android.util.localIpv4
+import io.panelassistant.android.util.localIpv6
 import io.panelassistant.android.Config
 import io.panelassistant.android.control.PowerSafetyAdvisory
 import io.panelassistant.android.control.PrivilegedRouteObservation
@@ -18,7 +21,10 @@ internal class ConfigurePageHandler(
     private val haSignInNeededForEffectiveDashboard: () -> Boolean,
 ) {
     fun body(strings: AppStrings): String =
-        configureBody(strings, sensors.hasProximity(), configureSetupBanners(strings))
+        configureBody(
+            strings, sensors.hasProximity(), configureSetupBanners(strings),
+            LocalAdminEndpoint.externalUrl(localIpv4(), localIpv6(), config.httpPort),
+        )
 
     private fun configureSetupBanners(strings: AppStrings): String {
         val management = managementObservations.snapStaleOk()
