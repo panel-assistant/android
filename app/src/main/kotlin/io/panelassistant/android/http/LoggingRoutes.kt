@@ -67,9 +67,9 @@ private class LogCaptures(
         (selection(source) as? LogSelection.Selected)?.capture?.let(::LogCaptureSource)
 }
 
-/** Whether the system log can be read: root, or a helper that serves LOGCAT. */
+/** Whether the system log can be read: su already seen working, or a helper that serves LOGCAT. */
 internal fun systemLogReadable(): Boolean =
-    Su.availableCachedIsolated() || HelperClient.send("LOGCATCAPS") == "LOGCATCAPS 1"
+    Su.observedUsable() || HelperClient.send("LOGCATCAPS") == "LOGCATCAPS 1"
 
 // ---- live log stream (SSE) ----
 

@@ -65,9 +65,9 @@ class SystemController(
 ) {
 
     // Native descriptor checks run on every live transport wake. Reuse one bounded observation of the
-    // executable routes; the production su probe stays isolated from the persistent control shell.
+    // executable routes: the helper's PING, else su as already observed. Never starts su.
     private val privilegedRouteAvailable = Cached(60_000L) {
-        daemon.available() || if (root === Su) Su.availableCachedIsolated() else root.available()
+        daemon.available() || root.observedUsable()
     }
 
     // Drift checks run repeatedly. Retain only the currently missing target so a recovered alias can

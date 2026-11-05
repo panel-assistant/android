@@ -385,14 +385,6 @@ class PaneldService : Service() {
     private var proximityWizard: ProximityWizardCoordinator? = null
     private var approvalPrompt: ApprovalPrompt? = null
 
-    /**
-     * Whether this panel could repair its own Android System WebView, computed away from the screen.
-     *
-     * Cached rather than asked for on demand because deciding it costs a privileged probe: a cold
-     * [Su.availableCachedIsolated] forks `su` and waits for it, and the caller is a blocked status screen
-     * being drawn on the main thread. Null until the first answer lands, which the screen renders as
-     * saying nothing rather than as a confident "this panel cannot".
-     */
     private val lightPublisher = SensorLightPublisher(
         publish = { lux ->
             if (!teardownBoundary.isStopping) {
@@ -731,7 +723,7 @@ class PaneldService : Service() {
                     HelperLogcatOpenResult.Failed -> error("helper LOGCAT unavailable")
                 }
             },
-            rootAvailable = Su::availableCachedIsolated,
+            rootAvailable = Su::observedUsable,
         )
         // The dashboard's JavaScript console, read over a CDP relay the user started. Off unless log
         // shipping is configured, and never in Hardened mode, where the relay itself is refused.
@@ -1533,7 +1525,7 @@ class PaneldService : Service() {
      *  (the Configure form/schema + the dashboard's read-only values card). */
     private fun capabilitiesSnapshot(): Capabilities {
         val privilege = observeTypedShellCapability(
-            directSuProbe = Su::available,
+            directSuProbe = Su::observedUsable,
             helperRootProbe = HelperClient::available,
         )
         return capabilitiesSnapshot(
@@ -1586,8 +1578,8 @@ class PaneldService : Service() {
                 hasNativeNavbar = config.hasNativeNavbar,
                 hasAndroidStatusBar = config.hasAndroidStatusBar,
                 cpuGovernors = controllers?.cpuGovernorsAvailable ?: controls.cpu.available(),
-                // AdbController.available() is exactly Su.available(); reuse this snapshot's one root
-                // authority probe rather than opening another shell transaction.
+                // Network ADB is switched through su: offer it while su is known to work, from this
+                // snapshot's privilege view rather than another root call.
                 networkAdb = directSuReady,
                 zigbeePresent = controllers?.let {
                     zigbeeCapabilityPresent(

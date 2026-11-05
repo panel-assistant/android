@@ -51,7 +51,7 @@ internal fun controlPlaneDependencies(
     authorize = authorizeSensitive,
     apkUpload = ApkUploadRouteDependencies(
         enabled = { config.apkUploadAllowed },
-        rootAvailable = { Su.availableCachedIsolated() || HelperClient.available() },
+        rootAvailable = { HelperClient.available() || Su.availableCachedIsolated() },
         confirmedSelfUpdate = { ConfirmedSelfInstaller.available(appContext) },
         ownPackage = appContext.packageName,
         pending = pendingApks,

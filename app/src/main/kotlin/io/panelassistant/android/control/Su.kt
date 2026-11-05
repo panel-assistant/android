@@ -350,6 +350,7 @@ internal class SuShell(
         val firstProof = !formState.working()
         formState.recordSuccess(form)
         if (firstProof) availabilityCache.invalidate()
+        noteAnswering(true)
     }
 
     /** Run [cmd] as root, waiting for completion. Returns true on exit 0. */
@@ -461,10 +462,23 @@ internal class SuShell(
      */
     fun rootKnownUnusable(): Boolean = execFailureCache.shouldSkipExec()
 
-    // Every render-time root gate and privileged-route observation share one bounded, single-flight
-    // probe here rather than each layer (formerly the HTTP server) wrapping [availableIsolated] in its
-    // own TTL cache. The bounded window avoids repeated expensive probes while allowing readiness changes
-    // to be observed; isolated so the probe never waits behind the synchronized persistent control shell.
+    /**
+     * Whether su works, as far as this process has already seen, without starting `su`: no launch has
+     * proved root structurally unusable, a real root action has proved a su dialect, and the last time
+     * su was checked it answered. Status, snapshots, capability gates and renderers ask this instead of
+     * probing, so a status poll never starts a root process. A real su action refreshes it: the
+     * start-up helper check and permission repair prove root on a rooted panel, a run that finds a dead
+     * shell re-probes through [rootAnswering], and any later success clears a negative.
+     *
+     * Not synchronized, so a status read never waits behind a command on the persistent shell.
+     */
+    override fun observedUsable(): Boolean =
+        !execFailureCache.shouldSkipExec() && formState.working() && lastAnswer != false
+
+    // The lost-root gate in [rootAnswering] and the rare actions that are about to use su anyway (an
+    // uninstall, an install route check) share one bounded, single-flight probe. Passive surfaces must
+    // not call it: they read [observedUsable]. Isolated so the probe never waits behind the
+    // synchronized persistent control shell.
     private val availabilityCache = newAvailabilityCache(nowMs = nowMs, probe = { availableIsolated().also(::noteAnswering) })
     @Volatile private var lastAnswer: Boolean? = null
 
@@ -474,7 +488,8 @@ internal class SuShell(
         probe: () -> Boolean = ::availableIsolated,
     ): Cached<Boolean> = Cached(ttlMs, nowMs, probe)
 
-    /** Cached [availableIsolated]: at most one root probe per TTL window, single-flight across callers. */
+    /** Cached [availableIsolated]: at most one root probe per TTL window, single-flight across callers.
+     *  Starts `su` on expiry, so only for an action about to use root; status reads use [observedUsable]. */
     fun availableCachedIsolated(): Boolean = availabilityCache.get()
 
     /**

@@ -35,7 +35,7 @@ internal class AndroidWebViewUpdateIo(private val context: Context, private val 
             profile.id, Build.VERSION.SDK_INT, Build.SUPPORTED_ABIS.toSet(), PROCESS_ID, Process.myPid(), Process.getStartElapsedRealtime(),
             installed?.packageName, installed?.versionName, installed?.let(::versionCode), installed?.let(::signers).orEmpty(),
             installer?.getOrNull(), installer?.takeIf { it.isSuccess }?.let { it.getOrNull() == "com.android.vending" },
-            engine, when { Su.availableCachedIsolated() -> "su"; HelperClient.available() -> "helper"; else -> "none" },
+            engine, when { Su.observedUsable() -> "su"; HelperClient.available() -> "helper"; else -> "none" },
             bound?.packageName, bound?.versionName, bound?.let(::versionCode),
         )
     }
