@@ -2113,6 +2113,11 @@
    "sourceHash": "b8021f57862db8b3de847ed071a7d422746cc592947888bb9f369fff7668c4e0",
    "state": "machine-cross-checked"
   },
+  "dashboard.camera.action.reenable_permission": {
+   "text": "wyłącz i ponownie włącz ustawienie kamery, a następnie przyznaj uprawnienie, gdy Android o nie zapyta",
+   "sourceHash": "9df1fa220043470190e788da9cd1d07af7b71ac31cec0502d7dd367bb524fd42",
+   "state": "machine-cross-checked"
+  },
   "dashboard.camera.action.report_encode_failure": {
    "text": "kamera dostarcza klatki, ale nie udało się ich zakodować; zgłoś to, dołączając diagnostykę panelu",
    "sourceHash": "e357e35fdd3e41b26dfcd530e77a10a34b239a0b525a735f9ed401554bf40eb6",

@@ -2458,6 +2458,11 @@
       "sourceHash": "a21c61954e1a191d0d9a3e4864a132a68878650930555cc74a9e99653099bd48",
       "state": "machine-cross-checked"
     },
+    "dashboard.camera.action.reenable_permission": {
+      "text": "disattiva e riattiva l'impostazione della fotocamera, poi concedi l'autorizzazione quando Android la richiede",
+      "sourceHash": "9df1fa220043470190e788da9cd1d07af7b71ac31cec0502d7dd367bb524fd42",
+      "state": "machine-cross-checked"
+    },
     "dashboard.camera.action.report_encode_failure": {
       "sourceHash": "e357e35fdd3e41b26dfcd530e77a10a34b239a0b525a735f9ed401554bf40eb6",
       "state": "machine-cross-checked",

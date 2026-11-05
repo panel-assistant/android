@@ -6687,6 +6687,18 @@
       "softMaxChars": 134,
       "hardMaxChars": 192
     },
+    "dashboard.camera.action.reenable_permission": {
+      "text": "turn the camera setting off and on again, then grant the permission when Android asks",
+      "sourceHash": "9df1fa220043470190e788da9cd1d07af7b71ac31cec0502d7dd367bb524fd42",
+      "surface": "dashboard",
+      "context": "Camera diagnostics remediation guidance; preserve the operational meaning and render as text, not HTML.",
+      "risk": "consequential",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 110,
+      "hardMaxChars": 150
+    },
     "dashboard.camera.action.report_encode_failure": {
       "text": "the camera delivers frames but they could not be encoded; report this with the panel's diagnostics",
       "sourceHash": "e357e35fdd3e41b26dfcd530e77a10a34b239a0b525a735f9ed401554bf40eb6",
