@@ -46,35 +46,56 @@ class PreservePreviousHomeReceiver : BroadcastReceiver() {
             }
             return
         }
-        resultCode = if (runCatching {
+        var data: String? = null
+        val ok = runCatching {
             val config = Config(context)
             val env = AndroidSystemEnv(context)
-            if (operation != null) config.migrateSetupQuestionsForExistingInstall()
-            when (operation) {
-                "setup_eligibility" -> config.setupEverCompleted.also {
-                    if (it) resultData = "panel-assistant-setup-eligible"
-                }
-                "acknowledge_home" -> {
-                    val home = env.defaultHome()
-                    config.setupEverCompleted && home != null && home.pkg == context.packageName &&
-                        home in env.homeActivities() && config.confirmHomeTakeover(home, home)
-                }
-                null -> {
-                    val supplied = intent.getStringExtra("previous_home_component")
-                    val home = if (supplied == null) env.defaultHome() else {
-                        val component = ComponentName.unflattenFromString(supplied) ?: return@runCatching false
-                        ActivityRef(component.packageName, component.className)
-                    }
-                    val candidates = env.homeActivities()
-                    if (supplied != null && (home !in candidates || home?.pkg == "android" ||
-                        io.panelassistant.android.AppIdentity.isPanelApp(home?.pkg) ||
-                        io.panelassistant.android.config.TamePackagePolicy.isCritical(home?.pkg.orEmpty()))) false
-                    else config.preservePreviousHome(home, candidates, armTakeover = true)
-                }
-                else -> false
-            }
-        }.getOrDefault(false)) 1 else 0
+            val result = previousHomeOperation(
+                config, env, context.packageName, operation, intent.getStringExtra("previous_home_component"),
+            )
+            data = result.data
+            result.code == 1
+        }.getOrDefault(false)
+        resultCode = if (ok) 1 else 0
+        if (ok && data != null) resultData = data
     }
+}
+
+internal class PreviousHomeReply(val code: Int, val data: String? = null)
+
+/** The synchronous operations: setup eligibility, acknowledgement and previous-HOME capture. */
+internal fun previousHomeOperation(
+    config: Config,
+    env: SystemEnv,
+    ownPackage: String,
+    operation: String?,
+    supplied: String?,
+    parse: (String) -> ActivityRef? = {
+        ComponentName.unflattenFromString(it)?.let { component -> ActivityRef(component.packageName, component.className) }
+    },
+): PreviousHomeReply {
+    if (operation != null) config.migrateSetupQuestionsForExistingInstall()
+    val ok = when (operation) {
+        "setup_eligibility" -> config.setupEverCompleted
+        "acknowledge_home" -> {
+            val home = env.defaultHome()
+            config.setupEverCompleted && home != null && home.pkg == ownPackage &&
+                home in env.homeActivities() && config.confirmHomeTakeover(home, home)
+        }
+        null -> {
+            val home = if (supplied == null) env.defaultHome() else {
+                parse(supplied) ?: return PreviousHomeReply(0)
+            }
+            val candidates = env.homeActivities()
+            if (supplied != null && (home !in candidates || home?.pkg == "android" ||
+                io.panelassistant.android.AppIdentity.isPanelApp(home?.pkg) ||
+                io.panelassistant.android.config.TamePackagePolicy.isCritical(home?.pkg.orEmpty()))) false
+            else config.preservePreviousHome(home, candidates, armTakeover = true)
+        }
+        else -> false
+    }
+    return if (!ok) PreviousHomeReply(0)
+    else PreviousHomeReply(1, if (operation == "setup_eligibility") "panel-assistant-setup-eligible" else null)
 }
 
 internal enum class PendingHomeResult(val code: Int, val data: String?) {
