@@ -61,7 +61,15 @@ class HomeChooserPolicyTest {
         assertEquals(HomeChooserPolicy.Step.DISMISS, step(title = "Use Portal Launcher as Home", shown = true))
         assertEquals(HomeChooserPolicy.Step.NONE, step(title = null))
         assertEquals(HomeChooserPolicy.Step.NONE, step(enabled = false))
-        assertEquals(HomeChooserPolicy.Step.DISMISS, step(enabled = false, shown = true))
+    }
+
+    @Test fun looksAgainAtAChooserItShowedThatIsNotAnswerableYet() {
+        // Its list is still loading: Always disabled, or no title yet.
+        assertEquals(HomeChooserPolicy.Step.LOOK_AGAIN, step(enabled = false, shown = true))
+        assertEquals(HomeChooserPolicy.Step.LOOK_AGAIN, step(title = null, enabled = false, shown = true))
+        assertEquals(HomeChooserPolicy.Step.LOOK_AGAIN, step(title = null, shown = true))
+        assertEquals(HomeChooserPolicy.Step.LOOK_AGAIN, step(title = "", shown = true))
+        assertEquals(HomeChooserPolicy.Step.NONE, step(enabled = false, shown = false))
     }
 
     @Test fun anotherSystemWindowIsNotTheChooser() {
