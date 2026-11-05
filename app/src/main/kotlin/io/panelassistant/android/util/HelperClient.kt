@@ -424,14 +424,31 @@ private val admittedHelperClient = IdentityAdmittingHelperClient(
     ),
 )
 
-private class LocalSocketHelperTransport(
+/** Logs "daemon not reachable" on a reachability change only: the first failure, then again after a success. */
+internal class HelperReachabilityLog(
+    private val tag: String,
+    private val sink: (String, String) -> Unit = { t, m -> Log.d(t, m) },
+) {
+    private var unreachable = false
+
+    @Synchronized fun failed(message: String?) {
+        if (unreachable) return
+        unreachable = true
+        sink(tag, "daemon not reachable ($message)")
+    }
+
+    @Synchronized fun succeeded() { unreachable = false }
+}
+
+internal class LocalSocketHelperTransport(
     private val connect: () -> LocalSocket,
     private val tag: String,
+    private val reachability: HelperReachabilityLog = HelperReachabilityLog(tag),
 ) : HelperCommandTransport {
     override fun open(): HelperCommandSession? = try {
-        LocalSocketHelperSession(connect(), tag)
+        LocalSocketHelperSession(connect(), tag, reachability).also { reachability.succeeded() }
     } catch (e: Exception) {
-        Log.d(tag, "daemon not reachable (${e.message})")
+        reachability.failed(e.message)
         null
     }
 }
@@ -439,6 +456,7 @@ private class LocalSocketHelperTransport(
 private class LocalSocketHelperSession(
     private val socket: LocalSocket,
     private val tag: String,
+    private val reachability: HelperReachabilityLog,
 ) : HelperCommandSession {
     private val input = socket.inputStream
     private val output = socket.outputStream
@@ -454,9 +472,9 @@ private class LocalSocketHelperSession(
 
     override fun send(cmd: String): String? = try {
         socket.soTimeout = SHORT_TIMEOUT_MS
-        HelperSocketProtocol.sendLine(cmd, input, output)
+        HelperSocketProtocol.sendLine(cmd, input, output).also { reachability.succeeded() }
     } catch (e: Exception) {
-        Log.d(tag, "daemon not reachable (${e.message})")
+        reachability.failed(e.message)
         null
     }
 
