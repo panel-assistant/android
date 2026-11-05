@@ -14,6 +14,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.io.InterruptedIOException
 import java.io.InputStream
 import java.io.OutputStream
@@ -555,6 +556,38 @@ class LogCaptureTest {
             assertTrue(cap.snapshot().isEmpty())
         } finally {
             replacement.close()
+            cap.close()
+        }
+    }
+
+    @Test fun repeatingStartFailureBacksOffAndAHealthyPassResetsIt() {
+        val starts = AtomicInteger()
+        val healthy = java.util.concurrent.atomic.AtomicBoolean(false)
+        val cap = LogCapture(
+            CoroutineScope(Dispatchers.IO),
+            streamCmd = listOf("logcat"),
+            dumpCmd = { emptyList() },
+            processStarter = {
+                starts.incrementAndGet()
+                if (healthy.get()) GateProcess("one line\n") else throw IOException("no logcat")
+            },
+            restartBaseMs = 10,
+            restartMaxMs = 160,
+        )
+        val sub = cap.subscribe { }
+        try {
+            Thread.sleep(1_000)
+            // Fixed 10 ms retry would start ~100 times; 10,20,40,80,160,160... allows about 10.
+            assertTrue("starts=${starts.get()}", starts.get() in 3..14)
+            healthy.set(true)
+            Thread.sleep(400) // outlast the pending 160 ms wait; the next pass emits and resets
+            val atRecovery = starts.get()
+            Thread.sleep(300)
+            // After the reset the cadence is back at 10 ms, so a silent-EOF-free line each pass
+            // restarts quickly (well over what a 160 ms cadence would give in 300 ms).
+            assertTrue("recovered=${starts.get() - atRecovery}", starts.get() - atRecovery > 5)
+        } finally {
+            sub.close()
             cap.close()
         }
     }
