@@ -117,6 +117,25 @@ class ConfigPostProductionRouteTest {
             }
         }
 
+    @Test fun `saving the interface language over the route hands the locale change to the main thread`() =
+        withFullReadServer { _, fixture ->
+            val posted = java.util.concurrent.CopyOnWriteArrayList<Runnable>()
+            val original = io.panelassistant.android.NativeLocale.mainThreadPoster
+            io.panelassistant.android.NativeLocale.mainThreadPoster = { posted += it }
+            try {
+                testApplication {
+                    application { fixture.mount(this) }
+                    val saved = client.submitForm("/api/v1/config", Parameters.build { append("ui_language", "de") }) {
+                        accept(ContentType.Application.Json)
+                    }
+                    assertEquals(HttpStatusCode.OK, saved.status)
+                }
+                assertEquals(1, posted.size, "the locale change must be posted, not applied on the request thread")
+            } finally {
+                io.panelassistant.android.NativeLocale.mainThreadPoster = original
+            }
+        }
+
     @Test fun `a config read and settings writes answer the same over the stub socket as over HTTP`() =
         withFullReadServer { _, fixture ->
             testApplication {
