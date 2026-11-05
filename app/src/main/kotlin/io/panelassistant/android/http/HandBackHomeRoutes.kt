@@ -80,6 +80,9 @@ internal fun Route.handBackHomeRoutes(dependencies: HandBackHomeRouteDependencie
                             outcome.homeHandedTo?.let {
                                 append(""","home_handed_to":""").append(Json.str(it))
                             }
+                            outcome.homeTarget?.let {
+                                append(""","home_target":""").append(Json.str(it))
+                            }
                             append("}")
                         },
                         ContentType.Application.Json,

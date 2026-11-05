@@ -201,6 +201,8 @@ internal object HandBackHomePolicy {
         val adopted: List<String>,
         val outstanding: List<String>,
         val homeHandedTo: String?,
+        /** Enabled policy-selected component an external shell may finish handing HOME to. */
+        val homeTarget: String? = null,
     ) {
         val complete: Boolean get() = outstanding.isEmpty() && homeHandedTo != null
 

@@ -93,6 +93,7 @@ internal class HandBackHomeController(
                 adopted = adopted,
                 outstanding = outstanding,
                 homeHandedTo = target.pkg.takeIf { secured },
+                homeTarget = target.component.takeUnless { secured },
             ),
         )
     }
