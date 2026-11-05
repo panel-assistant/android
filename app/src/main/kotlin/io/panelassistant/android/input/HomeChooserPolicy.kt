@@ -103,7 +103,7 @@ internal class HomeChooserAnswer(
 
     private fun describe(window: ChooserWindow?): String = window?.let {
         val always = when (it.alwaysEnabled) { null -> "absent"; true -> "enabled"; false -> "disabled" }
-        "window=${it.packageName} title='${it.title}' always=$always"
+        "window=${it.packageName} title=${it.title?.let { t -> "'$t'" }} always=$always"
     } ?: "no window"
 
     companion object {

@@ -29,7 +29,7 @@ class HomeChooserAnswerTest {
          */
         val loading = chooser.copy(title = null, alwaysEnabled = false)
         var loadsAfterRechecks = 0
-        private var loadingEventAnswered = false
+        var loadingEventAnswered = false
         var rechecks = 0
         /** Milliseconds the rechecks that fell due waited. */
         var waited = 0L
@@ -176,6 +176,19 @@ class HomeChooserAnswerTest {
         assertEquals(0, portal.taps)
         assertEquals(4, portal.rechecks)
         assertEquals(3000L, portal.waited)
+    }
+
+    @Test fun aNewConnectionLooksAgainAfterAnEarlierOneUsedItsLooks() {
+        val portal = Portal().apply { loadsAfterRechecks = Int.MAX_VALUE }
+        portal.answer.connected()
+        portal.settle()
+        assertEquals(resolver, portal.home)
+        // Android binds the service again (the next update, or a re-enable); this time the chooser loads.
+        portal.apply { loadsAfterRechecks = 1; loadingEventAnswered = false }
+        portal.answer.connected()
+        portal.settle()
+        assertEquals(dashboard, portal.home)
+        assertEquals(2, portal.homePresses)
     }
 
     @Test fun anOwnedHomeIsLeftAlone() {
