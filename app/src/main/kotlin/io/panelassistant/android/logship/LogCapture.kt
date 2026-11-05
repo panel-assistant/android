@@ -6,6 +6,7 @@ import io.panelassistant.android.metrics.FeatureCostOperation
 import io.panelassistant.android.metrics.FeatureCostOutcome
 import io.panelassistant.android.metrics.FeatureCostRegistry
 import io.panelassistant.android.metrics.FeatureCosts
+import io.panelassistant.android.util.HelperClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -43,8 +44,8 @@ data class LogCaptureRecord(
  * there is no logcat subprocess at all. Two sources exist as separate instances:
  *  - [app]: ha-paneld's own-process logcat (its `Log.*` output + the Ktor SLF4J lines) —
  *    own-uid, so readable with no `READ_LOGS` permission and no root.
- *  - [system]: full system logcat via the profile's su form, or the authenticated helper when the app
- *    cannot use root itself.
+ *  - [system]: full system logcat through the authenticated helper whenever one is reachable; the
+ *    profile's su form only on a panel with no helper at all.
  *  - [webView]: the dashboard WebView's JavaScript console, read over the CDP relay by an in-process
  *    [lineStream] instead of a subprocess (see [WebViewConsoleStream]).
  *
@@ -72,7 +73,7 @@ class LogCapture(
     private val lineStream: (suspend (emit: (String) -> Unit) -> Unit)? = null,
     /** `-v long -v printable` escapes message newlines; only the blank footer separates entries. */
     private val longLogcatRecords: Boolean = false,
-    /** Only system capture uses this to choose the root process or the helper at each restart. */
+    /** Only system capture uses this to choose the su process (true) or the helper at each restart. */
     private val processAvailable: () -> Boolean = { true },
     private val wallMillis: () -> Long = System::currentTimeMillis,
     private val timeZone: () -> TimeZone = TimeZone::getDefault,
@@ -483,14 +484,17 @@ class LogCapture(
             { n -> listOf("logcat", "-v", "threadtime", "-d", "-t", "$n", "*:V") },
         )
 
-        /** Full system logcat. A helper producer is used only when root is unavailable to this app.
-         *  `printable` escapes message newlines so only the `long` footer has a blank physical line;
+        /** Full system logcat. The helper's `LOGCAT` stream is used whenever a helper answers (it checks
+         *  `LOGCATCAPS` itself; an older helper's refusal means system logs are unavailable, not a reason
+         *  for su). A su `logcat` runs only when no helper is reachable at all, and the restart loop
+         *  backs off exponentially either way. `printable` escapes message newlines so only the `long` footer has a blank physical line;
          *  embedded blank lines in exceptions cannot be mistaken for record boundaries. */
         fun system(
             scope: CoroutineScope,
             suForm: SuForm,
             helperLines: (suspend (emit: (String) -> Unit) -> Unit)? = null,
             rootAvailable: () -> Boolean = { true },
+            helperReachable: () -> Boolean = HelperClient::available,
             processStarter: (List<String>) -> Process = { command ->
                 ProcessBuilder(command).redirectErrorStream(true).start()
             },
@@ -507,7 +511,9 @@ class LogCapture(
                 processStarter = processStarter,
                 lineStream = helperLines,
                 longLogcatRecords = true,
-                processAvailable = { su.isNotEmpty() && rootAvailable() },
+                processAvailable = {
+                    su.isNotEmpty() && (helperLines == null || !helperReachable()) && rootAvailable()
+                },
             )
         }
 

@@ -234,6 +234,81 @@ class LogCaptureTest {
         }
     }
 
+    @Test fun rootedPanelWithAReachableHelperStreamsSystemLogsFromTheHelperAndStartsNoSu() {
+        val suStarts = AtomicInteger()
+        val cap = LogCapture.system(
+            CoroutineScope(Dispatchers.IO),
+            suForm = SuForm.TOOLBOX,
+            helperLines = { emit ->
+                emit("[ 1790592713.123  123: 456 I/HelperProof ]")
+                emit("from the helper")
+                emit("")
+                awaitCancellation()
+            },
+            rootAvailable = { true },
+            helperReachable = { true },
+            processStarter = { suStarts.incrementAndGet(); GateProcess("").also { it.finish(1) } },
+        )
+        val got = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val subscription = cap.subscribe(got::add)
+        try {
+            await { got.isNotEmpty() }
+            assertTrue(got.single().contains("from the helper"))
+            assertEquals(emptyList<String>(), cap.dump())
+            assertEquals(0, suStarts.get())
+        } finally {
+            subscription.close()
+            cap.close()
+        }
+    }
+
+    @Test fun anOlderHelperWithoutLogcatLeavesSystemLogsUnavailableAndStartsNoSu() {
+        val suStarts = AtomicInteger()
+        val helperAttempts = AtomicInteger()
+        val cap = LogCapture.system(
+            CoroutineScope(Dispatchers.IO),
+            suForm = SuForm.TOOLBOX,
+            helperLines = { helperAttempts.incrementAndGet(); error("helper LOGCAT unsupported") },
+            rootAvailable = { true },
+            helperReachable = { true },
+            processStarter = { suStarts.incrementAndGet(); GateProcess("").also { it.finish(1) } },
+        )
+        val got = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val subscription = cap.subscribe(got::add)
+        try {
+            await { helperAttempts.get() >= 1 }
+            Thread.sleep(200)
+            assertTrue(got.isEmpty())
+            assertEquals(0, suStarts.get())
+        } finally {
+            subscription.close()
+            cap.close()
+        }
+    }
+
+    @Test fun aRootedPanelWithNoReachableHelperStillCapturesThroughSu() {
+        val record = "[ 1790592713.123  123: 456 I/SuProof ]\nfrom su\n\n"
+        val helperAttempts = AtomicInteger()
+        val cap = LogCapture.system(
+            CoroutineScope(Dispatchers.IO),
+            suForm = SuForm.TOOLBOX,
+            helperLines = { helperAttempts.incrementAndGet(); awaitCancellation() },
+            rootAvailable = { true },
+            helperReachable = { false },
+            processStarter = { GateProcess(record).also { it.finish(0) } },
+        )
+        val got = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val subscription = cap.subscribe(got::add)
+        try {
+            await { got.isNotEmpty() }
+            assertTrue(got.first().contains("from su"))
+            assertEquals(0, helperAttempts.get())
+        } finally {
+            subscription.close()
+            cap.close()
+        }
+    }
+
     @Test fun rootedSystemCaptureShipsACompleteExceptionWithEitherSuForm() {
         val record = "[ 1790592713.123  123: 456 E/RSLProof ]\n" +
             "java.lang.IllegalStateException: complete\\x0A    at Example.first(Example.kt:12)\\x0A\\x0A    at Example.second(Example.kt:25)\n\n"
