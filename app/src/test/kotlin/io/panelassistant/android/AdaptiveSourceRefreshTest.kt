@@ -20,17 +20,18 @@ class AdaptiveSourceRefreshTest {
     }
 
     @Test fun `real source restart clears availability before rebinding`() {
-        var unavailableMarks = 0
-        val sourceWrites = mutableListOf<String?>()
+        val events = mutableListOf<String>()
 
         refreshAmbientSourceBinding(
             restartSource = true,
             selectedSource = "sensor.office_illuminance",
-            markUnavailable = { unavailableMarks += 1 },
-            setSource = sourceWrites::add,
+            markUnavailable = { events += "unavailable" },
+            setSource = { events += "source:$it" },
         )
 
-        assertEquals(1, unavailableMarks)
-        assertEquals(listOf(null, "sensor.office_illuminance"), sourceWrites)
+        assertEquals(
+            listOf("unavailable", "source:null", "source:sensor.office_illuminance"),
+            events,
+        )
     }
 }

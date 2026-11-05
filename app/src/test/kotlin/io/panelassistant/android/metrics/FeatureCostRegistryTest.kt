@@ -48,7 +48,7 @@ class FeatureCostRegistryTest {
         val root = JSONObject(firstJson)
         assertEquals(false, root.getBoolean("enabled"))
         assertEquals(setOf("schema", "enabled"), root.keys().asSequence().toSet())
-        assertEquals("""{"schema":2,"enabled":false}""", firstJson)
+        assertEquals(2, root.get("schema"))
         assertSame(firstJson, secondJson)
         assertSame(firstSpan, secondSpan)
         assertEquals(0, clockReads)

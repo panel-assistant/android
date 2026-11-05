@@ -19,22 +19,31 @@ class StateArchiveSectionTest {
         val failed = StateArchiveSection.manifestFragment(entry, bytes = null, rows = 0, captureFailed = true)
 
         assertNull("a panel with no stored rows still writes no state section", empty)
-        assertEquals("""{"error":"capture-failed"}""", failed)
+        val failure = JSONObject(requireNotNull(failed))
+        assertEquals(setOf("error"), failure.keySet())
+        assertEquals("capture-failed", failure.get("error"))
         assertNotEquals("an unreadable database must be distinguishable from an empty one", empty, failed)
     }
 
     @Test fun `a captured section declares its entry size and row count`() {
-        assertEquals(
-            """{"entry":"state/app-state.txt","size":4096,"rows":76}""",
+        val section = JSONObject(requireNotNull(
             StateArchiveSection.manifestFragment(entry, bytes = 4096, rows = 76, captureFailed = false),
-        )
+        ))
+        assertEquals(setOf("entry", "size", "rows"), section.keySet())
+        assertEquals(entry, section.get("entry"))
+        assertEquals(4096, section.get("size"))
+        assertEquals(76, section.get("rows"))
     }
 
     @Test fun `an entry name is JSON-escaped rather than concatenated`() {
-        assertEquals(
-            """{"entry":"state/\"odd\".txt","size":1,"rows":1}""",
-            StateArchiveSection.manifestFragment("state/\"odd\".txt", bytes = 1, rows = 1, captureFailed = false),
-        )
+        val oddEntry = "state/\"odd\".txt"
+        val section = JSONObject(requireNotNull(
+            StateArchiveSection.manifestFragment(oddEntry, bytes = 1, rows = 1, captureFailed = false),
+        ))
+        assertEquals(setOf("entry", "size", "rows"), section.keySet())
+        assertEquals(oddEntry, section.get("entry"))
+        assertEquals(1, section.get("size"))
+        assertEquals(1, section.get("rows"))
     }
 
     @Test fun `a failed capture can never also declare a payload`() {

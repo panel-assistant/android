@@ -375,7 +375,7 @@ class AssetSyntaxTest {
               await flush();
               assert.equal(rig.node('profile-modal').hidden, true, 'wrong-device activation opened confirmation');
               assert.match(rig.node('profile-status').textContent, /does not match this device/);
-              assert.equal(rig.requests.filter(request => request.op === 'profiles.activate').length, 0);
+              assert.equal(rig.requests.filter(request => request.op === 'profiles.select').length, 0);
             })().catch(error => { console.error(error); process.exitCode = 1; });
         """.trimIndent()
         val (code, out) = Node.run("-e", script, File(dir, "profiles.js").absolutePath)

@@ -640,7 +640,7 @@ browserTest('Install Backup failures preserve controlled evidence and allow a la
   }
 });
 
-browserTest('Install Restore confirms show preflight refusals after the passphrase changes without starting work', async (t) => {
+browserTest('Install Restore confirms show preflight refusals after a fresh preview without starting work', async (t) => {
   const hostile = '<img src=x onerror=window.__restoreOwned=1>';
   const failures = [
     { passphrase: '', body: { ok: false, error: 'this bundle is encrypted — enter its passphrase', presentation: { code: 'restore-passphrase-required', params: {} } }, code: 'restore-passphrase-required' },
@@ -673,6 +673,9 @@ browserTest('Install Restore confirms show preflight refusals after the passphra
     page.on('dialog', dialog => dialog.accept());
     for (const failure of failures) {
       await page.locator('#rs-pw').fill(failure.passphrase);
+      if (previews === 1) assert.equal(await page.locator('#rs-preview button').count(), 0, engine + ': changing the passphrase invalidates confirmation');
+      await page.locator('#rs-file').setInputFiles({ name: 'panel.hpb', mimeType: 'application/octet-stream', buffer: Buffer.from('sealed backup fixture') });
+      await page.locator('#rs-preview button').waitFor();
       await page.locator('#rs-preview button').click();
       await page.waitForFunction(() => !document.querySelector('#rs-preview button').disabled);
       const actual = await page.locator('#bk-msg').textContent();
@@ -681,7 +684,7 @@ browserTest('Install Restore confirms show preflight refusals after the passphra
       assert.equal(await page.locator('#bk-msg img').count(), 0);
       assert.equal(await page.evaluate(() => typeof window.__restoreOwned), 'undefined');
     }
-    assert.equal(previews, 1);
+    assert.equal(previews, failures.length + 1);
     assert.deepEqual(starts, failures.map(failure => failure.passphrase));
     assert.deepEqual(polls, [], engine + ': preflight refusals never poll or apply a restore');
   }

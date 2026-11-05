@@ -14,7 +14,9 @@ import org.junit.runner.RunWith
 @CoreInstrumentation
 @RunWith(AndroidJUnit4::class)
 class EntityTrafficSummaryStoreTest {
-    private val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+    private val context = HistoricalCatalogFixture.isolatedContext(
+        ApplicationProvider.getApplicationContext<android.content.Context>(), "traffic-summary",
+    )
 
     @Before fun cleanBefore() {
         context.deleteDatabase(EntityCatalogStore.DATABASE_NAME)

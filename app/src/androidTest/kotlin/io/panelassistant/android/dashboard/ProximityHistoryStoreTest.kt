@@ -12,7 +12,9 @@ import org.junit.runner.RunWith
 @CoreInstrumentation
 @RunWith(AndroidJUnit4::class)
 class ProximityHistoryStoreTest {
-    private val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+    private val context = HistoricalCatalogFixture.isolatedContext(
+        ApplicationProvider.getApplicationContext<android.content.Context>(), "proximity-history",
+    )
 
     @Before fun cleanBefore() = clean()
 

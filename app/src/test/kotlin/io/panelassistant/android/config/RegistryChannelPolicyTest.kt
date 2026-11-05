@@ -6,6 +6,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.json.JSONObject
 
 /** Registry policy for the settings Home Assistant sees as channels. */
 class RegistryChannelPolicyTest {
@@ -15,11 +16,19 @@ class RegistryChannelPolicyTest {
             SettingsRegistry.DEFAULT_SILENCE_BOOT_CHIME.toString(),
             SettingsRegistry.spec("silence_boot_chime")?.default,
         )
-        // Source-text reason: the published OpenAPI default is the settings wire contract.
-        val openApi = TestSources.appFile("src/main/assets/openapi.json").readText()
-        assertTrue(openApi.contains(
-            "\"silence_boot_chime\": { \"type\": \"boolean\", \"default\": true",
-        ))
+        // Source-text reason: the published OpenAPI type and default are the settings wire contract.
+        val openApi = JSONObject(TestSources.appFile("src/main/assets/openapi.json").readText())
+        val chime = openApi.getJSONObject("paths")
+            .getJSONObject("/api/v1/config")
+            .getJSONObject("post")
+            .getJSONObject("requestBody")
+            .getJSONObject("content")
+            .getJSONObject("application/x-www-form-urlencoded")
+            .getJSONObject("schema")
+            .getJSONObject("properties")
+            .getJSONObject("silence_boot_chime")
+        assertEquals("boolean", chime.getString("type"))
+        assertEquals(SettingsRegistry.DEFAULT_SILENCE_BOOT_CHIME, chime.get("default"))
     }
 
     @Test fun cpuGovernorIsExplicitlyLiveOnly() {

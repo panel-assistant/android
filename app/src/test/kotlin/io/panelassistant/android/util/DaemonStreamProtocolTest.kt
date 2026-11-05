@@ -141,9 +141,9 @@ class DaemonStreamProtocolTest {
     }
 
     @Test fun deadlineCanBeCancelledWithoutRunningTimeoutAction() {
-        var timedOut = false
-        StreamDeadline(60_000L) { timedOut = true }.close()
-        assertFalse(timedOut)
+        val timedOut = CountDownLatch(1)
+        StreamDeadline(100L) { timedOut.countDown() }.close()
+        assertFalse(timedOut.await(1L, TimeUnit.SECONDS))
     }
 
     @Test fun deadlineRunsTimeoutAction() {
