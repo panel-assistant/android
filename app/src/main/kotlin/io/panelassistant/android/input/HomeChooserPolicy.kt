@@ -20,9 +20,9 @@ internal data class ChooserWindow(
  * most [RETRIES] times per connection. Always is tapped at most [TAPS] times per connection, so a
  * chooser whose Always never takes is not pressed forever.
  *
- * A chooser it showed can be read before its list has loaded, with Always disabled and no title (a Meta
- * Portal, 2026-10-28: read 1.1 s after HOME was pressed, dismissed, and HOME left on the chooser after
- * the update). So it is looked at again every [LOOK_MS], at most [LOOKS] times per connection, and
+ * A chooser it showed can be read before it is answerable, with Always disabled or no title yet, as
+ * while its list loads (a Meta Portal, 2026-10-28: read 1.1 s after HOME was pressed, dismissed, and
+ * HOME left on the chooser after the update). So it is looked at again every [LOOK_MS], at most [LOOKS] times per connection, and
  * dismissed only if it is still not answerable then.
  */
 internal class HomeChooserAnswer(
