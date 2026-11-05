@@ -329,6 +329,7 @@ function cameraCard(tbl,hdr){
  function actionText(action){
   switch(action){
    case 'turn on the camera setting to serve snapshots and a stream':return i18nText('dashboard.camera.action.enable','turn on the camera setting to serve snapshots and a stream');
+   case 'turn the camera setting off and on again, then grant the permission when Android asks':return i18nText('dashboard.camera.action.reenable_permission','turn the camera setting off and on again, then grant the permission when Android asks');
    case 'grant the camera permission on the panel when prompted':return i18nText('dashboard.camera.action.grant_permission','grant the camera permission on the panel when prompted');
    case 'check the camera hardware; a new client after the hold retries':return i18nText('dashboard.camera.action.check_hardware','check the camera hardware; a new client after the hold retries');
    case 'the profile declares a camera this board does not expose; correct hardware.camera in the profile':return i18nText('dashboard.camera.action.misdeclared_profile','the profile declares a camera this board does not expose; correct hardware.camera in the profile');

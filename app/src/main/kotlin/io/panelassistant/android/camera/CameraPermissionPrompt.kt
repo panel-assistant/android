@@ -46,6 +46,9 @@ object CameraPermissionPrompt {
         if (!before && shouldAsk()) listener?.invoke()
     }
 
+    /** True once the user declined and no fresh enable has cleared it; no prompt will come again. */
+    fun isDeclined(): Boolean = store.declined
+
     fun shouldAsk(): Boolean = wanted && !store.declined && !inFlight
 
     /** Call only from a resumed activity, immediately before raising the dialog. */

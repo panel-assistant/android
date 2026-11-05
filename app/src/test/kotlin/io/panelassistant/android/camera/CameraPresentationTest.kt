@@ -39,6 +39,19 @@ class CameraPresentationTest {
         assertTrue("must guide the user to the setting", p.action.contains("camera setting"))
     }
 
+    @Test fun aDeclinedPermissionTellsTheUserToTurnTheCameraOffAndOnNotToWaitForAPrompt() {
+        CameraPermissionPrompt.reset()
+        try {
+            assertTrue(CameraPresentation.permissionNeeded().action.contains("when prompted"))
+            CameraPermissionPrompt.answered(granted = false)
+            val action = CameraPresentation.permissionNeeded().action
+            assertFalse(action, action.contains("when prompted"))
+            assertTrue(action, action.contains("off and on"))
+        } finally {
+            CameraPermissionPrompt.reset()
+        }
+    }
+
     @Test fun permissionNeededReportsTheClassifiedPermissionFault() {
         val p = CameraPresentation.permissionNeeded()
         assertEquals(CameraState.PERMISSION_NEEDED, p.state)
