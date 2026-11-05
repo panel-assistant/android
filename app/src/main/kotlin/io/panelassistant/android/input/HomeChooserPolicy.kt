@@ -19,6 +19,11 @@ internal data class ChooserWindow(
  * and while HOME is still unowned and the chooser is not in front it shows the chooser once more, at
  * most [RETRIES] times per connection. Always is tapped at most [TAPS] times per connection, so a
  * chooser whose Always never takes is not pressed forever.
+ *
+ * A chooser it showed can be read before it is answerable, with Always disabled or no title yet, as
+ * while its list loads (a Meta Portal, 2026-10-28: read 1.1 s after HOME was pressed, dismissed, and
+ * HOME left on the chooser after the update). So it is looked at again every [LOOK_MS], at most [LOOKS] times per connection, and
+ * dismissed only if it is still not answerable then.
  */
 internal class HomeChooserAnswer(
     private val appName: String,
@@ -35,6 +40,7 @@ internal class HomeChooserAnswer(
     private var acted = false
     private var retries = 0
     private var taps = 0
+    private var looks = 0
     private var leftToInstaller = false
 
     fun connected() {
@@ -42,6 +48,7 @@ internal class HomeChooserAnswer(
         acted = false
         retries = 0
         taps = 0
+        looks = 0
         leftToInstaller = false
     }
 
@@ -73,18 +80,38 @@ internal class HomeChooserAnswer(
                 acted = centre != null && tap(centre.first, centre.second)
                 log("HOME chooser offers this app; tapped Always=$acted")
             }
-            HomeChooserPolicy.Step.DISMISS -> log("HOME chooser this service showed is not answered here; dismissed=${dismiss()}")
+            HomeChooserPolicy.Step.LOOK_AGAIN -> if (looks < LOOKS) {
+                looks++
+                // Like a show: a dashboard that covers the chooser meanwhile is answered by showing it again.
+                acted = true
+                log("HOME chooser this service showed is not answerable yet (${describe(window)}); look $looks of $LOOKS")
+            } else {
+                log("HOME chooser this service showed never became answerable (${describe(window)}); dismissed=${dismiss()}")
+            }
+            HomeChooserPolicy.Step.DISMISS ->
+                log("HOME chooser this service showed is not answered here (${describe(window)}); dismissed=${dismiss()}")
         }
         // Once HOME is owned the chooser this service showed has been answered or dismissed, so a later
         // resolver ("Open with", say) on this connection is not taken for it.
         if (home?.pkg != "android") shown = false
-        if (acted && (retries < RETRIES || taps < TAPS)) answerAgainIn(VERIFY_MS)
+        if (acted && step == HomeChooserPolicy.Step.LOOK_AGAIN) {
+            answerAgainIn(LOOK_MS)
+        } else if (acted && (retries < RETRIES || taps < TAPS)) {
+            answerAgainIn(VERIFY_MS)
+        }
     }
+
+    private fun describe(window: ChooserWindow?): String = window?.let {
+        val always = when (it.alwaysEnabled) { null -> "absent"; true -> "enabled"; false -> "disabled" }
+        "window=${it.packageName} title=${it.title?.let { t -> "'$t'" }} always=$always"
+    } ?: "no window"
 
     companion object {
         const val VERIFY_MS = 2000L
         const val RETRIES = 2
         const val TAPS = 3
+        const val LOOK_MS = 750L
+        const val LOOKS = 4
     }
 }
 
@@ -98,14 +125,15 @@ internal class HomeChooserAnswer(
  * if another window covers it (only once the panel has been set up, because before that the installer
  * is claiming HOME), tap Always only when its title names this app (the app name is not translated, so
  * this matches in any language), and dismiss a chooser it showed itself that offers another app or
- * that is still in front once HOME is owned. A chooser that appeared on its own and offers another app
- * is left alone.
+ * that is still in front once HOME is owned. A chooser it showed that is not answerable yet (Always
+ * disabled, or no title: its list is still loading) is looked at again rather than dismissed. A chooser
+ * that appeared on its own and offers another app is left alone.
  */
 internal object HomeChooserPolicy {
     const val ALWAYS_ID = "android:id/button_always"
     const val TITLE_ID = "android:id/title"
 
-    enum class Step { NONE, SHOW_CHOOSER, LEAVE_TO_INSTALLER, TAP_ALWAYS, DISMISS }
+    enum class Step { NONE, SHOW_CHOOSER, LEAVE_TO_INSTALLER, TAP_ALWAYS, LOOK_AGAIN, DISMISS }
 
     /**
      * What to do with the active window. [alwaysEnabled] is null when the window has no Always button.
@@ -135,6 +163,7 @@ internal object HomeChooserPolicy {
         }
         alwaysEnabled == null -> Step.NONE
         alwaysEnabled && title?.contains(appName) == true -> Step.TAP_ALWAYS
+        shown && (!alwaysEnabled || title.isNullOrBlank()) -> Step.LOOK_AGAIN
         shown -> Step.DISMISS
         else -> Step.NONE
     }
