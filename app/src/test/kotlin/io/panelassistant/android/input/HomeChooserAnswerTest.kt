@@ -31,6 +31,8 @@ class HomeChooserAnswerTest {
         var loadsAfterRechecks = 0
         private var loadingEventAnswered = false
         var rechecks = 0
+        /** Milliseconds the rechecks that fell due waited. */
+        var waited = 0L
         /** An installer sets HOME over ADB straight after the chooser is shown, before it is answered. */
         var claimedAfterShow = false
         /** The start-up's dashboard launches arriving while a tap is on its way, one per tap. */
@@ -77,6 +79,7 @@ class HomeChooserAnswerTest {
                     // recheck already due. Its list loads afterwards, with no further window event.
                     front == loading && !loadingEventAnswered -> { loadingEventAnswered = true; due = null; answer.answer() }
                     due != null -> {
+                        waited += due!!
                         due = null
                         rechecks++
                         if (front == loading && --loadsAfterRechecks == 0) front = offered
@@ -171,7 +174,8 @@ class HomeChooserAnswerTest {
         assertEquals(dashboardWindow, portal.front)
         assertEquals(1, portal.homePresses)
         assertEquals(0, portal.taps)
-        assertEquals(4, portal.rechecks) // four looks, about three seconds
+        assertEquals(4, portal.rechecks)
+        assertEquals(3000L, portal.waited)
     }
 
     @Test fun anOwnedHomeIsLeftAlone() {
