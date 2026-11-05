@@ -281,13 +281,15 @@ internal class RestoreExecutor(
             )
         }
         Log.i(TAG, "restore: ${operation.message}")
+        // Every write is done, so the note goes while this restore still holds the lane: once finish
+        // releases it, the next restore may write its own note at once, which this one must not remove.
+        journal.end()
         InstallProgress.finish(
             progress,
             operation.message,
             operation.structured,
             operation.presentation,
         )
-        journal.end()
     }
 
     private data class RestoreOperationResult(

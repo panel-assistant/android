@@ -518,6 +518,42 @@ class AcceptedRestoreTransactionTest {
         }
     }
 
+    @Test fun aRestoreAdmittedTheMomentTheLastOneFinishesKeepsItsOwnNote() = runBlocking {
+        PaneldServerHttpFixture().use { fixture ->
+            fixture.config.setRaw(requireNotNull(SettingsRegistry.spec("friendly_name")), "Restore contract panel")
+            val executor = restoreExecutor(
+                fixture, capabilities = { Capabilities(networkAdb = true) }, persist = { true }, onReconfigure = {},
+            )
+            // The next restore takes the lane as soon as the first releases it, and has begun its own
+            // writes when the process ends.
+            var next: InstallProgress.Ticket? = null
+            InstallProgress.observer = {
+                if (next == null && !InstallProgress.running && InstallProgress.component == "Restore") {
+                    next = InstallProgress.start("Restore")
+                    RestoreJournal { fixture.directory }.begin()
+                }
+            }
+            try {
+                val ticket = requireNotNull(InstallProgress.start("Restore"))
+                executor.execute(
+                    RestoreConfigPlan(mapOf("ha_url" to "http://b.test:8123"), emptyList(), emptyList()),
+                    null, null, null, null, emptyList(), false,
+                    emptyList(), null, ticket,
+                )
+            } finally {
+                InstallProgress.observer = null
+            }
+            InstallProgress.finish(requireNotNull(next), "process ended")
+            io.panelassistant.android.ServiceComponentOperations(
+                fixture.context, kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined),
+                { fixture.config }, { error("No core") }, { error("No profile") },
+            ).run { attachSoftwareUpdateObservers(); detachSoftwareUpdateObservers() }
+            val status = JSONObject(InstallProgress.json())
+            assertTrue("the second restore's cut is not reported: $status", status.optJSONObject("result")?.optBoolean("interrupted") == true)
+            InstallProgress.finish(requireNotNull(InstallProgress.start("cleanup")), "done")
+        }
+    }
+
     private fun restoreExecutor(
         fixture: PaneldServerHttpFixture,
         capabilities: () -> Capabilities,
