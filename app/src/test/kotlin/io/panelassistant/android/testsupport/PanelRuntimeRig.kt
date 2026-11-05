@@ -194,6 +194,8 @@ internal abstract class PanelRuntimeRig {
         manageTable: io.panelassistant.android.ManageTable = io.panelassistant.android.ManageTable(),
         manageFamilies: Map<String, io.panelassistant.android.ManageFamily> = io.panelassistant.android.ManageFamilies.DEFAULT,
         approvalPollMs: Long = 1_000,
+        /** Where the dispatcher writes its command outcome lines. */
+        commandLog: io.panelassistant.android.CommandLog = io.panelassistant.android.CommandLog.Android,
         /** Whether the reboot takes the panel down: the helper's REBOOT AWAIT ends without an answer, as on a
          *  panel going down. Otherwise it falls to root, which a JVM cannot reboot. */
         rebootSucceeds: Boolean = true,
@@ -425,6 +427,7 @@ internal abstract class PanelRuntimeRig {
             manageTable = manageTable,
             manageFamilies = manageFamilies,
             approvalPollMs = approvalPollMs,
+            commandLog = commandLog,
         )
         return Rig(
             tmp, config, sysfs, core, commands, storage, storageReads, updateSources, autoSleepConfigChanges,
