@@ -151,9 +151,6 @@ internal fun managementStatusJson(
         "\"capabilities\":[$caps],${installCapabilityStatusJson(management.privilege, management.confirmedSelfUpdate)}," +
         storageProof +
         homeProofJson +
-        // The panel never offers its own update: Panel Assistant owns that. Older Panel Assistant
-        // releases still parse this object, so it stays, always `none`.
-        "\"panel_assistant_update\":{\"state\":\"none\"}," +
         // Additive, presentation-only, and read from state the panel already holds.
         "\"panel_assistant_device\":${
             PanelAssistantDevice.json(
