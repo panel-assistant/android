@@ -11,7 +11,8 @@ import java.io.File
  * a restore can then stop after some of its writes and before the rest; the in-memory result goes with it.
  *
  * The restore writes the note before its first durable write and marks it once the configuration is saved;
- * it removes the note after recording its result. A later service start that finds the note reports the
+ * it removes the note once every write is done, while it still holds the lane, so the next restore's
+ * note is never removed by this one. A later service start that finds the note reports the
  * restore as interrupted through /api/v1/install/status, and keeps reporting it across further restarts
  * until the next operation claims the lane. The restore is not resumed: the owner restores the backup again.
  */
