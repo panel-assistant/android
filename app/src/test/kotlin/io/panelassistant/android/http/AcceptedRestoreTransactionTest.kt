@@ -493,6 +493,30 @@ class AcceptedRestoreTransactionTest {
         }
     }
 
+    @Test fun aRestoreThatFinishedIsNotReportedAsInterruptedAtTheNextStart() = runBlocking {
+        PaneldServerHttpFixture().use { fixture ->
+            fixture.config.setRaw(requireNotNull(SettingsRegistry.spec("friendly_name")), "Restore contract panel")
+            val executor = restoreExecutor(
+                fixture, capabilities = { Capabilities(networkAdb = true) }, persist = { true }, onReconfigure = {},
+            )
+            val ticket = requireNotNull(InstallProgress.start("Restore"))
+            executor.execute(
+                RestoreConfigPlan(mapOf("ha_url" to "http://b.test:8123"), emptyList(), emptyList()),
+                null, null, null, null, emptyList(), false,
+                emptyList(), null, ticket,
+            )
+            assertEquals("succeeded", JSONObject(InstallProgress.json()).getJSONObject("result").getString("status"))
+            // The process ends after the result was recorded; the next start must not report a cut.
+            io.panelassistant.android.ServiceComponentOperations(
+                fixture.context, kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined),
+                { fixture.config }, { error("No core") }, { error("No profile") },
+            ).run { attachSoftwareUpdateObservers(); detachSoftwareUpdateObservers() }
+            val result = JSONObject(InstallProgress.json()).getJSONObject("result")
+            assertFalse(result.toString(), result.optBoolean("interrupted"))
+            assertEquals("succeeded", result.getString("status"))
+        }
+    }
+
     private fun restoreExecutor(
         fixture: PaneldServerHttpFixture,
         capabilities: () -> Capabilities,
