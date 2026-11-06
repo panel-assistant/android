@@ -1,9 +1,7 @@
 package io.panelassistant.android.util
 
 import io.panelassistant.android.platform.DaemonStreamResult
-import java.io.BufferedReader
 import java.io.InputStream
-import java.io.InputStreamReader
 import java.io.OutputStream
 import java.nio.charset.StandardCharsets
 
@@ -11,6 +9,11 @@ import java.nio.charset.StandardCharsets
 internal object HelperSocketProtocol {
     fun sendLine(command: String, input: InputStream, output: OutputStream): String? {
         output.apply { write((command + "\n").toByteArray()); flush() }
+        return readReply(input)
+    }
+
+    /** Read one bounded, exact physical reply without submitting another command. */
+    fun readReply(input: InputStream): String? {
         val bytes = ByteArray(MAX_LINE_BYTES)
         var used = 0
         while (true) {
@@ -47,7 +50,7 @@ internal object HelperSocketProtocol {
         command = command,
         openSource = openSource,
         expectedBytes = expectedBytes,
-        replies = BufferedReader(InputStreamReader(input)),
+        replies = input,
         output = output,
         shutdownOutput = shutdownOutput,
     )
