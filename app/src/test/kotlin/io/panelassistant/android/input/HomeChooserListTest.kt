@@ -55,14 +55,17 @@ class HomeChooserListTest {
         var ignoreAlways = false
         var acceptedGesture = true
         var acceptedHome = true
+        var retainSelectionOnHome = false
+        var ignoreDismiss = false
+        var dismisses = 0
         var shows = 0
         val taps = mutableListOf<Pair<Int, Int>>()
         val messages = mutableListOf<String>()
         var scheduled = false
         val answer = HomeChooserAnswer(
             "Panel Assistant", { env.defaultHome() }, { setup }, { window },
-            showChooser = { shows++; if (acceptedHome) window = nativeWindow(false, rows); acceptedHome },
-            dismiss = { window = ChooserWindow(own, null, null, null); true },
+            showChooser = { shows++; if (acceptedHome) window = nativeWindow(retainSelectionOnHome && selectedHome != null, rows); acceptedHome },
+            dismiss = { dismisses++; if (!ignoreDismiss) { selectedHome = null; window = ChooserWindow(own, null, null, null) }; true },
             tap = { x, y ->
                 taps += x to y
                 if (acceptedGesture) {
@@ -115,6 +118,91 @@ class HomeChooserListTest {
         panel.settle()
         assertEquals(1, panel.shows)
         assertEquals(dashboard.activity, panel.env.defaultHome())
+    }
+
+    @Test fun startupCoverWithRetainedSelectionIsResetBeforeSelectingAgain() {
+        val panel = Panel().apply { retainSelectionOnHome = true; window = nativeWindow(false) }
+        panel.answer.answer() // HOME shows the fresh list.
+        panel.answer.answer() // Select Dashboard; startup then covers it before Always.
+        panel.window = ChooserWindow(own, null, null, null)
+        panel.settle()
+        assertEquals(dashboard.activity, panel.env.defaultHome())
+        assertEquals(1, panel.dismisses)
+        assertEquals(3, panel.shows)
+        assertEquals(listOf(960 to 982, 960 to 982, 1225 to 1151), panel.taps)
+    }
+
+    @Test fun resetWaitsForBackBeforeFreshHomeAndRechecksAuthority() {
+        for (change in listOf("none", "config", "owner", "setup", "rows")) {
+            val panel = Panel().apply { retainSelectionOnHome = true; ignoreDismiss = true }
+            panel.answer.answer()
+            panel.answer.answer()
+            panel.window = ChooserWindow(own, null, null, null)
+            panel.answer.answer() // Reopen Android's retained enabled selection.
+            panel.answer.answer() // BACK accepted but has not yet completed.
+            assertEquals(1, panel.dismisses)
+            panel.answer.answer() // The intermediate window event must not reopen or confirm it.
+            assertEquals(2, panel.shows)
+            assertEquals(listOf(960 to 982), panel.taps)
+            panel.ignoreDismiss = false
+            panel.selectedHome = null
+            panel.window = ChooserWindow(own, null, null, null)
+            when (change) {
+                "config" -> panel.target = launcher
+                "owner" -> panel.env.default = launcher.activity
+                "setup" -> panel.setup = false
+                "rows" -> {
+                    panel.window = nativeWindow(true, listOf(launcher))
+                    panel.answer.answer() // Changed native rows invalidate the pending BACK before it completes.
+                    panel.window = ChooserWindow(own, null, null, null)
+                }
+            }
+            panel.settle()
+            if (change == "none") assertEquals(dashboard.activity, panel.env.defaultHome())
+            else { assertEquals(2, panel.shows); assertEquals(listOf(960 to 982), panel.taps) }
+        }
+    }
+
+    @Test fun configurationDriftDuringCoverCannotRegainResetAuthorityByReverting() {
+        val panel = Panel().apply { retainSelectionOnHome = true }
+        panel.answer.answer()
+        panel.answer.answer()
+        panel.window = ChooserWindow(own, null, null, null)
+        panel.target = launcher
+        panel.answer.answer() // Observe the cover after configuration changed.
+        panel.target = dashboard
+        panel.settle()
+        assertEquals(resolver, panel.env.defaultHome())
+        assertEquals(0, panel.dismisses)
+        assertEquals(listOf(960 to 982), panel.taps)
+    }
+
+    @Test fun aForeignCoverNeverAuthorisesASelectionReset() {
+        val panel = Panel().apply { retainSelectionOnHome = true }
+        panel.answer.answer()
+        panel.answer.answer()
+        panel.window = ChooserWindow("com.other", null, null, null)
+        panel.settle()
+        assertEquals(resolver, panel.env.defaultHome())
+        assertEquals(0, panel.dismisses)
+        assertEquals(listOf(960 to 982), panel.taps)
+    }
+
+    @Test fun anIgnoredResetDismissalCannotConfirmTheRetainedSelectionOrLoop() {
+        val panel = Panel().apply { retainSelectionOnHome = true; ignoreDismiss = true }
+        panel.answer.answer()
+        panel.answer.answer()
+        panel.window = ChooserWindow(own, null, null, null)
+        panel.settle()
+        assertEquals(resolver, panel.env.defaultHome())
+        assertEquals(1, panel.dismisses)
+        assertEquals(listOf(960 to 982), panel.taps)
+        assertTrue(panel.shows <= 1 + HomeChooserAnswer.RETRIES)
+        val showsAfterExhaustion = panel.shows
+        panel.window = ChooserWindow(own, null, null, null) // A later manual dismissal is not our BACK.
+        panel.settle()
+        assertEquals(showsAfterExhaustion, panel.shows)
+        assertEquals(listOf(960 to 982), panel.taps)
     }
 
     @Test fun failedHomePressCannotAuthoriseALaterSpontaneousList() {

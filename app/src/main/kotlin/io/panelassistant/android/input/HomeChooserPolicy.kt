@@ -82,6 +82,7 @@ internal class HomeChooserAnswer(
     private val intendedHome: () -> ChooserHome? = { null },
 ) {
     private var shown = false
+    private var homePressAttempted = false
     private var acted = false
     private var retries = 0
     private var taps = 0
@@ -89,9 +90,13 @@ internal class HomeChooserAnswer(
     private var leftToInstaller = false
     private var selections = 0
     private var selected: Pair<ChooserHome, ChooserWindow>? = null
+    private var coveredSelection: Pair<ChooserHome, ChooserWindow>? = null
+    private var resettingSelection: Pair<ChooserHome, ChooserWindow>? = null
+    private var resetAbandoned = false
 
     fun connected() {
         shown = false
+        homePressAttempted = false
         acted = false
         retries = 0
         taps = 0
@@ -99,12 +104,48 @@ internal class HomeChooserAnswer(
         leftToInstaller = false
         selections = 0
         selected = null
+        coveredSelection = null
+        resettingSelection = null
+        resetAbandoned = false
     }
 
     fun answer() {
+        if (resetAbandoned) return
         val home = defaultHome()
         val window = activeWindow()
-        if (acted && home?.pkg == "android" && window?.packageName != "android" && retries < RETRIES) {
+        val resetting = resettingSelection
+        if (resetting != null) {
+            if (home?.pkg != "android" || setupEverCompleted() != true || intendedHome() != resetting.first ||
+                (window?.packageName == "android" && (window.rows != resetting.second.rows || window.windowId != resetting.second.windowId))) {
+                resettingSelection = null
+                resetAbandoned = true
+                return
+            }
+            // BACK is asynchronous. A window event must not turn a still-enabled list into permission
+            // to confirm it, nor consume the delayed HOME that will reopen it after dismissal.
+            if (window == null || window.packageName == "android") {
+                if (looks < LOOKS) { looks++; answerAgainIn(LOOK_MS) }
+                else { resettingSelection = null; resetAbandoned = true }
+                return
+            }
+            resettingSelection = null
+            if (window?.packageName != resetting.first.activity.pkg) { resetAbandoned = true; return }
+            shown = false
+            acted = false
+        }
+        coveredSelection?.let { covered ->
+            if (home?.pkg != "android" || setupEverCompleted() != true || intendedHome() != covered.first ||
+                (window?.packageName == "android" && window.rows.isNotEmpty() && window.rows != covered.second.rows) ||
+                (window?.packageName != "android" && window?.packageName != covered.first.activity.pkg)) {
+                coveredSelection = null
+            }
+        }
+        val ownCover = selected?.takeIf {
+            home?.pkg == "android" && window?.packageName == it.first.activity.pkg &&
+                setupEverCompleted() == true && intendedHome() == it.first
+        }
+        if (ownCover != null) coveredSelection = ownCover
+        if ((acted || ownCover != null) && home?.pkg == "android" && window?.packageName != "android" && retries < RETRIES) {
             retries++
             shown = false
         }
@@ -116,6 +157,7 @@ internal class HomeChooserAnswer(
         when (step) {
             HomeChooserPolicy.Step.NONE -> Unit
             HomeChooserPolicy.Step.SHOW_CHOOSER -> {
+                homePressAttempted = true
                 acted = showChooser()
                 shown = acted
                 log("HOME is unowned; showing the chooser=$acted")
@@ -168,7 +210,9 @@ internal class HomeChooserAnswer(
         if (!shown) {
             // The list may already be in front at bind. Press HOME ourselves before trusting its selection.
             if (retries < RETRIES) {
-                retries++
+                // As with SHOW_CHOOSER, first custody is the initial show; only reopens spend retries.
+                if (homePressAttempted) retries++
+                homePressAttempted = true
                 acted = showChooser()
                 shown = acted
                 log("HOME is unowned; showing the configured HOME chooser=$acted")
@@ -193,6 +237,18 @@ internal class HomeChooserAnswer(
                 acted = tap(row.centre.first, row.centre.second)
                 if (acted) selected = target to window
                 log("HOME chooser selecting ${target.activity.component}=$acted")
+            } else if (window.alwaysEnabled == true && coveredSelection?.first == target &&
+                coveredSelection?.second?.rows == window.rows && retries < RETRIES) {
+                // Startup covered our selection. HOME can retain Android's enabled selection, so
+                // discard it with BACK and select afresh after a new HOME; never infer it is ours.
+                retries++
+                acted = dismiss()
+                if (acted) {
+                    coveredSelection = null
+                    resettingSelection = target to window
+                    shown = false
+                }
+                log("HOME chooser retained a covered selection; reset=$acted")
             } else log("HOME chooser list selection is unverified or exhausted; leaving it unanswered")
         }
         if (acted) answerAgainIn(VERIFY_MS)
