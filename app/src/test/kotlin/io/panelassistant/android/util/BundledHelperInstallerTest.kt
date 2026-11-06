@@ -419,7 +419,15 @@ class BundledHelperInstallerTest {
                 filesystemRoot = fixture.root.absolutePath,
                 polls = 1,
             )
-            assertEquals(0, runTakeoverCommand(command))
+            assertEquals(BundledHelperInstaller.Result.INSTALLED, installBundledHelperReplacement(
+                BundledHelperReplacementMode.RELEASED_LEGACY_TAKEOVER,
+                stagedBuild, incumbentBuild, null, null,
+                stage = { true },
+                guarded = { error("released helper cannot retire through Guard") },
+                legacy = { runTakeoverCommand(command) == 0 },
+                fresh = { error("released helper is not a fresh install") },
+                cleanup = { error("released recovery record must remain") },
+            ))
             assertEquals(fixture.candidateBytes, fixture.live.readText())
             assertEquals(fixture.oldRegistration, fixture.registration.readText())
             assertEquals(fixture.oldBytes, fixture.oldBin.readText())
@@ -674,8 +682,7 @@ class BundledHelperInstallerTest {
         assertTrue(bundledLegacyRecoveryAllowed(GuardDbMaintenanceClient.StatusProbe.Unreachable, parsed))
         assertTrue(bundledLegacyRecoveryAllowed(GuardDbMaintenanceClient.StatusProbe.Unsupported, parsed))
         assertFalse(bundledLegacyRecoveryAllowed(GuardDbMaintenanceClient.StatusProbe.Malformed, parsed))
-        // Even if X is currently Guard-capable, APK Y cannot retire X and discard the record:
-        // the released boot helper would return after reboot with no way to resume Y.
+        // Cross-build reuse needs the exact live app-owned candidate, not a record alone.
         val nextBuild = "f".repeat(64)
         assertEquals(
             BundledLegacyPriorRecordDisposition.REPROVISION,
@@ -686,6 +693,52 @@ class BundledHelperInstallerTest {
             bundledLegacyPriorRecordDisposition(parsed.stagedBuildId, parsed),
         )
         assertNull(parseBundledLegacyTakeoverRecord(fixture + "0".repeat(1025)))
+    }
+
+    @Test fun `staging a guarded successor preserves and rebinds the exact live takeover record`() {
+        withTakeoverFiles(TakeoverTopology.SYSTEM, candidateStarts = true) { fixture ->
+            assertEquals(0, runTakeoverCommand(bundledLegacyHelperTakeoverCommand(
+                sha256(fixture.stage), stagedBuild, incumbentBuild,
+                filesystemRoot = fixture.root.absolutePath, polls = 1,
+            )))
+            val recordFile = File(fixture.dataLocal, ".hapaneld-helper.legacy-takeover")
+            val recordBytes = recordFile.readText()
+            val record = requireNotNull(parseBundledLegacyTakeoverRecord(recordBytes))
+            val successor = fakeHelper("f".repeat(64), candidate = true, starts = true)
+            val command = bundledHelperStageCommand(
+                sha256(successor), fixture.root.absolutePath, retainedRecord = record,
+            )
+            val staged = runCommandWithInput(command, successor)
+            assertEquals(staged.output, 0, staged.exitCode)
+            assertEquals(successor, fixture.stage.readText())
+            assertEquals(recordBytes, recordFile.readText())
+            assertEquals(fixture.candidateBytes, fixture.live.readText())
+            assertEquals(fixture.oldBytes, fixture.oldBin.readText())
+            assertEquals(fixture.oldRegistration, fixture.registration.readText())
+
+            // The parsed authority cannot authorize staging after another writer changes its bytes.
+            recordFile.writeText(recordBytes.replace(record.oldSha256, "0".repeat(64)))
+            fixture.stage.writeText("retained candidate")
+            assertEquals(75, runCommandWithInput(command, successor).exitCode)
+            assertEquals("retained candidate", fixture.stage.readText())
+            assertEquals(fixture.candidateBytes, fixture.live.readText())
+        }
+    }
+
+    @Test fun `legacy takeover refuses an unrelated stale data local helper before custody`() {
+        withTakeoverFiles(TakeoverTopology.SYSTEM, candidateStarts = true) { fixture ->
+            val stale = fakeHelper("f".repeat(64), candidate = true, starts = true)
+            writeExecutable(fixture.live, stale, 700)
+            assertTrue(runTakeoverCommand(bundledLegacyHelperTakeoverCommand(
+                sha256(fixture.stage), stagedBuild, incumbentBuild,
+                filesystemRoot = fixture.root.absolutePath, polls = 1,
+            )) != 0)
+            assertEquals(stale, fixture.live.readText())
+            assertEquals(fixture.candidateBytes, fixture.stage.readText())
+            assertEquals(fixture.oldBytes, fixture.oldBin.readText())
+            assertEquals(fixture.oldRegistration, fixture.registration.readText())
+            assertFalse(File(fixture.dataLocal, ".hapaneld-helper.legacy-takeover").exists())
+        }
     }
 
     @Test fun `record cleanup deletes only the exact bytes parsed before lock acquisition`() {

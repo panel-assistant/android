@@ -73,33 +73,22 @@ internal object BundledHelperInstaller {
             .takeIf(GuardDbMaintenanceProtocol::validSha256) ?: return Result.FAILED
         val statusProbe = GuardDbMaintenance.client.statusProbe()
         val replacementMode = bundledHelperReplacementMode(statusProbe) ?: return Result.BLOCKED_ACTIVE
-        if (replacementMode != BundledHelperReplacementMode.FRESH_INSTALL) {
-            // Replacing a running helper stays off: Guard retire records the /data/local copy as the
-            // incumbent even when a boot-registered helper is the one serving, and that helper, restarted
-            // by init, then holds on its own journal. Until that is fixed, only a panel with no helper
-            // gets the bundled one.
-            Log.i(TAG, "leaving the running root helper in place; bundled replacement is not enabled")
-            return Result.FAILED
-        }
-        val priorRecordReply = Su.runOutputLong(
-            bundledLegacyTakeoverRecordReadCommand(),
-            INSTALL_TIMEOUT_MS,
-        )
-        if (priorRecordReply != null) {
-            val priorRecord = parseBundledLegacyTakeoverRecord(priorRecordReply) ?: return Result.FAILED
-            when (bundledLegacyPriorRecordDisposition(stagedBuildId, priorRecord)) {
-                BundledLegacyPriorRecordDisposition.REPROVISION -> {
-                    // The old boot helper plus another app build's retained live bytes need an exact
-                    // normalization transaction. External provisioning owns that cross-build case.
-                    return Result.REPROVISION_REQUIRED
-                }
-                BundledLegacyPriorRecordDisposition.KEEP -> Unit
-            }
-        }
         val incumbentBuildId = if (replacementMode == BundledHelperReplacementMode.FRESH_INSTALL) {
             null
         } else {
             HelperClient.installedBuildId()?.takeIf { it != stagedBuildId } ?: return Result.FAILED
+        }
+        // GUARDSELF binds /proc/self/exe to the app-owned live inode. A boot helper may expose
+        // Guard while an unrelated /data/local copy exists; only the serving app-owned copy may retire.
+        val incumbentIdentity = if (replacementMode == BundledHelperReplacementMode.GUARDED_RETIRE) {
+            GuardDbMaintenance.client.selfIdentity()
+        } else null
+        val priorRecordReply = Su.runOutputLong(
+            bundledLegacyTakeoverRecordReadCommand(),
+            INSTALL_TIMEOUT_MS,
+        )
+        val priorRecord = priorRecordReply?.let {
+            parseBundledLegacyTakeoverRecord(it) ?: return Result.FAILED
         }
         val asset = helperAssetName(Build.SUPPORTED_ABIS.asIterable()) ?: return Result.SKIPPED
         // A journal the deleted installers left before this APK arrived can no longer stop its helper.
@@ -111,30 +100,35 @@ internal object BundledHelperInstaller {
         return try {
             context.assets.open(asset).use { input -> staged.outputStream().use(input::copyTo) }
             val expectedSha256 = AppInstaller.sha256(staged)
-            val output = Su.runWithStdinLongChecked(
-                bundledHelperStageCommand(expectedSha256, appInstalledAtEpochSeconds = appInstalledAt),
-                staged,
-                INSTALL_TIMEOUT_MS,
-            )
-            if (!bundledHelperStaged(output)) {
-                Log.w(TAG, "bundled helper staging failed: ${output.orEmpty().take(120)}")
-                return Result.FAILED
-            }
-            val settlement = when (replacementMode) {
-                BundledHelperReplacementMode.GUARDED_RETIRE -> executeBundledHelperReplacement(
-                    retire = {
-                        GuardDbMaintenance.client.retireApp(
-                            freshBundledHelperReplacementNonce(),
+            installBundledHelperReplacement(
+                replacementMode, stagedBuildId, incumbentBuildId, incumbentIdentity, priorRecord,
+                stage = {
+                    bundledHelperStaged(Su.runWithStdinLongChecked(
+                        bundledHelperStageCommand(
                             expectedSha256,
-                            stagedBuildId,
-                        )
-                    },
-                    probe = { HelperClient.replacementProbe(stagedBuildId, requireNotNull(incumbentBuildId)) },
-                    pause = { Thread.sleep(SETTLEMENT_POLL_MS) },
-                    polls = SETTLEMENT_POLLS,
-                )
-                BundledHelperReplacementMode.RELEASED_LEGACY_TAKEOVER -> {
-                    val installed = Su.runSingleAttempt(
+                            appInstalledAtEpochSeconds = appInstalledAt,
+                            retainedRecord = priorRecord,
+                        ),
+                        staged,
+                        INSTALL_TIMEOUT_MS,
+                    ))
+                },
+                guarded = {
+                    executeBundledHelperReplacement(
+                        retire = {
+                            GuardDbMaintenance.client.retireApp(
+                                freshBundledHelperReplacementNonce(),
+                                expectedSha256,
+                                stagedBuildId,
+                            )
+                        },
+                        probe = { HelperClient.replacementProbe(stagedBuildId, requireNotNull(incumbentBuildId)) },
+                        pause = { Thread.sleep(SETTLEMENT_POLL_MS) },
+                        polls = SETTLEMENT_POLLS,
+                    )
+                },
+                legacy = {
+                    Su.runSingleAttempt(
                         bundledLegacyHelperTakeoverCommand(
                             expectedSha256,
                             stagedBuildId,
@@ -142,37 +136,19 @@ internal object BundledHelperInstaller {
                         ),
                         LEGACY_TAKEOVER_TIMEOUT_MS,
                     )
-                    if (installed) BundledHelperReplacementSettlement.INSTALLED
-                    else BundledHelperReplacementSettlement.HOLD
-                }
-                BundledHelperReplacementMode.FRESH_INSTALL ->
-                    if (Su.runSingleAttempt(
-                            bundledFreshHelperInstallCommand(
-                                expectedSha256,
-                                stagedBuildId,
-                                appInstalledAtEpochSeconds = appInstalledAt,
-                            ),
-                            LEGACY_TAKEOVER_TIMEOUT_MS,
-                        )
-                    ) BundledHelperReplacementSettlement.INSTALLED
-                    else BundledHelperReplacementSettlement.HOLD
-            }
-            when (settlement) {
-                BundledHelperReplacementSettlement.INSTALLED -> {
-                    if (replacementMode == BundledHelperReplacementMode.GUARDED_RETIRE &&
-                        !cleanupAnyBundledLegacyTakeoverRecord()
-                    ) {
-                        Log.w(TAG, "guarded helper installed but stale takeover authority cleanup failed")
-                        Result.FAILED
-                    } else {
-                        Result.INSTALLED
-                    }
-                }
-                BundledHelperReplacementSettlement.BLOCKED_ACTIVE -> Result.BLOCKED_ACTIVE
-                BundledHelperReplacementSettlement.OLD_SAFE,
-                BundledHelperReplacementSettlement.NOT_SUBMITTED,
-                BundledHelperReplacementSettlement.HOLD -> Result.FAILED
-            }
+                },
+                fresh = {
+                    Su.runSingleAttempt(
+                        bundledFreshHelperInstallCommand(
+                            expectedSha256,
+                            stagedBuildId,
+                            appInstalledAtEpochSeconds = appInstalledAt,
+                        ),
+                        LEGACY_TAKEOVER_TIMEOUT_MS,
+                    )
+                },
+                cleanup = { cleanupAnyBundledLegacyTakeoverRecord() },
+            )
         } catch (failure: Exception) {
             Log.w(TAG, "bundled helper migration failed", failure)
             Result.FAILED
@@ -213,7 +189,14 @@ internal object BundledHelperInstaller {
         val reply = Su.runOutputLong(bundledLegacyTakeoverRecordReadCommand(), INSTALL_TIMEOUT_MS)
             ?: return if (verifyBundledLegacyTakeoverRecordAbsent()) null else Result.FAILED
         val record = parseBundledLegacyTakeoverRecord(reply) ?: return Result.FAILED
-        if (record.stagedBuildId != currentBuildId) return Result.REPROVISION_REQUIRED
+        if (record.stagedBuildId != currentBuildId) {
+            // A successful guarded update may have outlived its app before stale-record cleanup.
+            // The exact current app-owned helper is now the recovery authority.
+            if (GuardDbMaintenance.client.selfIdentity()?.buildId != currentBuildId) {
+                return Result.REPROVISION_REQUIRED
+            }
+            return if (cleanupBundledLegacyTakeoverRecord(record)) null else Result.FAILED
+        }
         return if (Su.runLong(
             bundledLegacyTakeoverRecordCleanupCommand(
                 record.recordSha256,
@@ -301,6 +284,7 @@ internal data class BundledLegacyTakeoverRecord(
     val incumbentBuildId: String,
     val stagedBuildId: String,
     val candidateSha256: String,
+    val candidateBytes: Long,
     val recordSha256: String,
     val recordBytes: Long,
 )
@@ -345,6 +329,7 @@ internal fun parseBundledLegacyTakeoverRecord(reply: String): BundledLegacyTakeo
         incumbentBuildId = fields[9],
         stagedBuildId = fields[10],
         candidateSha256 = fields[11],
+        candidateBytes = fields[12].toLong(),
         recordSha256 = recordSha256,
         recordBytes = recordBytes.size.toLong(),
     )
@@ -489,10 +474,59 @@ internal enum class BundledHelperReplacementMode {
 
 internal enum class BundledLegacyPriorRecordDisposition { KEEP, REPROVISION }
 
+/** The installer's mutation boundary: admit custody, stage once, then use exactly one authority. */
+internal fun installBundledHelperReplacement(
+    mode: BundledHelperReplacementMode,
+    stagedBuildId: String,
+    incumbentBuildId: String?,
+    incumbentIdentity: GuardDbMaintenanceProtocol.SelfIdentity?,
+    priorRecord: BundledLegacyTakeoverRecord?,
+    stage: () -> Boolean,
+    guarded: () -> BundledHelperReplacementSettlement,
+    legacy: () -> Boolean,
+    fresh: () -> Boolean,
+    cleanup: () -> Boolean,
+): BundledHelperInstaller.Result {
+    if (mode == BundledHelperReplacementMode.GUARDED_RETIRE &&
+        (incumbentIdentity == null || incumbentIdentity.buildId != incumbentBuildId)
+    ) return BundledHelperInstaller.Result.REPROVISION_REQUIRED
+    if (priorRecord != null && bundledLegacyPriorRecordDisposition(
+            stagedBuildId, priorRecord, incumbentIdentity,
+        ) == BundledLegacyPriorRecordDisposition.REPROVISION
+    ) return BundledHelperInstaller.Result.REPROVISION_REQUIRED
+    if (!stage()) return BundledHelperInstaller.Result.FAILED
+    val settlement = when (mode) {
+        BundledHelperReplacementMode.GUARDED_RETIRE -> guarded()
+        BundledHelperReplacementMode.RELEASED_LEGACY_TAKEOVER -> if (legacy()) {
+            BundledHelperReplacementSettlement.INSTALLED
+        } else BundledHelperReplacementSettlement.HOLD
+        BundledHelperReplacementMode.FRESH_INSTALL -> if (fresh()) {
+            BundledHelperReplacementSettlement.INSTALLED
+        } else BundledHelperReplacementSettlement.HOLD
+    }
+    return when (settlement) {
+        BundledHelperReplacementSettlement.INSTALLED ->
+            if (mode != BundledHelperReplacementMode.GUARDED_RETIRE || cleanup()) {
+                BundledHelperInstaller.Result.INSTALLED
+            } else BundledHelperInstaller.Result.FAILED
+        BundledHelperReplacementSettlement.BLOCKED_ACTIVE -> BundledHelperInstaller.Result.BLOCKED_ACTIVE
+        BundledHelperReplacementSettlement.OLD_SAFE,
+        BundledHelperReplacementSettlement.NOT_SUBMITTED,
+        BundledHelperReplacementSettlement.HOLD -> BundledHelperInstaller.Result.FAILED
+    }
+}
+
 internal fun bundledLegacyPriorRecordDisposition(
     currentBuildId: String,
     record: BundledLegacyTakeoverRecord,
-): BundledLegacyPriorRecordDisposition = if (record.stagedBuildId == currentBuildId) {
+    incumbentIdentity: GuardDbMaintenanceProtocol.SelfIdentity? = null,
+): BundledLegacyPriorRecordDisposition = if (record.stagedBuildId == currentBuildId ||
+    incumbentIdentity == GuardDbMaintenanceProtocol.SelfIdentity(
+        bytes = record.candidateBytes,
+        sha256 = record.candidateSha256,
+        buildId = record.stagedBuildId,
+    )
+) {
     BundledLegacyPriorRecordDisposition.KEEP
 } else {
     BundledLegacyPriorRecordDisposition.REPROVISION
@@ -536,6 +570,7 @@ internal fun bundledHelperStageCommand(
     expectedSha256: String,
     filesystemRoot: String = "",
     appInstalledAtEpochSeconds: Long = 0,
+    retainedRecord: BundledLegacyTakeoverRecord? = null,
 ): String {
     require(expectedSha256.matches(Regex("[0-9a-f]{64}")))
     require(filesystemRoot.isEmpty() ||
@@ -545,11 +580,23 @@ internal fun bundledHelperStageCommand(
     val dollar = '$'
     val installerJournalsRetired = installerJournalsRetiredShell(appInstalledAtEpochSeconds)
     val guardJournals = GUARD_REPLACEMENT_JOURNALS.underRoot()
+    val recordAdmission = retainedRecord?.let { record ->
+        require(GuardDbMaintenanceProtocol.validSha256(record.recordSha256))
+        require(record.recordBytes in 1..1024)
+        """
+          [ -f "${dollar}record" ] && [ ! -L "${dollar}record" ] || return 1
+          record_meta=${dollar}(stat -c '%u:%g:%a:%h:%s' "${dollar}record" 2>/dev/null || toybox stat -c '%u:%g:%a:%h:%s' "${dollar}record" 2>/dev/null) || return 1
+          [ "${dollar}record_meta" = "0:0:600:1:${record.recordBytes}" ] || return 1
+          record_hash=${dollar}(sha256sum "${dollar}record" 2>/dev/null || toybox sha256sum "${dollar}record" 2>/dev/null) || return 1
+          [ "${dollar}{record_hash%% *}" = '${record.recordSha256}' ] || return 1
+        """.trimIndent()
+    } ?: "[ ! -e \"${dollar}record\" ] && [ ! -L \"${dollar}record\" ] || return 1"
     return """
         root=$filesystemRoot
         data_local=${dollar}root/data/local
         lock=${dollar}root/dev/.hapaneld-helper-transaction.lock
         stage=${dollar}data_local/.hapaneld-helper.new
+        record=${dollar}data_local/.hapaneld-helper.legacy-takeover
         upload=${dollar}data_local/.hapaneld-helper.app-stage-$expectedSha256
         if ! mkdir "${dollar}lock" 2>/dev/null; then
           holder=${dollar}(cat "${dollar}lock/pid" 2>/dev/null || true)
@@ -566,11 +613,11 @@ internal fun bundledHelperStageCommand(
         other_authority_absent() {
           for authority in \
             $guardJournals \
-            "${dollar}root/data/local/.hapaneld-helper.legacy-takeover" \
             "${dollar}root/data/local/.hapaneld-helper.previous" \
             "${dollar}root/data/local/.hapaneld-helper.previous.tmp"; do
             [ ! -e "${dollar}authority" ] && [ ! -L "${dollar}authority" ] || return 1
           done
+          $recordAdmission
           installer_journals_retired
         }
         record_tmp=${dollar}data_local/.hapaneld-helper.legacy-takeover.tmp
