@@ -1,6 +1,5 @@
 package io.panelassistant.android.logship
 
-import io.panelassistant.android.device.SuForm
 import io.panelassistant.android.metrics.FeatureCostOperation
 import io.panelassistant.android.metrics.FeatureCostRegistry
 import kotlinx.coroutines.CoroutineScope
@@ -205,11 +204,11 @@ class LogCaptureTest {
         }
     }
 
-    @Test fun unrootedSystemCaptureUsesHelperStreamAndKeepsWholeEntry() {
+    @Test fun systemCaptureUsesHelperStreamAndKeepsWholeRedactedEntryWithoutStartingSu() {
         val helperStarts = AtomicInteger()
+        val processStarts = AtomicInteger()
         val cap = LogCapture.system(
             CoroutineScope(Dispatchers.IO),
-            suForm = SuForm.NONE,
             helperLines = { emit ->
                 helperStarts.incrementAndGet()
                 emit("[ 1790592713.123  123: 456 E/AndroidRuntime ]")
@@ -217,7 +216,7 @@ class LogCaptureTest {
                 emit("")
                 awaitCancellation()
             },
-            rootAvailable = { false },
+            processStarter = { processStarts.incrementAndGet(); GateProcess("").also { it.finish(1) } },
         )
         val got = java.util.concurrent.CopyOnWriteArrayList<String>()
         val subscription = cap.subscribe(got::add)
@@ -227,115 +226,35 @@ class LogCaptureTest {
             assertTrue(got.single().contains("password=***\nAuthorization: Bearer ***\n\n    at Example.first(Example.kt:12)"))
             assertFalse(got.single().contains("hunter2secret"))
             assertFalse(got.single().contains("abc123XYZ"))
-            assertEquals(emptyList<String>(), cap.dump()) // no su attempt on an unrooted panel
-        } finally {
-            subscription.close()
-            cap.close()
-        }
-    }
-
-    @Test fun rootedPanelWithAReachableHelperStreamsSystemLogsFromTheHelperAndStartsNoSu() {
-        val suStarts = AtomicInteger()
-        val cap = LogCapture.system(
-            CoroutineScope(Dispatchers.IO),
-            suForm = SuForm.TOOLBOX,
-            helperLines = { emit ->
-                emit("[ 1790592713.123  123: 456 I/HelperProof ]")
-                emit("from the helper")
-                emit("")
-                awaitCancellation()
-            },
-            rootAvailable = { true },
-            helperReachable = { true },
-            processStarter = { suStarts.incrementAndGet(); GateProcess("").also { it.finish(1) } },
-        )
-        val got = java.util.concurrent.CopyOnWriteArrayList<String>()
-        val subscription = cap.subscribe(got::add)
-        try {
-            await { got.isNotEmpty() }
-            assertTrue(got.single().contains("from the helper"))
             assertEquals(emptyList<String>(), cap.dump())
-            assertEquals(0, suStarts.get())
+            assertEquals(got.toList(), cap.initialBacklog())
+            assertEquals(0, processStarts.get())
         } finally {
             subscription.close()
             cap.close()
         }
     }
 
-    @Test fun anOlderHelperWithoutLogcatLeavesSystemLogsUnavailableAndStartsNoSu() {
-        val suStarts = AtomicInteger()
-        val helperAttempts = AtomicInteger()
-        val cap = LogCapture.system(
-            CoroutineScope(Dispatchers.IO),
-            suForm = SuForm.TOOLBOX,
-            helperLines = { helperAttempts.incrementAndGet(); error("helper LOGCAT unsupported") },
-            rootAvailable = { true },
-            helperReachable = { true },
-            processStarter = { suStarts.incrementAndGet(); GateProcess("").also { it.finish(1) } },
-        )
-        val got = java.util.concurrent.CopyOnWriteArrayList<String>()
-        val subscription = cap.subscribe(got::add)
-        try {
-            await { helperAttempts.get() >= 1 }
-            Thread.sleep(200)
-            assertTrue(got.isEmpty())
-            assertEquals(0, suStarts.get())
-        } finally {
-            subscription.close()
-            cap.close()
-        }
-    }
-
-    @Test fun aRootedPanelWithNoReachableHelperStillCapturesThroughSu() {
-        val record = "[ 1790592713.123  123: 456 I/SuProof ]\nfrom su\n\n"
-        val helperAttempts = AtomicInteger()
-        val cap = LogCapture.system(
-            CoroutineScope(Dispatchers.IO),
-            suForm = SuForm.TOOLBOX,
-            helperLines = { helperAttempts.incrementAndGet(); awaitCancellation() },
-            rootAvailable = { true },
-            helperReachable = { false },
-            processStarter = { GateProcess(record).also { it.finish(0) } },
-        )
-        val got = java.util.concurrent.CopyOnWriteArrayList<String>()
-        val subscription = cap.subscribe(got::add)
-        try {
-            await { got.isNotEmpty() }
-            assertTrue(got.first().contains("from su"))
-            assertEquals(0, helperAttempts.get())
-        } finally {
-            subscription.close()
-            cap.close()
-        }
-    }
-
-    @Test fun rootedSystemCaptureShipsACompleteExceptionWithEitherSuForm() {
-        val record = "[ 1790592713.123  123: 456 E/RSLProof ]\n" +
-            "java.lang.IllegalStateException: complete\\x0A    at Example.first(Example.kt:12)\\x0A\\x0A    at Example.second(Example.kt:25)\n\n"
-        for ((form, prefix) in listOf(
-            SuForm.ANDROID to listOf("su", "0", "sh", "-c"),
-            SuForm.TOOLBOX to listOf("su", "-c"),
-        )) {
-            val started = java.util.concurrent.CopyOnWriteArrayList<List<String>>()
+    @Test fun missingOrRefusedHelperRetriesStreamAndRepeatedDumpsWithoutStartingSu() {
+        for (failure in listOf(IOException("helper missing"), UnsupportedOperationException("helper LOGCAT unsupported"))) {
+            val starts = AtomicInteger()
+            val helperAttempts = AtomicInteger()
             val cap = LogCapture.system(
                 CoroutineScope(Dispatchers.IO),
-                suForm = form,
-                processStarter = { command ->
-                    started.add(command)
-                    val accepted = command.take(prefix.size) == prefix && command.last().contains("-v printable")
-                    GateProcess(if (accepted) record else "").also { it.finish(if (accepted) 0 else 1) }
-                },
+                helperLines = { helperAttempts.incrementAndGet(); throw failure },
+                processStarter = { starts.incrementAndGet(); GateProcess("").also { it.finish(1) } },
             )
-            val received = java.util.concurrent.CopyOnWriteArrayList<String>()
-            val subscription = cap.subscribe(received::add)
+            val got = java.util.concurrent.CopyOnWriteArrayList<String>()
+            val subscription = cap.subscribe(got::add)
             try {
-                await { received.isNotEmpty() }
-                assertEquals("$form must stream the complete exception as one record", 1, received.size)
-                assertEquals("$form must follow from now", true, started.any { it.last().contains("-T 1") })
-                val expected = "[ 1790592713.123  123: 456 E/RSLProof ]\n" +
-                    "java.lang.IllegalStateException: complete\n    at Example.first(Example.kt:12)\n\n    at Example.second(Example.kt:25)"
-                assertEquals("$form must stream the complete exception", expected, received.single())
-                assertEquals("$form must dump the same complete exception", listOf(expected), cap.dump(10))
+                repeat(3) {
+                    assertEquals(emptyList<String>(), cap.dump())
+                    assertEquals(emptyList<String>(), cap.initialBacklog())
+                }
+                // Prove a restart as well as the first subscription: neither may fall back to su.
+                await { helperAttempts.get() >= 2 }
+                assertTrue(got.isEmpty())
+                assertEquals("${failure.message} must never start a subprocess", 0, starts.get())
             } finally {
                 subscription.close()
                 cap.close()

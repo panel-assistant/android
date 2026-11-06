@@ -607,9 +607,6 @@ class PaneldService : Service() {
             BundledHelperInstaller.Result.ALREADY_CURRENT,
             BundledHelperInstaller.Result.SKIPPED -> Unit
         }
-        // Status reads never probe su; this bounded schedule proves it when the check above lost the
-        // race with the root manager, and again after a recorded loss. A few su starts per process at most.
-        scope.launch { Su.recoveryProof().run() }
         if (GuardDbProcessAdmission.ordinaryMutationsAllowed() && !teardownBoundary.isStopping) {
             PanelPermissionRepair.repair(
                 this@PaneldService, voiceAudio.microphonePresence(resolvedProfile.profile).offered,
@@ -704,12 +701,11 @@ class PaneldService : Service() {
             )
         }
         // Shared demand-driven logcat captures (one producer and redaction pass per source): app,
-        // system and browser feed the sink and their live viewers. System uses the helper when this
-        // app cannot run su. Idle-stopped — no logcat runs until something subscribes.
+        // system and browser feed the sink and their live viewers. System uses the helper exclusively.
+        // Idle-stopped — no logcat runs until something subscribes.
         logCaptureApp = LogCapture.app(scope)
         logCaptureSystem = LogCapture.system(
             scope,
-            suForm = profile.suForm,
             helperLines = { emit ->
                 when (val opened = HelperClient.openLogcat()) {
                     is HelperLogcatOpenResult.Open -> opened.stream.use { stream ->
@@ -726,7 +722,6 @@ class PaneldService : Service() {
                     HelperLogcatOpenResult.Failed -> error("helper LOGCAT unavailable")
                 }
             },
-            rootAvailable = Su::observedUsable,
         )
         // The dashboard's JavaScript console, read over a CDP relay the user started. Off unless log
         // shipping is configured, and never in Hardened mode, where the relay itself is refused.

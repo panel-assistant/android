@@ -70,7 +70,11 @@ class PerfLifecycleTest {
     }
 
     /** Run the sampler through [ticks] active ticks with [perfDump] as the helper, then stop it. */
-    private fun sampleActively(ticks: Int, perfDump: () -> PerfDump?): String {
+    private fun sampleActively(
+        ticks: Int,
+        afterSample: () -> Unit = {},
+        perfDump: () -> PerfDump?,
+    ): String {
         val executor = Executors.newSingleThreadExecutor()
         val dispatcher = executor.asCoroutineDispatcher()
         val scope = CoroutineScope(SupervisorJob() + dispatcher)
@@ -83,6 +87,7 @@ class PerfLifecycleTest {
                 perfDump = perfDump,
                 elapsedRealtime = { 100L },
                 pause = {
+                    afterSample()
                     paused.trySend(Unit)
                     releases.receive()
                 },
@@ -137,6 +142,33 @@ class PerfLifecycleTest {
         assertTrue(json.isNull("top"))
         assertTrue(json.isNull("topRam"))
         assertTrue(json.isNull("render"))
+    }
+
+    @Test fun helperLossClearsPublishedReadingsAndReturningProcessesStartWithFreshDeltas() {
+        val fetches = AtomicInteger()
+        val snapshots = mutableListOf<JSONObject>()
+        sampleActively(ticks = 21, afterSample = {
+            if (fetches.get() > snapshots.size) snapshots += JSONObject(PerfReader.json())
+        }) {
+            val sample = fetches.incrementAndGet()
+            if (sample == 3) null else dump().copy(
+                stat = listOf(longArrayOf(sample * 1_000L)),
+                proc = listOf(ProcessMetric(pid = 4242, jiffies = sample * 100L,
+                    name = "helper-ranked-proc", rssPages = 2048L)),
+                rend = mapOf(4242 to sample * 100L),
+            )
+        }
+
+        assertEquals("one dump for each ten-second cycle", 5, fetches.get())
+        assertEquals("helper-ranked-proc", snapshots[1].getJSONArray("top").getJSONObject(0).getString("name"))
+        assertNotNull(snapshots[1].optJSONObject("render"))
+        for (key in listOf("top", "topRam", "render")) {
+            assertTrue("helper loss clears $key", snapshots[2].isNull(key))
+        }
+        assertTrue("the returning process needs a fresh CPU baseline", snapshots[3].isNull("top"))
+        assertEquals("helper-ranked-proc", snapshots[3].getJSONArray("topRam").getJSONObject(0).getString("name"))
+        assertEquals("CPU deltas resume from the returning process's own baseline", 10.0,
+            snapshots[4].getJSONArray("top").getJSONObject(0).getDouble("cpu"), 0.001)
     }
 
     @Test fun anIdleSamplerFetchesNoHelperDump() {

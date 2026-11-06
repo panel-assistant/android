@@ -17,7 +17,6 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlinx.coroutines.flow.first
 
 internal enum class SuExecFailure {
     FIRST_MISSING,
@@ -277,8 +276,6 @@ object Su : RootShell by productionSu {
     fun availableIsolated(timeoutMs: Long = CMD_TIMEOUT_MS): Boolean = productionSu.availableIsolated(timeoutMs)
     fun availableCachedIsolated(): Boolean = productionSu.availableCachedIsolated()
     fun rootKnownUnusable(): Boolean = productionSu.rootKnownUnusable()
-    /** The service's bounded start-up and loss recovery proof for the production shell. */
-    internal fun recoveryProof(): SuRecoveryProof = SuRecoveryProof.of(productionSu)
     fun runLong(cmd: String, timeoutMs: Long): Boolean = productionSu.runLong(cmd, timeoutMs)
     fun runWithStdinLong(cmd: String, input: File, timeoutMs: Long): String? =
         productionSu.runWithStdinLong(cmd, input, timeoutMs)
@@ -492,8 +489,6 @@ internal class SuShell(
     /** Bumped by every recorded outcome, so a slow probe that started earlier cannot overwrite a newer one. */
     private val answerLock = Any()
     private var answerStampValue = 0L
-    /** Counts transitions from answering to not answering; [SuRecoveryProof] re-arms on each. */
-    private val losses = kotlinx.coroutines.flow.MutableStateFlow(0L)
 
     internal fun newAvailabilityCache(
         ttlMs: Long = AVAILABILITY_TTL_MS,
@@ -509,10 +504,10 @@ internal class SuShell(
      * Whether a [run]/[runOutput] call may start `su` at all. Until this process has proven a su dialect
      * (boot before the root manager is up, a rootless panel), every call tries, as it always did. Once
      * one is proven, an open persistent shell is proof of root; without one, the shared probe above
-     * answers, at most once per TTL. A panel whose SuperSU daemon died after that (`su` starts, exits 1,
-     * prints nothing) otherwise opened a shell, logged a stack and forked a one-shot on every call: about
-     * 540 times an hour from the state loop alone on one panel. Now it costs one `su true` a minute, and
-     * the first probe that answers again lets the next call reopen the shell.
+     * answers, at most once per TTL while root actions are requested. A panel whose SuperSU daemon
+     * died after that (`su` starts, exits 1, prints nothing) otherwise opened a shell, logged a stack
+     * and forked a one-shot on every call. Passive reads never reach this gate; the next requested root
+     * action can prove su again and reopen the shell.
      */
     private fun rootAnswering(): Boolean {
         if (!formState.working() || shell?.process?.isAlive == true) return true
@@ -534,35 +529,10 @@ internal class SuShell(
         val previous = lastAnswer
         lastAnswer = answering
         if (previous != false && !answering && formState.working()) {
-            losses.value = losses.value + 1
             Log.w(TAG, "su does not answer; root-only operations are skipped until su is proven again")
         } else if (previous == false && answering) {
             Log.i(TAG, "su answers again; root-only operations resume")
         }
-    }
-
-    /**
-     * Whether the service's bounded recovery proof has anything to learn: su may be executed, and it is
-     * either unproven in this process (a start-up check that lost the race with the root manager) or was
-     * last seen not answering. A panel without su is latched by the exec-failure cache and needs nothing.
-     */
-    fun needsRecoveryProof(): Boolean =
-        !execFailureCache.shouldSkipExec() && (!formState.working() || lastAnswer == false)
-
-    /** One bounded isolated `su true`, recorded like any outcome; a success also clears the lost-root gate. */
-    fun proveNow(): Boolean {
-        val startedAt = answerStamp()
-        val ok = availableIsolated()
-        noteAnswering(ok, startedAt)
-        if (ok) availabilityCache.invalidate()
-        return ok
-    }
-
-    fun lossCount(): Long = losses.value
-
-    /** Suspend until a loss newer than [seen] has been recorded. */
-    suspend fun awaitLossAfter(seen: Long) {
-        losses.first { it > seen }
     }
 
     // --- persistent shell ---

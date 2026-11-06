@@ -490,6 +490,16 @@ object PerfReader {
             if (dump != null) {
                 runCatching { sampleTopDump(runGeneration, dump) }
                 runCatching { sampleRenderDump(runGeneration, dump) }
+            } else {
+                ifCurrent(runGeneration) {
+                    resetLocalBaselines()
+                    synchronized(lock) {
+                        topJson = "null"
+                        topRamJson = "null"
+                        renderJson = "null"
+                        stutterHist.clear()
+                    }
+                }
             }
         }
         ifCurrent(runGeneration) { tickCount++ } ?: return
