@@ -1,6 +1,7 @@
 package io.panelassistant.android.control
 
 import android.util.Log
+import io.panelassistant.android.kernelBootIdentity
 import io.panelassistant.android.platform.RootRunOutcome
 import io.panelassistant.android.platform.RootShell
 import io.panelassistant.android.util.BoundedStreams
@@ -276,6 +277,8 @@ object Su : RootShell by productionSu {
     fun availableIsolated(timeoutMs: Long = CMD_TIMEOUT_MS): Boolean = productionSu.availableIsolated(timeoutMs)
     fun availableCachedIsolated(): Boolean = productionSu.availableCachedIsolated()
     fun rootKnownUnusable(): Boolean = productionSu.rootKnownUnusable()
+    fun installBootHistory(directory: File) = productionSu.installBootHistory(directory)
+    fun rootLostSinceBoot(): Boolean = productionSu.rootLostSinceBoot()
     fun runLong(cmd: String, timeoutMs: Long): Boolean = productionSu.runLong(cmd, timeoutMs)
     fun runWithStdinLong(cmd: String, input: File, timeoutMs: Long): String? =
         productionSu.runWithStdinLong(cmd, input, timeoutMs)
@@ -453,10 +456,29 @@ internal class SuShell(
         return null
     }
 
-    fun availableIsolated(timeoutMs: Long = CMD_TIMEOUT_MS): Boolean =
-        runOutputIsolatedBounded("true", 1L, timeoutMs) != null
+    fun availableIsolated(timeoutMs: Long = CMD_TIMEOUT_MS): Boolean {
+        val startedAt = answerStamp()
+        return (runOutputIsolatedBounded("true", 1L, timeoutMs) != null)
+            .also { if (!it) noteAnswering(false, startedAt) }
+    }
 
-    override fun available(): Boolean = run("true")
+    @Synchronized
+    override fun available(): Boolean {
+        val startedAt = answerStamp()
+        // rootAnswering may already have recorded the same denial through the shared cache. Do not
+        // treat that nested result as an obsolete probe and invalidate its fresh negative cache.
+        return run("true").also { if (!it && lastAnswer != false) noteAnswering(false, startedAt) }
+    }
+
+    @Volatile private var bootHistory: SuBootHistory? = null
+
+    /** Installed before Android creates components; does not launch su or open the database. */
+    fun installBootHistory(directory: File, bootIdentity: () -> String? = ::kernelBootIdentity) {
+        bootHistory = SuBootHistory(directory, bootIdentity)
+    }
+
+    /** Passive: unknown availability or an unreadable boot marker cannot establish lost root. */
+    fun rootLostSinceBoot(): Boolean = lastAnswer == false && bootHistory?.answeredThisBoot == true
 
     /**
      * Whether an earlier launch proved root structurally unusable ([SuExecFailureCache]): no `su` binary, or
@@ -485,8 +507,7 @@ internal class SuShell(
     // not call it: they read [observedUsable]. Isolated so the probe never waits behind the
     // synchronized persistent control shell.
     private val availabilityCache: Cached<Boolean> = newAvailabilityCache(nowMs = nowMs, probe = {
-        val startedAt = answerStamp()
-        availableIsolated().also { if (!it) noteAnswering(false, startedAt) }
+        availableIsolated()
     })
     @Volatile private var lastAnswer: Boolean? = null
     /** Bumped by every recorded outcome, so a slow probe that started earlier cannot overwrite a newer one. */
@@ -534,6 +555,7 @@ internal class SuShell(
         answerStampValue++
         val previous = lastAnswer
         lastAnswer = answering
+        if (answering) bootHistory?.recordAnswer()
         if (previous != false && !answering && formState.working()) {
             Log.w(TAG, "su does not answer; root-only operations are skipped until su is proven again")
         } else if (previous == false && answering) {

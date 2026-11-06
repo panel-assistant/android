@@ -105,6 +105,9 @@ class SystemController(
         return started
     }
 
+    /** Same credential source as the final reboot guard; an unreadable source stays unknown. */
+    fun screenLockSecure(): Boolean? = runCatching(isDeviceSecure).getOrNull()
+
     /** The helper opens our own foreground Activity; that Activity alone sends the Companion deep link. */
     fun launchCompanionHomeReturn(): Boolean =
         launchComponent(AppIdentity.component(env.ownPackage, ".CompanionHomeReturnActivity"), "Companion home return")
