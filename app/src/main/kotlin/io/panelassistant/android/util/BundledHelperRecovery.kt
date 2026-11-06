@@ -3,6 +3,26 @@ package io.panelassistant.android.util
 import io.panelassistant.android.control.Su
 import java.io.File
 
+internal data class BundledHelperReplacementProbe(
+    val status: GuardDbMaintenanceClient.StatusProbe,
+    val incumbentBuildId: String? = null,
+)
+
+/** An older package-only daemon is distinguishable from an absent socket only through root. */
+internal fun bundledHelperReplacementProbe(
+    status: GuardDbMaintenanceClient.StatusProbe,
+    rootProbe: () -> BundledHelperLegacyProbe,
+): BundledHelperReplacementProbe? {
+    if (status != GuardDbMaintenanceClient.StatusProbe.Unreachable) return BundledHelperReplacementProbe(status)
+    return when (val root = rootProbe()) {
+        BundledHelperLegacyProbe.Absent -> BundledHelperReplacementProbe(status)
+        is BundledHelperLegacyProbe.Legacy -> BundledHelperReplacementProbe(
+            GuardDbMaintenanceClient.StatusProbe.Unsupported, root.incumbentBuildId,
+        )
+        BundledHelperLegacyProbe.Refused -> null
+    }
+}
+
 internal fun bundledHelperReplacementStatusAfterRecovery(
     asset: File,
     expectedSha256: String,

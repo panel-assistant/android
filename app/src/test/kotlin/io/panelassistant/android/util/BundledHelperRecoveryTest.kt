@@ -11,6 +11,26 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BundledHelperRecoveryTest {
+    @Test fun `root legacy identity selects takeover while absent stays fresh and refusals block`() {
+        val oldBuild = "b".repeat(64)
+        val unreachable = GuardDbMaintenanceClient.StatusProbe.Unreachable
+        val legacy = requireNotNull(bundledHelperReplacementProbe(unreachable) { BundledHelperLegacyProbe.Legacy(oldBuild) })
+        assertEquals(BundledHelperReplacementMode.RELEASED_LEGACY_TAKEOVER, bundledHelperReplacementMode(legacy.status))
+        assertEquals(oldBuild, legacy.incumbentBuildId)
+        val absent = requireNotNull(bundledHelperReplacementProbe(unreachable) { BundledHelperLegacyProbe.Absent })
+        assertEquals(BundledHelperReplacementMode.FRESH_INSTALL, bundledHelperReplacementMode(absent.status))
+        assertEquals(null, absent.incumbentBuildId)
+        assertEquals(null, bundledHelperReplacementProbe(unreachable) { BundledHelperLegacyProbe.Refused })
+        for (status in listOf(GuardDbMaintenanceClient.StatusProbe.Malformed, GuardDbMaintenanceClient.StatusProbe.Unsupported,
+                GuardDbMaintenanceClient.StatusProbe.Valid(requireNotNull(
+                    GuardDbMaintenanceProtocol.parseStatus(BundledHelperShellFixtures.emptyStatus),
+                )))) {
+            assertEquals(BundledHelperReplacementProbe(status), bundledHelperReplacementProbe(status) {
+                error("reachable helpers retain their existing authority")
+            })
+        }
+    }
+
     private fun fixture(block: (File, File) -> Unit) {
         val root = scratchDirectory("helper-recovery-").toFile()
         try {

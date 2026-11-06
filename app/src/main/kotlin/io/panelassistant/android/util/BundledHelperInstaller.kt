@@ -87,11 +87,15 @@ internal object BundledHelperInstaller {
             // the replacement namespace empty before it can touch any candidate bytes.
             val statusProbe = bundledHelperReplacementStatusAfterRecovery(staged, expectedSha256)
                 ?: return Result.FAILED
-            val replacementMode = bundledHelperReplacementMode(statusProbe) ?: return Result.BLOCKED_ACTIVE
+            val replacementProbe = bundledHelperReplacementProbe(statusProbe) {
+                probeBundledLegacyHelper(staged, expectedSha256, stagedBuildId)
+            } ?: return Result.FAILED
+            val replacementMode = bundledHelperReplacementMode(replacementProbe.status) ?: return Result.BLOCKED_ACTIVE
             val incumbentBuildId = if (replacementMode == BundledHelperReplacementMode.FRESH_INSTALL) {
                 null
             } else {
-                HelperClient.installedBuildId()?.takeIf { it != stagedBuildId } ?: return Result.FAILED
+                (replacementProbe.incumbentBuildId ?: HelperClient.installedBuildId())
+                    ?.takeIf { it != stagedBuildId } ?: return Result.FAILED
             }
             val incumbentIdentity = if (replacementMode == BundledHelperReplacementMode.GUARDED_RETIRE) {
                 GuardDbMaintenance.client.selfIdentity()
