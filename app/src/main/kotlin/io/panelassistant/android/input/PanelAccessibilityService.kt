@@ -25,6 +25,7 @@ import io.panelassistant.android.Config
 import io.panelassistant.android.PaneldService
 import io.panelassistant.android.R
 import io.panelassistant.android.setupEverCompleted
+import io.panelassistant.android.builtInRendererReady
 import io.panelassistant.android.platform.AccessibilityActions
 import io.panelassistant.android.platform.dreamInFront
 import io.panelassistant.android.platform.accessibilityScreenshotGranted
@@ -60,26 +61,47 @@ class PanelAccessibilityService : AccessibilityService() {
         homeChooser.connected()
         if (rebindForWindowContent()) return
         // After an in-place update the chooser is already showing when Android binds the service again.
-        answerOnceSetupStateIsRead()
+        scheduleHomeChooserAnswer()
     }
 
     /**
-     * Whether the panel has ever finished setup ([HomeChooserPolicy.next]), read once per connection off
-     * the main thread: the settings store can hold a first read while it is restored or migrated, as it
-     * may be straight after the update this answer exists for. Until the read lands the chooser is not
-     * shown; when it does, the chooser is answered.
+     * Read setup authority and configured HOME off the main thread before each answer. Settings may
+     * still be migrating after an update; never use a stale first-read setup bit or confirm a selection
+     * after the configured activity changed. An older in-flight read cannot replace a newer answer.
      */
     @Volatile private var setupEverCompleted: Boolean? = null
+    @Volatile private var intendedChooserHome: ChooserHome? = null
 
-    private fun answerOnceSetupStateIsRead() {
-        setupEverCompleted = null
+    private var homeAnswerReadGeneration = 0L
+
+    private fun answerWithConfiguredHome() {
+        val generation = ++homeAnswerReadGeneration
         Thread {
-            val done = runCatching { Config(this).setupEverCompleted }
-                .onFailure { Log.w(TAG, "could not read whether setup ever completed", it) }
+            val done = runCatching {
+                val config = Config(this)
+                val homes = packageManager.queryIntentActivities(
+                    Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0,
+                ).map { result ->
+                    val info = result.activityInfo
+                    ChooserHome(
+                        io.panelassistant.android.platform.ActivityRef(info.packageName, info.name),
+                        info.applicationInfo.loadLabel(packageManager).toString(), info.loadLabel(packageManager).toString(),
+                    )
+                }
+                config.setupEverCompleted to configuredChooserHome(
+                    packageName, config.launcherPackage, config.dashboardPackage, config.builtInRendererReady(), homes,
+                )
+            }
+                .onFailure { Log.w(TAG, "could not read configured HOME and setup authority", it) }
                 .getOrNull() ?: return@Thread
-            setupEverCompleted = done
-            Log.i(TAG, "HOME chooser answer: setup ever completed=$done")
-            mainHandler.post { if (instance === this) scheduleHomeChooserAnswer() }
+            mainHandler.post {
+                if (instance !== this || generation != homeAnswerReadGeneration ||
+                    !GuardDbProcessAdmission.ordinaryMutationsAllowed()) return@post
+                setupEverCompleted = done.first
+                intendedChooserHome = done.second
+                Log.i(TAG, "HOME chooser answer: setup ever completed=${done.first}; intended=${done.second?.activity?.component}")
+                runCatching { homeChooser.answer() }.onFailure { Log.w(TAG, "could not read the HOME chooser", it) }
+            }
         }.start()
     }
 
@@ -146,10 +168,18 @@ class PanelAccessibilityService : AccessibilityService() {
         setupEverCompleted = { setupEverCompleted },
         activeWindow = {
             rootInActiveWindow?.let { root ->
-                val always = root.findAccessibilityNodeInfosByViewId(HomeChooserPolicy.ALWAYS_ID)?.singleOrNull()
-                val title = root.findAccessibilityNodeInfosByViewId(HomeChooserPolicy.TITLE_ID)?.singleOrNull()
-                val box = Rect().also { always?.getBoundsInScreen(it) }
-                ChooserWindow(root.packageName, title?.text, always?.isEnabled, box.takeUnless { it.isEmpty }?.let { it.centerX() to it.centerY() })
+                if (root.packageName != "android") return@let ChooserWindow(root.packageName, null, null, null)
+                var count = 0
+                fun read(node: AccessibilityNodeInfo, depth: Int): ChooserNode {
+                    check(depth < 64 && ++count <= 2000) { "HOME chooser tree exceeds inspection bound" }
+                    val box = Rect().also(node::getBoundsInScreen)
+                    return ChooserNode(
+                        node.viewIdResourceName, node.text?.toString(), node.isEnabled,
+                        box.takeUnless { it.isEmpty }?.let { it.centerX() to it.centerY() },
+                        (0 until node.childCount).mapNotNull { node.getChild(it) }.map { read(it, depth + 1) },
+                    )
+                }
+                readChooserWindow(root.packageName, root.windowId, read(root, 0))
             }
         },
         showChooser = { performGlobalAction(GLOBAL_ACTION_HOME) },
@@ -160,6 +190,7 @@ class PanelAccessibilityService : AccessibilityService() {
             mainHandler.postDelayed(answerHomeChooser, it)
         },
         log = { Log.i(TAG, it) },
+        intendedHome = { intendedChooserHome },
     ) }
     private var lastWindowState: WindowState? = null
     private data class WindowState(val packageName: String?, val className: String?, val id: Int)
@@ -284,7 +315,7 @@ class PanelAccessibilityService : AccessibilityService() {
 
     private val answerHomeChooser: Runnable = Runnable {
         if (!GuardDbProcessAdmission.ordinaryMutationsAllowed()) return@Runnable
-        runCatching { homeChooser.answer() }.onFailure { Log.w(TAG, "could not read the HOME chooser", it) }
+        answerWithConfiguredHome()
     }
 
     /**
