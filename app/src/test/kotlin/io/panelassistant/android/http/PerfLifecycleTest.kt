@@ -92,13 +92,14 @@ class PerfLifecycleTest {
                     releases.receive()
                 },
             )
-            PerfReader.touchForTest(100L)
             runBlocking {
-                repeat(ticks) {
-                    withTimeout(5_000L) { paused.receive() }
-                    releases.trySend(Unit)
-                }
+                // Establish an idle first loop before opening the page, regardless of executor timing.
                 withTimeout(5_000L) { paused.receive() }
+                PerfReader.touchForTest(100L)
+                repeat(ticks) {
+                    releases.trySend(Unit)
+                    withTimeout(5_000L) { paused.receive() }
+                }
             }
             return PerfReader.json()
         } finally {
@@ -131,7 +132,7 @@ class PerfLifecycleTest {
     @Test fun anOpenPerfPageFetchesOneHelperDumpPerTenSecondCycle() {
         val fetches = AtomicInteger()
         // Ticks 0..10 at 2 s each span three 5-tick cycles (ticks 0, 5 and 10).
-        sampleActively(ticks = 10) { fetches.incrementAndGet(); dump() }
+        sampleActively(ticks = 11) { fetches.incrementAndGet(); dump() }
 
         assertEquals(3, fetches.get())
     }
