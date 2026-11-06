@@ -5,12 +5,6 @@
 
   function row(f) {
     var summary = f.summary ? cfg.el("small", { class: "fsum", lang: f.summaryLanguage, text: f.summary }) : null;
-    var companionRendererHint = f.key === "dashboard_package" && cfg.rendererChoices.some(function (renderer) {
-      return renderer && renderer.pkg === cfg.values.dashboard_package;
-    }) ? cfg.el("small", {
-      class: "companion-renderer-hint",
-      text: cfg.i18nText("configure.renderer.companion_launcher_hint", "Turn on the Companion app's launcher option for it to take Home.")
-    }) : null;
     var secretNote = f.secret ? cfg.el("small", {
       id: "cfg-" + f.key + "-secret-note",
       text: cfg.i18nText("configure.secret.blank_keeps_current", "blank keeps current")
@@ -46,7 +40,6 @@
     var label = cfg.el("div", { class: "flabel" }, [
       labelText,
       summary,
-      companionRendererHint,
       secretNote,
       managedNote,
       adbManaged ? null : Object.prototype.hasOwnProperty.call(cfg.applyPending, f.key) ?

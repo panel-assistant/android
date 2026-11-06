@@ -1,5 +1,6 @@
 package io.panelassistant.android.platform
 
+
 import io.panelassistant.android.AppIdentity
 import io.panelassistant.android.Config
 import io.panelassistant.android.control.FakeSystemEnv
@@ -41,6 +42,87 @@ class PreservePreviousHomeReceiverTest {
         val reply = run(c, env(vendor, vendor), "setup_eligibility")
         assertEquals(1, reply.code)
         assertEquals("panel-assistant-setup-eligible", reply.data)
+    }
+
+    @Test fun externalRendererKeepsSetupEligibilityAndRetiresPendingHome() {
+        val c = config().apply {
+            setupEverCompleted = true
+            setDashboardPackage("io.homeassistant.companion.android.minimal")
+            check(preservePreviousHome(vendor, listOf(vendor), armTakeover = true))
+        }
+        val e = env(vendor, vendor, dashboard)
+        assertEquals("panel-assistant-setup-eligible", run(c, e, "setup_eligibility").data)
+        repeat(2) {
+            val reply = run(c, e, "dashboard_home_policy")
+            assertEquals(2, reply.code)
+            assertEquals("panel-assistant-home-retained", reply.data)
+            assertFalse(c.homeTakeoverPending)
+            assertEquals(vendor, e.defaultHome())
+        }
+        c.setLauncherPackage(AppIdentity.OWN)
+        assertEquals("an explicit Panel launcher remains an override", "panel-assistant-home-builtin",
+            run(c, e, "dashboard_home_policy").data)
+    }
+
+    @Test fun restoreReplyUsesOnlyEligibleRecordedHomeAndLockedFreshPolicy() {
+        val c = config().apply {
+            setupEverCompleted = true
+            setDashboardPackage("io.homeassistant.companion.android.minimal")
+            check(preservePreviousHome(vendor, listOf(vendor), armTakeover = true))
+        }
+        val e = env(dashboard, vendor, dashboard, other)
+        val restore = run(c, e, "dashboard_home_policy")
+        assertEquals(3, restore.code)
+        assertEquals("panel-assistant-home-restore:${vendor.component}", restore.data)
+        fun locked(identity: String?, target: String = vendor.component) = previousHomeOperation(
+            c, e, AppIdentity.OWN, "restore_previous_home_shell_lock_eligibility", target,
+            shellLockIdentity = identity, lockIdentity = { "1:2" })
+        assertEquals(0, locked(null).code)
+        assertEquals(0, locked("1:3").code)
+        assertEquals(0, locked("1:2", other.component).code)
+        assertEquals("panel-assistant-home-restore-shell-locked", locked("1:2").data)
+        assertEquals(0, run(c, e, "acknowledge_retained_home", vendor.component).code)
+        assertTrue(c.homeTakeoverPending)
+        e.default = other
+        assertEquals("panel-assistant-home-retained", run(c, e, "dashboard_home_policy").data)
+        assertEquals(0, locked("1:2").code)
+        assertEquals(other, e.defaultHome())
+        e.default = dashboard
+        e.homes = listOf(dashboard)
+        assertEquals(0, run(c, e, "dashboard_home_policy").code)
+    }
+
+    @Test fun deferredRestoreEligibilityIsRevokedWhenPendingIsRetired() {
+        val c = config().apply {
+            setupEverCompleted = true
+            setDashboardPackage("io.homeassistant.companion.android.minimal")
+            check(preservePreviousHome(vendor, listOf(vendor), armTakeover = true))
+        }
+        val e = env(dashboard, vendor, dashboard)
+        fun query(operation: String) = previousHomeOperation(c, e, AppIdentity.OWN, operation,
+            vendor.component, shellLockIdentity = "1:2", lockIdentity = { "1:2" }, requirePending = true)
+        assertEquals(3, query("dashboard_home_policy").code)
+        assertEquals(1, query("restore_previous_home_shell_lock_eligibility").code)
+        e.default = vendor
+        assertEquals(1, run(c, e, "acknowledge_retained_home", vendor.component).code)
+        e.default = dashboard
+        assertEquals(0, query("dashboard_home_policy").code)
+        assertEquals(0, query("restore_previous_home_shell_lock_eligibility").code)
+    }
+
+    @Test fun restoredHomeAcknowledgementNeedsExactFreshHomeAndCompletedSetup() {
+        val c = config().apply {
+            setDashboardPackage("io.homeassistant.companion.android.minimal")
+            check(preservePreviousHome(vendor, listOf(vendor), armTakeover = true))
+        }
+        val e = env(vendor, vendor, dashboard)
+        assertEquals(0, run(c, e, "dashboard_home_policy").code)
+        assertEquals(0, run(c, e, "acknowledge_retained_home", vendor.component).code)
+        c.setupEverCompleted = true
+        assertEquals(0, run(c, e, "acknowledge_retained_home", other.component).code)
+        assertTrue(c.homeTakeoverPending)
+        assertEquals("panel-assistant-home-retained", run(c, e, "acknowledge_retained_home", vendor.component).data)
+        assertFalse(c.homeTakeoverPending)
     }
 
     @Test fun acknowledgeClearsPendingOnlyWhenOwnHomeAfterSetup() {

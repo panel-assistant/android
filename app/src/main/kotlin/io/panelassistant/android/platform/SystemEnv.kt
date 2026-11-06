@@ -9,6 +9,8 @@ import io.panelassistant.android.preservePreviousHome
 import io.panelassistant.android.setupEverCompleted
 import io.panelassistant.android.confirmHomeTakeover
 import io.panelassistant.android.homeTakeoverPending
+import io.panelassistant.android.previousHomeComponent
+import io.panelassistant.android.completeHomeTakeover
 
 /** Marks [AndroidSystemEnv.dashboardHomeIntent]: the app bringing its dashboard back, not a HOME press. */
 const val EXTRA_DASHBOARD_RETURN = "io.panelassistant.android.extra.DASHBOARD_RETURN"
@@ -52,6 +54,11 @@ interface SystemEnv {
     /** A successful actuator alone does not acknowledge pending ownership. */
     fun acknowledgeHomeTakeover(component: String) {}
 
+    fun previousHomeComponent(): String? = null
+
+    /** Finish a foreign-renderer install only after observing the launcher it retained or restored. */
+    fun acknowledgeRetainedHome(component: String): Boolean = true
+
     /** Whether Android accepted a direct start of [component] ("pkg/cls") — the pre-BAL fallback. */
     fun directStart(component: String): Boolean
 
@@ -90,6 +97,11 @@ class AndroidSystemEnv(private val context: Context) : SystemEnv {
     override fun homeTakeoverPending(): Boolean = Config(context).homeTakeoverPending
 
     override fun homeTakeoverAllowed(): Boolean = Config(context).setupEverCompleted
+
+    override fun previousHomeComponent(): String? = Config(context).previousHomeComponent
+
+    override fun acknowledgeRetainedHome(component: String): Boolean =
+        defaultHome()?.component == component && Config(context).completeHomeTakeover()
 
     override fun acknowledgeHomeTakeover(component: String) {
         val expected = ComponentName.unflattenFromString(component) ?: return

@@ -52,7 +52,6 @@ class SystemControllerTest {
         su: Boolean = true,
         suOut: Map<String, String> = emptyMap(),
         builtinForeground: Boolean = false,
-        homeWarnings: MutableList<String>? = null,
         profileId: String = "generic",
     ): Triple<SystemController, FakeRootShell, FakeDaemon> {
         val root = FakeRootShell(outputs = suOut, runResult = su)
@@ -61,7 +60,7 @@ class SystemControllerTest {
         val vendorHome = BundledProfileFixtures.bundledById.getValue(profileId).profile().vendorHomePackages
         return Triple(
             SystemController(
-                env, root, d, builtinForeground = { builtinForeground }, homeWarning = { homeWarnings?.add(it) },
+                env, root, d, builtinForeground = { builtinForeground },
                 vendorHomePackages = vendorHome, acquireHomeLock = { AutoCloseable {} },
             ),
             root, d,
@@ -221,6 +220,8 @@ class SystemControllerTest {
     @Test fun homeUiProofUsesLiveAppStateForExternalDashboard() {
         val env = FakeSystemEnv(installed = setOf(MIN), default = ActivityRef(MIN, ".Home"))
         val foreground = sc(env, daemon = mapOf("APPSTATE $MIN" to "FG")).first
+        assertEquals("ready", foreground.homeUiProof(MIN, adminUiVisible = false).state)
+        env.default = ActivityRef(FULL, ".Home")
         assertEquals("ready", foreground.homeUiProof(MIN, adminUiVisible = false).state)
         val background = sc(env, daemon = mapOf("APPSTATE $MIN" to "BG")).first
         assertEquals("blocked", background.homeUiProof(MIN, adminUiVisible = false).state)
@@ -842,7 +843,7 @@ class SystemControllerTest {
         assertEquals(listOf("cmd package set-home-activity $OWN/io.panelassistant.android.AdminLauncherActivity"), suRoot.ran)
     }
 
-    @Test fun launcherHomePolicyExplicitSelfOverridesButOtherSelectionRestoresAutomaticPolicy() {
+    @Test fun launcherHomePolicyExplicitSelfOverridesButOtherSelectionNeverAssignsCompanionHome() {
         val explicitEnv = FakeSystemEnv(default = ActivityRef(VENDOR, "Home"))
         val explicitCommand = "SETHOME $OWN/io.panelassistant.android.AdminLauncherActivity"
         val (explicit, _, explicitDaemon) = sc(explicitEnv, daemon = mapOf(explicitCommand to "OK"))
@@ -854,10 +855,11 @@ class SystemControllerTest {
             homes = listOf(ActivityRef(MIN, "Home")),
             default = ActivityRef(OWN, "$OWN.AdminLauncherActivity"),
         )
-        val automaticCommand = "SETHOME $MIN/Home"
-        val (automatic, _, automaticDaemon) = sc(automaticEnv, daemon = mapOf(automaticCommand to "OK"))
+        val (automatic, automaticRoot, automaticDaemon) = sc(automaticEnv, daemon = null)
         assertFalse(automatic.applyLauncherHomePolicy(VENDOR, MIN))
-        assertEquals(listOf(automaticCommand), automaticDaemon.sent)
+        assertTrue(automaticRoot.ran.isEmpty())
+        assertTrue(automaticDaemon.sent.isEmpty())
+        assertEquals(ActivityRef(OWN, "$OWN.AdminLauncherActivity"), automaticEnv.defaultHome())
     }
 
     @Test fun launcherHomePolicyPreservesBuiltinReadinessGateWhenLeavingExplicitSelf() {
@@ -893,14 +895,7 @@ class SystemControllerTest {
         assertTrue("a deliberate 3rd-party home is left alone", root.ran.isEmpty() && d.sent.isEmpty())
     }
 
-    @Test fun ensureHomeReclaimsFromAndroidResolverViaSu() {
-        val env = FakeSystemEnv(installed = setOf(MIN), homes = listOf(ActivityRef(MIN, "Home")), default = ActivityRef("android", "Resolver"))
-        val (c, root, _) = sc(env, daemon = null, su = true)
-        c.ensureDashboardHome(MIN)
-        assertTrue("reclaim from resolver via su", root.ran.contains("cmd package set-home-activity $MIN/Home"))
-    }
-
-    @Test fun fallbackHomeIsReclaimedForBuiltinAndCompanion() {
+    @Test fun fallbackHomeIsReclaimedOnlyForBuiltin() {
         val fallback = ActivityRef("com.android.settings", ".FallbackHome")
         val builtinEnv = FakeSystemEnv(homes = listOf(DASH_HOME), default = fallback)
         val (builtin, builtinRoot, _) = sc(builtinEnv, daemon = null)
@@ -910,68 +905,7 @@ class SystemControllerTest {
         val companionEnv = FakeSystemEnv(installed = setOf(MIN), homes = listOf(ActivityRef(MIN, "Home")), default = fallback)
         val (companion, companionRoot, _) = sc(companionEnv, daemon = null)
         companion.applyLauncherHomePolicy("", MIN)
-        assertEquals(listOf("cmd package set-home-activity $MIN/Home"), companionRoot.ran)
-
-        val deliberateLauncherEnv = FakeSystemEnv(homes = listOf(DASH_HOME), default = ActivityRef(VENDOR, ".FallbackHome"))
-        val (deliberateLauncher, launcherRoot, _) = sc(deliberateLauncherEnv, daemon = null)
-        deliberateLauncher.applyLauncherHomePolicy("", "")
-        assertTrue(launcherRoot.ran.isEmpty())
-    }
-
-    @Test fun ensureHomeReclaimsFromSelfViaDaemon() {
-        val env = FakeSystemEnv(installed = setOf(MIN), homes = listOf(ActivityRef(MIN, "Home")), default = ActivityRef(OWN, ".AdminLauncherActivity"))
-        val (c, _, d) = sc(env, daemon = mapOf("SETHOME $MIN/Home" to "OK"))
-        c.ensureDashboardHome(MIN)
-        assertTrue("reclaim from ourselves via daemon SETHOME", d.sent.contains("SETHOME $MIN/Home"))
-    }
-
-    @Test fun ensureHomeFallsToSuWhenDaemonSetHomeRejected() {
-        val env = FakeSystemEnv(installed = setOf(MIN), homes = listOf(ActivityRef(MIN, "Home")), default = ActivityRef(OWN, ".AdminLauncherActivity"))
-        val (c, root, d) = sc(env, daemon = mapOf("SETHOME $MIN/Home" to "ERR"))
-        c.ensureDashboardHome(MIN)
-        assertEquals(listOf("SETHOME $MIN/Home"), d.sent)
-        assertTrue("stale SETHOME falls through to su", root.ran.contains("cmd package set-home-activity $MIN/Home"))
-    }
-
-    @Test fun ensureHomeSwitchesBetweenInstalledCompanionVariants() {
-        listOf(FULL to MIN, MIN to FULL).forEach { (current, target) ->
-            val env = FakeSystemEnv(
-                installed = setOf(FULL, MIN),
-                homes = listOf(ActivityRef(FULL, "Home"), ActivityRef(MIN, "Home")),
-                default = ActivityRef(current, "Home"),
-            )
-            val command = "SETHOME $target/Home"
-            val (controller, root, daemon) = sc(env, daemon = mapOf(command to "OK"))
-
-            controller.ensureDashboardHome(target)
-
-            assertEquals("$current -> $target must reassign HOME", listOf(command), daemon.sent)
-            assertTrue(root.ran.isEmpty())
-        }
-    }
-
-    @Test fun ensureHomeNoopWhenTargetHasNoHomeActivity() {
-        val env = FakeSystemEnv(installed = setOf(MIN), homes = emptyList(), default = ActivityRef("android", "R"))
-        val (c, root, d) = sc(env, daemon = null, su = true)
-        c.ensureDashboardHome(MIN)
-        assertTrue("target has no HOME activity → nothing set", root.ran.isEmpty() && d.sent.isEmpty())
-    }
-
-    @Test fun ensureHomeLogsMissingCompanionAliasOnceUntilItsStateChanges() {
-        val env = FakeSystemEnv(installed = setOf(MIN), homes = emptyList(), default = ActivityRef("android", "R"))
-        val warnings = mutableListOf<String>()
-        val (controller, root, daemon) = sc(env, daemon = null, homeWarnings = warnings)
-
-        controller.ensureDashboardHome(MIN)
-        controller.ensureDashboardHome(MIN)
-        assertEquals(listOf("ensureHome: $MIN has no HOME activity"), warnings)
-        assertTrue("a disabled alias never receives Home", root.ran.isEmpty() && daemon.sent.isEmpty())
-
-        env.homes = listOf(ActivityRef(MIN, "Home"))
-        controller.ensureDashboardHome(MIN)
-        env.homes = emptyList()
-        controller.ensureDashboardHome(MIN)
-        assertEquals("the warning returns after the alias state changes", 2, warnings.size)
+        assertTrue(companionRoot.ran.isEmpty())
     }
 
     // ---------- launchHome ----------

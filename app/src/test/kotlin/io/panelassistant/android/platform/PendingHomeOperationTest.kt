@@ -3,6 +3,7 @@ package io.panelassistant.android.platform
 import io.panelassistant.android.AppIdentity
 import io.panelassistant.android.Config
 import io.panelassistant.android.confirmHomeTakeover
+import io.panelassistant.android.completeHomeTakeover
 import io.panelassistant.android.control.FakeDaemon
 import io.panelassistant.android.control.FakeRootShell
 import io.panelassistant.android.control.FakeSystemEnv
@@ -37,6 +38,9 @@ class PendingHomeOperationTest {
             ownPackage = AppIdentity.OWN, homes = listOf(vendor, dashboard), default = vendor,
         )
         val env = object : SystemEnv by state {
+            override fun previousHomeComponent() = config.previousHomeComponent
+            override fun acknowledgeRetainedHome(component: String) =
+                defaultHome()?.component == component && config.completeHomeTakeover()
             override fun preservePreviousHome() = config.preservePreviousHome(defaultHome(), homeActivities())
             override fun homeTakeoverAllowed() = config.setupEverCompleted
             override fun acknowledgeHomeTakeover(component: String) {
@@ -61,8 +65,14 @@ class PendingHomeOperationTest {
             component: String = dashboard.component,
             shellIdentity: String? = "1:2",
             appIdentity: String? = "1:2",
-        ) = pendingHomeOperation(config, env, component, claim, native, shellIdentity, { appIdentity }) {
+        ) = pendingHomeOperation(config, env, component, claim, native, shellIdentity, { appIdentity },
+            restoreHome = { system.restoreDashboardHome(it) }) {
             system.setHomeActivity(it)
+        }
+
+        fun home(home: ActivityRef) {
+            state.homes = (state.homes + home).distinct()
+            state.default = home
         }
 
         fun handBack(beforeClear: () -> Unit = {}): HandBackHomePolicy.Outcome {
@@ -91,6 +101,53 @@ class PendingHomeOperationTest {
         assertEquals(dashboard, panel.env.defaultHome())
         assertFalse(panel.config.homeTakeoverPending)
         assertEquals(listOf("cmd package set-home-activity ${dashboard.component}"), panel.root.ran)
+    }
+
+    @Test fun companionStartupRestoresRecordedLauncherFromBuiltinHomeAndRepeatsSafely() {
+        val panel = Panel()
+        panel.config.setDashboardPackage("io.homeassistant.companion.android.minimal")
+        panel.home(dashboard)
+        panel.system.applyLauncherHomePolicy("", panel.config.dashboardPackage)
+        panel.system.applyLauncherHomePolicy("", panel.config.dashboardPackage)
+        assertEquals(vendor, panel.env.defaultHome())
+        assertEquals(listOf("cmd package set-home-activity ${vendor.component}"), panel.root.ran)
+        assertFalse(panel.config.homeTakeoverPending)
+    }
+
+    @Test fun companionNativePendingRestoresRecordedHomeAndRequiresExactReadback() {
+        for (effective in listOf(true, false)) {
+            val panel = Panel()
+            panel.config.setDashboardPackage("io.homeassistant.companion.android.minimal")
+            panel.home(dashboard)
+            panel.writesTakeEffect = effective
+            val result = panel.pending()
+            assertEquals(if (effective) PendingHomeResult.RETAINED else PendingHomeResult.DEFERRED, result)
+            assertEquals(!effective, panel.config.homeTakeoverPending)
+            assertEquals(if (effective) vendor else dashboard, panel.env.defaultHome())
+            assertEquals(listOf("cmd package set-home-activity ${vendor.component}"), panel.root.ran)
+        }
+    }
+
+    @Test fun companionRootlessPendingNeverGrantsBuiltinShellTakeover() {
+        val panel = Panel()
+        panel.config.setDashboardPackage("io.homeassistant.companion.android.minimal")
+        panel.home(dashboard)
+        assertEquals(PendingHomeResult.RESTORE, panel.pending(native = { false }))
+        assertEquals(PendingHomeResult.DEFERRED, panel.pending(claim = false, native = { false }))
+        assertEquals(dashboard, panel.env.defaultHome())
+        assertTrue(panel.root.ran.isEmpty())
+        assertTrue(panel.config.homeTakeoverPending)
+    }
+
+    @Test fun companionInstallPreservesLaterOwnerLauncherEvenWhilePending() {
+        val panel = Panel()
+        val owner = ActivityRef("com.owner.launcher", "com.owner.launcher.Home")
+        panel.config.setDashboardPackage("io.homeassistant.companion.android.minimal")
+        panel.home(owner)
+        assertEquals(PendingHomeResult.RETAINED, panel.pending())
+        assertEquals(owner, panel.env.defaultHome())
+        assertTrue(panel.root.ran.isEmpty())
+        assertFalse(panel.config.homeTakeoverPending)
     }
 
     @Test fun `late automatic request cannot undo completed native acquisition and handback`() {
