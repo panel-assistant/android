@@ -11,7 +11,7 @@ import java.util.UUID
 import java.util.concurrent.CompletableFuture
 import org.json.JSONObject
 
-/** Fixed calibration, an explicit local wizard, and one atomic durable save. No ambient model writes. */
+/** Learned ranged presence, explicit local setup, and one atomic durable calibration save. */
 internal class ProximityCalibrationRuntime(
     sourceIdentity: String,
     profileId: String,
@@ -40,15 +40,12 @@ internal class ProximityCalibrationRuntime(
     private var userOverride = false
     private var readFailed = false
 
-    /** A stored calibration whose boundary sits inside this source's drift band. Setup must be re-run;
-     *  reinterpreting its raw observations under margined arithmetic would invent a boundary the
-     *  session never measured, and honouring it is the stuck-near state itself. */
+    /** A wave-only calibration whose boundaries cannot hold the source's existing wave drift margin. */
     private var driftUnsafe = false
 
-    /** Certified defaults carry the same obligation as a wizard save: a baseline whose boundary sits
-     *  inside the drift band is no baseline. */
+    /** Profile and stored calibrations use the same presence and wave admission policy. */
     private val baseline = profileBaseline?.let { profile ->
-        ProximityCalibrationEngine.driftMargined(profile, driftMargin, driftDeclaredRange).also {
+        admitStored(profile).also {
             if (it == null) Log.w(TAG, "profile proximity calibration cannot hold this source's drift band; not used")
         }
     }
@@ -111,11 +108,11 @@ internal class ProximityCalibrationRuntime(
     }
 
     @Synchronized
-    fun tick(receivedAt: Long = elapsed(), sparseReporting: Boolean = false): Decision {
+    fun tick(receivedAt: Long = elapsed(), sparseReporting: Boolean = false, heldEvidence: Boolean = false): Decision {
         val now = processingTime(receivedAt)
         if (closed) return Decision(ProximityReportGate.NONE, null, null, false)
         expireOwner(now)
-        view = engine.tick(now)
+        view = engine.tick(now, heldEvidence && sourceProven)
         return decision(now, sparseReporting)
     }
 
@@ -127,7 +124,7 @@ internal class ProximityCalibrationRuntime(
         return decision(now, false)
     }
 
-    fun needsTick(): Boolean = !closed && (view.active || engine.needsTick())
+    fun needsTick(heldEvidence: Boolean = false): Boolean = !closed && (view.active || engine.needsTick(heldEvidence))
     fun isReady(): Boolean = isPresenceReady()
     fun isPresenceReady(): Boolean = !closed && sourceProven && !saving && !view.active && view.presenceReady
     fun isPresenceNear(): Boolean = isPresenceReady() && view.near == true
@@ -381,8 +378,7 @@ internal class ProximityCalibrationRuntime(
             readFailed = true
             return baseline
         }?.second ?: return baseline
-        // Migration is in memory and raises boundaries only; the stored row is left exactly as the
-        // user saved it, so a later release that reads it differently still has the observations.
+        // Admission is in memory only. Quiet statistics never alter the saved calibration row.
         val margined = admitStored(value)
         if (margined == null) {
             driftUnsafe = true
@@ -392,16 +388,17 @@ internal class ProximityCalibrationRuntime(
         return margined
     }
 
-    /**
-     * A stored calibration as this source runs it, at start and after a restore alike: raised above the drift band
-     * where its separation allows, kept exactly as saved where it does not and the route keeps such calibrations,
-     * and otherwise null, declined.
-     */
-    private fun admitStored(value: ProximityCalibrationEngine.Calibration): ProximityCalibrationEngine.Calibration? =
-        ProximityCalibrationEngine.driftMargined(value, driftMargin, driftDeclaredRange)
-            ?: value.takeIf { keepStoredInsideDriftBand }?.also {
-                Log.i(TAG, "saved proximity calibration sits inside this source's drift band; kept as saved")
-            }
+    /** Presence keeps measured anchors for polarity and learns its own local band on every ranged route.
+     * Wave admission retains the previous drift margin and the route's existing retained-wave policy. */
+    private fun admitStored(value: ProximityCalibrationEngine.Calibration): ProximityCalibrationEngine.Calibration? {
+        val previous = ProximityCalibrationEngine.driftMargined(value, driftMargin, driftDeclaredRange)
+        if (previous != null) return previous
+        if (keepStoredInsideDriftBand) return value
+        if (value.mode != ProximityCalibrationEngine.Mode.RANGED || !value.presenceSupported) return null
+        // The previous admission refused this whole calibration, including any explicit or legacy
+        // wave. Accepting its presence anchors must not enable a previously unavailable wave wake.
+        return value.copy(version = 2, wave = null)
+    }
 
     private fun stored(key: String): Pair<EntityCatalogStore.ProximityModelRow, ProximityCalibrationEngine.Calibration>? {
         val row = store.readProximityModel(key) ?: return null

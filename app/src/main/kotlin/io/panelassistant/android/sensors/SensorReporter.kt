@@ -236,13 +236,13 @@ class SensorReporter(
             if (!run.isOpen()) return
             val now = SystemClock.elapsedRealtime()
             if (stkRawGate?.expire(now) == true) deliverUnavailable(run)
-            proximityRuntime?.tick(now, reportingSparse())?.let { deliverProximity(it, run) }
+            proximityRuntime?.tick(now, reportingSparse(), heldEvidence = canRetainStableHalReading())?.let { deliverProximity(it, run) }
             scheduleCalibrationTick()
         }
     }
 
     private fun scheduleCalibrationTick() {
-        if (calibrationTickScheduled || proximityRuntime?.needsTick() != true) return
+        if (calibrationTickScheduled || proximityRuntime?.needsTick(heldEvidence = canRetainStableHalReading()) != true) return
         val handler = sensorHandler ?: return
         calibrationTickScheduled = true
         handler.postDelayed(calibrationTick, 100L)
@@ -265,6 +265,7 @@ class SensorReporter(
             proximityRuntime?.tick(
                 SystemClock.elapsedRealtime(),
                 sparseReporting = true,
+                heldEvidence = canRetainStableHalReading(),
             )?.let { deliverProximity(it, run) }
         }
     }

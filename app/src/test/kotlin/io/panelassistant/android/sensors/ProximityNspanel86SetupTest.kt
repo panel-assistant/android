@@ -15,9 +15,9 @@ import org.junit.Test
 
 /**
  * Proximity on the panels whose sensor is an Android HAL counting beyond its declared range: the Sonoff NSPanel 86
- * and the Tuya TPA10. A person where they normally stand reads tens of counts above the empty room there, less than
- * the 100-count drift band a new setup must hold, so the panel is driven here as SensorReporter builds it for that
- * route: the band, the declared 9 cm range, and the rule for calibrations people saved before the band existed.
+ * and the Tuya TPA10. A person where they normally stand reads tens of counts above the empty room there. Presence
+ * learns the local noise around those readings; deliberate hand waves keep the route's existing drift margin.
+ * The panel is driven here with the same source metadata that SensorReporter supplies.
  */
 class ProximityNspanel86SetupTest {
     /** A calibration a person saved before 1.0.0 is what the panel keeps running after the update. */
@@ -32,10 +32,8 @@ class ProximityNspanel86SetupTest {
             assertEquals("ready", JSONObject(panel.runtime.statusJson()).getString("state"))
             assertEquals("user", status.getString("calibrationSource"))
             assertFalse(status.getBoolean("calibrationDriftUnsafe"))
-            // As saved, not reinterpreted: near enters at the saved .65 of the span and clears at .30.
-            assertEquals(false, panel.settle(saved.clearRaw + .29f * (saved.nearRaw - saved.clearRaw)).near)
-            assertEquals(true, panel.settle(saved.clearRaw + .66f * (saved.nearRaw - saved.clearRaw)).near)
-            assertEquals(true, panel.settle(saved.clearRaw + .5f * (saved.nearRaw - saved.clearRaw)).near)
+            assertEquals(false, panel.settle(saved.clearRaw).near)
+            assertEquals(true, panel.settle(saved.nearRaw).near)
             assertEquals(false, panel.settle(saved.clearRaw).near)
             assertTrue(panel.runtime.isPresenceReady())
             panel.runtime.close()
@@ -60,50 +58,38 @@ class ProximityNspanel86SetupTest {
         assertFalse("the same row again changes nothing", panel.runtime.reloadStored())
     }
 
-    /** Only the counting HAL keeps them: on raw16 a person reads thousands above the floor, so setup can replace it. */
-    @Test fun theRaw16RouteStillSetsAsideOneInsideItsBand() {
-        assertTrue(proximityKeepsStoredInsideDriftBand(ProximityAcquisition.ANDROID_HAL))
-        for (other in ProximityAcquisition.values().filter { it != ProximityAcquisition.ANDROID_HAL }) {
-            assertFalse("$other", proximityKeepsStoredInsideDriftBand(other))
+    /** Stored presence learns the same quiet band on every ranged acquisition route. */
+    @Test fun aWeakStoredPresenceCalibrationWorksOnEveryRangedRoute() {
+        for (acquisition in ProximityAcquisition.values()) {
+            val weak = Calibration(mode = Mode.RANGED, clearRaw = 974f, nearRaw = 995f)
+            val stored = row(weak)
+            val backing = Backing(stored)
+            val panel = Panel(backing, acquisition)
+            assertEquals("$acquisition", false, panel.settle(974f).near)
+            assertEquals("$acquisition", true, panel.settle(995f).near)
+            val status = panel.status()
+            assertEquals("ready", status.getString("phase"))
+            assertEquals("user", status.getString("calibrationSource"))
+            assertFalse(status.getBoolean("calibrationDriftUnsafe"))
+            assertEquals(stored, backing.row)
+            assertEquals(0, backing.writes)
+            panel.runtime.close()
         }
-        val weak = Calibration(mode = Mode.RANGED, clearRaw = 974f, nearRaw = 995f)
-        val backing = Backing(row(weak))
-        val panel = Panel(backing, ProximityAcquisition.STK_RAW)
-        panel.sample(974f)
-        val status = panel.status()
-        assertEquals("calibration_required", status.getString("phase"))
-        assertTrue(status.getBoolean("calibrationDriftUnsafe"))
     }
 
-    /**
-     * Where the person stands separates from the empty room, but by less than the band: that is the answer for this
-     * position, given at the end of the first hold, not a countdown that restarts until the approach window runs out.
-     */
-    @Test fun aStandingApproachInsideTheBandIsRefusedAtTheFirstHold() {
+    /** A quiet normal position below the old drift band is accepted after the first complete hold. */
+    @Test fun aQuietStandingApproachInsideTheOldBandIsAcceptedAtTheFirstHold() {
         val panel = Panel(Backing())
         panel.begin(CLEAR)
         panel.capture(CLEAR)
         assertEquals("near", panel.stage())
         val nearStarted = panel.now
-        panel.advance(ProximityCalibrationEngine.COUNTDOWN_MS, STANDING)
-        assertEquals("hold", panel.status().getString("cue"))
-        var restarted = false
-        var lastRemaining = Long.MAX_VALUE
-        while (panel.stage() == "near" && panel.now - nearStarted < ProximityCalibrationEngine.APPROACH_TIMEOUT_MS) {
-            panel.advance(250, STANDING)
-            val status = panel.status()
-            if (status.getString("stage") != "near") break
-            val remaining = status.getLong("cueRemainingMs")
-            if (status.getString("cue") != "hold" || remaining > lastRemaining) restarted = true
-            lastRemaining = remaining
-        }
-        assertFalse("the hold countdown restarted for a person standing still", restarted)
+        panel.capture(STANDING)
+        assertEquals("return_clear", panel.stage())
+        assertTrue(panel.now - nearStarted <= ProximityCalibrationEngine.COUNTDOWN_MS + ProximityCalibrationEngine.CAPTURE_HOLD_MS + 250)
+        panel.capture(CLEAR)
         assertEquals("wave_baseline", panel.stage())
-        assertEquals("not_detected", panel.status().getString("presenceStatus"))
-        assertTrue(
-            "refused at the end of the first hold",
-            panel.now - nearStarted <= ProximityCalibrationEngine.COUNTDOWN_MS + ProximityCalibrationEngine.CAPTURE_HOLD_MS + 250,
-        )
+        assertEquals("validated", panel.status().getString("presenceStatus"))
     }
 
     /** The panel then says why, on screen and aloud, from the status it reads, before testing a hand. */
@@ -175,7 +161,7 @@ class ProximityNspanel86SetupTest {
     }
 
     /**
-     * Only a completed hold that the band refused is a place to start the hand wave from. A hand raised while the
+     * Only a completed hold that could not separate presence is a place to start the hand wave from. A hand raised while the
      * approach window runs out is a hold no one checked for stillness: taking it as the start would measure the
      * hand going down as a wave, and save a model under which the room and the person both read near.
      */
@@ -184,10 +170,9 @@ class ProximityNspanel86SetupTest {
         panel.begin(CLEAR)
         panel.capture(CLEAR)
         assertEquals("near", panel.stage())
-        val nearStarted = panel.now
-        panel.advance(ProximityCalibrationEngine.COUNTDOWN_MS, CLEAR)
-        while (panel.now - nearStarted < ProximityCalibrationEngine.APPROACH_TIMEOUT_MS - 4_000L) panel.advance(1_000, CLEAR)
-        repeat(5) { panel.advance(1_000, HAND) }
+        // The first reading arrives too late to finish the five-second hold.
+        panel.advance(ProximityCalibrationEngine.APPROACH_TIMEOUT_MS - 4_000L, HAND)
+        repeat(4) { panel.advance(1_000, HAND) }
         assertEquals("wave_baseline", panel.stage())
         assertEquals("not_detected", panel.status().getString("presenceStatus"))
 
@@ -214,7 +199,11 @@ class ProximityNspanel86SetupTest {
         fun status() = JSONObject(runtime.json())
         fun stage(): String = status().getString("stage")
         fun sample(raw: Float) = runtime.observe(raw, now, false)
-        fun settle(raw: Float): ProximityCalibrationRuntime.Decision { sample(raw); now += 200; return runtime.tick(now) }
+        fun settle(raw: Float): ProximityCalibrationRuntime.Decision {
+            var result = sample(raw)
+            repeat(24) { result = advance(250, raw) }
+            return result
+        }
         fun advance(delta: Long, raw: Float? = null): ProximityCalibrationRuntime.Decision {
             now += delta
             if (session.isNotEmpty()) { runtime.heartbeat(session); runtime.visible() }
@@ -230,12 +219,16 @@ class ProximityNspanel86SetupTest {
         }
         fun capture(raw: Float) {
             advance(ProximityCalibrationEngine.COUNTDOWN_MS, raw)
-            advance(ProximityCalibrationEngine.CAPTURE_HOLD_MS)
+            repeat((ProximityCalibrationEngine.CAPTURE_HOLD_MS / 250).toInt()) { advance(250, raw) }
         }
         fun refused() {
             begin(CLEAR)
             capture(CLEAR)
-            capture(STANDING)
+            // The mean is a normal standing value, but its noise overlaps the empty room.
+            advance(ProximityCalibrationEngine.COUNTDOWN_MS, STANDING)
+            repeat((ProximityCalibrationEngine.CAPTURE_HOLD_MS / 250).toInt()) {
+                advance(250, STANDING + if (it % 2 == 0) -60f else 60f)
+            }
             assertEquals("wave_baseline", stage())
             assertEquals("not_detected", status().getString("presenceStatus"))
         }

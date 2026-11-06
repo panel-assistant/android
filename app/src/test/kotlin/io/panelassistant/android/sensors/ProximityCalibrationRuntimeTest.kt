@@ -26,8 +26,7 @@ class ProximityCalibrationRuntimeTest {
 
     @Test fun setupRevokesOperationalPresenceOnceAndCancelRestoresIt() {
         val fixture = Fixture()
-        fixture.sample(100f)
-        fixture.advance(200, 100f)
+        fixture.settlePresence(100f)
         assertTrue(fixture.runtime.isPresenceReady())
         assertTrue(fixture.runtime.start())
         val during = fixture.advance(100, 100f)
@@ -37,8 +36,7 @@ class ProximityCalibrationRuntimeTest {
         assertFalse(during.deliberateGesture)
         assertEquals(ProximityReportGate.NONE, fixture.advance(100, 100f).reportMask)
         assertTrue(fixture.runtime.cancel(fixture.status().getString("sessionId")))
-        fixture.advance(100, 100f)
-        val restored = fixture.advance(200, 100f)
+        val restored = fixture.settlePresence(100f)
         assertTrue(fixture.runtime.isPresenceReady())
         assertEquals(false, restored.near)
         assertEquals(0, fixture.backing.writes)
@@ -178,40 +176,68 @@ class ProximityCalibrationRuntimeTest {
         assertEquals("calibration_required", JSONObject(empty.statusJson()).getString("state"))
     }
 
-    /** Resetting to the profile removes the declined calibration, so the panel stops reporting it. */
-    @Test fun aResetAfterADeclinedCalibrationClearsTheDriftFlag() {
+    /** Presence anchors survive the old fixed band; a reset still removes the person's override. */
+    @Test fun resetRemovesAWeakStoredPresenceCalibration() {
         val backing = Backing(row(Calibration(mode = Mode.RANGED, clearRaw = 100f, nearRaw = 95f)))
         val fixture = Fixture(backing, driftMargin = 10f)
-        assertTrue(fixture.status().getBoolean("calibrationDriftUnsafe"))
-        assertEquals("profile", fixture.status().getString("calibrationSource"))
+        assertFalse(fixture.status().getBoolean("calibrationDriftUnsafe"))
+        assertEquals("user", fixture.status().getString("calibrationSource"))
         assertTrue(fixture.runtime.resetToProfile())
         assertFalse(fixture.status().getBoolean("calibrationDriftUnsafe"))
         assertEquals("profile", fixture.status().getString("calibrationSource"))
+        assertNull(backing.row)
     }
 
-    /** A calibration found under the old revision key passes the same drift check as one under the current key. */
-    @Test fun aCarriedCalibrationInsideTheDriftBandIsDeclined() {
+    /** Carrying the old revision key preserves weak presence without rewriting its measured anchors. */
+    @Test fun aCarriedWeakPresenceCalibrationLearnsItsRuntimeBand() {
         val old = row(Calibration(mode = Mode.RANGED, clearRaw = 100f, nearRaw = 95f))
             .copy(fingerprint = ProximityCalibrationRuntime.fingerprint("$PROFILE|rev-1|$SOURCE"))
         val backing = Backing(old)
         val carried = Fixture(backing, revision = "rev-1", driftMargin = 10f)
-        assertEquals("profile", carried.status().getString("calibrationSource"))
-        assertTrue(carried.status().getBoolean("calibrationDriftUnsafe"))
+        assertEquals("user", carried.status().getString("calibrationSource"))
+        assertFalse(carried.status().getBoolean("calibrationDriftUnsafe"))
+        assertEquals(false, carried.settlePresence(100f).near)
+        assertEquals(true, carried.settlePresence(95f).near)
         assertEquals(old, backing.row)
         assertEquals(0, backing.writes)
     }
 
-    /** A declined calibration asks for setup again; once setup saves one that holds the band, the panel no
-     *  longer reports the declined one. */
-    @Test fun aSetupSavedAfterADeclinedCalibrationClearsTheDriftFlag() {
+    @Test fun acceptingWeakStoredPresenceDoesNotEnableAPreviouslyRefusedExplicitWave() {
+        val wave = WaveCalibration(clearRaw = 974f, nearRaw = 3_413f)
+        val saved = row(Calibration(mode = Mode.RANGED, clearRaw = 974f, nearRaw = 995f, wave = wave))
+        val fixture = Fixture(Backing(saved), driftMargin = 100f)
+        assertEquals("user", fixture.status().getString("calibrationSource"))
+        assertFalse(fixture.status().getBoolean("waveSupported"))
+        assertEquals(false, fixture.settlePresence(974f).near)
+        assertEquals(true, fixture.settlePresence(995f).near)
+        assertTrue(fixture.runtime.isPresenceReady())
+        assertFalse(fixture.runtime.isWaveReady())
+
+        fixture.settlePresence(wave.clearRaw)
+        assertFalse(fixture.advance(800, wave.nearRaw).deliberateGesture)
+        assertFalse(fixture.advance(300).deliberateGesture)
+        assertFalse(fixture.sample(wave.clearRaw).deliberateGesture)
+        assertFalse(fixture.advance(150).deliberateGesture)
+        assertEquals(saved, fixture.backing.row)
+        assertEquals(0, fixture.backing.writes)
+        assertEquals(0, fixture.backing.clears)
+    }
+
+    @Test fun setupCanReplaceWeakPresenceWithoutPersistingItsRuntimeNoise() {
         val backing = Backing(row(Calibration(mode = Mode.RANGED, clearRaw = 974f, nearRaw = 995f)))
         val fixture = Fixture(backing, driftMargin = 100f)
-        assertTrue(fixture.status().getBoolean("calibrationDriftUnsafe"))
-        fixture.toReview(974f, 3_413f, null)
+        assertEquals("user", fixture.status().getString("calibrationSource"))
+        fixture.toReview(974f, 995f, null)
         fixture.advance(1)
         assertTrue(fixture.runtime.localAction("save"))
         assertEquals("user", fixture.status().getString("calibrationSource"))
         assertFalse(fixture.status().getBoolean("calibrationDriftUnsafe"))
+        assertEquals(1, backing.writes)
+        val saved = assertDecoded(assertRow(backing).snapshotJson)
+        assertEquals(974f, saved.clearRaw, 0f)
+        assertEquals(995f, saved.nearRaw, 0f)
+        fixture.settlePresence(974f)
+        fixture.settlePresence(995f)
         assertEquals(1, backing.writes)
     }
 
@@ -504,7 +530,10 @@ class ProximityCalibrationRuntimeTest {
         fixture.advance(ProximityCalibrationEngine.COUNTDOWN_MS + 1_000)
         assertEquals("clear", fixture.stage())
         fixture.sample(100f, live = false, capture = true)
-        fixture.advance(ProximityCalibrationEngine.CAPTURE_HOLD_MS)
+        repeat((ProximityCalibrationEngine.CAPTURE_HOLD_MS / 250).toInt()) {
+            fixture.at(fixture.now + 250)
+            fixture.sample(100f, live = false, capture = true)
+        }
         assertEquals("near", fixture.stage())
         val operational = Fixture(Backing(row(binaryLegacy())))
         operational.sample(0f); operational.advance(200)
@@ -587,13 +616,13 @@ class ProximityCalibrationRuntimeTest {
 
     @Test fun presenceOnlyApproachAndWaveOnlyGesturePublishIndependentCapabilities() {
         val presence = Fixture(Backing(row(presenceOnly())))
-        presence.sample(100f); presence.advance(200)
+        presence.settlePresence(100f)
         assertTrue(presence.runtime.isLearnedSignal())
         assertTrue(presence.runtime.isPresenceReady())
         assertFalse(presence.runtime.isWaveReady())
-        presence.advance(800, 50f)
-        val approach = presence.advance(200)
-        assertTrue(approach.presenceApproach)
+        var approached = false
+        val approach = presence.settlePresence(50f) { approached = approached || it.presenceApproach }
+        assertTrue(approached)
         assertTrue(presence.runtime.isPresenceNear())
         assertEquals(true, approach.near)
         assertFalse(approach.deliberateGesture)
@@ -625,29 +654,25 @@ class ProximityCalibrationRuntimeTest {
         assertEquals(2, saved.version)
     }
 
-    @Test fun twentyCountCalibrationPublishesOccupiedAndClearAfterDebounce() {
+    @Test fun twentyCountCalibrationPublishesOccupiedAndClearFromFreshSustainedSamples() {
         val fixture = Fixture()
         fixture.toReview(220f, 240f, null)
         assertTrue(fixture.runtime.localAction("save"))
-        val debounce = assertDecoded(assertRow(fixture.backing).snapshotJson).debounceMs
 
-        fixture.sample(220f)
-        val initialClear = fixture.advance(debounce)
+        val initialClear = fixture.settlePresence(220f)
         assertTrue(fixture.runtime.isPresenceReady())
         assertTrue(fixture.status().getBoolean("presenceReady"))
         assertEquals(false, initialClear.near)
         assertEquals(0, initialClear.normalizedLevel)
 
         fixture.sample(240f)
-        assertEquals(false, fixture.advance(debounce - 1).near)
-        val occupied = fixture.advance(1)
+        assertEquals("a timer does not create fresh statistical evidence", false, fixture.advance(200).near)
+        val occupied = fixture.settlePresence(240f)
         assertTrue(fixture.runtime.isPresenceReady())
         assertEquals(true, occupied.near)
         assertEquals(100, occupied.normalizedLevel)
 
-        fixture.sample(220f)
-        assertEquals(true, fixture.advance(debounce - 1).near)
-        val clear = fixture.advance(1)
+        val clear = fixture.settlePresence(220f)
         assertTrue(fixture.runtime.isPresenceReady())
         assertEquals(false, clear.near)
         assertEquals(0, clear.normalizedLevel)
@@ -860,7 +885,12 @@ class ProximityCalibrationRuntimeTest {
         }
         fun capture(raw: Float) {
             advance(ProximityCalibrationEngine.COUNTDOWN_MS, raw)
-            advance(ProximityCalibrationEngine.CAPTURE_HOLD_MS)
+            repeat((ProximityCalibrationEngine.CAPTURE_HOLD_MS / 250).toInt()) { advance(250, raw) }
+        }
+        fun settlePresence(raw: Float, observe: (ProximityCalibrationRuntime.Decision) -> Unit = {}): ProximityCalibrationRuntime.Decision {
+            var result = sample(raw)
+            repeat(24) { result = advance(250, raw); observe(result) }
+            return result
         }
         fun toReview(clear: Float, near: Float, hand: Float?) {
             begin(clear)

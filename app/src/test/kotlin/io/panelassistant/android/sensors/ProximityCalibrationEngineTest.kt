@@ -80,9 +80,9 @@ class ProximityCalibrationEngineTest {
         assertEquals(50f, h.saved!!.nearRaw, 0f)
         assertEquals(50f, h.saved!!.wave!!.clearRaw, 0f)
         assertEquals(5f, h.saved!!.wave!!.nearRaw, 0f)
-        h.observe(100f); h.tick(200)
-        h.tick(1_000); assertFalse(h.observe(50f).presenceApproach)
-        val approach = h.tick(150)
+        assertEquals(false, h.hold(100f).near)
+        assertFalse(h.observe(50f).presenceApproach)
+        val approach = h.hold(50f)
         assertTrue(approach.presenceApproach)
         assertFalse(approach.gesture)
         assertEquals(true, approach.near)
@@ -181,15 +181,14 @@ class ProximityCalibrationEngineTest {
 
     @Test fun firstProbeBackfillAndHistoricalReturnNeverPublishPresenceApproachOrWake() {
         val h = Journey(legacy())
-        assertFalse(h.observe(5f, live = false).presenceApproach)
-        assertFalse(h.tick(200).presenceApproach)
-        h.observe(40f); h.tick(200)
-        h.tick(800); h.observe(5f, live = false)
-        assertFalse(h.tick(200).presenceApproach)
-        h.observe(40f, live = false)
-        assertFalse(h.tick(200).gesture)
-        h.tick(800); h.observe(5f)
-        assertTrue(h.tick(150).presenceApproach)
+        assertFalse(h.hold(5f, live = false).presenceApproach)
+        assertEquals(true, h.state.near)
+        assertFalse(h.hold(40f, live = false).presenceApproach)
+        assertEquals(false, h.state.near)
+        assertFalse(h.hold(5f, live = false).presenceApproach)
+        assertFalse(h.hold(40f, live = false).gesture)
+        h.hold(40f) // Fresh clear blocks rearm an entirely live presence transition.
+        assertTrue(h.hold(5f).presenceApproach)
         h.observe(40f, live = false)
         assertFalse(h.tick(150).gesture)
     }
@@ -316,23 +315,24 @@ class ProximityCalibrationEngineTest {
         h.tick(COUNTDOWN_MS)
         assertEquals(Cue.HOLD, h.state.cue)
         assertEquals(CAPTURE_HOLD_MS, h.state.cueDurationMs)
-        h.tick(CAPTURE_HOLD_MS)
+        h.hold(100f, CAPTURE_HOLD_MS)
         assertEquals(Stage.NEAR, h.state.stage)
         assertEquals(Cue.APPROACH, h.state.cue)
         assertEquals(COUNTDOWN_MS, h.state.cueRemainingMs)
     }
 
-    @Test fun noisyClearObservationCannotBecomeBodyApproachUntilTheBodyActuallyMovesNear() {
+    @Test fun quietNoiseCannotValidateNormalApproachButACleanSustainedShiftCan() {
         val h = Journey(); h.begin(100f)
         h.tick(COUNTDOWN_MS)
-        for (raw in listOf(98f, 100f, 102f, 99f, 101f)) { h.observe(raw); h.tick(200) }
-        h.tick(CAPTURE_HOLD_MS - 1_000)
+        repeat(21) { h.observe(if (it % 2 == 0) 98f else 102f); if (it < 20) h.tick(250) }
         assertEquals(Stage.NEAR, h.state.stage)
         h.tick(COUNTDOWN_MS)
-        repeat(10) { h.observe(if (it % 2 == 0) 98f else 102f); h.tick(200) }
-        assertEquals(Stage.NEAR, h.state.stage)
-        h.observe(50f); h.tick(CAPTURE_HOLD_MS)
-        assertEquals(Stage.RETURN_CLEAR, h.state.stage)
+        repeat(21) { h.observe(if (it % 2 == 0) 98f else 102f); if (it < 20) h.tick(250) }
+        assertEquals(Stage.WAVE_BASELINE, h.state.stage)
+        assertFalse(h.state.presenceSupported)
+
+        val clean = Journey(); clean.begin(100f); clean.capture(100f); clean.capture(50f)
+        assertEquals(Stage.RETURN_CLEAR, clean.state.stage)
     }
 
     @Test fun rangedSourceWithBinaryEndpointMediansRetainsObservedIntermediateValues() {
@@ -399,7 +399,18 @@ class ProximityCalibrationEngineTest {
         fun observe(raw: Float, live: Boolean = true, capture: Boolean = live) = engine.observe(raw, now, live, capture)
         fun tick(delta: Long): Result { now += delta; return engine.tick(now) }
         fun begin(clear: Float) { engine.start(now); observe(clear, false, true); engine.action("begin", now) }
-        fun capture(raw: Float) { tick(COUNTDOWN_MS); observe(raw); tick(CAPTURE_HOLD_MS) }
+        fun capture(raw: Float) { tick(COUNTDOWN_MS); hold(raw, CAPTURE_HOLD_MS) }
+        fun hold(raw: Float, duration: Long = 6_000L, live: Boolean = true): Result {
+            var approached = false
+            var result = observe(raw, live, true)
+            approached = approached || result.presenceApproach
+            repeat((duration / 250L).toInt()) {
+                tick(250)
+                result = observe(raw, live, true)
+                approached = approached || result.presenceApproach
+            }
+            return result.copy(presenceApproach = approached)
+        }
         fun presence(clear: Float, body: Float) { begin(clear); capture(clear); capture(body); capture(clear); assertEquals(Stage.WAVE_BASELINE, state.stage) }
         fun pulse(clear: Float, near: Float): Result {
             observe(clear); tick(800); observe(near)
