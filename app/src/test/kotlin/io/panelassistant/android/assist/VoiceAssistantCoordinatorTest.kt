@@ -10,6 +10,7 @@ import io.panelassistant.android.audio.MicrophoneSource
 import io.panelassistant.android.audio.PcmConsumer
 import io.panelassistant.android.audio.PcmFrame
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -111,11 +112,15 @@ class VoiceAssistantCoordinatorTest {
 
     /** The `listen_after` of each streamed announcement's `voice_stream_end`. */
     @Volatile private var streamListenAfter = true
+
+    /** When set, each sound plays until it completes, as the media player's Stop would end it. */
+    @Volatile private var sounding: CompletableDeferred<Unit>? = null
     private val playback = object : AssistPlayback {
         override suspend fun play(url: String) {
             played += url
             mic.leases.firstOrNull()?.let { pausedWhilePlaying += it.paused }
             state.set(VoiceState.RESPONDING)
+            sounding?.await()
         }
 
         override suspend fun playStream(streamId: String): Boolean {
@@ -1055,14 +1060,53 @@ class VoiceAssistantCoordinatorTest {
     fun `an announcement plays its chime then its message with the listener paused, then reports it played`() {
         val c = coordinator()
         c.start()
-        val done = CompletableDeferred<Unit>()
-        c.announce(VoiceAnnouncement("message.mp3", "chime.mp3", listenAfter = false) { done.complete(Unit) })
-        runBlocking { withTimeout(2_000) { done.await() } }
+        val done = CompletableDeferred<Boolean>()
+        c.announce(VoiceAnnouncement("message.mp3", "chime.mp3", listenAfter = false) { done.complete(it) })
+        assertFalse("played to the end, not stopped", runBlocking { withTimeout(2_000) { done.await() } })
         awaitRunFinished(c)
         assertEquals(listOf("chime.mp3", "message.mp3"), played)
         assertEquals("the panel must not hear itself", listOf(true, true), pausedWhilePlaying)
         assertFalse(mic.leases[0].paused)
         assertTrue("an announcement alone asks nothing of Home Assistant", runners.isEmpty())
+    }
+
+    @Test
+    fun `the media player's Stop during the chime ends the announcement there, reported stopped once`() {
+        val c = coordinator()
+        c.start()
+        sounding = CompletableDeferred()
+        val outcomes = CopyOnWriteArrayList<Boolean>()
+        c.announce(VoiceAnnouncement("question.mp3", "chime.mp3", listenAfter = true) { outcomes += it })
+        runBlocking { withTimeout(2_000) { while ("chime.mp3" !in played) delay(10) } }
+        c.ownerStopped()
+        awaitRunFinished(c)
+        assertEquals("reported once, as stopped", listOf(true), outcomes)
+        assertEquals("the message never starts", listOf("chime.mp3"), played)
+        assertTrue("nothing listens after a stopped announcement", runners.isEmpty())
+    }
+
+    @Test
+    fun `the media player's Stop during the message ends it without listening, reported stopped once`() {
+        val c = coordinator()
+        c.start()
+        sounding = CompletableDeferred()
+        val outcomes = CopyOnWriteArrayList<Boolean>()
+        c.announce(VoiceAnnouncement("question.mp3", null, listenAfter = true) { outcomes += it })
+        runBlocking { withTimeout(2_000) { while ("question.mp3" !in played) delay(10) } }
+        c.ownerStopped()
+        awaitRunFinished(c)
+        assertEquals(listOf(true), outcomes)
+        assertTrue("nothing listens after a stopped announcement", runners.isEmpty())
+    }
+
+    @Test
+    fun `the media player's Stop with no announcement playing stops nothing`() {
+        val c = coordinator()
+        c.start()
+        c.ownerStopped()
+        val done = CompletableDeferred<Boolean>()
+        c.announce(VoiceAnnouncement("message.mp3", null, listenAfter = false) { done.complete(it) })
+        assertFalse(runBlocking { withTimeout(2_000) { done.await() } })
     }
 
     @Test

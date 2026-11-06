@@ -200,11 +200,11 @@ class PanelAssistantVoiceTest {
             rig.announcements,
         )
         rig.voice.played("abc_1")
+        rig.voice.played("abc_1", stopped = true)
         runCurrent()
-        assertEquals(
-            "abc_1",
-            rig.connection.sentOfType(PanelAssistantVoice.COMMAND_VOICE_PLAYED).single().getString("announce_id"),
-        )
+        val played = rig.connection.sentOfType(PanelAssistantVoice.COMMAND_VOICE_PLAYED)
+        assertEquals(listOf("abc_1", "abc_1"), played.map { it.getString("announce_id") })
+        assertEquals("only a stop says how it ended", listOf(null, "stopped"), played.map { it.optString("outcome").ifEmpty { null } })
     }
 
     @Test fun `a streamed announcement and a streamed reply carry the stream they name, and the URL path carries none`() = runTest {

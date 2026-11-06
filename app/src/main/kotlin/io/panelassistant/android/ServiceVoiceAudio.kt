@@ -115,7 +115,7 @@ internal class ServiceVoiceAudio(
             scope = scope,
             configuration = ::voiceConfiguration,
             onAnnouncement = { announcement ->
-                val done = { panelAssistantVoice.played(announcement.announceId) }
+                val done = { stopped: Boolean -> panelAssistantVoice.played(announcement.announceId, stopped) }
                 if (::voice.isInitialized) {
                     voice.announce(
                         io.panelassistant.android.assist.VoiceAnnouncement(
@@ -124,7 +124,7 @@ internal class ServiceVoiceAudio(
                         ),
                     )
                 } else {
-                    done()
+                    done(false)
                 }
             },
             log = { message -> Log.i(TAG, message) },
@@ -156,6 +156,7 @@ internal class ServiceVoiceAudio(
                 if (stream != null && ::voice.isInitialized) voice.announceStreamedMedia(url, stream) else (if (stream != null) audio.submitStreamForGeneration(stream) else audio.submitForGeneration(url, speech = true)) != null
             },
             cancelAnnouncement = { audio.snapshot().let { audio.cancelGeneration(it.generation) } },
+            ownerStopped = { if (::voice.isInitialized) voice.ownerStopped() },
             muted = volume()::isMuted,
             setMuted = volume()::setMuted,
             log = { Log.w(TAG, it) },
@@ -211,7 +212,7 @@ internal class ServiceVoiceAudio(
     /** Stop admitting playback and stop the media player; ordinary teardown and a process boundary alike. */
     fun closeAdmission() {
         if (::audio.isInitialized) beginAudioTeardown(audio::closeAdmission, audio::cancelCurrent)
-        if (::media.isInitialized) media.command(io.panelassistant.android.media.PanelMediaCommand.Stop)
+        if (::media.isInitialized) media.halt()
     }
 
     /** Drain audio playback on the runtime lane; [drained] is what the finalizer later reads. */

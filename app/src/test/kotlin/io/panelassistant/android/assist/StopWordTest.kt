@@ -360,15 +360,15 @@ class StopWordTest {
         )
     }
 
-    @Test fun `stop silences a ringing timer, reports it played and listens for nothing after it`() {
+    @Test fun `stop silences a ringing timer, reports it stopped and listens for nothing after it`() {
         eventually("the wake word is armed") { wake != null }
-        val done = CompletableDeferred<Unit>()
-        coordinator.announce(VoiceAnnouncement(TIMER, CHIME, listenAfter = true, done = { done.complete(Unit) }))
+        val done = CompletableDeferred<Boolean>()
+        coordinator.announce(VoiceAnnouncement(TIMER, CHIME, listenAfter = true, done = { done.complete(it) }))
         eventually("the timer rings") { started.contains(TIMER) }
         hear(1_600, saying = false)
         hear(100, saying = true)
         assertStopped(TIMER)
-        assertTrue(done.isCompleted)
+        assertTrue("Panel Assistant hears the owner stopped it, so it rings no more", done.getCompleted())
         assertTrue("no turn follows", sentOf(PanelAssistantVoice.COMMAND_VOICE_RUN).isEmpty())
     }
 
