@@ -56,6 +56,8 @@ internal fun managementStatusJson(
     /** The panel profile id, read only to link a WebView-too-old warning to that model's update steps. */
     profileId: () -> String,
     webView: (() -> String)? = null,
+    rootLostSinceBoot: () -> Boolean = io.panelassistant.android.control.Su::rootLostSinceBoot,
+    screenLockSecure: () -> Boolean? = { null },
 ): String {
     // Engine-aware WebView age check (a Cromite swap reports the stale OEM package version). Same finding
     // set as the dashboard banner + Install tab (HealthAudit); the audit lists ALL available updates
@@ -149,6 +151,8 @@ internal fun managementStatusJson(
     return "{\"warnings\":[${warns.joinToString(",") { jsonStr(it) }}]," +
         "\"warning_severities\":[${severities.joinToString(",") { jsonStr(it.wire) }}]," + presentationOverlay +
         "\"capabilities\":[$caps],${installCapabilityStatusJson(management.privilege, management.confirmedSelfUpdate)}," +
+        "\"root_lost_since_boot\":${runCatching(rootLostSinceBoot).getOrDefault(false)}," +
+        "\"screen_lock_secure\":${runCatching(screenLockSecure).getOrNull() ?: "null"}," +
         storageProof +
         homeProofJson +
         // Additive, presentation-only, and read from state the panel already holds.
