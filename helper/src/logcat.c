@@ -22,6 +22,16 @@
 #define SECOND_MAX_BYTES (256u * 1024u)
 #define SECOND_MAX_ENTRIES 256u
 
+// LOGCATDUMP: one bounded backlog per log-viewer opening. The deadline stays below the app's 5 s
+// byte-reply socket timeout so a slow dump still reaches the client before it gives up.
+#define LOGCAT_DUMP_LINES_MAX 1000u
+#ifndef LOGCAT_DUMP_MAX_BYTES
+#define LOGCAT_DUMP_MAX_BYTES (256u * 1024u)
+#endif
+#ifndef LOGCAT_DUMP_DEADLINE_MS
+#define LOGCAT_DUMP_DEADLINE_MS 3000u
+#endif
+
 void cmd_logcatcaps(conn_ctx *ctx, const char *args) {
     reply(ctx->fd, *args ? "ERR\n" : "LOGCATCAPS 1\n");
 }
@@ -35,6 +45,12 @@ static int send_all(int fd, const char *bytes, size_t size) {
         size -= (size_t)sent;
     }
     return 0;
+}
+
+static long long monotonic_ms(void) {
+    struct timespec now;
+    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) return -1;
+    return (long long)now.tv_sec * 1000LL + now.tv_nsec / 1000000L;
 }
 
 static time_t monotonic_second(void) {
@@ -147,6 +163,53 @@ void cmd_logcat(conn_ctx *ctx, const char *args) {
             }
             line_used = 0;
         }
+    }
+cleanup:
+    close(source);
+    int status;
+    (void)sysexec_terminate_argv(child, &status);
+}
+
+void cmd_logcatdump(conn_ctx *ctx, const char *args) {
+    // Exactly one decimal count, 1..LOGCAT_DUMP_LINES_MAX. The width bound stops a long digit run
+    // from overflowing; a fifth digit, sign or any trailing byte lands in `extra` and is refused.
+    unsigned lines = 0;
+    char extra;
+    if (args[0] < '0' || args[0] > '9' || sscanf(args, "%4u%c", &lines, &extra) != 1 ||
+        lines < 1 || lines > LOGCAT_DUMP_LINES_MAX) {
+        reply(ctx->fd, "ERR\n");
+        return;
+    }
+    char count[8];
+    snprintf(count, sizeof count, "%u", lines);
+    const char *const argv[] = { "logcat", "-b", "all", "-v", "long", "-v", "epoch",
+                                 "-v", "printable", "-d", "-t", count, NULL };
+    long long deadline = monotonic_ms();
+    if (deadline < 0) { reply(ctx->fd, "ERR\n"); return; }
+    deadline += LOGCAT_DUMP_DEADLINE_MS;
+    pid_t child;
+    int source;
+    if (sysexec_start_stdout_argv(HAPANELD_LOGCAT_PATH, argv, &child, &source) != 0) {
+        reply(ctx->fd, "ERR\n");
+        return;
+    }
+    if (send_all(ctx->fd, "OK\n", 3) != 0) goto cleanup;
+    // Raw bytes, then EOF. A cap or deadline can cut mid-entry; the client keeps only records that
+    // end in the long-format blank footer.
+    size_t remaining = LOGCAT_DUMP_MAX_BYTES;
+    char buffer[4096];
+    while (remaining) {
+        long long now = monotonic_ms();
+        if (now < 0 || now >= deadline) break;
+        struct pollfd watched = { .fd = source, .events = POLLIN | POLLHUP };
+        int ready = poll(&watched, 1, (int)(deadline - now));
+        if (ready < 0 && errno == EINTR) continue;
+        if (ready <= 0) break;
+        ssize_t count_read = read(source, buffer, remaining < sizeof buffer ? remaining : sizeof buffer);
+        if (count_read < 0 && errno == EINTR) continue;
+        if (count_read <= 0) break;
+        if (send_all(ctx->fd, buffer, (size_t)count_read) != 0) break;
+        remaining -= (size_t)count_read;
     }
 cleanup:
     close(source);

@@ -2,10 +2,12 @@
 #include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "dispatch.h"
@@ -20,6 +22,89 @@ static void *serve(void *arg) {
     dispatch(&ctx, command);
     close(fd);
     return NULL;
+}
+
+struct dump_request { int fd; char command[64]; };
+
+static void *serve_dump(void *arg) {
+    struct dump_request *request = arg;
+    conn_ctx ctx = { .fd = request->fd, .caller = HELPER_CALLER_SUCCESSOR };
+    dispatch(&ctx, request->command);
+    close(request->fd);
+    return NULL;
+}
+
+static long long now_ms(void) {
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return (long long)now.tv_sec * 1000LL + now.tv_nsec / 1000000L;
+}
+
+// Run one LOGCATDUMP request on a fresh socket pair and collect everything up to EOF. A handler
+// that never reaches EOF fails here instead of hanging the suite.
+static size_t run_dump(const char *command, char *out, size_t capacity, long long *elapsed_ms) {
+    static struct dump_request request;
+    int pair[2];
+    if (socketpair(AF_UNIX, SOCK_STREAM, 0, pair) != 0) exit(2);
+    struct timeval timeout = { .tv_sec = 6 };
+    setsockopt(pair[1], SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout);
+    request.fd = pair[0];
+    snprintf(request.command, sizeof request.command, "%s", command);
+    long long start = now_ms();
+    pthread_t worker;
+    if (pthread_create(&worker, NULL, serve_dump, &request) != 0) exit(2);
+    size_t used = 0;
+    for (;;) {
+        ssize_t n = read(pair[1], out + used, capacity - used - 1);
+        if (n == 0) break;
+        if (n < 0) {
+            printf("FAIL: LOGCATDUMP reaches EOF within its deadline (%s)\n", command);
+            exit(1);
+        }
+        used += (size_t)n;
+        if (used >= capacity - 1) break;
+    }
+    out[used] = '\0';
+    if (elapsed_ms) *elapsed_ms = now_ms() - start;
+    close(pair[1]);
+    pthread_join(worker, NULL);
+    return used;
+}
+
+static void check_dump(void) {
+    static char out[400000];
+    const char *refused[] = { "LOGCATDUMP", "LOGCATDUMP 0", "LOGCATDUMP 1001", "LOGCATDUMP 10000",
+                              "LOGCATDUMP abc", "LOGCATDUMP 300 x", "LOGCATDUMP 300;sh", "LOGCATDUMP -1",
+                              "LOGCATDUMP +5", "LOGCATDUMP 99999999999999999999" };
+    for (size_t i = 0; i < sizeof refused / sizeof refused[0]; i++) {
+        run_dump(refused[i], out, sizeof out, NULL);
+        CHECK(strcmp(out, "ERR\n") == 0, "LOGCATDUMP refuses a malformed or out-of-range count: '%s' -> '%.20s'\n",
+              refused[i], out);
+    }
+
+    run_dump("LOGCATDUMP 3", out, sizeof out, NULL);
+    CHECK(strcmp(out, "OK\n"
+                      "[ 1790592713.000 12: 13 I/Backlog ]\nbacklog entry 0\n\n"
+                      "[ 1790592713.001 12: 13 I/Backlog ]\nbacklog entry 1\n\n"
+                      "[ 1790592713.002 12: 13 I/Backlog ]\nbacklog entry 2\n\n") == 0,
+          "LOGCATDUMP returns the fixed-argv backlog, then EOF\n");
+    run_dump("LOGCATDUMP 1000", out, sizeof out, NULL);
+    CHECK(strstr(out, "backlog entry 999\n\n") != NULL, "LOGCATDUMP accepts its upper bound\n");
+    run_dump("LOGCATDUMP 1", out, sizeof out, NULL);
+    CHECK(strstr(out, "backlog entry 0\n\n") != NULL, "LOGCATDUMP accepts its lower bound\n");
+
+    long long elapsed = 0;
+    run_dump("LOGCATDUMP 7", out, sizeof out, &elapsed);
+    CHECK(strcmp(out, "OK\n[ 1790592713.000 12: 13 I/Wedged ]\nbefore the wedge\n\n") == 0,
+          "LOGCATDUMP forwards output a wedged child produced before its deadline\n");
+    CHECK(elapsed >= 250 && elapsed < 2500, "LOGCATDUMP ends a wedged child at its deadline (%lld ms)\n", elapsed);
+    int status;
+    CHECK(waitpid(-1, &status, WNOHANG) < 0 && errno == ECHILD, "LOGCATDUMP timeout kills and reaps its child\n");
+
+    size_t used = run_dump("LOGCATDUMP 999", out, sizeof out, NULL);
+    CHECK(strncmp(out, "OK\n[ ", 5) == 0 && used == 3 + 256u * 1024u,
+          "LOGCATDUMP stops an unbounded producer at its byte cap (%zu bytes)\n", used);
+    CHECK(waitpid(-1, &status, WNOHANG) < 0 && errno == ECHILD, "LOGCATDUMP cap kills and reaps its child\n");
 }
 
 int main(void) {
@@ -77,6 +162,7 @@ int main(void) {
     int status;
     CHECK(waitpid(-1, &status, WNOHANG) < 0 && errno == ECHILD,
           "LOGCAT disconnect kills and reaps its child\n");
+    check_dump();
     if (failures) return 1;
     puts("LOGCAT BOUNDARY OK");
     return 0;

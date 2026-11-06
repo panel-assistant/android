@@ -30,6 +30,7 @@ Newline-terminated ASCII on the abstract UNIX socket `@hapaneld-helper`. One or 
 | `SCREENCAP` | capture the screen as PNG | raw PNG bytes, then EOF |
 | `LOGCATCAPS` | probe the authenticated full-system log stream; older helpers return `ERR` | `LOGCATCAPS 1` / `ERR` for arguments |
 | `LOGCAT` | follow all Android log buffers from the current time using fixed `logcat -b all -T 1 -v long -v epoch` arguments; the client closes the socket to stop the stream | `OK`, then raw long-format lines including blank entry separators / `ERR` for arguments or start failure |
+| `LOGCATDUMP <n>` | one bounded backlog of the last `n` (1–1000) entries from all Android log buffers using fixed `logcat -b all -v long -v epoch -v printable -d -t <n>` arguments; no other argument is accepted. The child runs under a 3 s deadline and is killed and reaped at it, and output stops at 256 KiB, so the last entry may be cut. Protocol 1.4 and later | `OK`, then raw long-format lines, then EOF / `ERR` for a missing, out-of-range or malformed count or start failure |
 | `RELOAD <pkg>` | force-stop + relaunch an app (dashboard reload); serialized with supported Companion data transactions | `OK` / `ERR` / `BUSY` |
 | `START <pkg/cls>` | launch an activity by component (root, bypasses BAL limits); serialized with supported Companion data transactions | `OK` / `ERR` / `BUSY` |
 | `SETHOME <pkg/cls>` | set the default home (launcher) to a component — re-asserts the dashboard app as home after a HOME-app install clears it | `OK` / `ERR` |
