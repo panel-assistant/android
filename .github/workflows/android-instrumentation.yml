@@ -130,6 +130,8 @@ jobs:
             test "$(adb shell getprop ro.kernel.qemu | tr -d "\r")" = 1;
             adb shell am force-stop io.panelassistant.android;
             adb shell am force-stop io.panelassistant.android.test;
+            cleared="$(adb shell pm clear io.panelassistant.android | tr -d "\r")"; test "$cleared" = Success;
+            cleared="$(adb shell pm clear io.panelassistant.android.test | tr -d "\r")"; test "$cleared" = Success;
             trap "adb shell appops set io.panelassistant.android SYSTEM_ALERT_WINDOW default" EXIT;
             adb shell appops set io.panelassistant.android SYSTEM_ALERT_WINDOW allow;
             log="$RUNNER_TEMP/overlay-wake-tap-instrumentation.log";
