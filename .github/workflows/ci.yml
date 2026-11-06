@@ -481,7 +481,14 @@ jobs:
       - name: Unit tests
         run: |
           trap 'sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE" || true' EXIT
-          sudo make -C helper test
+          # The recovery daemon starts only when init sits at the cgroup root, as on a panel; a
+          # systemd runner keeps init in /init.scope, so run the suite in its own PID and cgroup namespace.
+          # Containers (the private CI) already put init at the root and may refuse new namespaces.
+          if sudo unshare --pid --fork --mount-proc --cgroup true; then
+            sudo unshare --pid --fork --mount-proc --cgroup make -C helper test
+          else
+            sudo make -C helper test
+          fi
 
       - name: App↔daemon contract cross-check
         run: helper/test/contract-check.sh
