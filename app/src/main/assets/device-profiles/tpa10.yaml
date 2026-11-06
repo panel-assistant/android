@@ -1,6 +1,6 @@
 schema: 2
 id: tpa10
-version: 2.0.4
+version: 2.0.5
 display_name: Tuya TPA10
 soc_class: rk3566
 soc:
@@ -98,7 +98,7 @@ display:
 provisioning:
   software:
     webview:
-      artifact: lineageos-150-arm
+      artifact: lineageos-156-arm
   display:
     density: 212
     font_scale: 1.0
