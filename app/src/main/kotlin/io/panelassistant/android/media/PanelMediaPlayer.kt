@@ -78,6 +78,8 @@ internal class PanelMediaPlayer(
     /** Play an announcement: the URL, or the stream id if Panel Assistant streams it instead. */
     private val announce: (url: String, stream: String?) -> Boolean,
     private val cancelAnnouncement: () -> Unit,
+    /** The owner pressed Stop: told before the sound is cancelled, so what plays reports it was stopped. */
+    private val ownerStopped: () -> Unit = {},
     private val muted: () -> Boolean,
     private val setMuted: (Boolean) -> Unit,
     private val log: (String) -> Unit = {},
@@ -124,8 +126,8 @@ internal class PanelMediaPlayer(
             PanelMediaCommand.Pause -> owner { pause() }
             PanelMediaCommand.Resume -> owner { resume() }
             PanelMediaCommand.Stop -> {
-                owner { end() }
-                cancelAnnouncement()
+                ownerStopped()
+                halt()
             }
             is PanelMediaCommand.Mute -> {
                 setMuted(command.muted)
@@ -133,6 +135,12 @@ internal class PanelMediaPlayer(
             }
         }
         return true
+    }
+
+    /** End media and the current announcement for a teardown, which is no owner's Stop. */
+    fun halt() {
+        owner { end() }
+        cancelAnnouncement()
     }
 
     /** [source] started or stopped needing the speaker. */
