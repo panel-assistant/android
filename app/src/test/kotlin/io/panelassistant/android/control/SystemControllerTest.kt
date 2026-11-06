@@ -221,6 +221,8 @@ class SystemControllerTest {
         val env = FakeSystemEnv(installed = setOf(MIN), default = ActivityRef(MIN, ".Home"))
         val foreground = sc(env, daemon = mapOf("APPSTATE $MIN" to "FG")).first
         assertEquals("ready", foreground.homeUiProof(MIN, adminUiVisible = false).state)
+        env.default = ActivityRef(FULL, ".Home")
+        assertEquals("ready", foreground.homeUiProof(MIN, adminUiVisible = false).state)
         val background = sc(env, daemon = mapOf("APPSTATE $MIN" to "BG")).first
         assertEquals("blocked", background.homeUiProof(MIN, adminUiVisible = false).state)
         val unobserved = sc(env, daemon = mapOf("APPSTATE $MIN" to "ERR"), su = false).first

@@ -861,8 +861,7 @@ browserTest('Configure renderer picker reflects the installed Companion catalogu
 
   const companionSaved = page.waitForResponse((response) => response.url().endsWith('/api/v1/config') && response.request().method() === 'POST');
   await page.locator('#cfg-dashboard_package select').selectOption(minimal.pkg);
-  await page.locator('.companion-renderer-hint').getByText("Turn on the Companion app's launcher option for it to take Home.").waitFor();
-  assert.equal(await page.locator('.companion-renderer-hint').count(), 1, 'the selected Companion shows one hint');
+  assert.equal(await page.locator('.companion-renderer-hint').count(), 0, 'Companion retains HOME without asking to enable its launcher');
   await companionSaved;
   assert.deepEqual(posts, [{ dashboard_package: minimal.pkg }], 'choosing the renderer sends it once');
   await page.reload({ waitUntil: 'domcontentloaded', timeout: 5_000 });

@@ -50,19 +50,17 @@ class PreservePreviousHomeReceiver : BroadcastReceiver() {
             }
             return
         }
-        var data: String? = null
-        val ok = runCatching {
+        val reply = runCatching {
             val config = Config(context)
             val env = AndroidSystemEnv(context)
-            val result = previousHomeOperation(
+            previousHomeOperation(
                 config, env, context.packageName, operation, intent.getStringExtra("previous_home_component"),
                 shellLockIdentity = intent.getStringExtra("home_lock_identity"),
+                requirePending = intent.getBooleanExtra("pending_setup", false),
             )
-            data = result.data
-            result.code == 1
-        }.getOrDefault(false)
-        resultCode = if (ok) 1 else 0
-        if (ok && data != null) resultData = data
+        }.getOrElse { PreviousHomeReply(0) }
+        resultCode = reply.code
+        resultData = reply.data
     }
 }
 
@@ -77,6 +75,7 @@ internal fun previousHomeOperation(
     supplied: String?,
     shellLockIdentity: String? = null,
     lockIdentity: () -> String? = NativeHomeLock::identity,
+    requirePending: Boolean = false,
     parse: (String) -> ActivityRef? = {
         ComponentName.unflattenFromString(it)?.let { component -> ActivityRef(component.packageName, component.className) }
     },
@@ -84,7 +83,8 @@ internal fun previousHomeOperation(
     if (operation != null) config.migrateSetupQuestionsForExistingInstall()
     if (operation == "dashboard_home_policy" || operation == "restore_previous_home_shell_lock_eligibility" ||
         operation == "acknowledge_retained_home") return withHomeCustody {
-        if (!config.setupEverCompleted) return@withHomeCustody PreviousHomeReply(0)
+        if (!config.setupEverCompleted || requirePending && !config.homeTakeoverPending)
+            return@withHomeCustody PreviousHomeReply(0)
         if (config.dashboardOwnsHome(env)) return@withHomeCustody if (operation == "dashboard_home_policy")
             PreviousHomeReply(1, "panel-assistant-home-builtin") else PreviousHomeReply(0)
         if (!AndroidInput.isPackage(config.dashboardPackage)) return@withHomeCustody PreviousHomeReply(0)
@@ -130,6 +130,7 @@ internal enum class PendingHomeResult(val code: Int, val data: String?) {
     SHELL(2, "panel-assistant-pending-home-shell"),
     SHELL_LOCKED(1, "panel-assistant-pending-home-shell-locked"),
     RETAINED(1, "panel-assistant-pending-home-retained"),
+    RESTORE(3, "panel-assistant-pending-home-restore"),
 }
 
 /** The automatic setup caller has less authority than an explicit install or update repair. */
@@ -157,8 +158,10 @@ internal fun pendingHomeOperation(
             if (!AndroidInput.isPackage(config.dashboardPackage)) return@withHomeCustody PendingHomeResult.DEFERRED
             val retained = retainedDashboardHome(env, config.previousHomeComponent)
                 ?: return@withHomeCustody PendingHomeResult.DEFERRED
-            if (env.defaultHome() != retained && (!claim || !native || restoreHome?.invoke(retained.component) != true)) {
-                return@withHomeCustody PendingHomeResult.DEFERRED
+            if (env.defaultHome() != retained) {
+                if (!claim) return@withHomeCustody PendingHomeResult.DEFERRED
+                if (!native) return@withHomeCustody PendingHomeResult.RESTORE
+                if (restoreHome?.invoke(retained.component) != true) return@withHomeCustody PendingHomeResult.DEFERRED
             }
             return@withHomeCustody if (env.defaultHome() == retained && config.completeHomeTakeover())
                 PendingHomeResult.RETAINED else PendingHomeResult.DEFERRED

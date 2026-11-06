@@ -1,5 +1,6 @@
 package io.panelassistant.android.platform
 
+
 import io.panelassistant.android.AppIdentity
 import io.panelassistant.android.Config
 import io.panelassistant.android.control.FakeSystemEnv
@@ -8,7 +9,6 @@ import io.panelassistant.android.homeTakeoverPending
 import io.panelassistant.android.preservePreviousHome
 import io.panelassistant.android.previousHomeComponent
 import io.panelassistant.android.setupEverCompleted
-import io.panelassistant.android.completeHomeTakeover
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -71,7 +71,9 @@ class PreservePreviousHomeReceiverTest {
             check(preservePreviousHome(vendor, listOf(vendor), armTakeover = true))
         }
         val e = env(dashboard, vendor, dashboard, other)
-        assertEquals("panel-assistant-home-restore:${vendor.component}", run(c, e, "dashboard_home_policy").data)
+        val restore = run(c, e, "dashboard_home_policy")
+        assertEquals(3, restore.code)
+        assertEquals("panel-assistant-home-restore:${vendor.component}", restore.data)
         fun locked(identity: String?, target: String = vendor.component) = previousHomeOperation(
             c, e, AppIdentity.OWN, "restore_previous_home_shell_lock_eligibility", target,
             shellLockIdentity = identity, lockIdentity = { "1:2" })
@@ -88,6 +90,24 @@ class PreservePreviousHomeReceiverTest {
         e.default = dashboard
         e.homes = listOf(dashboard)
         assertEquals(0, run(c, e, "dashboard_home_policy").code)
+    }
+
+    @Test fun deferredRestoreEligibilityIsRevokedWhenPendingIsRetired() {
+        val c = config().apply {
+            setupEverCompleted = true
+            setDashboardPackage("io.homeassistant.companion.android.minimal")
+            check(preservePreviousHome(vendor, listOf(vendor), armTakeover = true))
+        }
+        val e = env(dashboard, vendor, dashboard)
+        fun query(operation: String) = previousHomeOperation(c, e, AppIdentity.OWN, operation,
+            vendor.component, shellLockIdentity = "1:2", lockIdentity = { "1:2" }, requirePending = true)
+        assertEquals(3, query("dashboard_home_policy").code)
+        assertEquals(1, query("restore_previous_home_shell_lock_eligibility").code)
+        e.default = vendor
+        assertEquals(1, run(c, e, "acknowledge_retained_home", vendor.component).code)
+        e.default = dashboard
+        assertEquals(0, query("dashboard_home_policy").code)
+        assertEquals(0, query("restore_previous_home_shell_lock_eligibility").code)
     }
 
     @Test fun restoredHomeAcknowledgementNeedsExactFreshHomeAndCompletedSetup() {

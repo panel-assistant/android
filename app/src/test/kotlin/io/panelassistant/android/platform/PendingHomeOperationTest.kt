@@ -132,7 +132,7 @@ class PendingHomeOperationTest {
         val panel = Panel()
         panel.config.setDashboardPackage("io.homeassistant.companion.android.minimal")
         panel.home(dashboard)
-        assertEquals(PendingHomeResult.DEFERRED, panel.pending(native = { false }))
+        assertEquals(PendingHomeResult.RESTORE, panel.pending(native = { false }))
         assertEquals(PendingHomeResult.DEFERRED, panel.pending(claim = false, native = { false }))
         assertEquals(dashboard, panel.env.defaultHome())
         assertTrue(panel.root.ran.isEmpty())
