@@ -24,14 +24,52 @@ static void *serve(void *arg) {
     return NULL;
 }
 
-struct dump_request { int fd; char command[64]; };
+struct dump_request { int fd; char command[64]; volatile int done; };
 
 static void *serve_dump(void *arg) {
     struct dump_request *request = arg;
     conn_ctx ctx = { .fd = request->fd, .caller = HELPER_CALLER_SUCCESSOR };
     dispatch(&ctx, request->command);
     close(request->fd);
+    __atomic_store_n(&request->done, 1, __ATOMIC_SEQ_CST);
     return NULL;
+}
+
+// A flood dump to a client that reads a few bytes and then either stalls past the deadline
+// (disconnect = 0) or closes mid-stream (disconnect = 1). Small socket buffers make the handler block.
+static void check_misbehaving_reader(int disconnect) {
+    static struct dump_request request;
+    int pair[2];
+    if (socketpair(AF_UNIX, SOCK_STREAM, 0, pair) != 0) exit(2);
+    int small = 4096;
+    setsockopt(pair[0], SOL_SOCKET, SO_SNDBUF, &small, sizeof small);
+    setsockopt(pair[1], SOL_SOCKET, SO_RCVBUF, &small, sizeof small);
+    request.fd = pair[0];
+    request.done = 0;
+    snprintf(request.command, sizeof request.command, "LOGCATDUMP 999");
+    pthread_t worker;
+    if (pthread_create(&worker, NULL, serve_dump, &request) != 0) exit(2);
+    char head[16];
+    ssize_t n = read(pair[1], head, sizeof head);
+    CHECK(n > 0, "LOGCATDUMP starts streaming to a slow reader\n");
+    int status;
+    if (disconnect) {
+        close(pair[1]);
+        pthread_join(worker, NULL);
+        CHECK(waitpid(-1, &status, WNOHANG) < 0 && errno == ECHILD,
+              "LOGCATDUMP client disconnect mid-stream kills and reaps its child\n");
+        return;
+    }
+    usleep(1500 * 1000);                       // three deadlines without reading
+    int finished = __atomic_load_n(&request.done, __ATOMIC_SEQ_CST);
+    CHECK(finished, "LOGCATDUMP cuts a slow reader at its deadline\n");
+    if (finished)
+        CHECK(waitpid(-1, &status, WNOHANG) < 0 && errno == ECHILD,
+              "LOGCATDUMP slow-reader cut kills and reaps its child\n");
+    char drain[4096];
+    while (read(pair[1], drain, sizeof drain) > 0) {}
+    close(pair[1]);
+    pthread_join(worker, NULL);
 }
 
 static long long now_ms(void) {
@@ -105,6 +143,8 @@ static void check_dump(void) {
     CHECK(strncmp(out, "OK\n[ ", 5) == 0 && used == 3 + 256u * 1024u,
           "LOGCATDUMP stops an unbounded producer at its byte cap (%zu bytes)\n", used);
     CHECK(waitpid(-1, &status, WNOHANG) < 0 && errno == ECHILD, "LOGCATDUMP cap kills and reaps its child\n");
+    check_misbehaving_reader(0);
+    check_misbehaving_reader(1);
 }
 
 int main(void) {

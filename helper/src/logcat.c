@@ -170,6 +170,25 @@ cleanup:
     (void)sysexec_terminate_argv(child, &status);
 }
 
+// Send under the dump's absolute deadline: a client that reads slowly cannot hold the connection
+// slot or the logcat child past it.
+static int send_until(int fd, const char *bytes, size_t size, long long deadline) {
+    while (size) {
+        long long now = monotonic_ms();
+        if (now < 0 || now >= deadline) return -1;
+        struct pollfd writable = { .fd = fd, .events = POLLOUT };
+        int ready = poll(&writable, 1, (int)(deadline - now));
+        if (ready < 0 && errno == EINTR) continue;
+        if (ready <= 0) return -1;
+        ssize_t sent = send(fd, bytes, size, MSG_NOSIGNAL | MSG_DONTWAIT);
+        if (sent < 0 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)) continue;
+        if (sent <= 0) return -1;
+        bytes += sent;
+        size -= (size_t)sent;
+    }
+    return 0;
+}
+
 void cmd_logcatdump(conn_ctx *ctx, const char *args) {
     // Exactly one decimal count, 1..LOGCAT_DUMP_LINES_MAX. The width bound stops a long digit run
     // from overflowing; a fifth digit, sign or any trailing byte lands in `extra` and is refused.
@@ -193,7 +212,7 @@ void cmd_logcatdump(conn_ctx *ctx, const char *args) {
         reply(ctx->fd, "ERR\n");
         return;
     }
-    if (send_all(ctx->fd, "OK\n", 3) != 0) goto cleanup;
+    if (send_until(ctx->fd, "OK\n", 3, deadline) != 0) goto cleanup;
     // Raw bytes, then EOF. A cap or deadline can cut mid-entry; the client keeps only records that
     // end in the long-format blank footer.
     size_t remaining = LOGCAT_DUMP_MAX_BYTES;
@@ -208,7 +227,7 @@ void cmd_logcatdump(conn_ctx *ctx, const char *args) {
         ssize_t count_read = read(source, buffer, remaining < sizeof buffer ? remaining : sizeof buffer);
         if (count_read < 0 && errno == EINTR) continue;
         if (count_read <= 0) break;
-        if (send_all(ctx->fd, buffer, (size_t)count_read) != 0) break;
+        if (send_until(ctx->fd, buffer, (size_t)count_read, deadline) != 0) break;
         remaining -= (size_t)count_read;
     }
 cleanup:
