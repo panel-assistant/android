@@ -2444,8 +2444,8 @@ int main(void) {
     test_replacement_respects_installstream_package_gate();
     test_replacement_shared_lock_admission();
     test_replacement_fence_and_same_lease_app_swap();
-    test_replacement_export_replaces_inherited_fd3();
     test_replacement_adopt_closes_previous_owner_fd();
+    test_replacement_export_replaces_inherited_fd3();
     test_stale_replacement_refusal_matrix();
     test_stale_replacement_live_owner_and_postswap_hold();
     test_stale_replacement_durability();
