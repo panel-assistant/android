@@ -679,7 +679,7 @@ class ProximityCalibrationRuntimeTest {
         fixture.runtime.close()
     }
 
-    @Test fun archivedRangedGapReleasesKeptCalibrationWithoutChangingItsSavedRow() {
+    @Test fun archivedRangedReadingsNeverChangeTheSavedCalibrationOrBecomeWaveWake() {
         val saved = row(keptRanged())
         val fixture = Fixture(Backing(saved), driftMargin = 100f, keepStoredInsideDriftBand = true)
         val start = fixture.now
@@ -689,102 +689,71 @@ class ProximityCalibrationRuntimeTest {
         }
         assertEquals("user", fixture.status().getString("calibrationSource"))
         assertFalse(fixture.status().getBoolean("calibrationDriftUnsafe"))
-        samples.forEachIndexed { index, (time, raw) ->
+        // The archive has no occupancy labels; it cannot prescribe when the room became clear.
+        for ((time, raw) in samples) {
             fixture.at(start + time)
-            val decision = fixture.sample(raw)
-            assertFalse("timeout must not become a wave at $time", decision.deliberateGesture)
-            if (index > 0) assertEquals("presence at $time", time < 180_000L, decision.near)
-            if (time >= 180_000L) {
-                assertEquals(0, decision.normalizedLevel)
-                assertFalse(decision.presenceApproach)
-                assertEquals(ProximityReportGate.BOTH, decision.reportMask)
-            }
+            assertFalse("a raw snapshot must not become a wave at $time", fixture.sample(raw).deliberateGesture)
         }
-        assertEquals(false, fixture.advance(300_000, 145f).near)
+        assertFalse(fixture.advance(300_000, 145f).deliberateGesture)
         assertTrue(fixture.runtime.isPresenceReady())
+        assertFalse(fixture.runtime.isWaveReady())
         assertEquals(saved, fixture.backing.row)
         assertEquals(0, fixture.backing.writes)
         assertEquals(0, fixture.backing.clears)
     }
 
-    @Test fun keptRangedGapExpiresExactlyThreeMinutesAfterLastEnterReadingInEitherPolarity() {
-        for (model in listOf(keptRanged(), keptRanged().copy(clearRaw = 157f, nearRaw = 131f))) {
-            val fixture = Fixture(Backing(row(model)), driftMargin = 100f, keepStoredInsideDriftBand = true)
-            val enteredAt = fixture.now
-            fixture.sample(model.nearRaw)
-            assertEquals(true, fixture.advance(model.debounceMs).near)
-            val gap = (model.clearRaw + (model.nearRaw - model.clearRaw) * .5f)
-            fixture.advance(1, gap)
-            assertTrue(fixture.runtime.needsTick())
-            fixture.at(enteredAt + 179_999)
-            assertEquals(true, fixture.runtime.tick(fixture.now, true).near)
-            val released = fixture.advance(1)
-            assertEquals(false, released.near)
-            assertEquals(0, released.normalizedLevel)
-            assertFalse(released.deliberateGesture)
-            assertFalse(released.presenceApproach)
-            assertEquals(0, fixture.backing.writes)
-            assertEquals(0, fixture.backing.clears)
-        }
-    }
-
-    @Test fun keptRangedEntryRefreshesGapTimeoutAndContinuousNearSurvivesTicks() {
-        val fixture = Fixture(Backing(row(keptRanged())), driftMargin = 100f, keepStoredInsideDriftBand = true)
-        fixture.sample(148f)
-        assertEquals(true, fixture.advance(150).near)
-        assertEquals(true, fixture.advance(360_000).near) // On-change sources need not repeat an unchanged value.
-        repeat(3) {
-            assertEquals(true, fixture.advance(180_000, 149f).near)
-        }
-        fixture.advance(1, 145f)
-        fixture.advance(179_998)
-        val refreshedAt = fixture.now
-        assertEquals(true, fixture.sample(148f).near)
-        fixture.advance(1, 145f)
-        fixture.at(refreshedAt + 179_999)
-        assertEquals(true, fixture.runtime.tick(fixture.now, true).near)
-        val released = fixture.advance(1)
-        assertEquals(false, released.near)
-        assertFalse(released.deliberateGesture)
-        assertFalse(released.presenceApproach)
-        assertEquals(0, fixture.backing.writes)
-        assertEquals(0, fixture.backing.clears)
-    }
-
-    @Test fun nonMarginalRangedAndBinaryPresenceKeepTheirExistingHoldBehavior() {
-        for (model in listOf(keptRanged().copy(nearRaw = 1_000f), binaryLegacy())) {
+    @Test fun rangedPresenceUsesSustainedSeparationInTheOldHysteresisGapAcrossSpansAndPolarities() {
+        for (model in listOf(keptRanged(), keptRanged().copy(clearRaw = 157f, nearRaw = 131f),
+            keptRanged().copy(nearRaw = 1_000f))) {
             val saved = row(model)
             val fixture = Fixture(Backing(saved), driftMargin = 100f, keepStoredInsideDriftBand = true)
-            fixture.sample(model.nearRaw)
-            assertEquals(true, fixture.advance(model.debounceMs).near)
-            if (model.mode == Mode.RANGED) fixture.advance(1, 500f)
-            val held = fixture.advance(360_000)
-            assertEquals(true, held.near)
-            assertFalse(held.deliberateGesture)
+            assertEquals(false, fixture.settlePresence(model.clearRaw).near)
+            assertEquals(true, fixture.settlePresence(model.nearRaw).near)
+            val separated = model.clearRaw + (model.nearRaw - model.clearRaw) * .5f
+            repeat((240_000 / 250).toInt()) {
+                val held = fixture.advance(250, separated)
+                assertEquals("sustained separation for $model", true, held.near)
+                assertFalse(held.deliberateGesture)
+                assertFalse(held.presenceApproach)
+            }
+            val clear = fixture.settlePresence(model.clearRaw)
+            assertEquals(false, clear.near)
+            assertFalse(clear.deliberateGesture)
+            assertFalse(clear.presenceApproach)
             assertEquals(saved, fixture.backing.row)
             assertEquals(0, fixture.backing.writes)
             assertEquals(0, fixture.backing.clears)
         }
     }
 
-    @Test fun restoredKeptCalibrationStartsAFreshPresenceTimeout() {
+    @Test fun binaryPresenceKeepsItsDebounceAndOnChangeHoldWithoutRewritingCalibration() {
+        val model = binaryLegacy()
+        val saved = row(model)
+        val fixture = Fixture(Backing(saved), driftMargin = 100f, keepStoredInsideDriftBand = true)
+        fixture.sample(model.nearRaw)
+        assertEquals(true, fixture.advance(model.debounceMs).near)
+        val held = fixture.advance(360_000)
+        assertEquals(true, held.near)
+        assertFalse(held.deliberateGesture)
+        fixture.sample(model.clearRaw)
+        assertEquals(false, fixture.advance(model.debounceMs).near)
+        assertEquals(saved, fixture.backing.row)
+        assertEquals(0, fixture.backing.writes)
+        assertEquals(0, fixture.backing.clears)
+    }
+
+    @Test fun restoredRangedCalibrationRequiresFreshPresenceEvidenceWithoutChangingTheRestoredRow() {
         val fixture = Fixture(Backing(row(keptRanged())), driftMargin = 100f, keepStoredInsideDriftBand = true)
-        fixture.sample(148f)
-        assertEquals(true, fixture.advance(150).near)
-        fixture.advance(179_750, 145f)
+        fixture.settlePresence(131f)
+        assertEquals(true, fixture.settlePresence(157f).near)
         val restored = row(keptRanged().copy(nearRaw = 158f))
         fixture.backing.inserted[key()] = restored
         assertTrue(fixture.runtime.reloadStored())
-        assertNull(fixture.sample(145f).near)
-        val enteredAt = fixture.now
-        fixture.sample(149f)
-        assertEquals(true, fixture.advance(150).near)
-        assertEquals(true, fixture.advance(1, 145f).near)
-        fixture.at(enteredAt + 179_999)
-        assertEquals(true, fixture.runtime.tick(fixture.now, true).near)
-        val released = fixture.advance(1)
-        assertEquals(false, released.near)
-        assertFalse(released.deliberateGesture)
+        assertNull(fixture.sample(131f).near)
+        assertFalse(fixture.runtime.isPresenceReady())
+        assertNull(fixture.advance(200).near)
+        assertEquals(false, fixture.settlePresence(131f).near)
+        assertEquals(true, fixture.settlePresence(158f).near)
         assertEquals(restored, fixture.backing.inserted[key()])
         assertEquals(0, fixture.backing.writes)
         assertEquals(0, fixture.backing.clears)
