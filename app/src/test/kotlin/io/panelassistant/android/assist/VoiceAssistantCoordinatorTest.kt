@@ -1071,17 +1071,42 @@ class VoiceAssistantCoordinatorTest {
     }
 
     @Test
-    fun `an announcement the owner stops with the media player's Stop reports it stopped`() {
+    fun `the media player's Stop during the chime ends the announcement there, reported stopped once`() {
         val c = coordinator()
         c.start()
-        val sound = CompletableDeferred<Unit>().also { sounding = it }
-        val done = CompletableDeferred<Boolean>()
-        c.announce(VoiceAnnouncement("ring.flac", null, listenAfter = false) { done.complete(it) })
-        runBlocking { withTimeout(2_000) { while ("ring.flac" !in played) delay(10) } }
+        sounding = CompletableDeferred()
+        val outcomes = CopyOnWriteArrayList<Boolean>()
+        c.announce(VoiceAnnouncement("question.mp3", "chime.mp3", listenAfter = true) { outcomes += it })
+        runBlocking { withTimeout(2_000) { while ("chime.mp3" !in played) delay(10) } }
         c.ownerStopped()
-        sound.complete(Unit)
-        assertTrue("Panel Assistant hears the owner stopped it", runBlocking { withTimeout(2_000) { done.await() } })
         awaitRunFinished(c)
+        assertEquals("reported once, as stopped", listOf(true), outcomes)
+        assertEquals("the message never starts", listOf("chime.mp3"), played)
+        assertTrue("nothing listens after a stopped announcement", runners.isEmpty())
+    }
+
+    @Test
+    fun `the media player's Stop during the message ends it without listening, reported stopped once`() {
+        val c = coordinator()
+        c.start()
+        sounding = CompletableDeferred()
+        val outcomes = CopyOnWriteArrayList<Boolean>()
+        c.announce(VoiceAnnouncement("question.mp3", null, listenAfter = true) { outcomes += it })
+        runBlocking { withTimeout(2_000) { while ("question.mp3" !in played) delay(10) } }
+        c.ownerStopped()
+        awaitRunFinished(c)
+        assertEquals(listOf(true), outcomes)
+        assertTrue("nothing listens after a stopped announcement", runners.isEmpty())
+    }
+
+    @Test
+    fun `the media player's Stop with no announcement playing stops nothing`() {
+        val c = coordinator()
+        c.start()
+        c.ownerStopped()
+        val done = CompletableDeferred<Boolean>()
+        c.announce(VoiceAnnouncement("message.mp3", null, listenAfter = false) { done.complete(it) })
+        assertFalse(runBlocking { withTimeout(2_000) { done.await() } })
     }
 
     @Test

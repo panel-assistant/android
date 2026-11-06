@@ -329,10 +329,14 @@ class VoiceAssistantCoordinator internal constructor(
 
     /**
      * The owner stopped the panel's sound some other way than the stop word (the media player's Stop): an
-     * announcement playing now reports it was stopped. The caller silences the sound itself.
+     * announcement playing now ends as the stop word ends it, reported stopped, with nothing played or
+     * heard after it.
      */
     fun ownerStopped() {
-        synchronized(lock) { announcementStopped?.set(true) }
+        synchronized(lock) {
+            val run = runJob ?: return
+            stopHeard(run, announcementStopped ?: return)
+        }
     }
 
     /** Press-to-talk: start one run with the preferred pipeline, as if a wake word had fired. */
