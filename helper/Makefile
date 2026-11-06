@@ -24,7 +24,7 @@ BUILD   := build
 # the unit tests, so coverage can never silently drop a module. main.c (accept loop) and sysexec.c
 # (real exec/pipe/thread/reboot) are deliberately NOT here: the fuzz and test builds swap in a stub
 # sysexec and never run main, so a valid REBOOT/RELOAD/WATCH/GPIOWATCH can't exec or spawn on the build host.
-CORE_SRCS := $(addprefix $(SRC_DIR)/, identity.c adb_recovery.c util.c sha256.c led.c screen.c input.c gpio.c sysctl.c zigbee.c wifi.c adb_state.c perf.c cht8305.c vi530x.c version.c companion.c guard_maintenance.c guard_replacement.c logcat.c server.c dispatch.c)
+CORE_SRCS := $(addprefix $(SRC_DIR)/, identity.c adb_recovery.c util.c sha256.c led.c screen.c input.c gpio.c sysctl.c zigbee.c wifi.c adb_state.c sysfs_read.c perf.c cht8305.c vi530x.c version.c companion.c guard_maintenance.c guard_replacement.c logcat.c server.c dispatch.c)
 DAEMON_SRCS := $(CORE_SRCS) $(SRC_DIR)/main.c $(SRC_DIR)/sysexec.c
 STUB := test/sysexec_stub.c
 TEST_BUILD_ID := aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -46,13 +46,13 @@ TEST_BINS := $(BUILD)/adb-recovery $(BUILD)/uninstall-supervisor $(BUILD)/unit $
 test:
 	$(MAKE) test-units
 
-test-units: $(BUILD)/adb-state-boundary $(BUILD)/adb-exec $(BUILD)/wifi-boundary $(BUILD)/wifi-exec $(BUILD)/zigbee-boundary $(BUILD)/zigbee-role-exec $(TEST_BINS)
+test-units: $(BUILD)/sysfs-read-boundary $(BUILD)/adb-state-boundary $(BUILD)/adb-exec $(BUILD)/wifi-boundary $(BUILD)/wifi-exec $(BUILD)/zigbee-boundary $(BUILD)/zigbee-role-exec $(TEST_BINS)
 	$(MAKE) adb-recovery-retirement-test
 	$(MAKE) adb-recovery-replacement-test
 	$(BUILD)/adb-recovery
 	$(BUILD)/uninstall-supervisor
 	$(BUILD)/unit
-	test "$$($(BUILD)/hapaneld-helper --version)" = "HELPER version=1.10.0 proto=1.10"
+	test "$$($(BUILD)/hapaneld-helper --version)" = "HELPER version=1.12.0 proto=1.12"
 	$(BUILD)/companion-boundary
 	$(BUILD)/guard-maintenance-boundary
 	$(BUILD)/guard-maintenance-gates
@@ -62,6 +62,7 @@ test-units: $(BUILD)/adb-state-boundary $(BUILD)/adb-exec $(BUILD)/wifi-boundary
 	$(BUILD)/peer-auth
 	$(BUILD)/request-timeout
 	$(BUILD)/bounded-exec
+	$(BUILD)/sysfs-read-boundary
 	$(BUILD)/adb-state-boundary
 	$(BUILD)/adb-exec
 	$(BUILD)/wifi-boundary
@@ -156,7 +157,7 @@ $(BUILD)/cdprelay-test: cdprelay.c | $(BUILD)
 # Real UNIX-socket composition fixture: production server/dispatch core with the no-exec host stub.
 socket-test-server: $(BUILD)/socket-test-server
 $(BUILD)/socket-test-server: $(CORE_SRCS) $(STUB) test/socket_server.c $(SRC_DIR)/commands.def test/zigbee_paths.h | $(BUILD)
-	$(CC) $(CFLAGS) -DHAPANELD_TEST -DZIGBEE_TEST_ROOT='"$(abspath $(BUILD)/zigbee-socket-fixture)"' -include test/zigbee_paths.h -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/socket_server.c $(LDLIBS) -Wl,--wrap=open -o $@
+	$(CC) $(CFLAGS) -DHAPANELD_TEST -DSYSFS_READ_CLASS_ROOT='"$(abspath $(BUILD)/sysfs-read-socket-fixture)"' -DZIGBEE_TEST_ROOT='"$(abspath $(BUILD)/zigbee-socket-fixture)"' -include test/zigbee_paths.h -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/socket_server.c $(LDLIBS) -Wl,--wrap=open -o $@
 
 # App<->daemon verb-contract cross-check: every verb the app sends must exist in commands.def.
 contract:
@@ -220,3 +221,7 @@ $(BUILD)/adb-state-boundary: $(CORE_SRCS) $(STUB) test/adb_state_boundary.c | $(
 
 $(BUILD)/adb-exec: $(SRC_DIR)/sysexec.c test/adb_exec.c | $(BUILD)
 	$(CC) $(CFLAGS) -I$(SRC_DIR) test/adb_exec.c $(SRC_DIR)/sysexec.c $(LDLIBS) -Wl,--wrap=execve -o $@
+
+# Fixed sysfs paths are substituted only for dispatch fixtures; production remains /sys/class.
+$(BUILD)/sysfs-read-boundary: $(CORE_SRCS) $(STUB) test/sysfs_read_boundary.c | $(BUILD)
+	$(CC) $(CFLAGS) -DHAPANELD_TEST -DSYSFS_READ_CLASS_ROOT='"$(abspath $(BUILD)/sysfs-read-fixture)"' -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/sysfs_read_boundary.c $(LDLIBS) -Wl,--wrap=readdir -Wl,--wrap=read -Wl,--wrap=__read_chk -Wl,--wrap=faccessat -Wl,--wrap=openat -Wl,--wrap=open -o $@

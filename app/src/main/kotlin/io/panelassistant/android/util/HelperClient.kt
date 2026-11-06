@@ -6,6 +6,8 @@ import io.panelassistant.android.BuildConfig
 import io.panelassistant.android.platform.Daemon
 import io.panelassistant.android.platform.DaemonLongResult
 import io.panelassistant.android.platform.DaemonStreamResult
+import io.panelassistant.android.platform.HelperGpioState
+import io.panelassistant.android.platform.HelperRelayClass
 import io.panelassistant.android.platform.HelperAdbState
 import io.panelassistant.android.platform.HelperWifiStatus
 import io.panelassistant.android.platform.HelperZigbeeHealth
@@ -16,6 +18,7 @@ import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.InputStream
 import java.io.IOException
+import java.net.SocketTimeoutException
 import java.nio.charset.StandardCharsets
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
@@ -255,6 +258,8 @@ internal interface HelperCommandSession : AutoCloseable {
     fun sendLong(cmd: String, timeoutMs: Long): DaemonLongResult
     fun sendFile(cmd: String, source: File, timeoutMs: Long): DaemonStreamResult
     fun sendBytes(cmd: String, maxBytes: Long): ByteArray?
+    fun sendBytes(cmd: String, maxBytes: Long, deadline: MonotonicDeadline): ByteArray? =
+        if (deadline.remainingMs() > 0L) sendBytes(cmd, maxBytes) else null
     fun readLogcatLine(): String?
     fun backupCompanion(
         packageName: String,
@@ -284,6 +289,8 @@ internal sealed interface HelperLogcatOpenResult {
 
 internal interface HelperCommandTransport {
     fun open(): HelperCommandSession?
+    fun open(deadline: MonotonicDeadline): HelperCommandSession? =
+        if (deadline.remainingMs() > 0L) open() else null
 }
 
 private data class HelperIdentityProbe(
@@ -413,13 +420,47 @@ internal class IdentityAdmittingHelperClient(
         return HelperAdbState(state(match.groupValues[1]), state(match.groupValues[2]))
     }
 
-    private fun readVersioned(command: String, minimumMinor: Int, maxBytes: Long): ByteArray? {
-        val session = transport.open() ?: return null
+    override fun relayCount(relayClass: HelperRelayClass): Int? {
+        val line = relayLine(readVersioned("RELAYREAD ${relayClass.name} COUNT", 11, 64, 5_000L)) ?: return null
+        val match = Regex("RELAYREAD ${relayClass.name} COUNT=(0|[1-9][0-9]?|\\?)").matchEntire(line) ?: return null
+        return match.groupValues[1].toIntOrNull()?.takeIf { it in 0..16 }
+    }
+
+    override fun relayRead(relayClass: HelperRelayClass, relay: Int): Boolean? {
+        if (relay !in 1..16) return null
+        val line = relayLine(readVersioned("RELAYREAD ${relayClass.name} $relay", 11, 64, 5_000L)) ?: return null
+        val match = Regex("RELAYREAD ${relayClass.name} RELAY=$relay VALUE=([01?])").matchEntire(line) ?: return null
+        return relayFlag(match.groupValues[1])
+    }
+
+    override fun gpioRead(pin: Int, timeoutMs: Long): HelperGpioState? {
+        if (pin !in 0..65535 || timeoutMs <= 0L) return null
+        val line = relayLine(readVersioned("GPIOREAD $pin", 12, 64, timeoutMs.coerceAtMost(1_500L))) ?: return null
+        val match = Regex("GPIOREAD $pin VALUE=([01?]) PREPARED=([01?])").matchEntire(line) ?: return null
+        return HelperGpioState(relayFlag(match.groupValues[1]), relayFlag(match.groupValues[2]))
+    }
+
+    private fun relayLine(bytes: ByteArray?): String? {
+        if (bytes == null || bytes.isEmpty() || bytes.size > 64 || bytes.last() != 10.toByte() ||
+            bytes.dropLast(1).any { (it.toInt() and 255) !in 32..126 }
+        ) return null
+        return String(bytes, 0, bytes.size - 1, StandardCharsets.US_ASCII)
+    }
+
+    private fun relayFlag(value: String): Boolean? = when (value) { "1" -> true; "0" -> false; else -> null }
+
+    private fun readVersioned(command: String, minimumMinor: Int, maxBytes: Long, timeoutMs: Long? = null): ByteArray? {
+        val deadline = timeoutMs?.let { MonotonicDeadline(it, nowNs) }
+        val session = (if (deadline == null) transport.open() else transport.open(deadline)) ?: return null
         return session.use {
-            val version = it.bootstrap("VERSION", newDeadline()) as? HelperBootstrapReply.Line ?: return null
+            val bootstrapDeadline = deadline?.cappedTo(bootstrapTimeoutMs) ?: newDeadline()
+            if (bootstrapDeadline.remainingMs() == 0L) return null
+            val version = it.bootstrap("VERSION", bootstrapDeadline) as? HelperBootstrapReply.Line ?: return null
             val identity = parseHelperIdentity(version.value) ?: return null
             if (identity.protocolMajor != SUPPORTED_HELPER_PROTOCOL_MAJOR || identity.protocolMinor < minimumMinor) return null
-            it.sendBytes(command, maxBytes)
+            if (deadline == null) it.sendBytes(command, maxBytes) else {
+                it.sendBytes(command, maxBytes, deadline)?.takeIf { deadline.remainingMs() > 0L }
+            }
         }
     }
 
@@ -601,7 +642,7 @@ private const val SOCK = "hapaneld-helper" // matches helper/src/main.c
 
 private val admittedHelperClient = IdentityAdmittingHelperClient(
     LocalSocketHelperTransport(
-        connect = { openRootAbstractSocket(SOCK) },
+        connect = { deadline -> openRootAbstractSocket(SOCK, deadline) },
         tag = "ha-paneld/helper",
     ),
 )
@@ -623,12 +664,15 @@ internal class HelperReachabilityLog(
 }
 
 internal class LocalSocketHelperTransport(
-    private val connect: () -> LocalSocket,
+    private val connect: (MonotonicDeadline?) -> LocalSocket,
     private val tag: String,
     private val reachability: HelperReachabilityLog = HelperReachabilityLog(tag),
 ) : HelperCommandTransport {
-    override fun open(): HelperCommandSession? = try {
-        LocalSocketHelperSession(connect(), tag, reachability).also { reachability.succeeded() }
+    override fun open(): HelperCommandSession? = openSocket(null)
+    override fun open(deadline: MonotonicDeadline): HelperCommandSession? = openSocket(deadline)
+
+    private fun openSocket(deadline: MonotonicDeadline?): HelperCommandSession? = try {
+        LocalSocketHelperSession(connect(deadline), tag, reachability).also { reachability.succeeded() }
     } catch (e: Exception) {
         reachability.failed(e.message)
         null
@@ -709,6 +753,17 @@ private class LocalSocketHelperSession(
         )
     } catch (e: Exception) {
         Log.d(tag, "daemon bytes failed (${e.message})")
+        null
+    }
+
+    override fun sendBytes(cmd: String, maxBytes: Long, deadline: MonotonicDeadline): ByteArray? = try {
+        HelperSocketProtocol.sendBytes(cmd, input, output, socket::shutdownOutput, maxBytes) {
+            val remaining = deadline.remainingMs()
+            if (remaining == 0L) throw SocketTimeoutException("helper reply deadline expired")
+            socket.soTimeout = remaining.asSocketTimeout()
+        }
+    } catch (e: Exception) {
+        Log.d(tag, "daemon timed bytes failed (${e.message})")
         null
     }
 

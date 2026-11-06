@@ -5,6 +5,10 @@ import io.panelassistant.android.metrics.FeatureCostOperation
 import io.panelassistant.android.metrics.FeatureCostOutcome
 import io.panelassistant.android.metrics.FeatureCosts
 import io.panelassistant.android.platform.RootShell
+import io.panelassistant.android.platform.Daemon
+import io.panelassistant.android.platform.HelperRelayClass
+import io.panelassistant.android.util.HelperClient
+import io.panelassistant.android.util.MonotonicDeadline
 
 /**
  * On-board relay + button-LED control for panels that expose them — currently the **Smatek S9E**,
@@ -12,7 +16,7 @@ import io.panelassistant.android.platform.RootShell
  * on the initial 1.0.2 — both probed) and four button LEDs at `/sys/class/gpio/gpio147`–`gpio150`, all
  * driven by `echo 1`/`echo 0`. The sysfs locations come from the active [DeviceProfile]
  * ([DeviceProfile.relayBase] + [DeviceProfile.relayBaseFallbacks] / [DeviceProfile.buttonLedGpioBase]); a
- * profile with none (every panel except the S9E) makes this controller inert with no su probes. Relay
+ * profile with none (every panel except the S9E) makes this controller inert with no helper reads. Relay
  * class nodes are runtime-confirmed. Button LEDs are surfaced from the reviewed profile declaration,
  * then their GPIO is exported and verified only on an explicit [ledSet] write. A preparation proven
  * `ready` is cached for the process lifetime so rapid commands pay one privileged round trip, not two;
@@ -21,14 +25,18 @@ import io.panelassistant.android.platform.RootShell
  * lane). Reads never consult or populate that cache; only the read-only startup [warmUp] may seed it with
  * pins the kernel already holds as writable outputs.
  *
- * The nodes are root-owned, so writes go through [Su]. On a panel without `su` the capability simply
- * doesn't activate (graceful — like the other root-gated controllers).
+ * Passive observations use fixed helper reads. Explicit writes and lazy GPIO preparation go through [Su].
  *
  * ⚠️ UNTESTED on hardware — derived from the vendor paths reported in
  * seaky/nspanel_pro_tools_apk#98 + two stock firmware images; no S9E was available to validate. These
  * switch **mains loads**, so treat as experimental until confirmed on a real unit.
  */
-class RelayController(profile: DeviceProfile, private val root: RootShell = Su) {
+class RelayController(
+    profile: DeviceProfile,
+    private val root: RootShell = Su,
+    private val daemon: Daemon = HelperClient,
+    private val nowNs: () -> Long = System::nanoTime,
+) {
 
     // Candidate relay-class bases, primary first. The S9E renamed st_relay -> strelay across firmware,
     // so the profile supplies both; resolution picks the first whose dir actually holds relayN nodes.
@@ -48,17 +56,15 @@ class RelayController(profile: DeviceProfile, private val root: RootShell = Su) 
     // started before the failure cannot re-prove the pin after it.
     private var invalidations = 0L
 
-    /** Resolve immutable sysfs topology once. A failed privileged probe is deliberately not cached:
-     * root access can become available after boot. State reads still avoid repeating successful
-     * directory probes on every heartbeat. */
-    private fun resolveRelays(allowRootProbe: Boolean) {
-        if (resolvedRelayCount != null || !allowRootProbe) return
+    /** Resolve topology without holding the actuator monitor. Unknown observations remain retryable. */
+    private fun resolveRelays() {
+        if (resolvedRelayCount != null) return
         val cost = FeatureCosts.registry.span(FeatureCostOperation.RELAY_TOPOLOGY_DISCOVERY)
         try {
             var probeFailed = false
             for (candidate in candidateBases) {
                 val count = try {
-                    relayNodeCount(candidate)
+                    HelperRelayClass.fromSysfsBase(candidate)?.let(daemon::relayCount)
                 } catch (_: Exception) {
                     null
                 }
@@ -67,45 +73,40 @@ class RelayController(profile: DeviceProfile, private val root: RootShell = Su) 
                     continue
                 }
                 if (count > 0) {
-                    resolvedBase = candidate
-                    resolvedRelayCount = count
+                    synchronized(this) {
+                        if (resolvedRelayCount == null) {
+                            resolvedBase = candidate
+                            resolvedRelayCount = count
+                        }
+                    }
                     cost.work(units = count.toLong())
                     return
                 }
             }
-            // A failed listing may be an absent firmware-specific directory or a transient root
-            // failure. Try declared fallbacks, but cache absence only after every probe succeeded.
-            if (probeFailed) cost.outcome(FeatureCostOutcome.FAILURE) else resolvedRelayCount = 0
+            // An unknown candidate may recover. Absence is established only when all are known empty.
+            if (probeFailed) cost.outcome(FeatureCostOutcome.FAILURE) else synchronized(this) {
+                if (resolvedRelayCount == null) resolvedRelayCount = 0
+            }
         } finally {
             cost.close()
         }
     }
 
-    private fun relayNodeCount(b: String): Int? {
-        val out = root.listSysfs(b) ?: return null
-        val present = out.split(Regex("\\s+"))
-            .mapNotNull { name -> RELAY_NODE.matchEntire(name)?.groupValues?.get(1)?.toIntOrNull() }
-            .filter { it > 0 }
-            .toSet()
-        var contiguous = 0
-        while (contiguous + 1 in present) contiguous++
-        return contiguous
-    }
-
-    /** Number of relays exposed (0 if no candidate relay base is present). */
-    @Synchronized
-    fun count(allowRootProbe: Boolean = true): Int {
-        resolveRelays(allowRootProbe)
+    /** Number of confirmed relays (0 also when discovery is currently unavailable). */
+    fun count(): Int {
+        resolveRelays()
         return resolvedRelayCount ?: 0
     }
 
-    @Synchronized
     fun available(): Boolean = count() > 0
 
     /** Set relay [n] (1-based) on/off. Returns true if the write ran. */
-    @Synchronized
     fun set(n: Int, on: Boolean): Boolean {
         if (n !in 1..count()) return false
+        return synchronized(this) { setResolved(n, on) }
+    }
+
+    private fun setResolved(n: Int, on: Boolean): Boolean {
         val base = resolvedBase ?: return false
         val started = FeatureCosts.registry.beginSynchronous(FeatureCostOperation.RELAY_HARDWARE_WRITE)
         var outcome = FeatureCostOutcome.FAILURE
@@ -127,18 +128,13 @@ class RelayController(profile: DeviceProfile, private val root: RootShell = Su) 
     fun get(n: Int): Boolean = read(n) == true
 
     /** Physical state, preserving unreadable as null rather than inventing OFF. */
-    @Synchronized
     fun read(n: Int): Boolean? {
         if (n !in 1..count()) return null
-        val base = resolvedBase ?: return null
+        val relayClass = resolvedBase?.let(HelperRelayClass::fromSysfsBase) ?: return null
         val cost = FeatureCosts.registry.beginSynchronous(FeatureCostOperation.RELAY_STATE_READ)
         var outcome = FeatureCostOutcome.SUCCESS
         return try {
-            when (root.readSysfs("$base/relay$n")?.trim()) {
-                "1" -> true
-                "0" -> false
-                else -> null.also { outcome = FeatureCostOutcome.FAILURE }
-            }
+            daemon.relayRead(relayClass, n).also { if (it == null) outcome = FeatureCostOutcome.FAILURE }
         } catch (failure: Exception) {
             outcome = FeatureCostOutcome.FAILURE
             throw failure
@@ -165,21 +161,21 @@ class RelayController(profile: DeviceProfile, private val root: RootShell = Su) 
      * preparation. Read-only by the same rule as [ledCount]: it never exports, changes a direction or
      * writes a value, so after a reboot it proves nothing and [ledSet] prepares lazily as before.
      *
-     * The probe holds neither this monitor nor the interactive root shell, so a command arriving while it
-     * runs, blocks or fails proceeds and re-verifies on its own. It shares only the bounded one-shot su
-     * launch, which a command reaches only when the persistent shell is unusable (su dialect not yet
-     * proven, or a failed round trip falling back). Proofs are recorded only when no failure was seen
-     * meanwhile.
+     * Helper I/O holds no controller monitor or root lane, so commands can re-verify independently.
+     * All pins share a five-second budget; each connection, VERSION and complete reply consumes the
+     * remaining time. Proofs are recorded only when no write/preparation failure was seen meanwhile.
      */
     fun warmUp() {
         val base = ledBase ?: return
         val (epoch, pins) = synchronized(this) { invalidations to (0 until resolvedLedCount).map { base + it } }
-        // Best-effort: any failure leaves the lazy path exactly as it was, so there is nothing to report.
-        val ready = try {
-            root.preparedOutputGpios(pins)
-        } catch (_: Exception) {
-            null
-        } ?: return
+        val deadline = MonotonicDeadline(5_000L, nowNs)
+        val ready = mutableSetOf<Int>()
+        for (pin in pins) {
+            val remaining = deadline.remainingMs()
+            if (remaining == 0L) break
+            val observed = try { daemon.gpioRead(pin, remaining.coerceAtMost(1_500L)) } catch (_: Exception) { null }
+            if (deadline.remainingMs() > 0L && observed?.prepared == true) ready += pin
+        }
         synchronized(this) { if (invalidations == epoch) preparedGpios += ready }
     }
 
@@ -213,18 +209,13 @@ class RelayController(profile: DeviceProfile, private val root: RootShell = Su) 
 
 
     /** Physical button-LED state, preserving unreadable as null rather than inventing OFF. */
-    @Synchronized
     fun ledRead(i: Int): Boolean? {
         if (i !in 0 until ledCount()) return null
-        val node = ledNode(i) ?: return null
+        val pin = ledBase?.plus(i) ?: return null
         val cost = FeatureCosts.registry.beginSynchronous(FeatureCostOperation.RELAY_STATE_READ)
         var outcome = FeatureCostOutcome.SUCCESS
         return try {
-            when (root.readSysfs(node)?.trim()) {
-                "1" -> true
-                "0" -> false
-                else -> null.also { outcome = FeatureCostOutcome.FAILURE }
-            }
+            daemon.gpioRead(pin)?.value.also { if (it == null) outcome = FeatureCostOutcome.FAILURE }
         } catch (failure: Exception) {
             outcome = FeatureCostOutcome.FAILURE
             throw failure
@@ -269,6 +260,5 @@ class RelayController(profile: DeviceProfile, private val root: RootShell = Su) 
 
     private companion object {
         const val BUTTON_LED_COUNT = 4
-        val RELAY_NODE = Regex("relay([1-9]\\d*)")
     }
 }

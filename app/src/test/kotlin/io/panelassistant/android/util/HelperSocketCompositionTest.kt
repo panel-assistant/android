@@ -24,6 +24,8 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import org.junit.Assume.assumeTrue
+import io.panelassistant.android.platform.HelperRelayClass
+import io.panelassistant.android.platform.HelperGpioState
 import org.junit.AfterClass
 import org.junit.BeforeClass
 import org.junit.Test
@@ -40,7 +42,7 @@ class HelperSocketCompositionTest {
             ).redirectErrorStream(true).start()
             assertEquals("READY", second.inputStream.bufferedReader().readLine())
             assertTrue(Files.isDirectory(root.resolve(".hapaneld-guard-db-test")))
-            assertEquals("HELPER version=1.10.0 proto=1.10", SocketDaemon(socket).send("VERSION"))
+            assertEquals("HELPER version=1.12.0 proto=1.12", SocketDaemon(socket).send("VERSION"))
         } finally {
             second?.let {
                 it.destroy()
@@ -56,7 +58,7 @@ class HelperSocketCompositionTest {
         val daemon = SocketDaemon(socketPath)
 
         assertTrue(daemon.available())
-        assertEquals("HELPER version=1.10.0 proto=1.10", daemon.send("VERSION"))
+        assertEquals("HELPER version=1.12.0 proto=1.12", daemon.send("VERSION"))
         assertEquals("ERR", daemon.send("PINGEXTRA"))
         assertEquals("OK", daemon.sendLong("RELOAD io.example.dashboard", 5_000).replyValue())
     }
@@ -72,7 +74,7 @@ class HelperSocketCompositionTest {
         val daemon = SocketDaemon(socketPath)
         // The host fixture redirects fixed governor reads and refuses governor writes.
         listOf(
-            WireTranscript("VERSION", "HELPER version=1.10.0 proto=1.10"),
+            WireTranscript("VERSION", "HELPER version=1.12.0 proto=1.12"),
             WireTranscript("PING", "OK"),
             WireTranscript("BUILDID", "BUILDID development"),
             WireTranscript("COMPANIONCAPS", "COMPANIONCAPS 1 BACKUP RESTORE STATUS JOURNAL"),
@@ -109,6 +111,20 @@ class HelperSocketCompositionTest {
             WireTranscript("GOVREAD CURRENT extra", "ERR"),
             WireTranscript("GOVREAD current", "ERR"),
             WireTranscript("GOVREAD /path", "ERR"),
+            WireTranscript("RELAYREAD STRELAY COUNT", "RELAYREAD STRELAY COUNT=2"),
+            WireTranscript("RELAYREAD ST_RELAY COUNT", "RELAYREAD ST_RELAY COUNT=1"),
+            WireTranscript("RELAYREAD RELAY COUNT", "RELAYREAD RELAY COUNT=0"),
+            WireTranscript("RELAYREAD STRELAY 1", "RELAYREAD STRELAY RELAY=1 VALUE=1"),
+            WireTranscript("RELAYREAD STRELAY 2", "RELAYREAD STRELAY RELAY=2 VALUE=0"),
+            WireTranscript("RELAYREAD STRELAY 01", "ERR"),
+            WireTranscript("RELAYREAD /sys/class/strelay COUNT", "ERR"),
+            WireTranscript("RELAYREAD STRELAY COUNT extra", "ERR"),
+            WireTranscript("GPIOREAD 147", "GPIOREAD 147 VALUE=1 PREPARED=1"),
+            WireTranscript("GPIOREAD 148", "GPIOREAD 148 VALUE=? PREPARED=1"),
+            WireTranscript("GPIOREAD 149", "GPIOREAD 149 VALUE=0 PREPARED=0"),
+            WireTranscript("GPIOREAD 0147", "ERR"),
+            WireTranscript("GPIOREAD 65536", "ERR"),
+            WireTranscript("GPIOREAD 147 extra", "ERR"),
             WireTranscript("ADBSTATE", "PROPS=1 LISTEN=0"),
             WireTranscript("ADBSTATE extra", "ERR"),
             WireTranscript("ADBSTATE /path", "ERR"),
@@ -136,6 +152,21 @@ class HelperSocketCompositionTest {
         assertTrue(daemon.available())
         assertEquals("OK", daemon.send("RELOAD io.example.dashboard"))
         assertContentEquals("PNG\nfixture\n".toByteArray(), daemon.sendBytesBounded("SCREENCAP", 1024L))
+    }
+
+    @Test(timeout = 10_000)
+    fun typedSysfsReadsCrossNativeFixedSelectorsWithoutChangingFiles() {
+        val before = sysfsReadRoot.toFile().walkTopDown().filter { it.isFile }.associate { it.relativeTo(sysfsReadRoot.toFile()).path to it.readText() }
+        val daemon = IdentityAdmittingHelperClient(ChannelSessionTransport(socketPath))
+        assertEquals(2, daemon.relayCount(HelperRelayClass.STRELAY))
+        assertEquals(1, daemon.relayCount(HelperRelayClass.ST_RELAY))
+        assertEquals(0, daemon.relayCount(HelperRelayClass.RELAY))
+        assertEquals(true, daemon.relayRead(HelperRelayClass.STRELAY, 1))
+        assertEquals(false, daemon.relayRead(HelperRelayClass.STRELAY, 2))
+        assertEquals(HelperGpioState(true, true), daemon.gpioRead(147))
+        assertEquals(HelperGpioState(null, true), daemon.gpioRead(148))
+        assertEquals(HelperGpioState(false, false), daemon.gpioRead(149))
+        assertEquals(before, sysfsReadRoot.toFile().walkTopDown().filter { it.isFile }.associate { it.relativeTo(sysfsReadRoot.toFile()).path to it.readText() })
     }
 
     @Test(timeout = 10_000)
@@ -347,6 +378,7 @@ class HelperSocketCompositionTest {
         lateinit var socketPath: Path
         lateinit var guardRoot: Path
         lateinit var server: Process
+        lateinit var sysfsReadRoot: Path
         lateinit var zigbeeRoot: Path
         lateinit var fixtureLock: FileLock
 
@@ -370,6 +402,17 @@ class HelperSocketCompositionTest {
             val tcp = guardRoot.resolve("adb.tcp")
             val tcp6 = guardRoot.resolve("adb.tcp6")
             for (path in listOf(tcp, tcp6)) Files.writeString(path, "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n")
+            sysfsReadRoot = executable.parentFile.toPath().resolve("sysfs-read-socket-fixture")
+            sysfsReadRoot.toFile().deleteRecursively()
+            for (name in listOf("relay", "strelay", "st_relay", "gpio")) Files.createDirectories(sysfsReadRoot.resolve(name))
+            Files.writeString(sysfsReadRoot.resolve("strelay/relay1"), "1\n")
+            Files.writeString(sysfsReadRoot.resolve("strelay/relay2"), "0\n")
+            Files.writeString(sysfsReadRoot.resolve("st_relay/relay1"), "1\n")
+            for ((pin, value, direction) in listOf(Triple(147, "1", "out"), Triple(148, "bad", "out"), Triple(149, "0", "in"))) {
+                val directory = Files.createDirectories(sysfsReadRoot.resolve("gpio/gpio$pin"))
+                Files.writeString(directory.resolve("value"), "$value\n")
+                Files.writeString(directory.resolve("direction"), "$direction\n")
+            }
             zigbeeRoot = executable.parentFile.toPath().resolve("zigbee-socket-fixture")
             zigbeeRoot.toFile().deleteRecursively()
             val vendor = Files.createDirectories(zigbeeRoot.resolve("vendor"))
@@ -411,6 +454,7 @@ class HelperSocketCompositionTest {
             if (::socketPath.isInitialized) Files.deleteIfExists(socketPath)
             Files.deleteIfExists(Path.of("/tmp/hapaneld-helper-install-stream-test.apk"))
             if (::guardRoot.isInitialized) deleteGuardRoot(guardRoot)
+            if (::sysfsReadRoot.isInitialized) sysfsReadRoot.toFile().deleteRecursively()
             if (::zigbeeRoot.isInitialized) zigbeeRoot.toFile().deleteRecursively()
             if (::fixtureLock.isInitialized) fixtureLock.channel().close()
         }

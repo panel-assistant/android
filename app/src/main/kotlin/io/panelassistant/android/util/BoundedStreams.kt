@@ -25,13 +25,14 @@ internal object BoundedStreams {
         }
     }
 
-    fun copy(input: InputStream, output: OutputStream, maxBytes: Long): Long {
+    fun copy(input: InputStream, output: OutputStream, maxBytes: Long, beforeRead: () -> Unit = {}): Long {
         require(maxBytes in 0 until Long.MAX_VALUE)
         val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
         var total = 0L
         while (true) {
             val remainingWithProbe = (maxBytes - total) + 1L
             val wanted = minOf(buffer.size.toLong(), remainingWithProbe).toInt()
+            beforeRead()
             val read = input.read(buffer, 0, wanted)
             if (read < 0) return total
             if (read == 0) continue
@@ -59,9 +60,9 @@ internal object BoundedStreams {
         return expectedBytes
     }
 
-    fun readBytes(input: InputStream, maxBytes: Long): ByteArray {
+    fun readBytes(input: InputStream, maxBytes: Long, beforeRead: () -> Unit = {}): ByteArray {
         val output = ByteArrayOutputStream(minOf(maxBytes, DEFAULT_BUFFER_SIZE.toLong()).toInt())
-        copy(input, output, maxBytes)
+        copy(input, output, maxBytes, beforeRead)
         return output.toByteArray()
     }
 }

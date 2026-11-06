@@ -26,6 +26,11 @@ interface Daemon {
     /** Fixed ADB observations; unknown fields stay null and no root shell fallback is implied. */
     fun adbState(): HelperAdbState? = null
 
+    /** Fixed relay/GPIO observations; null means unknown, never an invitation to launch su. */
+    fun relayCount(relayClass: HelperRelayClass): Int? = null
+    fun relayRead(relayClass: HelperRelayClass, relay: Int): Boolean? = null
+    fun gpioRead(pin: Int, timeoutMs: Long = 1_500L): HelperGpioState? = null
+
     /** Send one command; return the exact printable reply line without its LF, or null if unreachable/malformed. */
     fun send(cmd: String): String?
 

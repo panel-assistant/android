@@ -68,3 +68,7 @@ COMMAND(CHT8305,   cmd_cht8305)
 COMMAND(VI530X,    cmd_vi530x)
 COMMAND(VERSION,   cmd_version)
 COMMAND(PING,      cmd_ping)
+
+// Fixed read-only relay class inventory and GPIO observations (protocol 1.11 / 1.12).
+COMMAND(RELAYREAD, cmd_relayread)
+COMMAND(GPIOREAD, cmd_gpioread)

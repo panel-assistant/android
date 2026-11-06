@@ -91,21 +91,6 @@ interface RootShell {
         )?.trim() == "ready"
     }
 
-    /** Read-only counterpart of [prepareOutputGpio]: which of [gpios] are already exported as writable
-     * outputs. It never exports a pin, changes a direction or writes a value, and runs on the bounded
-     * lane independent of interactive hardware control. Null when the probe itself failed. */
-    fun preparedOutputGpios(gpios: Collection<Int>, timeoutMs: Long = 5_000L): Set<Int>? {
-        require(gpios.all { it in 0..4095 })
-        if (gpios.isEmpty()) return emptySet()
-        val probe = gpios.joinToString("; ", postfix = "; true") { gpio ->
-            val dir = "/sys/class/gpio/gpio$gpio"
-            "{ [ -e $dir/direction ] && [ \"\$(cat $dir/direction 2>/dev/null)\" = out ] && " +
-                "[ -w $dir/value ] && echo $gpio; }"
-        }
-        val out = runOutputIsolatedBounded(probe, maxBytes = gpios.size * 8L, timeoutMs = timeoutMs) ?: return null
-        return out.lineSequence().mapNotNull { it.trim().toIntOrNull() }.toSet()
-    }
-
     private fun safeSysfsPath(path: String): Boolean =
         path.startsWith("/sys/") && path.length <= 256 && path.matches(Regex("/[A-Za-z0-9_./-]+"))
 }

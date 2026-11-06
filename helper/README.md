@@ -17,7 +17,7 @@ Newline-terminated ASCII on the abstract UNIX socket `@hapaneld-helper`. One or 
 
 | Command | Effect | Reply |
 | --- | --- | --- |
-| `VERSION` | read the helper identity without touching hardware | `HELPER version=1.10.0 proto=1.10` / `ERR` when arguments are supplied |
+| `VERSION` | read the helper identity without touching hardware | `HELPER version=1.12.0 proto=1.12` / `ERR` when arguments are supplied |
 | `RGB <r> <g> <b>` | set LED colour (each 0..255) | `OK` / `ERR` |
 | `OFF` | LED off | `OK` / `ERR` |
 | `BTN <0..255>` | button-backlight brightness | `OK` / `ERR` |
@@ -54,6 +54,8 @@ Newline-terminated ASCII on the abstract UNIX socket `@hapaneld-helper`. One or 
 | `ZIGBEESTATE` | argument-free, fixed Sonoff gateway footprint and complete process observation (protocol 1.6) | ordered `ZIGBEESTATE 1` frame ending `END`, or `ERR` |
 | `ZIGBEEHEALTH` | the same observation plus process start/jiffy samples, total CPU, bounded watchdog and network evidence (protocol 1.7) | ordered `ZIGBEEHEALTH 1` frame ending `END`, or `ERR` |
 | `ZIGBEEROLE` | argument-free, one fixed local broker topic under a 3500 ms child deadline (protocol 1.8) | `ZIGBEEROLE <hex JSON bytes>` / `ERR` |
+| `RELAYREAD <RELAY or ST_RELAY or STRELAY> <COUNT or 1..16>` | fixed relay class inventory/value (protocol 1.11) | `RELAYREAD <class> COUNT=<0..16 or ?>` / `RELAYREAD <class> RELAY=<n> VALUE=<0 or 1 or ?>` / `ERR` |
+| `GPIOREAD <0..65535>` | fixed GPIO value and output preparation observation (protocol 1.12) | `GPIOREAD <pin> VALUE=<0 or 1 or ?> PREPARED=<0 or 1 or ?>` / `ERR` |
 | `ADBSTATE` | argument-free bounded fixed Android ADB properties and direct TCP listener inventory (protocol 1.10) | `PROPS=<0 or 1 or ?> LISTEN=<0 or 1 or ?>` / `ERR` |
 | `WIFISTATUS` | argument-free bounded current Wi-Fi fields from fixed Android commands (protocol 1.9) | `SSID=<hex or -> RSSI=<dBm or ->` / `ERR` |
 | `ZIGBEECONTAIN` | argument-free containment for the exact vendor-native Sonoff `/vendor/bin/siliconlabs_host` layout; targets only its guard, gateway and matching broker, then demotes a surviving gateway | `OK` / `PARTIAL` / `ERR` |
@@ -254,3 +256,9 @@ Port 5555 in LISTEN state counts at any local address, including loopback. A com
 table wins an unavailable other table; a negative requires both complete valid tables. A malformed
 later row invalidates an earlier positive in the same table. This read-only parser is separate
 from ADB recovery and does not change recovery actions.
+
+`RELAYREAD` accepts only the exact class selectors `RELAY`, `ST_RELAY`, and `STRELAY`, mapped internally to `/sys/class/relay`, `/sys/class/st_relay`, and `/sys/class/strelay`. `COUNT` completes a bounded directory scan (at most 256 entries, including `.` and `..`) and counts consecutive names `relay1` through `relay16`, independently of their values. A missing class is known zero; failed, overflowing or incomplete scans are unknown. Seventeen consecutive names are unsupported and unknown. Gaps end the count. Numeric selectors are canonical decimal 1..16 and read the fixed `relayN` node directly. Both response forms echo the admitted selector and end in one newline.
+
+`GPIOREAD` accepts only a canonical decimal pin 0..65535 and observes `/sys/class/gpio/gpioN/value` and `direction`. Values are independent of output preparation: `VALUE` accepts only trimmed `0` or `1`; `PREPARED` is one only when trimmed direction is `out` and the fixed value node passes `W_OK`. Direction `in` or an established missing/denied/read-only value node proves preparation zero. Otherwise malformed or unavailable direction/access evidence remains unknown. Value read failure does not erase independent preparation evidence; inability to open the GPIO directory for reading alone does not prove that its value node is unwritable. Each scalar must be a regular file, fully read within 64 raw bytes plus an overflow probe, contain no NUL, and match exactly after ASCII whitespace trimming. Replies are at most 64 bytes, echo the canonical pin, and terminate with one newline. Unknown fields use `?`.
+
+These observations follow legitimate kernel sysfs class/device symlinks. They never export GPIOs, write values or directions, configure edges, start watchers, or execute commands. Caller paths, arbitrary classes, noncanonical integers, and extra arguments are rejected with `ERR`.

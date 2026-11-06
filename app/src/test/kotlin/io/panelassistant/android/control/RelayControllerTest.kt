@@ -1,568 +1,247 @@
 package io.panelassistant.android.control
 
+import io.panelassistant.android.platform.Daemon
+import io.panelassistant.android.platform.HelperGpioState
+import io.panelassistant.android.platform.HelperRelayClass
 import io.panelassistant.android.platform.RootShell
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
-import org.junit.Test
-import org.junit.Rule
-import org.junit.rules.TemporaryFolder
+import io.panelassistant.android.util.ZigbeeReadFixture
 import java.io.File
 import java.util.concurrent.Callable
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.TimeoutException
+import org.junit.Assert.*
+import org.junit.Rule
+import org.junit.Test
+import org.junit.rules.TemporaryFolder
 
-/**
- * RelayController over the RootShell seam — base resolution (primary vs firmware-renamed fallback),
- * relay read/write, inert-when-unprofiled, and button-LED gpio counting — with no device.
- */
+/** Helper observations and real root-actuator effects through the controller's production seams. */
 class RelayControllerTest {
-
-    private val base = "/sys/class/strelay"
-
-    private fun relay(
-        outputs: Map<String, String>,
-        relayBase: String? = base,
-        fallbacks: List<String> = emptyList(),
-        ledBase: Int? = null,
-    ): Pair<RelayController, FakeRootShell> {
-        val root = FakeRootShell(outputs)
-        return RelayController(
-            fakeProfile(relayBase = relayBase, relayBaseFallbacks = fallbacks, buttonLedGpioBase = ledBase),
-            root,
-        ) to root
-    }
-
     @get:Rule val sysfs = TemporaryFolder()
-
+    private val base = "/sys/class/strelay"
     private val fallback = "/sys/class/st_relay"
 
-    /** Execute production RootShell commands; only the root launch and sysfs mount are substituted. */
-    private inner class DirectoryRootShell : RootShell {
-        var reachable = true
-        var rejectListing = false
-        override fun available() = reachable
-        override fun run(cmd: String): Boolean = execute(cmd)?.first == 0
-        override fun runOutput(cmd: String): String? = execute(cmd)?.let { (exit, out) ->
-            out.takeIf { exit == 0 }
+    private fun wire() = ZigbeeReadFixture().apply { version = "HELPER version=1.12.0 proto=1.12" }
+    private fun ZigbeeReadFixture.reply(command: String, reply: String?) { replies[command] = reply?.toByteArray() }
+    private fun ZigbeeReadFixture.count(selector: String, value: String) = reply("RELAYREAD $selector COUNT", "RELAYREAD $selector COUNT=$value\n")
+    private fun ZigbeeReadFixture.value(selector: String, relay: Int, value: String) = reply("RELAYREAD $selector $relay", "RELAYREAD $selector RELAY=$relay VALUE=$value\n")
+    private fun ZigbeeReadFixture.gpio(pin: Int, value: String = "?", prepared: String = "?") = reply("GPIOREAD $pin", "GPIOREAD $pin VALUE=$value PREPARED=$prepared\n")
+    private fun controller(wire: ZigbeeReadFixture, root: RootShell = FakeRootShell(), primary: String? = base, fallbacks: List<String> = emptyList(), leds: Int? = null) =
+        RelayController(fakeProfile(relayBase = primary, relayBaseFallbacks = fallbacks, buttonLedGpioBase = leds), root, wire.client)
+
+    @Test fun primaryAndFallbackOrderDeterminesBothCountAndWriteBase() {
+        for (primary in listOf("0", "?", "1")) {
+            val wire = wire().apply { count("STRELAY", primary); count("ST_RELAY", "2") }
+            val first = File(sysfs.root, "strelay").apply { mkdirs() }
+            val second = File(sysfs.root, "st_relay").apply { mkdirs() }
+            File(first, "relay1").writeText("0"); File(second, "relay1").writeText("0"); File(second, "relay2").writeText("0")
+            val root = object : RootShell {
+                override fun available() = true
+                override fun runOutput(cmd: String): String? = null
+                override fun runBytes(cmd: String): ByteArray? = null
+                override fun run(cmd: String): Boolean {
+                    val process = ProcessBuilder("sh", "-c", cmd.replace("/sys/class/", "${sysfs.root.absolutePath}/")).start()
+                    return process.waitFor() == 0
+                }
+            }
+            val relay = controller(wire, root, fallbacks = listOf(fallback))
+            assertEquals(if (primary == "1") 1 else 2, relay.count())
+            assertTrue(relay.set(1, true))
+            assertEquals(if (primary == "1") "1" else "0", File(first, "relay1").readText())
+            assertEquals(if (primary == "1") "0" else "1", File(second, "relay1").readText())
+            assertEquals(if (primary == "1") listOf("RELAYREAD STRELAY COUNT") else listOf("RELAYREAD STRELAY COUNT", "RELAYREAD ST_RELAY COUNT"), wire.bytes.map { it.second })
         }
-        override fun runBytes(cmd: String): ByteArray? = null
-        private fun execute(cmd: String): Pair<Int, String>? {
-            if (!reachable) return null
-            // A present directory whose listing fails must not be mistaken for proved absence.
-            val translated = cmd.replace("/sys/class/", "${sysfs.root.absolutePath}/")
-            val shell = if (rejectListing) "ls() { return 1; }; $translated" else translated
-            val process = ProcessBuilder("sh", "-c", shell).redirectErrorStream(true).start()
-            val output = process.inputStream.bufferedReader().use { it.readText() }
-            return process.waitFor() to output
+    }
+
+    @Test fun unknownTopologyIsRetriedAndSuccessfulTopologyIsCached() {
+        val wire = wire().apply { count("STRELAY", "?"); count("ST_RELAY", "0") }
+        val relay = controller(wire, fallbacks = listOf(fallback))
+        assertEquals(0, relay.count())
+        wire.count("STRELAY", "2")
+        assertEquals(2, relay.count()); assertEquals(2, relay.count())
+        assertEquals(listOf("RELAYREAD STRELAY COUNT", "RELAYREAD ST_RELAY COUNT", "RELAYREAD STRELAY COUNT"), wire.bytes.map { it.second })
+    }
+
+    @Test fun absenceIsCachedOnlyWhenEveryCandidateIsKnownEmpty() {
+        val wire = wire().apply { count("STRELAY", "0"); count("ST_RELAY", "0") }
+        val relay = controller(wire, fallbacks = listOf(fallback))
+        repeat(3) { assertEquals(0, relay.count()) }
+        assertEquals(2, wire.bytes.size)
+    }
+
+    @Test fun unsupportedCustomBaseIsUnavailableWithoutPathSubmissionOrRootFallback() {
+        val wire = wire(); val root = FakeRootShell()
+        val relay = controller(wire, root, primary = "/sys/class/custom")
+        repeat(3) { assertEquals(0, relay.count()); assertNull(relay.read(1)); assertFalse(relay.set(1, true)) }
+        assertTrue(wire.bytes.isEmpty()); assertTrue(root.ran.isEmpty()); assertTrue(root.outputRan.isEmpty())
+    }
+
+    @Test fun relayStateIsFreshWhileTopologyIsCachedAndUnknownIsNotOff() {
+        val wire = wire().apply { count("STRELAY", "2"); value("STRELAY", 1, "1") }
+        val root = FakeRootShell(); val relay = controller(wire, root)
+        assertTrue(relay.available()); assertEquals(true, relay.read(1))
+        wire.value("STRELAY", 1, "0"); assertEquals(false, relay.read(1))
+        wire.value("STRELAY", 1, "?"); assertNull(relay.read(1)); assertFalse(relay.get(1))
+        assertNull(relay.read(0)); assertNull(relay.read(3)); assertFalse(relay.set(3, true))
+        assertEquals(1, wire.bytes.count { it.second.endsWith("COUNT") })
+        assertEquals(4, wire.bytes.count { it.second == "RELAYREAD STRELAY 1" })
+        assertTrue(root.outputRan.isEmpty()); assertTrue(root.ran.isEmpty())
+    }
+
+    @Test fun missingOldRefusedAndMalformedHelperNeverFallsBackToRoot() {
+        for (mode in 0..3) {
+            val wire = wire().apply {
+                count("STRELAY", "2"); gpio(147, "1", "1")
+                when (mode) {
+                    0 -> missing = true
+                    1 -> version = "HELPER version=1.10.0 proto=1.10"
+                    2 -> { reply("RELAYREAD STRELAY COUNT", "ERR\n"); reply("GPIOREAD 147", "ERR\n") }
+                    3 -> { reply("RELAYREAD STRELAY COUNT", "RELAYREAD STRELAY COUNT=02\n"); reply("GPIOREAD 147", "GPIOREAD 148 VALUE=1 PREPARED=1\n") }
+                }
+            }
+            val root = FakeRootShell(); val relay = controller(wire, root, leds = 147)
+            repeat(2) { assertEquals(0, relay.count()); assertNull(relay.read(1)); assertNull(relay.ledRead(0)); relay.warmUp() }
+            assertTrue(root.ran.isEmpty()); assertTrue(root.outputRan.isEmpty()); assertTrue(root.isolatedOutputRan.isEmpty()); assertEquals(0, root.availabilityChecks)
         }
     }
 
-    private fun directoryController(root: DirectoryRootShell) = RelayController(
-        fakeProfile(relayBase = base, relayBaseFallbacks = listOf(fallback)), root,
-    )
-
-    private fun relayDirectory(name: String, vararg nodes: String) {
-        val directory = sysfs.newFolder(name)
-        nodes.forEach { File(directory, it).writeText("0") }
-    }
-
-    @Test fun absentPrimaryReachesDeclaredFallbackThroughRootCommands() {
-        relayDirectory("st_relay", "relay1", "relay2")
-        val r = directoryController(DirectoryRootShell())
-
-        assertEquals(2, r.count())
-        assertTrue(r.set(2, true))
-        assertEquals("1", File(sysfs.root, "st_relay/relay2").readText())
-        assertEquals(true, r.read(2))
-    }
-
-    @Test fun presentPrimaryWinsOverDeclaredFallbackThroughRootCommands() {
-        relayDirectory("strelay", "relay1")
-        relayDirectory("st_relay", "relay1", "relay2")
-        val r = directoryController(DirectoryRootShell())
-
-        assertEquals(1, r.count())
-        assertTrue(r.set(1, true))
-        assertEquals("1", File(sysfs.root, "strelay/relay1").readText())
-        assertEquals("0", File(sysfs.root, "st_relay/relay1").readText())
-    }
-
-    @Test fun emptyPrimaryReachesDeclaredFallbackThroughRootCommands() {
-        relayDirectory("strelay")
-        relayDirectory("st_relay", "relay1", "relay2")
-
-        assertEquals(2, directoryController(DirectoryRootShell()).count())
-    }
-
-    @Test fun rootFailureRemainsRetryableThroughRootCommands() {
-        relayDirectory("st_relay", "relay1", "relay2")
-        val root = DirectoryRootShell().apply { reachable = false }
-        val r = directoryController(root)
-
-        assertEquals(0, r.count())
-        root.reachable = true
-        assertEquals(2, r.count())
-    }
-
-    @Test fun failedListingsRemainRetryableThroughRootCommands() {
-        relayDirectory("strelay", "relay1")
-        relayDirectory("st_relay", "relay1", "relay2")
-        val root = DirectoryRootShell().apply { rejectListing = true }
-        val r = directoryController(root)
-
-        assertEquals(0, r.count())
-        root.rejectListing = false
-        assertEquals(1, r.count())
-    }
-
-    @Test fun countsRelayNodesUnderTheBase() {
-        val (r, _) = relay(mapOf("ls $base" to "relay1 relay2 power"))
-        assertEquals(2, r.count())
-        assertTrue(r.available())
-    }
-
-    @Test fun inertWithNoRelayBase() {
-        val (r, root) = relay(emptyMap(), relayBase = null)
-        assertEquals(0, r.count())
-        assertFalse(r.available())
-        assertFalse(r.set(1, true))
-        assertTrue(root.ran.isEmpty())
-    }
-
-    @Test fun setWritesRelayNode() {
-        val (r, root) = relay(mapOf("ls $base" to "relay1 relay2"))
-        assertTrue(r.set(1, true))
-        assertTrue(root.ran.contains("printf '%s' '1' > $base/relay1"))
-        assertTrue(r.set(2, false))
-        assertTrue(root.ran.contains("printf '%s' '0' > $base/relay2"))
-    }
-
-    @Test fun getReadsRelayState() {
-        val (r, _) = relay(mapOf("ls $base" to "relay1", "cat $base/relay1" to "1"))
-        assertTrue(r.get(1))
-    }
-
-    @Test fun stateAuditsReuseOneRelayTopologyProbe() {
-        val (r, root) = relay(mapOf("ls $base" to "relay1 relay2", "cat $base/relay1" to "1"))
-        assertEquals(2, r.count())
-        repeat(5) { assertTrue(r.read(1) == true) }
-        assertEquals(1, root.outputRan.count { it.contains("ls $base") })
-        assertEquals(5, root.outputRan.count { it.contains("cat $base/relay1") })
-    }
-
-    @Test fun unavailableRelayProbeIsRetriedThenSuccessfulTopologyIsCached() {
-        val root = SequencedRootShell(mapOf("ls $base" to listOf(null, "relay1 relay2")))
-        val r = RelayController(fakeProfile(relayBase = base), root)
-
-        assertEquals(0, r.count())
-        assertEquals(2, r.count())
-        assertEquals(2, r.count())
-        assertEquals(2, root.outputRan.count { it.contains("ls $base") })
-    }
-
-    @Test fun capturedUnavailableRootRouteSkipsDiscoveryWithoutCachingAbsence() {
-        val (r, root) = relay(mapOf("ls $base" to "relay1 relay2"))
-
-        assertEquals(0, r.count(allowRootProbe = false))
-        assertTrue(root.outputRan.isEmpty())
-        assertEquals(2, r.count(allowRootProbe = true))
-        assertEquals(1, root.outputRan.count { it.contains("ls $base") })
-        assertEquals(2, r.count(allowRootProbe = false))
-        assertEquals(1, root.outputRan.count { it.contains("ls $base") })
-    }
-
-    @Test fun confirmedRelayAbsenceIsCached() {
-        val root = SequencedRootShell(mapOf("ls $base" to listOf("power")))
-        val r = RelayController(fakeProfile(relayBase = base), root)
-
-        assertEquals(0, r.count())
-        assertEquals(0, r.count())
-        assertEquals(1, root.outputRan.count { it.contains("ls $base") })
-    }
-
-    @Test fun fallbackBaseUsedWhenPrimaryHasNoNodes() {
-        val alt = "/sys/class/st_relay"
-        val (r, _) = relay(
-            outputs = mapOf("ls $base" to "", "ls $alt" to "relay1"),
-            fallbacks = listOf(alt),
-        )
-        assertEquals(1, r.count())
-    }
-
-    @Test fun relayDiscoveryStopsAtTheFirstMissingIndex() {
-        val (r, _) = relay(mapOf("ls $base" to "relay1 relay3 relay99"))
-
-        assertEquals(1, r.count())
-    }
-
-    @Test fun relayDiscoveryRequiresCanonicalNodeNames() {
-        val (r, _) = relay(mapOf("ls $base" to "relay01 relay-1 relayx"))
-
-        assertEquals(0, r.count())
-    }
-
-    @Test fun outOfRangeRelayNeverReachesTheRootWriter() {
-        val (r, root) = relay(mapOf("ls $base" to "relay1 relay2"))
-
-        assertFalse(r.set(0, true))
-        assertFalse(r.set(3, true))
-        assertEquals(null, r.read(3))
-        assertFalse(root.ran.any { it.contains("relay0") || it.contains("relay3") })
-        assertFalse(root.outputRan.any { it.contains("cat $base/relay3") })
-    }
-
-    @Test fun ledCountUsesDeclaredTopologyWithoutMutatingGpio() {
-        val ledBase = 147
-        val (r, root) = relay(emptyMap(), ledBase = ledBase)
-        assertEquals(4, r.ledCount())
+    @Test fun explicitRelayWritesUseResolvedHelperTopologyAndKeepFailuresVisible() {
+        val wire = wire().apply { count("STRELAY", "2") }; val root = FakeRootShell()
+        val relay = controller(wire, root)
+        assertTrue(relay.set(1, true)); assertTrue(relay.set(2, false))
+        root.runResult = false; assertFalse(relay.set(1, false))
+        assertEquals(listOf("printf '%s' '1' > $base/relay1", "printf '%s' '0' > $base/relay2", "printf '%s' '0' > $base/relay1"), root.ran)
         assertTrue(root.outputRan.isEmpty())
     }
 
-    @Test fun stateAuditsDoNotExportOrChangeButtonLedTopology() {
-        val ledBase = 147
-        val outputs = mapOf("cat /sys/class/gpio/gpio147/value" to "1")
-        val (r, root) = relay(outputs, ledBase = ledBase)
-        assertEquals(4, r.ledCount())
-        repeat(3) { assertTrue(r.ledRead(0) == true) }
-        assertTrue(root.ran.isEmpty())
-        assertEquals(0, root.outputRan.count { it.contains("/sys/class/gpio/export") })
-        assertEquals(3, root.outputRan.count { it.contains("cat /sys/class/gpio/gpio147/value") })
+    @Test fun declaredLedCountAndOutOfRangeAccessNeverProbeOrPrepareOtherPins() {
+        val wire = wire(); val root = ActuatorRoot(); val relay = controller(wire, root, primary = null, leds = 147)
+        assertEquals(4, relay.ledCount()); assertNull(relay.ledRead(-1)); assertNull(relay.ledRead(4))
+        assertFalse(relay.ledSet(-1, true)); assertFalse(relay.ledSet(4, true))
+        assertTrue(wire.bytes.isEmpty()); assertTrue(root.prepared.isEmpty()); assertTrue(root.writes.isEmpty())
     }
 
-    @Test fun gpioIsPreparedOnlyWhenAnLedWriteIsRequested() {
-        val ledBase = 147
-        val root = SequencedRootShell(mapOf("gpio147" to listOf("ready")))
-        val r = RelayController(fakeProfile(buttonLedGpioBase = ledBase), root)
-
-        assertEquals(4, r.ledCount())
-        assertTrue(root.outputRan.isEmpty())
-        assertTrue(r.ledSet(0, true))
-        assertEquals(1, root.outputRan.count { it.contains("gpio147") })
-        assertTrue(root.ran.contains("printf '%s' '1' > /sys/class/gpio/gpio147/value"))
+    @Test fun explicitLedWritesPrepareOnceAndFailedWriteWithdrawsTheProof() {
+        val root = ActuatorRoot(); val relay = controller(wire(), root, primary = null, leds = 147)
+        assertTrue(relay.ledSet(0, true)); assertTrue(relay.ledSet(0, false))
+        assertEquals(listOf(147), root.prepared)
+        root.writeOk = false; assertFalse(relay.ledSet(0, true))
+        root.writeOk = true; assertTrue(relay.ledSet(0, true))
+        assertEquals(listOf(147, 147), root.prepared)
+        assertEquals(4, root.writes.size)
     }
 
-    @Test fun directionFailureDoesNotExposeInputPinAsUsable() {
-        val ledBase = 147
-        val root = SequencedRootShell(mapOf("gpio147" to listOf("input")))
-        val r = RelayController(fakeProfile(buttonLedGpioBase = ledBase), root)
+    @Test fun failedPreparationIsRetryableAndRestartDoesNotInheritPreparation() {
+        val root = ActuatorRoot().apply { prepareOk = false }
+        val relay = controller(wire(), root, primary = null, leds = 147)
+        assertFalse(relay.ledSet(0, true)); assertTrue(root.writes.isEmpty())
+        root.prepareOk = true; assertTrue(relay.ledSet(0, true))
+        assertTrue(controller(wire(), root, primary = null, leds = 147).ledSet(0, true))
+        assertEquals(listOf(147, 147, 147), root.prepared)
+    }
 
-        assertEquals(4, r.ledCount())
-        assertFalse(r.ledSet(0, true))
-        assertTrue(root.ran.isEmpty())
-        assertEquals(1, root.outputRan.size)
-        root.outputRan.forEach { command ->
-            assertTrue(command.contains("cat /sys/class/gpio/gpio147/direction"))
-            assertTrue(command.contains("[ \"\$direction\" = out ]"))
-            assertTrue(command.contains("[ -w /sys/class/gpio/gpio147/value ]"))
+    @Test fun readingValueDoesNotSeedPreparationEvenWhenHelperReportsPrepared() {
+        val wire = wire().apply { gpio(147, "1", "1") }; val root = ActuatorRoot()
+        val relay = controller(wire, root, primary = null, leds = 147)
+        repeat(3) { assertEquals(true, relay.ledRead(0)) }
+        assertTrue(relay.ledSet(0, true)); assertEquals(listOf(147), root.prepared)
+        wire.gpio(147, "0", "0"); assertEquals(false, relay.ledRead(0))
+        wire.gpio(147, "?", "1"); assertNull(relay.ledRead(0))
+    }
+
+    @Test fun warmUpUsesOnlyIndependentPreparedProofAndLeavesOtherPinsLazy() {
+        val wire = wire().apply { gpio(147, "1", "0"); gpio(148, "?", "1"); gpio(149, "0", "?"); gpio(150, "1", "1") }
+        val root = ActuatorRoot(); val relay = controller(wire, root, primary = null, leds = 147)
+        relay.warmUp()
+        assertTrue(root.prepared.isEmpty()); assertTrue(root.writes.isEmpty())
+        (0..3).forEach { assertTrue(relay.ledSet(it, true)) }
+        assertEquals(listOf(147, 149), root.prepared)
+        assertEquals(4, wire.bytes.size)
+    }
+
+    @Test fun failedAndThrowingWarmUpLeaveExplicitPreparationAvailable() {
+        for (fail in listOf(false, true)) {
+            val daemon = object : Daemon by FakeDaemon() {
+                override fun gpioRead(pin: Int, timeoutMs: Long): HelperGpioState? = if (fail) error("failed helper") else null
+            }
+            val root = ActuatorRoot(); val relay = RelayController(fakeProfile(buttonLedGpioBase = 147), root, daemon)
+            relay.warmUp(); assertTrue(relay.ledSet(0, true)); assertTrue(relay.ledSet(0, false))
+            assertEquals(listOf(147), root.prepared)
         }
     }
 
-    @Test fun provenGpioPreparationIsReusedAcrossWrites() {
-        val root = SequencedRootShell(mapOf("gpio147" to listOf("ready")))
-        val r = RelayController(fakeProfile(buttonLedGpioBase = 147), root)
-
-        assertTrue(r.ledSet(0, true))
-        assertTrue(r.ledSet(0, false))
-
-        // Issue #93: one privileged preparation round trip for the pin, not one per command.
-        assertEquals(1, root.outputRan.count { it.contains("gpio147") })
-        assertEquals(2, root.ran.count { it.contains("/sys/class/gpio/gpio147/value") })
-    }
-
-    @Test fun aFailedValueWriteInvalidatesTheProvenPreparation() {
-        val root = SequencedRootShell(
-            outputs = mapOf("gpio147" to listOf("ready")),
-            runResults = listOf(false, true),
-        )
-        val r = RelayController(fakeProfile(buttonLedGpioBase = 147), root)
-
-        assertFalse(r.ledSet(0, true))
-        assertTrue(r.ledSet(0, true))
-
-        // The failed write may mean the proven export/direction no longer holds; re-verify it.
-        assertEquals(2, root.outputRan.count { it.contains("gpio147") })
-    }
-
-    @Test fun aFailedPreparationIsNeverCached() {
-        val root = SequencedRootShell(mapOf("gpio147" to listOf("input", "ready")))
-        val r = RelayController(fakeProfile(buttonLedGpioBase = 147), root)
-
-        assertFalse(r.ledSet(0, true))
-        assertTrue(r.ledSet(0, true))
-
-        assertEquals(2, root.outputRan.count { it.contains("gpio147") })
-    }
-
-    @Test fun preparationDoesNotSurviveAControllerRestart() {
-        val root = SequencedRootShell(mapOf("gpio147" to listOf("ready", "ready")))
-
-        assertTrue(RelayController(fakeProfile(buttonLedGpioBase = 147), root).ledSet(0, true))
-        assertTrue(RelayController(fakeProfile(buttonLedGpioBase = 147), root).ledSet(0, true))
-
-        // A restart forgets proven pins, so a reboot-reset GPIO is re-verified on first use.
-        assertEquals(2, root.outputRan.count { it.contains("gpio147") })
-    }
-
-    @Test fun aSuccessfulReadNeverProvesPreparation() {
-        val root = SequencedRootShell(
-            mapOf(
-                "cat /sys/class/gpio/gpio147/value" to listOf("1"),
-                "gpio147" to listOf("ready"),
-            ),
-        )
-        val r = RelayController(fakeProfile(buttonLedGpioBase = 147), root)
-
-        repeat(3) { assertTrue(r.ledRead(0) == true) }
-        assertTrue(r.ledSet(0, true))
-
-        // Reads must not populate the preparation cache — only a proven `ready` write path may.
-        assertEquals(1, root.outputRan.count { it.contains("/sys/class/gpio/export") || it.contains("direction") })
-    }
-
-    @Test fun outOfRangeButtonLedNeverAddressesAnotherGpio() {
-        val ledBase = 147
-        val outputs = (0 until 4).associate { "gpio${ledBase + it}" to "ready" }
-        val (r, root) = relay(outputs, ledBase = ledBase)
-
-        assertFalse(r.ledSet(-1, true))
-        assertFalse(r.ledSet(4, true))
-        assertEquals(null, r.ledRead(4))
-        assertFalse(root.ran.any { it.contains("gpio146") || it.contains("gpio151") })
-        assertFalse(root.outputRan.any { it.contains("gpio146") || it.contains("gpio151") })
-    }
-
-    // --- Issue #93 startup warm-up ---
-
-    @Test fun warmUpLetsTheFirstCommandAfterStartSkipPreparation() {
-        val root = LaneRootShell(warmUpReply = { "147\n148\n149\n150\n" })
-        val r = RelayController(fakeProfile(buttonLedGpioBase = 147), root)
-
-        r.warmUp()
-        assertTrue(r.ledSet(0, true))
-        assertTrue(r.ledSet(3, false))
-
-        assertEquals(0, root.preparations())
-        assertEquals(
-            listOf(
-                "printf '%s' '1' > /sys/class/gpio/gpio147/value",
-                "printf '%s' '0' > /sys/class/gpio/gpio150/value",
-            ),
-            root.ran,
-        )
-    }
-
-    @Test fun warmUpIsReadOnlyAndOffTheInteractiveLane() {
-        val root = LaneRootShell(warmUpReply = { "147\n" })
-        val r = RelayController(fakeProfile(buttonLedGpioBase = 147), root)
-
-        r.warmUp()
-
-        assertTrue(root.ran.isEmpty())
-        assertTrue(root.outputRan.isEmpty())
-        assertEquals(1, root.isolatedRan.size)
-        val probe = root.isolatedRan.single()
-        (147..150).forEach { assertTrue(probe.contains("/sys/class/gpio/gpio$it/direction")) }
-        assertFalse(probe.contains("/sys/class/gpio/export"))
-        // Only stderr redirections: no export, direction or value write.
-        assertFalse(Regex("(^|[^2])>").containsMatchIn(probe))
-    }
-
-    @Test fun warmUpProvesOnlyTheReportedPins() {
-        val root = LaneRootShell(warmUpReply = { "148\n" })
-        val r = RelayController(fakeProfile(buttonLedGpioBase = 147), root)
-
-        r.warmUp()
-        assertTrue(r.ledSet(0, true))
-        assertTrue(r.ledSet(1, true))
-
-        // After a reboot nothing is exported: unreported pins still prepare lazily.
-        assertEquals(listOf(147), root.preparedPins)
-    }
-
-    @Test fun warmUpIsInertWithoutDeclaredButtonLeds() {
-        val root = LaneRootShell(warmUpReply = { "147\n" })
-
-        RelayController(fakeProfile(relayBase = base), root).warmUp()
-
-        assertTrue(root.isolatedRan.isEmpty() && root.outputRan.isEmpty() && root.ran.isEmpty())
-    }
-
-    @Test fun aFailedOrThrowingWarmUpLeavesTheLazyPathIntact() {
-        for (reply in listOf<() -> String?>({ null }, { throw IllegalStateException("probe failed") })) {
-            val root = LaneRootShell(warmUpReply = reply)
-            val r = RelayController(fakeProfile(buttonLedGpioBase = 147), root)
-
-            r.warmUp()
-            assertTrue(r.ledSet(0, true))
-            assertTrue(r.ledSet(0, false))
-
-            assertEquals(listOf(147), root.preparedPins)
-        }
-    }
-
-    @Test(timeout = 10_000)
-    fun aBlockedWarmUpNeverDelaysARealCommandWhichReverifies() {
-        val entered = CountDownLatch(1)
-        val release = CountDownLatch(1)
-        val root = LaneRootShell(warmUpReply = {
-            entered.countDown()
-            release.await()
-            "147\n"
-        })
-        val r = RelayController(fakeProfile(buttonLedGpioBase = 147), root)
-        val warmUp = startWarmUp(r)
-        try {
-            assertTrue(entered.await(5, TimeUnit.SECONDS))
-            // The warm-up is still blocked: the command must complete on its own, re-verifying the pin.
-            assertEquals("the command waited behind the warm-up", true, ledSetWithin(r, 0, true))
-            assertEquals(listOf(147), root.preparedPins)
-        } finally {
-            release.countDown()
-            warmUp.join(5_000)
-        }
-    }
-
-    @Test(timeout = 10_000)
-    fun aFailureDuringWarmUpStillForcesReverification() {
-        val entered = CountDownLatch(1)
-        val release = CountDownLatch(1)
-        val root = LaneRootShell(
-            warmUpReply = {
-                entered.countDown()
-                release.await()
-                "147\n"   // observed before the write below failed
-            },
-            runResults = listOf(false, true, true),
-        )
-        val r = RelayController(fakeProfile(buttonLedGpioBase = 147), root)
-        val warmUp = startWarmUp(r)
-        try {
-            assertTrue(entered.await(5, TimeUnit.SECONDS))
-            assertEquals("the command waited behind the warm-up", false, ledSetWithin(r, 0, true))
-        } finally {
-            release.countDown()
-            warmUp.join(5_000)
-        }
-        assertFalse("the warm-up must finish before the next command", warmUp.isAlive)
-        assertTrue(r.ledSet(0, true))
-
-        // The stale warm-up proof must not re-prove the pin that failure invalidated.
-        assertEquals(listOf(147, 147), root.preparedPins)
-    }
-
-    @Test(timeout = 10_000)
-    fun aFailedPreparationDuringWarmUpStillForcesReverification() {
-        val entered = CountDownLatch(1)
-        val release = CountDownLatch(1)
-        val root = LaneRootShell(
-            warmUpReply = {
-                entered.countDown()
-                release.await()
-                "147\n"   // observed before the preparation below failed
-            },
-            prepareReplies = listOf("input", "ready"),
-        )
-        val r = RelayController(fakeProfile(buttonLedGpioBase = 147), root)
-        val warmUp = startWarmUp(r)
-        try {
-            assertTrue(entered.await(5, TimeUnit.SECONDS))
-            assertEquals("the command waited behind the warm-up", false, ledSetWithin(r, 0, true))
-        } finally {
-            release.countDown()
-            warmUp.join(5_000)
-        }
-        assertFalse("the warm-up must finish before the next command", warmUp.isAlive)
-        assertTrue(r.ledSet(0, true))
-
-        assertEquals(listOf(147, 147), root.preparedPins)
-    }
-
-    private fun startWarmUp(r: RelayController) = Thread { r.warmUp() }.apply { isDaemon = true; start() }
-
-    /** [RelayController.ledSet] from another thread, or null when it was still waiting after two seconds. */
-    private fun ledSetWithin(r: RelayController, i: Int, on: Boolean): Boolean? {
-        val command = Executors.newSingleThreadExecutor { task -> Thread(task).apply { isDaemon = true } }
-        return try {
-            command.submit(Callable { r.ledSet(i, on) }).get(2, TimeUnit.SECONDS)
-        } catch (_: TimeoutException) {
-            null
-        } finally {
-            command.shutdown()
-        }
-    }
-
-    /**
-     * A root lane shaped like production: [run]/[runOutput] share one monitor (the interactive persistent
-     * shell), while [runOutputIsolatedBounded] is independent of it. A warm-up that took the interactive
-     * lane or the controller monitor would therefore block a concurrent command in these tests.
-     */
-    private class LaneRootShell(
-        private val warmUpReply: () -> String?,
-        runResults: List<Boolean> = emptyList(),
-        prepareReplies: List<String> = emptyList(),
-    ) : RootShell {
-        private val lane = Any()
-        private val runResults = runResults.toMutableList()
-        private val prepareReplies = prepareReplies.toMutableList()
-        val ran = mutableListOf<String>()
-        val outputRan = mutableListOf<String>()
-        val isolatedRan = mutableListOf<String>()
-        val preparedPins = mutableListOf<Int>()
-
-        fun preparations() = synchronized(lane) { preparedPins.size }
-
-        override fun available(): Boolean = true
-
-        override fun run(cmd: String): Boolean = synchronized(lane) {
-            ran += cmd
-            if (runResults.isNotEmpty()) runResults.removeAt(0) else true
-        }
-
-        override fun runOutput(cmd: String): String? = synchronized(lane) {
-            outputRan += cmd
-            Regex("\\[ -e /sys/class/gpio/gpio(\\d+) ]").find(cmd)?.let {
-                preparedPins += it.groupValues[1].toInt()
-                if (prepareReplies.isNotEmpty()) prepareReplies.removeAt(0) else "ready"
+    @Test fun warmUpSharesFiveSecondsAndDoesNotAcceptAReplyAfterItsBudget() {
+        var now = 0L
+        val timeouts = mutableListOf<Long>(); val pins = mutableListOf<Int>()
+        val daemon = object : Daemon by FakeDaemon() {
+            override fun gpioRead(pin: Int, timeoutMs: Long): HelperGpioState {
+                pins += pin; timeouts += timeoutMs; now += timeoutMs * 1_000_000L
+                return HelperGpioState(null, true)
             }
         }
-
-        override fun runOutputIsolatedBounded(cmd: String, maxBytes: Long, timeoutMs: Long): String? {
-            synchronized(isolatedRan) { isolatedRan += cmd }
-            return warmUpReply()
-        }
-
-        override fun runBytes(cmd: String): ByteArray? = null
+        val root = ActuatorRoot()
+        val relay = RelayController(fakeProfile(buttonLedGpioBase = 147), root, daemon, nowNs = { now })
+        relay.warmUp()
+        assertEquals(listOf(147, 148, 149, 150), pins)
+        assertEquals(listOf(1_500L, 1_500L, 1_500L, 500L), timeouts)
+        assertEquals(5_000_000_000L, now)
+        assertTrue(relay.ledSet(2, true)); assertTrue(relay.ledSet(3, true))
+        assertEquals(listOf(150), root.prepared)
     }
 
-    private class SequencedRootShell(
-        outputs: Map<String, List<String?>>,
-        runResults: List<Boolean> = emptyList(),
-    ) : RootShell {
-        private val outputs = outputs.mapValues { (_, values) -> values.toMutableList() }
-        private val runResults = runResults.toMutableList()
-        val ran = mutableListOf<String>()
-        val outputRan = mutableListOf<String>()
-
-        override fun available(): Boolean = true
-
-        override fun run(cmd: String): Boolean {
-            ran += cmd
-            return if (runResults.isNotEmpty()) runResults.removeAt(0) else true
+    @Test(timeout = 10_000) fun blockedTopologyAndStateReadsNeverHoldTheActuatorMonitor() {
+        for (operation in listOf("count", "read", "ledRead")) {
+            val entered = CountDownLatch(1); val release = CountDownLatch(1)
+            val root = ActuatorRoot()
+            val daemon = object : Daemon by FakeDaemon() {
+                override fun relayCount(relayClass: HelperRelayClass): Int? {
+                    if (operation == "count") { entered.countDown(); release.await() }
+                    return 1
+                }
+                override fun relayRead(relayClass: HelperRelayClass, relay: Int): Boolean? { entered.countDown(); release.await(); return true }
+                override fun gpioRead(pin: Int, timeoutMs: Long): HelperGpioState { entered.countDown(); release.await(); return HelperGpioState(true, true) }
+            }
+            val relay = RelayController(fakeProfile(relayBase = base, buttonLedGpioBase = 147), root, daemon)
+            val worker = Thread { when (operation) { "count" -> relay.count(); "read" -> relay.read(1); else -> relay.ledRead(0) } }.apply { isDaemon = true; start() }
+            try {
+                assertTrue(entered.await(2, TimeUnit.SECONDS)); assertTrue(ledSetWithin(relay))
+                assertEquals(listOf(147), root.prepared)
+            } finally { release.countDown(); worker.join(2_000) }
+            assertFalse(worker.isAlive)
         }
+    }
 
-        override fun runOutput(cmd: String): String? {
-            outputRan += cmd
-            val responses = outputs.entries
-                .sortedByDescending { it.key.length }
-                .firstOrNull { cmd.contains(it.key) }
-                ?.value
-                ?: return null
-            return if (responses.size > 1) responses.removeAt(0) else responses.firstOrNull()
+    @Test(timeout = 10_000) fun failedWriteOrPreparationWhileWarmUpIsBlockedCannotBeReprovedByItsStaleReply() {
+        for (preparationFailure in listOf(false, true)) {
+            val entered = CountDownLatch(1); val release = CountDownLatch(1)
+            val daemon = object : Daemon by FakeDaemon() {
+                override fun gpioRead(pin: Int, timeoutMs: Long): HelperGpioState {
+                    if (pin == 147) { entered.countDown(); release.await() }
+                    return HelperGpioState(null, pin == 147)
+                }
+            }
+            val root = ActuatorRoot().apply { if (preparationFailure) prepareOk = false else writeOk = false }
+            val relay = RelayController(fakeProfile(buttonLedGpioBase = 147), root, daemon)
+            val worker = Thread { relay.warmUp() }.apply { isDaemon = true; start() }
+            try {
+                assertTrue(entered.await(2, TimeUnit.SECONDS)); assertFalse(ledSetWithin(relay))
+            } finally { release.countDown(); worker.join(2_000) }
+            assertFalse(worker.isAlive)
+            root.prepareOk = true; root.writeOk = true; assertTrue(relay.ledSet(0, true))
+            assertEquals(listOf(147, 147), root.prepared)
         }
+    }
 
-        override fun runBytes(cmd: String): ByteArray? = null
+    private fun ledSetWithin(relay: RelayController): Boolean {
+        val executor = Executors.newSingleThreadExecutor()
+        return try { executor.submit(Callable { relay.ledSet(0, true) }).get(2, TimeUnit.SECONDS) }
+        finally { executor.shutdownNow() }
+    }
+
+    private class ActuatorRoot : RootShell by FakeRootShell() {
+        var prepareOk = true; var writeOk = true
+        val prepared = mutableListOf<Int>(); val writes = mutableListOf<Pair<String, String>>()
+        override fun prepareOutputGpio(gpio: Int): Boolean { prepared += gpio; return prepareOk }
+        override fun writeSysfs(path: String, value: String): Boolean { writes += path to value; return writeOk }
     }
 }

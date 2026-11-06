@@ -47,6 +47,9 @@ import io.panelassistant.android.panelassistant.PanelAssistantCommand
 import io.panelassistant.android.panelassistant.PanelAssistantValueKind
 import io.panelassistant.android.panelassistant.decode
 import io.panelassistant.android.panelassistant.PanelAssistantCommandResult
+import io.panelassistant.android.platform.Daemon
+import io.panelassistant.android.platform.HelperRelayClass
+import io.panelassistant.android.platform.HelperGpioState
 import io.panelassistant.android.platform.RootShell
 import io.panelassistant.android.setAutoSleep
 import io.panelassistant.android.state.SoftwareTarget
@@ -274,6 +277,7 @@ internal abstract class PanelRuntimeRig {
         val relay = RelayController(
             fakeProfile(relayBase = RELAY_BASE, buttonLedGpioBase = LED_GPIO_BASE),
             sysfs,
+            sysfs.observations(),
         )
         val brightness = if (brightnessSetting != null) {
             BrightnessController(context, FakeDaemon(), setting = brightnessSetting)
@@ -506,6 +510,17 @@ internal abstract class PanelRuntimeRig {
 
         fun blockNextWrite(path: String) {
             blockPath = path
+        }
+
+        fun observations(): Daemon = object : Daemon by FakeDaemon() {
+            override fun relayCount(relayClass: HelperRelayClass) = if (relayClass.sysfsBase == RELAY_BASE) 2 else 0
+            private fun value(path: String): Boolean? = if (path == unreadable) null else when (nodes[path]) {
+                "1" -> true
+                "0" -> false
+                else -> null
+            }
+            override fun relayRead(relayClass: HelperRelayClass, relay: Int) = value("${relayClass.sysfsBase}/relay$relay")
+            override fun gpioRead(pin: Int, timeoutMs: Long) = HelperGpioState(value("/sys/class/gpio/gpio$pin/value"), null)
         }
 
         override fun available() = true

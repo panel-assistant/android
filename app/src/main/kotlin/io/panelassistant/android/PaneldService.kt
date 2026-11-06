@@ -1343,7 +1343,7 @@ class PaneldService : Service() {
                 else if (persistedAdb) controls.adb.listenerState()
                 else controls.adb.activeState(),
             zigbee = controls.zigbee.observe(includeRole = true),
-            relayCount = controls.relay.count(allowRootProbe = privilege.directSuReady),
+            relayCount = controls.relay.count(),
             buttonLedCount = controls.relay.ledCount(),
         )
     }
