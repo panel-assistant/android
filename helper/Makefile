@@ -33,7 +33,7 @@ TEST_BUILD_ID := aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 REPLACEMENT_OLD_BUILD_ID := eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
 REPLACEMENT_NEW_BUILD_ID := dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 
-.PHONY: adb-recovery-test all daemon test test-units peer-auth-test request-timeout-test replacement-identity-test cdprelay-resource-test socket-test-server fuzz contract clean print-core
+.PHONY: actuator-exec-test adb-recovery-test all daemon test test-units peer-auth-test request-timeout-test replacement-identity-test cdprelay-resource-test socket-test-server fuzz contract clean print-core
 all: daemon
 
 # Host build of the real daemon — a compile sanity check (-Werror); the shipped binary is build.sh.
@@ -44,7 +44,7 @@ $(BUILD)/hapaneld-helper: $(DAEMON_SRCS) | $(BUILD)
 # Unit tests: CORE modules + the sysexec stub (no real exec) + the test driver. `test` runs the three
 # groups one after another, even under -j; CI runs each group as its own job because the two installer
 # scripts spend most of their time waiting on the installer's retry intervals.
-TEST_BINS := $(BUILD)/adb-recovery $(BUILD)/uninstall-supervisor $(BUILD)/unit $(BUILD)/hapaneld-helper $(BUILD)/companion-boundary $(BUILD)/guard-maintenance-boundary $(BUILD)/guard-maintenance-gates $(BUILD)/replacement-lease-old $(BUILD)/replacement-lease-new $(BUILD)/sysexec-fd-boundary $(BUILD)/sysexec-platform-wrapper $(BUILD)/peer-auth $(BUILD)/request-timeout $(BUILD)/bounded-exec $(BUILD)/hapaneld-helper-old $(BUILD)/hapaneld-helper-new $(BUILD)/cdprelay-resource-test $(BUILD)/cdprelay-test $(BUILD)/logcat-fixture $(BUILD)/logcat-boundary
+TEST_BINS := $(BUILD)/actuator-exec $(BUILD)/adb-recovery $(BUILD)/uninstall-supervisor $(BUILD)/unit $(BUILD)/hapaneld-helper $(BUILD)/companion-boundary $(BUILD)/guard-maintenance-boundary $(BUILD)/guard-maintenance-gates $(BUILD)/replacement-lease-old $(BUILD)/replacement-lease-new $(BUILD)/sysexec-fd-boundary $(BUILD)/sysexec-platform-wrapper $(BUILD)/peer-auth $(BUILD)/request-timeout $(BUILD)/bounded-exec $(BUILD)/hapaneld-helper-old $(BUILD)/hapaneld-helper-new $(BUILD)/cdprelay-resource-test $(BUILD)/cdprelay-test $(BUILD)/logcat-fixture $(BUILD)/logcat-boundary
 test:
 	$(MAKE) test-units
 
@@ -65,6 +65,7 @@ test-units: $(BUILD)/stale-replacement-cli $(BUILD)/adb-ensure-boundary $(BUILD)
 	$(BUILD)/peer-auth
 	$(BUILD)/request-timeout
 	$(BUILD)/bounded-exec
+	$(BUILD)/actuator-exec
 	$(BUILD)/adb-ensure-boundary
 	$(BUILD)/gfxinfo-boundary
 	$(BUILD)/gfxinfo-exec
@@ -136,6 +137,12 @@ bounded-exec-test: $(BUILD)/bounded-exec
 	$(BUILD)/bounded-exec
 $(BUILD)/bounded-exec: test/bounded_exec.c $(SRC_DIR)/sysexec.c | $(BUILD)
 	$(CC) $(CFLAGS) -I$(SRC_DIR) test/bounded_exec.c $(SRC_DIR)/sysexec.c $(LDLIBS) -o $@
+# Real dispatcher + real bounded exec; only Android executable paths are remapped in the fixture.
+actuator-exec-test: $(BUILD)/actuator-exec
+	$(BUILD)/actuator-exec
+$(BUILD)/actuator-exec: $(CORE_SRCS) $(SRC_DIR)/sysexec.c test/actuator_exec.c | $(BUILD)
+	$(CC) $(CFLAGS) -DHAPANELD_TEST -DHAPANELD_FRAMEWORK_TIMEOUT_MS=200U -DHAPANELD_INSTALL_TIMEOUT_MS=900U -I$(SRC_DIR) -Itest $(CORE_SRCS) $(SRC_DIR)/sysexec.c test/actuator_exec.c $(LDLIBS) -Wl,--wrap=execve -o $@
+
 $(BUILD)/logcat-fixture: test/logcat_fixture.c | $(BUILD)
 	$(CC) $(CFLAGS) test/logcat_fixture.c -o $@
 $(BUILD)/logcat-boundary: $(CORE_SRCS) $(SRC_DIR)/sysexec.c test/logcat_boundary.c $(BUILD)/logcat-fixture | $(BUILD)

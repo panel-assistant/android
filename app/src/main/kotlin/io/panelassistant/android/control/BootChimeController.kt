@@ -8,6 +8,7 @@ import android.util.Log
 import io.panelassistant.android.Config
 import io.panelassistant.android.persistence.AppState
 import io.panelassistant.android.platform.Daemon
+import io.panelassistant.android.platform.DaemonLongResult
 import io.panelassistant.android.platform.RootRunOutcome
 import io.panelassistant.android.platform.RootShell
 import io.panelassistant.android.util.HelperClient
@@ -241,7 +242,7 @@ internal class AndroidBootChimeHardware(
         // A null reply is an unreachable daemon socket. Within one boot that cannot be told from a
         // helper which simply has not started yet — hence "every path agrees, on two separate boots"
         // before anything is presented as unappliable.
-        val helperReply = runCatching { daemon.send(helperCommand) }
+        val helperReply = runCatching { (daemon.sendLong(helperCommand, 30_000L) as? DaemonLongResult.Reply)?.value }
             .onFailure { Log.w(TAG, "helper boot-chime transition failed; trying root: ${it.message}") }
             .getOrNull()
         if (helperReply == "OK") return ControlApplyOutcome.APPLIED
