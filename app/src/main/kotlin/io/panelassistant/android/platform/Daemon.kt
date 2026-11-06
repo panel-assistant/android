@@ -11,6 +11,10 @@ interface Daemon {
     /** True when the daemon answers `PING`. */
     fun available(): Boolean
 
+    /** Fixed cpu0 governor reads; unavailable on helpers without the versioned GOVREAD capability. */
+    fun cpuGovernor(): String? = null
+    fun cpuAvailableGovernors(): List<String>? = null
+
     /** Send one command; return the exact printable reply line without its LF, or null if unreachable/malformed. */
     fun send(cmd: String): String?
 

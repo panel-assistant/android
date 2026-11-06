@@ -157,6 +157,52 @@ static int get_fontscale(char *out, size_t outsz) {
     return 0;
 }
 
+// Fixed cpu0 read-back; reserve the final raw byte as an overflow probe, never a valid prefix.
+#define GOVREAD_RAW_LIMIT 4096u
+#define GOVREAD_TOKEN_LIMIT 63u
+
+static int governor_read_byte(unsigned char c) {
+    return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+        (c >= '0' && c <= '9') || c == '_' || c == '.' || c == '-';
+}
+
+static int read_governors(int current, char *output) {
+    const char *path = current
+        ? "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor"
+        : "/sys/devices/system/cpu/cpu0/cpufreq/scaling_available_governors";
+    int fd = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (fd < 0) return -1;
+    unsigned char raw[GOVREAD_RAW_LIMIT];
+    size_t used = 0;
+    while (used < sizeof raw) {
+        ssize_t n = read(fd, raw + used, sizeof raw - used);
+        if (n < 0 && errno == EINTR) continue;
+        if (n < 0) { close(fd); return -1; }
+        if (n == 0) break;
+        used += (size_t)n;
+    }
+    if (close(fd) != 0) return -1;
+    if (used == sizeof raw) return -1;
+
+    size_t out_used = 7, token_size = 0, tokens = 0;
+    memcpy(output, "GOVREAD", out_used);
+    for (size_t i = 0; i < used; i++) {
+        unsigned char c = raw[i];
+        if (c == ' ' || c == '\t' || c == '\r' || c == '\n') {
+            token_size = 0;
+            continue;
+        }
+        if (!governor_read_byte(c)) return -1;
+        if (token_size == 0) { output[out_used++] = ' '; tokens++; }
+        if (++token_size > GOVREAD_TOKEN_LIMIT) return -1;
+        output[out_used++] = (char)c;
+    }
+    if (tokens == 0 || (current && tokens != 1)) return -1;
+    output[out_used++] = '\n';
+    output[out_used] = '\0';
+    return 0;
+}
+
 // CPU scaling governor on all cores (cpufreq sysfs is root-writable; the app can read it itself).
 static int set_governor(const char *gov) {
     if (!valid_gov(gov)) return -1;
@@ -456,6 +502,13 @@ void cmd_bootchime(conn_ctx *ctx, const char *args) {
     reply(ctx->fd, bootchime_reply(
         apply_bootchime(ring_speaker, ring, notification, ring_stream, notification_stream)
     ));
+}
+
+void cmd_govread(conn_ctx *ctx, const char *args) {
+    int current = strcmp(args, "CURRENT") == 0;
+    if (!current && strcmp(args, "AVAILABLE") != 0) { reply(ctx->fd, "ERR\n"); return; }
+    char output[GOVREAD_RAW_LIMIT + 9];
+    reply(ctx->fd, read_governors(current, output) == 0 ? output : "ERR\n");
 }
 
 void cmd_gov(conn_ctx *ctx, const char *args) {

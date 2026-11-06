@@ -120,14 +120,14 @@ class PanelMetrics(
     /** Boot time as an ISO-8601 UTC timestamp (constant until reboot → HA shows "N hours ago"). */
     fun bootTime(): String = bootIso
 
-    /** SELinux mode ("1"/"0"). A control read-back routed through the reader (with [cpuGovernor] below);
+    /** SELinux mode ("1"/"0"). A control read-back routed through the reader;
      *  backlight / relay / LED reads are registered in [MetricRegistry] but still read in their controllers
      *  pending a follow-on — see the registry notes. Read off-tick, so a plain direct→su fallback in the
      *  source, not a [Resolvable] (avoids a resolution-state race with the tick). */
     fun selinuxEnforce(): String? = source.selinuxEnforce()
 
-    /** Raw cpu0 scaling governor — a control read-back routed through the reader (direct→su in the source;
-     *  no daemon read verb). Off-tick, so a plain passthrough, not a cached [Resolvable]. */
+    /** Raw cpu0 scaling governor, read directly or through the fixed helper verb. Off-tick, so a plain
+     *  passthrough, not a cached [Resolvable]. The legacy flag controls the helper read. */
     fun cpuGovernor(allowRootFallback: Boolean = true): String? = source.cpuGovernor(allowRootFallback)
 
     /** Raw cpu0 available governors (space-separated). */

@@ -74,6 +74,22 @@ private fun classifyHelperIdentity(reply: String): HelperIdentityStatus {
     }
 }
 
+private const val GOVREAD_PROTOCOL_MINOR = 5
+private const val MAX_GOVERNOR_PAYLOAD_BYTES = 4095
+private const val MAX_GOVREAD_REPLY_BYTES = MAX_GOVERNOR_PAYLOAD_BYTES + 9L // prefix plus LF
+private val GOVERNOR_TOKEN = Regex("[A-Za-z0-9_.-]{1,63}")
+
+private fun parseGovernorReply(reply: ByteArray?, single: Boolean): List<String>? {
+    if (reply == null || reply.size > MAX_GOVREAD_REPLY_BYTES || reply.isEmpty()) return null
+    if (reply.last() != '\n'.code.toByte() || reply.dropLast(1).any { (it.toInt() and 0xff) !in 0x20..0x7e }) return null
+    val line = String(reply, 0, reply.size - 1, StandardCharsets.US_ASCII)
+    if (!line.startsWith("GOVREAD ")) return null
+    val payload = line.removePrefix("GOVREAD ")
+    if (payload.length > MAX_GOVERNOR_PAYLOAD_BYTES) return null
+    val tokens = payload.split(' ')
+    return tokens.takeIf { (!single || it.size == 1) && it.all(GOVERNOR_TOKEN::matches) }
+}
+
 private const val HELPER_BOOTSTRAP_TIMEOUT_MS = 1_000L
 
 internal sealed interface HelperBootstrapReply {
@@ -265,6 +281,21 @@ internal class IdentityAdmittingHelperClient(
                 // A cap or deadline can cut the final line; the reader refuses that partial tail.
                 while (true) add(runCatching { reader.readLine() }.getOrNull() ?: break)
             }
+        }
+    }
+
+    override fun cpuGovernor(): String? = readGovernors("CURRENT", single = true)?.single()
+
+    override fun cpuAvailableGovernors(): List<String>? = readGovernors("AVAILABLE", single = false)
+
+    private fun readGovernors(selector: String, single: Boolean): List<String>? {
+        val session = transport.open() ?: return null
+        return session.use {
+            // GOVREAD has no legacy/raw path: this identity belongs to the socket carrying the read.
+            val version = it.bootstrap("VERSION", newDeadline()) as? HelperBootstrapReply.Line ?: return null
+            val identity = parseHelperIdentity(version.value) ?: return null
+            if (identity.protocolMajor != SUPPORTED_HELPER_PROTOCOL_MAJOR || identity.protocolMinor < GOVREAD_PROTOCOL_MINOR) return null
+            parseGovernorReply(it.sendBytes("GOVREAD $selector", MAX_GOVREAD_REPLY_BYTES), single)
         }
     }
 

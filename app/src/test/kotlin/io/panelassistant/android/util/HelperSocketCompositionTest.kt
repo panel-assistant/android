@@ -38,7 +38,7 @@ class HelperSocketCompositionTest {
             ).redirectErrorStream(true).start()
             assertEquals("READY", second.inputStream.bufferedReader().readLine())
             assertTrue(Files.isDirectory(root.resolve(".hapaneld-guard-db-test")))
-            assertEquals("HELPER version=1.4.0 proto=1.4", SocketDaemon(socket).send("VERSION"))
+            assertEquals("HELPER version=1.5.0 proto=1.5", SocketDaemon(socket).send("VERSION"))
         } finally {
             second?.let {
                 it.destroy()
@@ -54,7 +54,7 @@ class HelperSocketCompositionTest {
         val daemon = SocketDaemon(socketPath)
 
         assertTrue(daemon.available())
-        assertEquals("HELPER version=1.4.0 proto=1.4", daemon.send("VERSION"))
+        assertEquals("HELPER version=1.5.0 proto=1.5", daemon.send("VERSION"))
         assertEquals("ERR", daemon.send("PINGEXTRA"))
         assertEquals("OK", daemon.sendLong("RELOAD io.example.dashboard", 5_000).replyValue())
     }
@@ -68,12 +68,9 @@ class HelperSocketCompositionTest {
     @Test(timeout = 10_000)
     fun appWireCompatibilityCorpusCrossesKotlinAndNativeHelper() {
         val daemon = SocketDaemon(socketPath)
-        // GOV writes sysfs directly and fails closed when the cpufreq nodes cannot be written.
-        // A privileged run on a host that exposes them can write one, so take the expected reply
-        // from the same condition the helper itself tests rather than assuming an outcome.
-        val governorReply = if (governorAcceptsWrites()) "OK" else "ERR"
+        // The host fixture redirects fixed governor reads and refuses governor writes.
         listOf(
-            WireTranscript("VERSION", "HELPER version=1.4.0 proto=1.4"),
+            WireTranscript("VERSION", "HELPER version=1.5.0 proto=1.5"),
             WireTranscript("PING", "OK"),
             WireTranscript("BUILDID", "BUILDID development"),
             WireTranscript("COMPANIONCAPS", "COMPANIONCAPS 1 BACKUP RESTORE STATUS JOURNAL"),
@@ -103,7 +100,13 @@ class HelperSocketCompositionTest {
             WireTranscript("APPSTATE io.homeassistant.companion.android", "ERR"),
             WireTranscript("DENSITY 240", "OK"),
             WireTranscript("FONTSCALE 1.0", "OK"),
-            WireTranscript("GOV performance", governorReply),
+            WireTranscript("GOV performance", "ERR"),
+            WireTranscript("GOVREAD CURRENT", "GOVREAD Vendor_1.fast-2"),
+            WireTranscript("GOVREAD AVAILABLE", "GOVREAD powersave Vendor_1.fast-2 performance"),
+            WireTranscript("GOVREAD", "ERR"),
+            WireTranscript("GOVREAD CURRENT extra", "ERR"),
+            WireTranscript("GOVREAD current", "ERR"),
+            WireTranscript("GOVREAD /path", "ERR"),
             WireTranscript("ZIGBEECONTAIN", "OK"),
             WireTranscript("VERSION unexpected", "ERR"),
             WireTranscript("PINGEXTRA", "ERR"),
@@ -122,6 +125,13 @@ class HelperSocketCompositionTest {
         assertTrue(daemon.available())
         assertEquals("OK", daemon.send("RELOAD io.example.dashboard"))
         assertContentEquals("PNG\nfixture\n".toByteArray(), daemon.sendBytesBounded("SCREENCAP", 1024L))
+    }
+
+    @Test(timeout = 10_000)
+    fun typedGovernorsCrossVersionAdmissionAndNativeFixedPathReader() {
+        val daemon = IdentityAdmittingHelperClient(ChannelSessionTransport(socketPath))
+        assertEquals("Vendor_1.fast-2", daemon.cpuGovernor())
+        assertEquals(listOf("powersave", "Vendor_1.fast-2", "performance"), daemon.cpuAvailableGovernors())
     }
 
     @Test(timeout = 10_000)
@@ -306,7 +316,15 @@ class HelperSocketCompositionTest {
             runCatching { Files.setPosixFilePermissions(lockPath, PosixFilePermissions.fromString("rw-rw-rw-")) }
             guardRoot = scratchDirectory("hapaneld-helper-guard-")
             socketPath = Path.of(System.getProperty("java.io.tmpdir"), "hapaneld-helper-${UUID.randomUUID()}.sock")
+            val current = guardRoot.resolve("governor.current")
+            val available = guardRoot.resolve("governor.available")
+            Files.writeString(current, "Vendor_1.fast-2\n")
+            Files.writeString(available, "powersave\tVendor_1.fast-2  performance\n")
             server = ProcessBuilder(executable.absolutePath, socketPath.toString(), guardRoot.toString())
+                .apply {
+                    environment()["HAPANELD_TEST_GOV_CURRENT"] = current.toString()
+                    environment()["HAPANELD_TEST_GOV_AVAILABLE"] = available.toString()
+                }
                 .redirectErrorStream(true)
                 .start()
             val ready = server.inputStream.bufferedReader().readLine()
@@ -331,18 +349,13 @@ class HelperSocketCompositionTest {
             val custody = root.resolve(".hapaneld-guard-db-test")
             Files.deleteIfExists(custody.resolve(".owner.lock"))
             Files.deleteIfExists(custody)
+            Files.deleteIfExists(root.resolve("governor.current"))
+            Files.deleteIfExists(root.resolve("governor.available"))
             Files.deleteIfExists(root)
         }
 
         fun DaemonLongResult.replyValue(): String? = (this as? DaemonLongResult.Reply)?.value
 
-        // Neither access(2) nor open(2) predicts the helper's result: inside an unprivileged container
-        // /sys is mounted read-only, yet both succeed and only write(2) is refused. Perform the write the
-        // helper performs, with the governor the node already holds, so nothing changes either way.
-        fun governorAcceptsWrites(): Boolean {
-            val node = File("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor")
-            val current = runCatching { node.readText().trim() }.getOrNull() ?: return false
-            return runCatching { java.io.FileOutputStream(node).use { it.write(current.toByteArray()) } }.isSuccess
-        }
+
     }
 }

@@ -1,4 +1,6 @@
 #include <errno.h>
+#include <fcntl.h>
+#include <stdarg.h>
 #include <signal.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -15,6 +17,43 @@
 #include "screen.h"
 #include "server.h"
 #include "sysexec_stub.h"
+
+// Host-only redirection keeps production GOVREAD paths fixed while socket clients supply files.
+int __real_open(const char *path, int flags, ...);
+int __wrap_open(const char *path, int flags, ...) {
+    // Host tests must never change any real CPU's governor, even when sysfs is writable.
+    const char suffix[] = "/cpufreq/scaling_governor";
+    size_t path_size = strlen(path);
+    if ((flags & O_ACCMODE) != O_RDONLY &&
+        strncmp(path, "/sys/devices/system/cpu/", 24) == 0 &&
+        path_size >= sizeof suffix - 1 && strcmp(path + path_size - (sizeof suffix - 1), suffix) == 0) {
+        errno = EACCES;
+        return -1;
+    }
+    const char *fixture = NULL;
+    int governor = 0;
+    if (strcmp(path, "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor") == 0) {
+        governor = 1;
+        fixture = getenv("HAPANELD_TEST_GOV_CURRENT");
+    } else if (strcmp(path, "/sys/devices/system/cpu/cpu0/cpufreq/scaling_available_governors") == 0) {
+        governor = 1;
+        fixture = getenv("HAPANELD_TEST_GOV_AVAILABLE");
+    }
+    if (governor) {
+        if (!fixture || !*fixture || (flags & O_ACCMODE) != O_RDONLY) { errno = EACCES; return -1; }
+        return __real_open(fixture, flags);
+    }
+    int needs_mode = (flags & O_CREAT) != 0;
+#ifdef O_TMPFILE
+    needs_mode = needs_mode || (flags & O_TMPFILE) == O_TMPFILE;
+#endif
+    if (!needs_mode) return __real_open(path, flags);
+    va_list ap;
+    va_start(ap, flags);
+    mode_t mode = (mode_t)va_arg(ap, int);
+    va_end(ap);
+    return __real_open(path, flags, mode);
+}
 
 static volatile sig_atomic_t running = 1;
 static int listener = -1;

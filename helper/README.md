@@ -17,7 +17,7 @@ Newline-terminated ASCII on the abstract UNIX socket `@hapaneld-helper`. One or 
 
 | Command | Effect | Reply |
 | --- | --- | --- |
-| `VERSION` | read the helper identity without touching hardware | `HELPER version=1.4.0 proto=1.4` / `ERR` when arguments are supplied |
+| `VERSION` | read the helper identity without touching hardware | `HELPER version=1.5.0 proto=1.5` / `ERR` when arguments are supplied |
 | `RGB <r> <g> <b>` | set LED colour (each 0..255) | `OK` / `ERR` |
 | `OFF` | LED off | `OK` / `ERR` |
 | `BTN <0..255>` | button-backlight brightness | `OK` / `ERR` |
@@ -49,6 +49,7 @@ Newline-terminated ASCII on the abstract UNIX socket `@hapaneld-helper`. One or 
 | `GPIOSUBSCRIBE` | stream current, changed, and unavailable GPIO status independently of evdev subscribers | `OK`, then `GPIO <n> <0\|1>` or `GPIOUNAVAILABLE <n>` records until disconnect; `ERR` on subscriber overflow / arguments |
 | `DENSITY` / `DENSITY <n>\|reset` | get display density / set it (`wm density`) | `PHYS=<n> OVER=<n\|->` / `ERR` (get) · `OK` / `ERR` (set) |
 | `FONTSCALE` / `FONTSCALE <n>\|reset` | get system font scale / set it (`settings system font_scale`) | `SCALE=<n\|null>` / `ERR` (get) · `OK` / `ERR` (set) |
+| `GOVREAD CURRENT` / `GOVREAD AVAILABLE` | read the fixed cpu0 scaling governor / available governors directly, without subprocesses (protocol 1.5) | `GOVREAD <tokens>` / `ERR` |
 | `GOV <name>` | set the CPU scaling governor on all cores | `OK` / `ERR` |
 | `ZIGBEECONTAIN` | argument-free containment for the exact vendor-native Sonoff `/vendor/bin/siliconlabs_host` layout; targets only its guard, gateway and matching broker, then demotes a surviving gateway | `OK` / `PARTIAL` / `ERR` |
 | `PERFDUMP` | CPU/load/temp/gpu/process snapshot (for sandbox-walled apps) | marker-delimited stream, then EOF |
@@ -57,6 +58,15 @@ Newline-terminated ASCII on the abstract UNIX socket `@hapaneld-helper`. One or 
 | `GRANT <pkg> <capability>` | apply one grant from a fixed table to the app's own package: `NOTIFICATIONS`, `MICROPHONE`, `CAMERA` (runtime permissions), `WRITESETTINGS`, `OVERLAY` (app-ops), `BATTERY` (deviceidle whitelist, `cmd` with a `dumpsys` fallback), `ACCESSIBILITY` (append the panel service to the shared secure setting and enable accessibility, idempotently). No free-form permission, app-op or setting name is accepted, and no other package | `OK` / `ERR` |
 | `PING` | liveness probe | `OK` |
 | anything else | — | `ERR` |
+
+`GOVREAD` accepts exactly `CURRENT` or `AVAILABLE`, with no extra arguments. It reads only
+`/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor` or `scaling_available_governors` in the same
+directory. Each returned token matches `[A-Za-z0-9_.-]{1,63}`; `CURRENT` requires exactly one token,
+and `AVAILABLE` requires one or more in their original order. Spaces, tabs, CR and LF are normalized
+to single spaces between tokens. The reply has one trailing newline. Empty input, other control bytes,
+NUL, invalid tokens, open/read failure, or raw input reaching the 4096-byte overflow probe returns
+`ERR`; at most 4095 raw bytes can succeed. There is no subprocess fallback. The broader read grammar
+does not change the governor writer's allowlist.
 
 `VERSION` is the stable compatibility bootstrap. `version` is the helper release version and `proto` is the wire protocol version; clients accept the same protocol major and treat later minor versions as additive. Helpers from before this command return the ordinary unknown-command `ERR`, so the app verifies them with `PING` and reports them as reachable but compatibility-unverified. Run `hapaneld-helper --version` to print the same identity without initializing hardware or binding the socket.
 
@@ -131,7 +141,7 @@ The daemon is split by capability under `helper/src/` (the binary, `@hapaneld-he
 | `commands.def` / `dispatch.c` | the shared verb→handler manifest + exact-match `dispatch()` |
 | `version.c` | stable helper and protocol identity exposed by `VERSION` and `--version` |
 | `led.c` / `screen.c` / `input.c` / `gpio.c` | LED (sysfs + ledjni), backlight power, evdev buttons, held-descriptor GPIO streams |
-| `sysctl.c` | density / governor / reload / start / reboot / screencap privileged operations |
+| `sysctl.c` | density / governor read-back and control / reload / start / reboot / screencap privileged operations |
 | `companion.c` | descriptor-anchored, bounded HA Companion backup/restore transaction |
 | `perf.c` | `PERFDUMP` `/proc` snapshot |
 | `logcat.c` | bounded full-system log stream; sends complete entries only, with a drop record when entry or rate limits apply |

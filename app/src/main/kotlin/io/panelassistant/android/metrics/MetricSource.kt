@@ -36,7 +36,7 @@ interface MetricSource {
     fun localIp(): String?
     fun selinuxEnforce(): String?
 
-    // Control read-backs routed through the reader (direct→su fallback; no daemon read verb exists).
+    // Governor read-backs: direct then typed helper. The retained flag controls helper cross-checks.
     fun cpuGovernor(allowRootFallback: Boolean = true): String?
     fun cpuAvailableGovernors(allowRootFallback: Boolean = true): String?
 
@@ -56,6 +56,7 @@ interface MetricSource {
 class OsMetricSource(
     private val daemon: Daemon = HelperClient,
     private val root: RootShell = Su,
+    private val directRead: (String) -> String? = { path -> File(path).readText() },
 ) : MetricSource {
 
     override fun perfDump(): String? = daemon.sendBytes("PERFDUMP")?.toString(Charsets.UTF_8)
@@ -94,12 +95,20 @@ class OsMetricSource(
      *  off-tick (rarely), so a plain direct→su fallback is fine — no per-metric resolution cache needed. */
     override fun selinuxEnforce(): String? = directThenSu("/sys/fs/selinux/enforce")
 
-    /** cpu0 scaling governor (raw). Off-tick read (heartbeat sync + UI), world-readable cpufreq sysfs, so
-     *  direct wins on every panel; su only if a panel guards the node. No daemon read verb exists. */
-    override fun cpuGovernor(allowRootFallback: Boolean): String? = directThenSu(GOV0, allowRootFallback)
+    /** cpu0 governor: direct file, then version-admitted helper, then unavailable. */
+    override fun cpuGovernor(allowRootFallback: Boolean): String? = governorTokens(GOV0, single = true)?.single()
+        ?: if (allowRootFallback) daemon.cpuGovernor() else null
 
-    /** cpu0 available governors (raw, space-separated). Same direct→su read path as [cpuGovernor]. */
-    override fun cpuAvailableGovernors(allowRootFallback: Boolean): String? = directThenSu(AVAIL, allowRootFallback)
+    /** Available cpu0 governors, normalized to the reader's existing space-separated representation. */
+    override fun cpuAvailableGovernors(allowRootFallback: Boolean): String? =
+        (governorTokens(AVAIL, single = false)
+            ?: if (allowRootFallback) daemon.cpuAvailableGovernors() else null)?.joinToString(" ")
+
+    private fun governorTokens(path: String, single: Boolean): List<String>? {
+        val raw = read(path)?.takeIf { it.length <= 4095 } ?: return null
+        val tokens = raw.trim(' ', '\t', '\r', '\n').split(Regex("[ \\t\\r\\n]+"))
+        return tokens.takeIf { (!single || it.size == 1) && it.all { token -> GOVERNOR_TOKEN.matches(token) } }
+    }
 
     /** Raw `CHT8305` daemon reply — the established helper authority. Parsing lives in the reader. */
     override fun roomClimateDaemon(): String? = daemon.send("CHT8305")
@@ -116,9 +125,10 @@ class OsMetricSource(
     private fun cpuDirs(): Array<File>? =
         File("/sys/devices/system/cpu").listFiles { f -> f.name.matches(Regex("cpu[0-9]+")) }
 
-    private fun read(path: String): String? = runCatching { File(path).readText() }.getOrNull()
+    private fun read(path: String): String? = runCatching { directRead(path) }.getOrNull()
 
     private companion object {
+        val GOVERNOR_TOKEN = Regex("[A-Za-z0-9_.-]{1,63}")
         const val GOV0 = "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor"
         const val AVAIL = "/sys/devices/system/cpu/cpu0/cpufreq/scaling_available_governors"
     }

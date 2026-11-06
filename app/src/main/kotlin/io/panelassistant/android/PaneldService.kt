@@ -1340,8 +1340,8 @@ class PaneldService : Service() {
     private fun observeManagementControllers(privilege: PrivilegedRouteObservation): ManagementControllerObservation {
         val persistedAdb = controls.adb.isPersisted()
         return ManagementControllerObservation(
-            cpuTier = controls.cpu.currentTier(allowRootFallback = privilege.directSuReady),
-            cpuGovernorsAvailable = controls.cpu.available(allowRootFallback = privilege.directSuReady),
+            cpuTier = controls.cpu.currentTier(),
+            cpuGovernorsAvailable = controls.cpu.available(),
             networkAdbPersisted = persistedAdb,
             // A persisted intent is reported by whether adbd really listens: its own property writes
             // would otherwise read as active while vendor init or an adbd restart has dropped TCP.
@@ -1374,7 +1374,7 @@ class PaneldService : Service() {
     /** Fresh controller values for direct equality, config export and concurrency checks. Direct POST
      * planning also consumes the transient CPU tier, so a full payload cannot reapply an unchanged tier. */
     private fun currentConfigLiveValues(): Map<String, String> = mapOf(
-        "cpu_governor" to (controls.cpu.currentTier(allowRootFallback = false) ?: "Auto"),
+        "cpu_governor" to (controls.cpu.currentTier() ?: "Auto"),
         "network_adb" to controls.adb.isPersisted().toString(),
         "zigbee_router" to config.zigbeeRouterEnabled.toString(),
     )

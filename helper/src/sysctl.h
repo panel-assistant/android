@@ -14,6 +14,7 @@ void cmd_reboot(conn_ctx *ctx, const char *args);     // REBOOT
 void cmd_density(conn_ctx *ctx, const char *args);    // DENSITY [<n>|reset]   get/set display density
 void cmd_fontscale(conn_ctx *ctx, const char *args);  // FONTSCALE [<s>|reset] get/set system font scale
 void cmd_bootchime(conn_ctx *ctx, const char *args);  // BOOTCHIME SILENCE | RESTORE <setting|->...; OK/ERR/PARTIAL
+void cmd_govread(conn_ctx *ctx, const char *args);    // GOVREAD CURRENT|AVAILABLE fixed cpu0 read-back
 void cmd_gov(conn_ctx *ctx, const char *args);        // GOV <governor>    CPU scaling governor
 void cmd_zigbeecontain(conn_ctx *ctx, const char *args); // ZIGBEECONTAIN exact Sonoff vendor-native containment
 void cmd_screencap(conn_ctx *ctx, const char *args);  // SCREENCAP         raw PNG stream

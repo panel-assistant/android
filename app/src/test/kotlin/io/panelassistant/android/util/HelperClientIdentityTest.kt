@@ -1,6 +1,8 @@
 package io.panelassistant.android.util
 
 import io.panelassistant.android.logship.LogCapture
+import io.panelassistant.android.control.FakeRootShell
+import io.panelassistant.android.metrics.OsMetricSource
 import io.panelassistant.android.platform.DaemonLongResult
 import io.panelassistant.android.platform.DaemonStreamResult
 import java.io.ByteArrayInputStream
@@ -22,6 +24,96 @@ import org.junit.Test
 
 class HelperClientIdentityTest {
     @get:org.junit.Rule val temporary = org.junit.rules.TemporaryFolder()
+
+    @Test
+    fun governorReadsUseTypedVersionAdmissionOnTheirOperationConnection() {
+        val first = FakeGeneration(
+            version = HelperBootstrapReply.Line("HELPER version=1.5.0 proto=1.5"),
+            bytesReplies = mapOf("GOVREAD CURRENT" to "GOVREAD Vendor_1.fast-2\n".toByteArray()),
+        )
+        val transport = FakeHelperTransport(first)
+        first.afterVersion = { transport.generation = FakeGeneration(
+            version = HelperBootstrapReply.Line("HELPER version=2.0.0 proto=2.5"),
+        ) }
+        val client = IdentityAdmittingHelperClient(transport)
+
+        assertEquals("Vendor_1.fast-2", client.cpuGovernor())
+        val read = transport.byteCommands.single()
+        assertEquals("GOVREAD CURRENT", read.command)
+        assertEquals(4104L, read.maxBytes)
+        assertEquals(transport.bootstrapCommands.single().session, read.session)
+        assertEquals(first.id, read.generation)
+        assertNull(client.cpuAvailableGovernors()) // Replacement is admitted afresh, never on old proof.
+        assertEquals(1, transport.byteCommands.size)
+        assertEquals(2, transport.closedSessions.size)
+    }
+
+    @Test
+    fun governorReadsAcceptForwardMinorAndPreserveAvailableOrderAtTheRawBound() {
+        val payload = (listOf("z".repeat(63)) + List(63) { "a".repeat(63) }).joinToString(" ")
+        val transport = FakeHelperTransport(FakeGeneration(
+            version = HelperBootstrapReply.Line("HELPER version=1.9.0 proto=1.9"),
+            bytesReplies = mapOf("GOVREAD AVAILABLE" to "GOVREAD $payload\n".toByteArray()),
+        ))
+        assertEquals(payload.split(' '), IdentityAdmittingHelperClient(transport).cpuAvailableGovernors())
+        assertEquals(4095, payload.length)
+    }
+
+    @Test
+    fun malformedGovernorRepliesAreUnavailableInsteadOfRootFallback() {
+        val oversizedPayload = (List(63) { "a".repeat(63) } + listOf("b".repeat(31), "c".repeat(32))).joinToString(" ")
+        val malformed = listOf(
+            null, "ERR\n", "", "GOVREAD \n", "GOVREAD a", "GOVREAD a\nextra\n",
+            "GOVREAD a\r\n", "GOVREAD a\tbad\n", "GOVREAD a\u0000\n", "GOVREAD véndor\n",
+            "GOVREAD  a\n", "GOVREAD a \n", "GOVREAD a  b\n", "GOVREAD /path\n",
+            "GOVREAD ${"a".repeat(64)}\n", "GOVREAD $oversizedPayload\n",
+        )
+        for (reply in malformed) {
+            val transport = FakeHelperTransport(FakeGeneration(
+                version = HelperBootstrapReply.Line("HELPER version=1.5.0 proto=1.5"),
+                bytesReplies = mapOf("GOVREAD CURRENT" to reply?.toByteArray(), "GOVREAD AVAILABLE" to reply?.toByteArray()),
+            ))
+            assertGovernorsUnavailableWithoutRoot(IdentityAdmittingHelperClient(transport))
+        }
+        val multiple = FakeHelperTransport(FakeGeneration(
+            version = HelperBootstrapReply.Line("HELPER version=1.5.0 proto=1.5"),
+            bytesReplies = mapOf("GOVREAD CURRENT" to "GOVREAD a b\n".toByteArray()),
+        ))
+        assertNull(IdentityAdmittingHelperClient(multiple).cpuGovernor())
+    }
+
+    @Test
+    fun missingOldUnverifiedOrRefusedHelpersNeverReceiveGovernorReadsOrTriggerRoot() {
+        val versions = listOf(
+            HelperBootstrapReply.Missing, HelperBootstrapReply.Malformed, HelperBootstrapReply.Line("ERR"),
+            HelperBootstrapReply.Line("HELPER version=1.4.0 proto=1.4"),
+            HelperBootstrapReply.Line("HELPER version=2.5.0 proto=2.5"),
+            HelperBootstrapReply.Line("HELPER version=1.5.0 proto=1.5 extra=bad extra=duplicate"),
+        )
+        for (version in versions) {
+            val transport = FakeHelperTransport(FakeGeneration(version = version))
+            assertGovernorsUnavailableWithoutRoot(IdentityAdmittingHelperClient(transport))
+            assertTrue(transport.byteCommands.isEmpty())
+            assertTrue(transport.bootstrapCommands.all { it.command == "VERSION" })
+            assertEquals(12, transport.closedSessions.size) // one connection per read, no raw reconnect
+        }
+        assertGovernorsUnavailableWithoutRoot(IdentityAdmittingHelperClient(object : HelperCommandTransport {
+            override fun open(): HelperCommandSession? = null
+        }))
+    }
+
+    private fun assertGovernorsUnavailableWithoutRoot(client: IdentityAdmittingHelperClient) {
+        val root = FakeRootShell(outputs = mapOf("scaling_governor" to "performance", "scaling_available_governors" to "performance powersave"))
+        val source = OsMetricSource(daemon = client, root = root, directRead = { null })
+        repeat(6) {
+            assertNull(source.cpuGovernor())
+            assertNull(source.cpuAvailableGovernors())
+        }
+        assertTrue(root.outputRan.isEmpty())
+        assertTrue(root.isolatedOutputRan.isEmpty())
+        assertTrue(root.ran.isEmpty())
+        assertEquals(0, root.availabilityChecks)
+    }
 
     @Test
     fun policyRevokedDuringVersionOrPingPreparationBlocksStreamSubmission() {
@@ -677,9 +769,9 @@ private data class FakeGeneration(
     val ping: HelperBootstrapReply = HelperBootstrapReply.Line("OK"),
     val companionCaps: HelperBootstrapReply = HelperBootstrapReply.Line("COMPANIONCAPS 1 BACKUP RESTORE STATUS JOURNAL"),
     val lineReply: String? = "OK",
+    val bytesReplies: Map<String, ByteArray?> = emptyMap(),
     val lineReplies: Map<String, String?> = emptyMap(),
     val streamReply: DaemonStreamResult = DaemonStreamResult.Reply("OK"),
-    val bytesReplies: Map<String, ByteArray> = emptyMap(),
 ) {
     @Volatile var afterVersion: (() -> Unit)? = null
     @Volatile var afterPing: (() -> Unit)? = null
@@ -736,7 +828,7 @@ private class FakeHelperTransport(initial: FakeGeneration = FakeGeneration()) : 
 
             override fun sendBytes(cmd: String, maxBytes: Long): ByteArray? {
                 byteCommands += RecordedBytes(session, snapshot.id, cmd, maxBytes)
-                return snapshot.bytesReplies[cmd] ?: byteArrayOf(1, 2, 3)
+                return snapshot.bytesReplies.getOrElse(cmd) { byteArrayOf(1, 2, 3) }
             }
 
             override fun readLogcatLine(): String? = null

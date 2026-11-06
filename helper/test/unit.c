@@ -82,6 +82,31 @@ static int gpio_edge_open_count;
 static char gpio_value_fixture[128];
 static char gpio_edge_fixture[128];
 static char evdev_fixture[128];
+static int govread_enabled, govread_open_error, govread_open_count[2], govread_fd = -1;
+static char govread_fixtures[2][128];
+static int govread_steps[8];
+static size_t govread_step_count, govread_step_index;
+ssize_t __real_read(int fd, void *buf, size_t count);
+
+// Script only the fd returned for a fixed governor node; transport and other readers stay real.
+ssize_t __wrap_read(int fd, void *buf, size_t count) {
+    if (govread_enabled && fd == govread_fd && govread_step_index < govread_step_count) {
+        int step = govread_steps[govread_step_index++];
+        if (step < 0) { errno = step == -1 ? EINTR : EIO; return -1; }
+        if (count > (size_t)step) count = (size_t)step;
+    }
+    return __real_read(fd, buf, count);
+}
+
+#ifdef __GLIBC__
+// Fortified glibc routes a bounded stack-buffer read through this symbol instead of read().
+ssize_t __real___read_chk(int fd, void *buf, size_t count, size_t capacity);
+ssize_t __wrap___read_chk(int fd, void *buf, size_t count, size_t capacity) {
+    if (govread_enabled && fd == govread_fd && count <= capacity) return __wrap_read(fd, buf, count);
+    return __real___read_chk(fd, buf, count, capacity);
+}
+#endif
+
 int __real_open(const char *path, int flags, ...);
 ssize_t __real_write(int fd, const void *buf, size_t count);
 
@@ -144,7 +169,26 @@ ssize_t __wrap_write(int fd, const void *buf, size_t count) {
 }
 
 int __wrap_open(const char *path, int flags, ...) {
+    // Host tests must never change any real CPU's governor, even when sysfs is writable.
+    const char suffix[] = "/cpufreq/scaling_governor";
+    size_t path_size = strlen(path);
+    if ((flags & O_ACCMODE) != O_RDONLY &&
+        strncmp(path, "/sys/devices/system/cpu/", 24) == 0 &&
+        path_size >= sizeof suffix - 1 && strcmp(path + path_size - (sizeof suffix - 1), suffix) == 0) {
+        errno = EACCES;
+        return -1;
+    }
     const char *selected = path;
+    if (govread_enabled &&
+        (strcmp(path, "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor") == 0 ||
+         strcmp(path, "/sys/devices/system/cpu/cpu0/cpufreq/scaling_available_governors") == 0)) {
+        int index = strstr(path, "scaling_available_governors") != NULL;
+        govread_open_count[index]++;
+        CHECK((flags & O_ACCMODE) == O_RDONLY, "GOVREAD opens its fixed nodes read-only\n");
+        if (govread_open_error) { errno = EACCES; return -1; }
+        govread_fd = __real_open(govread_fixtures[index], flags);
+        return govread_fd;
+    }
     if (strncmp(path, "/dev/input/event", 16) == 0) {
         evdev_open_count++;
         if (!evdev_open_ok) { errno = ENOENT; return -1; }
@@ -477,10 +521,10 @@ static void test_perfdump_bridge_protocol(void) {
 
 static void test_dispatch_exact_match(void) {
     char out[64];
-    CHECK(strcmp(helper_identity(), "HELPER version=1.4.0 proto=1.4") == 0,
+    CHECK(strcmp(helper_identity(), "HELPER version=1.5.0 proto=1.5") == 0,
           "helper identity is stable (got '%s')\n", helper_identity());
     dispatch_reply("VERSION", out, sizeof out);
-    CHECK(strcmp(out, "HELPER version=1.4.0 proto=1.4\n") == 0,
+    CHECK(strcmp(out, "HELPER version=1.5.0 proto=1.5\n") == 0,
           "VERSION -> machine-readable identity (got '%s')\n", out);
     dispatch_reply("VERSION extra", out, sizeof out);
     CHECK(strcmp(out, "ERR\n") == 0, "VERSION rejects arguments (got '%s')\n", out);
@@ -852,6 +896,166 @@ static void test_keyevent_named_keys_only(void) {
     CHECK(sysexec_stub_deadline_ms(0) == 4000u,
           "the injection deadline outlasts a slow app_process rather than racing the client (%u)\n",
           sysexec_stub_deadline_ms(0));
+}
+
+static void govread_set(int index, const void *bytes, size_t size) {
+    int fd = __real_open(govread_fixtures[index], O_WRONLY | O_TRUNC);
+    CHECK(fd >= 0, "GOVREAD fixture opens for writing\n");
+    if (fd < 0) return;
+    CHECK(__real_write(fd, bytes, size) == (ssize_t)size, "GOVREAD fixture is complete\n");
+    close(fd);
+}
+
+static void govread_begin(void) {
+    govread_enabled = 1;
+    govread_open_error = 0;
+    govread_fd = -1;
+    memset(govread_open_count, 0, sizeof govread_open_count);
+    govread_step_count = govread_step_index = 0;
+    for (int i = 0; i < 2; i++) {
+        strcpy(govread_fixtures[i], "/tmp/hapaneld-govread-XXXXXX");
+        int fd = mkstemp(govread_fixtures[i]);
+        CHECK(fd >= 0, "GOVREAD fixture can be created\n");
+        if (fd >= 0) close(fd);
+    }
+    govread_set(0, "schedutil\n", 10);
+    govread_set(1, "performance powersave\n", 22);
+    sysexec_stub_reset();
+}
+
+static void govread_end(void) {
+    govread_enabled = 0;
+    govread_fd = -1;
+    for (int i = 0; i < 2; i++) unlink(govread_fixtures[i]);
+}
+
+static void test_govread_request_admission(void) {
+    govread_begin();
+    char out[64];
+    const char *invalid[] = { "GOVREAD", "GOVREAD current", "GOVREAD CURRENT extra",
+        "GOVREAD AVAILABLE extra", "GOVREAD CURRENT ", "GOVREAD AVAILABLE;reboot",
+        "GOVREAD /proc/self/status" };
+    for (size_t i = 0; i < sizeof invalid / sizeof invalid[0]; i++) {
+        dispatch_reply(invalid[i], out, sizeof out);
+        CHECK(strcmp(out, "ERR\n") == 0 && govread_open_count[0] == 0 && govread_open_count[1] == 0,
+            "GOVREAD rejects unsupported selectors and extra arguments before reading\n");
+    }
+    govread_end();
+}
+
+static void test_govread_fixed_nodes(void) {
+    govread_begin();
+    char out[128];
+    dispatch_reply("GOVREAD CURRENT", out, sizeof out);
+    CHECK(strcmp(out, "GOVREAD schedutil\n") == 0 && govread_open_count[0] == 1 && govread_open_count[1] == 0,
+        "GOVREAD CURRENT reads the current-governor node\n");
+    const char available[] = " \tVendor.Fast-1_2\r\n powersave\tperformance \n";
+    govread_set(1, available, sizeof available - 1);
+    dispatch_reply("GOVREAD AVAILABLE", out, sizeof out);
+    CHECK(strcmp(out, "GOVREAD Vendor.Fast-1_2 powersave performance\n") == 0 && govread_open_count[1] == 1,
+        "GOVREAD AVAILABLE reads the available-governors node\n");
+    govread_end();
+}
+
+static void test_govread_current_cardinality(void) {
+    govread_begin();
+    char out[64];
+    govread_set(0, "performance powersave\n", 22);
+    dispatch_reply("GOVREAD CURRENT", out, sizeof out);
+    CHECK(strcmp(out, "ERR\n") == 0, "GOVREAD CURRENT rejects multiple tokens\n");
+    for (int i = 0; i < 2; i++) {
+        govread_set(i, " \t\r\n", 4);
+        dispatch_reply(i ? "GOVREAD AVAILABLE" : "GOVREAD CURRENT", out, sizeof out);
+        CHECK(strcmp(out, "ERR\n") == 0, "GOVREAD rejects an empty token list\n");
+        govread_set(i, "", 0);
+        dispatch_reply(i ? "GOVREAD AVAILABLE" : "GOVREAD CURRENT", out, sizeof out);
+        CHECK(strcmp(out, "ERR\n") == 0, "GOVREAD rejects an empty node\n");
+    }
+    govread_end();
+}
+
+static void test_govread_invalid_content(void) {
+    govread_begin();
+    char out[64];
+    const char invalid[][32] = { "sched/util", "schedutil;reboot", "schedutil\0powersave", "schedutil\v", "schedutil\177", "schedutil\200" };
+    const size_t sizes[] = { 10, 16, 19, 10, 10, 10 };
+    for (size_t i = 0; i < sizeof sizes / sizeof sizes[0]; i++) {
+        govread_set(1, invalid[i], sizes[i]);
+        dispatch_reply("GOVREAD AVAILABLE", out, sizeof out);
+        CHECK(strcmp(out, "ERR\n") == 0, "GOVREAD rejects malformed governor bytes\n");
+    }
+    govread_end();
+}
+
+static void test_govread_token_bounds(void) {
+    govread_begin();
+    char token[64], expected[80], out[128];
+    memset(token, 'a', sizeof token);
+    govread_set(0, token, 63);
+    snprintf(expected, sizeof expected, "GOVREAD %.*s\n", 63, token);
+    dispatch_reply("GOVREAD CURRENT", out, sizeof out);
+    CHECK(strcmp(out, expected) == 0, "GOVREAD accepts a 63-byte token\n");
+    govread_set(0, token, sizeof token);
+    dispatch_reply("GOVREAD CURRENT", out, sizeof out);
+    CHECK(strcmp(out, "ERR\n") == 0, "GOVREAD rejects a 64-byte token\n");
+    govread_end();
+}
+
+static void test_govread_raw_bound(void) {
+    govread_begin();
+    char bytes[4097], out[4200];
+    memset(bytes, ' ', sizeof bytes);
+    memcpy(bytes, "performance", 11);
+    govread_set(0, bytes, 4095);
+    dispatch_reply("GOVREAD CURRENT", out, sizeof out);
+    CHECK(strcmp(out, "GOVREAD performance\n") == 0, "GOVREAD accepts 4095 complete raw bytes\n");
+    for (size_t size = 4096; size <= sizeof bytes; size++) {
+        govread_set(0, bytes, size);
+        dispatch_reply("GOVREAD CURRENT", out, sizeof out);
+        CHECK(strcmp(out, "ERR\n") == 0, "GOVREAD rejects raw input reaching the overflow probe\n");
+    }
+    // Largest normalized reply from valid 4095-byte input: 64 tokens of 63 bytes.
+    for (size_t i = 0; i < 4095; i++) bytes[i] = i % 64 == 63 ? ' ' : 'a';
+    govread_set(1, bytes, 4095);
+    dispatch_reply("GOVREAD AVAILABLE", out, sizeof out);
+    CHECK(strlen(out) == 4104 && memcmp(out, "GOVREAD ", 8) == 0 &&
+        memcmp(out + 8, bytes, 4095) == 0 && out[4103] == '\n',
+        "GOVREAD emits the complete maximum normalized reply\n");
+    govread_end();
+}
+
+static void test_govread_read_failures(void) {
+    govread_begin();
+    char out[64];
+    for (int i = 0; i < 2; i++) {
+        govread_open_error = 1;
+        dispatch_reply(i ? "GOVREAD AVAILABLE" : "GOVREAD CURRENT", out, sizeof out);
+        CHECK(strcmp(out, "ERR\n") == 0, "GOVREAD reports denied fixed-node access\n");
+    }
+    govread_open_error = 0;
+    govread_steps[0] = 4; govread_steps[1] = -2;
+    govread_step_count = 2; govread_step_index = 0;
+    dispatch_reply("GOVREAD CURRENT", out, sizeof out);
+    CHECK(strcmp(out, "ERR\n") == 0, "GOVREAD discards a valid prefix when a later read fails (got %s; read steps %zu)\n", out, govread_step_index);
+    govread_steps[0] = -1; govread_steps[1] = 2; govread_steps[2] = -1; govread_steps[3] = 3;
+    govread_step_count = 4; govread_step_index = 0;
+    dispatch_reply("GOVREAD CURRENT", out, sizeof out);
+    CHECK(strcmp(out, "GOVREAD schedutil\n") == 0, "GOVREAD recovers from short reads and EINTR\n");
+    govread_end();
+}
+
+static void test_govread_no_exec(void) {
+    govread_begin();
+    char out[64];
+    dispatch_reply("GOVREAD CURRENT", out, sizeof out);
+    dispatch_reply("GOVREAD AVAILABLE", out, sizeof out);
+    dispatch_reply("GOVREAD CURRENT extra", out, sizeof out);
+    govread_open_error = 1;
+    dispatch_reply("GOVREAD CURRENT", out, sizeof out);
+    dispatch_reply("GOVREAD AVAILABLE", out, sizeof out);
+    CHECK(sysexec_stub_count_run("") == 0 && sysexec_stub_count_argv_calls() == 0,
+        "GOVREAD never invokes subprocesses\n");
+    govread_end();
 }
 
 static void test_sysctl_execution_results(void) {
@@ -2388,6 +2592,14 @@ int main(int argc, char **argv) {
     test_zigbeecontain_layouts();
     test_reboot_escalation();
     test_keyevent_named_keys_only();
+    test_govread_request_admission();
+    test_govread_fixed_nodes();
+    test_govread_current_cardinality();
+    test_govread_invalid_content();
+    test_govread_token_bounds();
+    test_govread_raw_bound();
+    test_govread_read_failures();
+    test_govread_no_exec();
     test_sysctl_execution_results();
     test_bootchime_protocol();
     test_screencap_command();
