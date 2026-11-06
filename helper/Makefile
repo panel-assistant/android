@@ -24,7 +24,7 @@ BUILD   := build
 # the unit tests, so coverage can never silently drop a module. main.c (accept loop) and sysexec.c
 # (real exec/pipe/thread/reboot) are deliberately NOT here: the fuzz and test builds swap in a stub
 # sysexec and never run main, so a valid REBOOT/RELOAD/WATCH/GPIOWATCH can't exec or spawn on the build host.
-CORE_SRCS := $(addprefix $(SRC_DIR)/, identity.c adb_recovery.c util.c sha256.c led.c screen.c input.c gpio.c sysctl.c zigbee.c perf.c cht8305.c vi530x.c version.c companion.c guard_maintenance.c guard_replacement.c logcat.c server.c dispatch.c)
+CORE_SRCS := $(addprefix $(SRC_DIR)/, identity.c adb_recovery.c util.c sha256.c led.c screen.c input.c gpio.c sysctl.c zigbee.c wifi.c perf.c cht8305.c vi530x.c version.c companion.c guard_maintenance.c guard_replacement.c logcat.c server.c dispatch.c)
 DAEMON_SRCS := $(CORE_SRCS) $(SRC_DIR)/main.c $(SRC_DIR)/sysexec.c
 STUB := test/sysexec_stub.c
 TEST_BUILD_ID := aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -46,13 +46,13 @@ TEST_BINS := $(BUILD)/adb-recovery $(BUILD)/uninstall-supervisor $(BUILD)/unit $
 test:
 	$(MAKE) test-units
 
-test-units: $(BUILD)/zigbee-boundary $(BUILD)/zigbee-role-exec $(TEST_BINS)
+test-units: $(BUILD)/wifi-boundary $(BUILD)/wifi-exec $(BUILD)/zigbee-boundary $(BUILD)/zigbee-role-exec $(TEST_BINS)
 	$(MAKE) adb-recovery-retirement-test
 	$(MAKE) adb-recovery-replacement-test
 	$(BUILD)/adb-recovery
 	$(BUILD)/uninstall-supervisor
 	$(BUILD)/unit
-	test "$$($(BUILD)/hapaneld-helper --version)" = "HELPER version=1.8.0 proto=1.8"
+	test "$$($(BUILD)/hapaneld-helper --version)" = "HELPER version=1.9.0 proto=1.9"
 	$(BUILD)/companion-boundary
 	$(BUILD)/guard-maintenance-boundary
 	$(BUILD)/guard-maintenance-gates
@@ -62,6 +62,8 @@ test-units: $(BUILD)/zigbee-boundary $(BUILD)/zigbee-role-exec $(TEST_BINS)
 	$(BUILD)/peer-auth
 	$(BUILD)/request-timeout
 	$(BUILD)/bounded-exec
+	$(BUILD)/wifi-boundary
+	$(BUILD)/wifi-exec
 	$(BUILD)/zigbee-boundary
 	$(BUILD)/zigbee-role-exec
 	$(BUILD)/logcat-boundary
@@ -204,3 +206,9 @@ $(BUILD)/zigbee-boundary: $(CORE_SRCS) $(STUB) test/zigbee_boundary.c test/zigbe
 
 $(BUILD)/zigbee-role-exec: $(SRC_DIR)/sysexec.c test/zigbee_role_exec.c | $(BUILD)
 	$(CC) $(CFLAGS) -I$(SRC_DIR) test/zigbee_role_exec.c $(SRC_DIR)/sysexec.c $(LDLIBS) -Wl,--wrap=execve -o $@
+
+$(BUILD)/wifi-boundary: $(CORE_SRCS) $(STUB) test/wifi_boundary.c | $(BUILD)
+	$(CC) $(CFLAGS) -DHAPANELD_TEST -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/wifi_boundary.c $(LDLIBS) -Wl,--wrap=sysexec_capture_wifi_status -o $@
+
+$(BUILD)/wifi-exec: $(SRC_DIR)/sysexec.c test/wifi_exec.c | $(BUILD)
+	$(CC) $(CFLAGS) -I$(SRC_DIR) test/wifi_exec.c $(SRC_DIR)/sysexec.c $(LDLIBS) -Wl,--wrap=execve -o $@

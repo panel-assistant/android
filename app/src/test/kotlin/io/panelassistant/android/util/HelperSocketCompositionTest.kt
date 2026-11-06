@@ -40,7 +40,7 @@ class HelperSocketCompositionTest {
             ).redirectErrorStream(true).start()
             assertEquals("READY", second.inputStream.bufferedReader().readLine())
             assertTrue(Files.isDirectory(root.resolve(".hapaneld-guard-db-test")))
-            assertEquals("HELPER version=1.8.0 proto=1.8", SocketDaemon(socket).send("VERSION"))
+            assertEquals("HELPER version=1.9.0 proto=1.9", SocketDaemon(socket).send("VERSION"))
         } finally {
             second?.let {
                 it.destroy()
@@ -56,7 +56,7 @@ class HelperSocketCompositionTest {
         val daemon = SocketDaemon(socketPath)
 
         assertTrue(daemon.available())
-        assertEquals("HELPER version=1.8.0 proto=1.8", daemon.send("VERSION"))
+        assertEquals("HELPER version=1.9.0 proto=1.9", daemon.send("VERSION"))
         assertEquals("ERR", daemon.send("PINGEXTRA"))
         assertEquals("OK", daemon.sendLong("RELOAD io.example.dashboard", 5_000).replyValue())
     }
@@ -72,7 +72,7 @@ class HelperSocketCompositionTest {
         val daemon = SocketDaemon(socketPath)
         // The host fixture redirects fixed governor reads and refuses governor writes.
         listOf(
-            WireTranscript("VERSION", "HELPER version=1.8.0 proto=1.8"),
+            WireTranscript("VERSION", "HELPER version=1.9.0 proto=1.9"),
             WireTranscript("PING", "OK"),
             WireTranscript("BUILDID", "BUILDID development"),
             WireTranscript("COMPANIONCAPS", "COMPANIONCAPS 1 BACKUP RESTORE STATUS JOURNAL"),
@@ -109,6 +109,9 @@ class HelperSocketCompositionTest {
             WireTranscript("GOVREAD CURRENT extra", "ERR"),
             WireTranscript("GOVREAD current", "ERR"),
             WireTranscript("GOVREAD /path", "ERR"),
+            WireTranscript("WIFISTATUS", "SSID=${"Home, β".zigbeeHex()} RSSI=-63"),
+            WireTranscript("WIFISTATUS extra", "ERR"),
+            WireTranscript("WIFISTATUS /path", "ERR"),
             WireTranscript("ZIGBEESTATE extra", "ERR"),
             WireTranscript("ZIGBEEHEALTH /path", "ERR"),
             WireTranscript("ZIGBEEROLE extra", "ERR"),
@@ -137,6 +140,15 @@ class HelperSocketCompositionTest {
         val daemon = IdentityAdmittingHelperClient(ChannelSessionTransport(socketPath))
         assertEquals("Vendor_1.fast-2", daemon.cpuGovernor())
         assertEquals(listOf("powersave", "Vendor_1.fast-2", "performance"), daemon.cpuAvailableGovernors())
+    }
+
+    @Test(timeout = 10_000)
+    fun typedWifiStatusCrossesNativeCurrentRecordParserWithoutIdentifiers() {
+        val daemon = IdentityAdmittingHelperClient(ChannelSessionTransport(socketPath))
+        val status = assertNotNull(daemon.wifiStatus())
+        assertEquals("Home, β", status.ssid)
+        assertEquals(-63, status.rssiDbm)
+        assertFalse(status.toString().contains("00:11:22:33:44:55"))
     }
 
     @Test(timeout = 10_000)
@@ -362,6 +374,8 @@ class HelperSocketCompositionTest {
                     environment()["HAPANELD_TEST_GOV_CURRENT"] = current.toString()
                     environment()["HAPANELD_TEST_GOV_AVAILABLE"] = available.toString()
                     environment()["HAPANELD_TEST_ZIGBEE_ROLE"] = """{"role":"Repeater"}"""
+                    environment()["HAPANELD_TEST_WIFI_STATUS"] =
+                        "WifiInfo: SSID: \"Home, β\", BSSID: 00:11:22:33:44:55, RSSI: -63, Link speed: 433Mbps\n"
                 }
                 .redirectErrorStream(true)
                 .start()

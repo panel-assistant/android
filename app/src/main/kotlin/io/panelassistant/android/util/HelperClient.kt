@@ -6,6 +6,7 @@ import io.panelassistant.android.BuildConfig
 import io.panelassistant.android.platform.Daemon
 import io.panelassistant.android.platform.DaemonLongResult
 import io.panelassistant.android.platform.DaemonStreamResult
+import io.panelassistant.android.platform.HelperWifiStatus
 import io.panelassistant.android.platform.HelperZigbeeHealth
 import io.panelassistant.android.platform.HelperZigbeeProcess
 import io.panelassistant.android.platform.HelperZigbeeState
@@ -373,12 +374,12 @@ internal class IdentityAdmittingHelperClient(
     }
 
     override fun zigbeeState(): HelperZigbeeState? =
-        zigbeeFrame(readZigbee("ZIGBEESTATE", 6, 512), "ZIGBEESTATE", ZIGBEE_STATE_FIELDS, 512)?.let(::parseZigbeeState)
+        zigbeeFrame(readVersioned("ZIGBEESTATE", 6, 512), "ZIGBEESTATE", ZIGBEE_STATE_FIELDS, 512)?.let(::parseZigbeeState)
 
-    override fun zigbeeHealth(): HelperZigbeeHealth? = parseZigbeeHealth(readZigbee("ZIGBEEHEALTH", 7, 9216))
+    override fun zigbeeHealth(): HelperZigbeeHealth? = parseZigbeeHealth(readVersioned("ZIGBEEHEALTH", 7, 9216))
 
     override fun zigbeeRole(): String? {
-        val bytes = readZigbee("ZIGBEEROLE", 8, 8204) ?: return null
+        val bytes = readVersioned("ZIGBEEROLE", 8, 8204) ?: return null
         if (bytes.isEmpty() || bytes.size > 8204 || bytes.last() != 10.toByte() ||
             bytes.dropLast(1).any { (it.toInt() and 255) !in 32..126 }
         ) return null
@@ -391,7 +392,19 @@ internal class IdentityAdmittingHelperClient(
         }.getOrNull()
     }
 
-    private fun readZigbee(command: String, minimumMinor: Int, maxBytes: Long): ByteArray? {
+    override fun wifiStatus(): HelperWifiStatus? {
+        val bytes = readVersioned("WIFISTATUS", 9, 80) ?: return null
+        if (bytes.isEmpty() || bytes.size > 80 || bytes.last() != 10.toByte() ||
+            bytes.dropLast(1).any { (it.toInt() and 255) !in 32..126 }
+        ) return null
+        val line = String(bytes, 0, bytes.size - 1, StandardCharsets.US_ASCII)
+        val match = Regex("SSID=([0-9a-f]+|-) RSSI=(0|-[1-9][0-9]{0,2}|-)").matchEntire(line) ?: return null
+        val ssid = match.groupValues[1].let { if (it == "-") null else zigbeeHex(it, 32)?.takeIf(String::isNotEmpty) ?: return null }
+        val rssi = match.groupValues[2].let { if (it == "-") null else it.toIntOrNull()?.takeIf { value -> value in -126..0 } ?: return null }
+        return HelperWifiStatus(ssid, rssi)
+    }
+
+    private fun readVersioned(command: String, minimumMinor: Int, maxBytes: Long): ByteArray? {
         val session = transport.open() ?: return null
         return session.use {
             val version = it.bootstrap("VERSION", newDeadline()) as? HelperBootstrapReply.Line ?: return null

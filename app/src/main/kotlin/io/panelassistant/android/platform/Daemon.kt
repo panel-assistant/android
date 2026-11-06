@@ -20,6 +20,9 @@ interface Daemon {
     fun zigbeeHealth(): HelperZigbeeHealth? = null
     fun zigbeeRole(): String? = null
 
+    /** Fixed current Wi-Fi status; null means unavailable or an unverified helper protocol. */
+    fun wifiStatus(): HelperWifiStatus? = null
+
     /** Send one command; return the exact printable reply line without its LF, or null if unreachable/malformed. */
     fun send(cmd: String): String?
 

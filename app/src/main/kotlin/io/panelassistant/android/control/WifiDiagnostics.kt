@@ -8,6 +8,7 @@ import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.SystemClock
 import io.panelassistant.android.util.Cached
+import io.panelassistant.android.platform.HelperWifiStatus
 
 internal data class WifiDiagnosticSnapshot(
     val ssid: String? = null,
@@ -19,15 +20,12 @@ internal data class WifiDiagnosticSnapshot(
 internal data class WifiDiagnosticDemand(
     val ssid: Boolean = false,
     val rssi: Boolean = false,
-    /** True only when the caller's current capability observation already admitted direct su. */
-    val privilegedRoute: Boolean = false,
 )
 
-internal fun needsPrivilegedWifiStatus(
+internal fun needsHelperWifiStatus(
     direct: WifiDiagnosticSnapshot,
     demand: WifiDiagnosticDemand,
-): Boolean = demand.privilegedRoute &&
-    direct.active &&
+): Boolean = direct.active &&
     (demand.ssid && direct.ssid == null || demand.rssi && direct.rssiDbm == null)
 
 internal fun normalizedWifiSsid(raw: String?): String? {
@@ -93,33 +91,33 @@ internal class WifiDiagnosticCache(
     nowMs: () -> Long = SystemClock::elapsedRealtime,
 ) {
     private val directCache = Cached(CACHE_MS, nowMs) { WifiDiagnosticSnapshot() }
-    private val shellCache = Cached(CACHE_MS, nowMs) { WifiDiagnosticSnapshot() }
+    private val helperCache = Cached(CACHE_MS, nowMs) { WifiDiagnosticSnapshot() }
 
     fun snapshot(
         demand: WifiDiagnosticDemand,
         directReader: () -> WifiDiagnosticSnapshot,
-        privilegedReader: () -> WifiDiagnosticSnapshot,
+        helperReader: () -> WifiDiagnosticSnapshot,
     ): WifiDiagnosticSnapshot {
         val direct = directCache.getWithSupplier {
             runCatching(directReader).getOrDefault(WifiDiagnosticSnapshot())
         }
-        val shell = if (needsPrivilegedWifiStatus(direct, demand)) {
-            shellCache.getWithSupplier {
-                runCatching(privilegedReader).getOrDefault(WifiDiagnosticSnapshot())
+        val helper = if (needsHelperWifiStatus(direct, demand)) {
+            helperCache.getWithSupplier {
+                runCatching(helperReader).getOrDefault(WifiDiagnosticSnapshot())
             }
         } else {
             WifiDiagnosticSnapshot()
         }
         return WifiDiagnosticSnapshot(
-            ssid = if (demand.ssid) direct.ssid ?: shell.ssid else null,
-            rssiDbm = if (demand.rssi) direct.rssiDbm ?: shell.rssiDbm else null,
+            ssid = if (demand.ssid) direct.ssid ?: helper.ssid else null,
+            rssiDbm = if (demand.rssi) direct.rssiDbm ?: helper.rssiDbm else null,
             active = direct.active,
         )
     }
 
     fun invalidate() {
         directCache.invalidate()
-        shellCache.invalidate()
+        helperCache.invalidate()
     }
 
     private companion object {
@@ -127,24 +125,10 @@ internal class WifiDiagnosticCache(
     }
 }
 
-internal fun parseWifiShellSnapshot(raw: String?): WifiDiagnosticSnapshot {
-    if (raw.isNullOrBlank()) return WifiDiagnosticSnapshot()
-    val connectedSsid = Regex("""(?im)Wi-?Fi\s+is\s+connected\s+to\s+"([^"]+)"""")
-        .find(raw)?.groupValues?.getOrNull(1)
-    val wifiInfoSsid = Regex("""(?im)\bSSID:\s*(.*?),\s*BSSID:""")
-        .find(raw)?.groupValues?.getOrNull(1)
-    val rssi = Regex("""(?im)\bRSSI\s*[:=]\s*(-?\d+)""")
-        .find(raw)?.groupValues?.getOrNull(1)?.toIntOrNull()
-    return WifiDiagnosticSnapshot(
-        ssid = normalizedWifiSsid(connectedSsid ?: wifiInfoSsid),
-        rssiDbm = rssi?.let(::normalizedWifiRssi),
-    )
-}
-
 /** Reads only the current Wi-Fi connection; it never scans or collects BSSID/MAC identifiers. */
 internal class AndroidWifiDiagnostics(
     context: Context,
-    private val privilegedStatus: () -> String? = { null },
+    private val helperStatus: () -> HelperWifiStatus? = { null },
 ) {
     private val app = context.applicationContext
     private val wifi = app.getSystemService(Context.WIFI_SERVICE) as? WifiManager
@@ -180,8 +164,10 @@ internal class AndroidWifiDiagnostics(
     fun snapshot(demand: WifiDiagnosticDemand): WifiDiagnosticSnapshot = cache.snapshot(
         demand = demand,
         directReader = ::currentSnapshot,
-        privilegedReader = {
-            parseWifiShellSnapshot(runCatching(privilegedStatus).getOrNull())
+        helperReader = {
+            runCatching(helperStatus).getOrNull()?.let {
+                WifiDiagnosticSnapshot(normalizedWifiSsid(it.ssid), it.rssiDbm?.let(::normalizedWifiRssi))
+            } ?: WifiDiagnosticSnapshot()
         },
     )
 

@@ -7,35 +7,35 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WifiDiagnosticsTest {
-    @Test fun privilegedFallbackRequiresDemandedMissingDataAndAnAdmittedRoute() {
-        val rssiOnly = WifiDiagnosticDemand(rssi = true, privilegedRoute = true)
+    @Test fun helperFallbackRequiresDemandedMissingDirectDataOnActiveWifi() {
+        val rssiOnly = WifiDiagnosticDemand(rssi = true)
         assertEquals(
             false,
-            needsPrivilegedWifiStatus(WifiDiagnosticSnapshot(ssid = null, rssiDbm = -61, active = true), rssiOnly),
+            needsHelperWifiStatus(WifiDiagnosticSnapshot(ssid = null, rssiDbm = -61, active = true), rssiOnly),
         )
         assertEquals(
             true,
-            needsPrivilegedWifiStatus(WifiDiagnosticSnapshot(ssid = "hidden", rssiDbm = null, active = true), rssiOnly),
+            needsHelperWifiStatus(WifiDiagnosticSnapshot(ssid = "hidden", rssiDbm = null, active = true), rssiOnly),
         )
         assertEquals(
             false,
-            needsPrivilegedWifiStatus(
+            needsHelperWifiStatus(
                 WifiDiagnosticSnapshot(),
-                WifiDiagnosticDemand(rssi = true, privilegedRoute = false),
+                WifiDiagnosticDemand(rssi = true),
             ),
         )
         assertEquals(
             false,
-            needsPrivilegedWifiStatus(
+            needsHelperWifiStatus(
                 WifiDiagnosticSnapshot(),
-                WifiDiagnosticDemand(ssid = false, rssi = false, privilegedRoute = true),
+                WifiDiagnosticDemand(ssid = false, rssi = false),
             ),
         )
         assertEquals(
             false,
-            needsPrivilegedWifiStatus(
+            needsHelperWifiStatus(
                 WifiDiagnosticSnapshot(ssid = "stale", rssiDbm = -55, active = false),
-                WifiDiagnosticDemand(ssid = true, rssi = true, privilegedRoute = true),
+                WifiDiagnosticDemand(ssid = true, rssi = true),
             ),
         )
     }
@@ -96,11 +96,11 @@ class WifiDiagnosticsTest {
         var directReads = 0
         var privilegedReads = 0
         val cache = WifiDiagnosticCache(nowMs = { 1_000L })
-        val demand = WifiDiagnosticDemand(ssid = true, rssi = true, privilegedRoute = true)
+        val demand = WifiDiagnosticDemand(ssid = true, rssi = true)
         fun read() = cache.snapshot(
             demand,
             directReader = { directReads++; direct },
-            privilegedReader = { privilegedReads++; privileged },
+            helperReader = { privilegedReads++; privileged },
         )
 
         assertEquals(WifiDiagnosticSnapshot("Network A", -60, active = true), read())
@@ -120,35 +120,13 @@ class WifiDiagnosticsTest {
         var privilegedReads = 0
         val cache = WifiDiagnosticCache(nowMs = { 1_000L })
         val result = cache.snapshot(
-            WifiDiagnosticDemand(ssid = true, rssi = true, privilegedRoute = true),
+            WifiDiagnosticDemand(ssid = true, rssi = true),
             directReader = { WifiDiagnosticSnapshot(active = false) },
-            privilegedReader = { privilegedReads++; WifiDiagnosticSnapshot("stale", -50) },
+            helperReader = { privilegedReads++; WifiDiagnosticSnapshot("stale", -50) },
         )
 
         assertEquals(WifiDiagnosticSnapshot(), result)
         assertEquals(0, privilegedReads)
     }
 
-    @Test fun privilegedStatusParsesModernAndLegacyWifiInfoWithoutCollectingIdentifiers() {
-        assertEquals(
-            WifiDiagnosticSnapshot("Example Wi-Fi", -61),
-            parseWifiShellSnapshot(
-                """
-                Wi-Fi is enabled
-                Wi-Fi is connected to "Example Wi-Fi"
-                WifiInfo: SSID: Example Wi-Fi, BSSID: 00:11:22:33:44:55, RSSI: -61, Link speed: 433Mbps
-                """.trimIndent(),
-            ),
-        )
-        assertEquals(
-            WifiDiagnosticSnapshot("Legacy, Network", -74),
-            parseWifiShellSnapshot(
-                "mWifiInfo SSID: Legacy, Network, BSSID: 00:11:22:33:44:55, RSSI: -74, score: 60",
-            ),
-        )
-        assertEquals(
-            WifiDiagnosticSnapshot(null, -80),
-            parseWifiShellSnapshot("WifiInfo: SSID: <unknown ssid>, BSSID: null, RSSI: -80"),
-        )
-    }
 }

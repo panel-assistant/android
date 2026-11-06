@@ -693,13 +693,7 @@ class PaneldService : Service() {
         appliedNetworkConfiguration = currentNetworkConfigurationSnapshot()
         sensors = SensorReporter(this, config, profile)
         wifiOutageTracker = WifiOutageTracker(store = wifiStore)
-        wifiDiagnostics = AndroidWifiDiagnostics(this) {
-            Su.runOutputIsolatedBounded(
-                "cmd wifi status 2>/dev/null || dumpsys wifi",
-                maxBytes = 128 * 1024L,
-                timeoutMs = 2_000L,
-            )
-        }
+        wifiDiagnostics = AndroidWifiDiagnostics(this, HelperClient::wifiStatus)
         // Shared demand-driven logcat captures (one producer and redaction pass per source): app,
         // system and browser feed the sink and their live viewers. System uses the helper exclusively.
         // Idle-stopped — no logcat runs until something subscribes.
@@ -1551,7 +1545,7 @@ class PaneldService : Service() {
         val cost = FeatureCosts.registry.span(FeatureCostOperation.CAPABILITY_SNAPSHOT)
         return try {
             val wifi = wifiDiagnostics.snapshot(
-                WifiDiagnosticDemand(ssid = true, rssi = true, privilegedRoute = directSuReady),
+                WifiDiagnosticDemand(ssid = true, rssi = true),
             )
             val wifiAvailable = wifi.availability()
             Capabilities(

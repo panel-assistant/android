@@ -17,7 +17,7 @@ Newline-terminated ASCII on the abstract UNIX socket `@hapaneld-helper`. One or 
 
 | Command | Effect | Reply |
 | --- | --- | --- |
-| `VERSION` | read the helper identity without touching hardware | `HELPER version=1.8.0 proto=1.8` / `ERR` when arguments are supplied |
+| `VERSION` | read the helper identity without touching hardware | `HELPER version=1.9.0 proto=1.9` / `ERR` when arguments are supplied |
 | `RGB <r> <g> <b>` | set LED colour (each 0..255) | `OK` / `ERR` |
 | `OFF` | LED off | `OK` / `ERR` |
 | `BTN <0..255>` | button-backlight brightness | `OK` / `ERR` |
@@ -54,6 +54,7 @@ Newline-terminated ASCII on the abstract UNIX socket `@hapaneld-helper`. One or 
 | `ZIGBEESTATE` | argument-free, fixed Sonoff gateway footprint and complete process observation (protocol 1.6) | ordered `ZIGBEESTATE 1` frame ending `END`, or `ERR` |
 | `ZIGBEEHEALTH` | the same observation plus process start/jiffy samples, total CPU, bounded watchdog and network evidence (protocol 1.7) | ordered `ZIGBEEHEALTH 1` frame ending `END`, or `ERR` |
 | `ZIGBEEROLE` | argument-free, one fixed local broker topic under a 3500 ms child deadline (protocol 1.8) | `ZIGBEEROLE <hex JSON bytes>` / `ERR` |
+| `WIFISTATUS` | argument-free bounded current Wi-Fi fields from fixed Android commands (protocol 1.9) | `SSID=<hex or -> RSSI=<dBm or ->` / `ERR` |
 | `ZIGBEECONTAIN` | argument-free containment for the exact vendor-native Sonoff `/vendor/bin/siliconlabs_host` layout; targets only its guard, gateway and matching broker, then demotes a surviving gateway | `OK` / `PARTIAL` / `ERR` |
 | `PERFDUMP` | CPU/load/temp/gpu/process snapshot (for sandbox-walled apps) | marker-delimited stream, then EOF |
 | `CHT8305` | room temp/humidity from exact allowlisted input layouts (`temperature`/`humidity` or ZX-SMT156 `sun-ths`/`sun-hum`) | `T=<centi> H=<centi>` / `ERR` |
@@ -70,6 +71,20 @@ to single spaces between tokens. The reply has one trailing newline. Empty input
 NUL, invalid tokens, open/read failure, or raw input reaching the 4096-byte overflow probe returns
 `ERR`; at most 4095 raw bytes can succeed. There is no subprocess fallback. The broader read grammar
 does not change the governor writer's allowlist.
+
+`WIFISTATUS` executes only `/system/bin/cmd wifi status`, with `/system/bin/dumpsys wifi`
+as a fallback after a complete nonzero exit. Both share one 2000 ms monotonic budget and a
+128 KiB complete-capture bound per attempt (at most 256 KiB read across both attempts, with one
+reused buffer and only the selected capture parsed). Timeout, overflow, I/O failure and embedded NUL never trigger
+fallback; nonzero primary output is discarded, while failure prefixes in the selected successful
+capture return `ERR`. Only one recognized current `WifiInfo:` or `mWifiInfo` record is admitted;
+historical RSSI and the connection banner cannot supply fields. Multiple records are ambiguous.
+The ordered reply is `SSID=<lowercase hex or -> RSSI=<-126..0 or ->` followed by one newline,
+at most 80 bytes. SSID and RSSI can independently be unavailable. SSIDs must be 1–32 bytes of
+printable UTF-8; quoted commas are supported. Unknown SSIDs, ambiguous quoting, hex/unsupported
+representations, controls, malformed UTF-8 and oversized SSIDs are unavailable. No raw dump,
+BSSID or MAC address is returned. These formats follow Android's WifiShellCommand/WifiInfo;
+no vendor-specific stdout format is assumed.
 
 `ZIGBEESTATE`, `ZIGBEEHEALTH` and `ZIGBEEROLE` accept no arguments. Paths are fixed to
 `/vendor/bin/siliconlabs_host`, `/data/vendor/siliconlabs_host` and `/proc`; callers cannot select

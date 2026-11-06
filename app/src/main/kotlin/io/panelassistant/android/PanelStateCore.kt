@@ -871,11 +871,9 @@ internal class PanelStateCore(
         "diag_boot" -> PanelMetrics.shared.bootTime()
         "diag_wifi_ssid" -> wifiDiagnostics(WifiDiagnosticDemand(
             ssid = true,
-            privilegedRoute = capabilityShape.current().live.networkAdb,
         )).ssid
         "diag_wifi_rssi" -> wifiDiagnostics(WifiDiagnosticDemand(
             rssi = true,
-            privilegedRoute = capabilityShape.current().live.networkAdb,
         )).rssiDbm?.toString()
         // Rolling outage counts keep their last reported value through a Wi-Fi dropout —
         // that dropout is exactly what they exist to report — so they are not WIFI_DIAGNOSTIC_KEYS.

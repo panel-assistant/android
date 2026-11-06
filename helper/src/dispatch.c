@@ -19,6 +19,7 @@
 #include "version.h"
 #include "logcat.h"
 #include "zigbee.h"
+#include "wifi.h"
 
 static void cmd_ping(conn_ctx *ctx, const char *args) { (void)args; reply(ctx->fd, "OK\n"); }
 static void cmd_buildid(conn_ctx *ctx, const char *args) {

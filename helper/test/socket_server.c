@@ -76,6 +76,8 @@ int main(int argc, char **argv) {
     sysexec_stub_add_popen("screencap -p", "PNG\nfixture\n", 0);
     const char *role = getenv("HAPANELD_TEST_ZIGBEE_ROLE");
     if (role) sysexec_stub_add_popen("mosquitto_sub", role, 0);
+    const char *wifi = getenv("HAPANELD_TEST_WIFI_STATUS");
+    if (wifi) sysexec_stub_add_popen("cmd wifi status", wifi, 0);
     if (guard_maintenance_init() != 0) return 5;
     input_init();
     gpio_init();

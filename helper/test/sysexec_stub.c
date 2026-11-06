@@ -381,3 +381,14 @@ int sysexec_capture_zigbee_role(char *output, size_t capacity, size_t *used) {
     if (used) *used = strlen(output);
     return status;
 }
+
+int sysexec_capture_wifi_status(char *output, size_t capacity, size_t *used) {
+    const char *const primary[] = { "/system/bin/cmd", "wifi", "status", NULL };
+    int status = sysexec_capture_argv_timeout(primary[0], primary, output, capacity, 2000u, NULL);
+    if (status > 0) {
+        const char *const fallback[] = { "/system/bin/dumpsys", "wifi", NULL };
+        status = sysexec_capture_argv_timeout(fallback[0], fallback, output, capacity, 2000u, NULL);
+    }
+    if (used) *used = strlen(output);
+    return status;
+}

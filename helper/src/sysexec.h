@@ -73,6 +73,10 @@ int   sysexec_capture_argv_timeout(const char *path, const char *const argv[], c
 // Successful capture reports its exact byte count, so embedded NUL cannot hide trailing data.
 int sysexec_capture_zigbee_role(char *output, size_t capacity, size_t *used);
 
+// Fixed Wi-Fi status read, cmd then nonzero-exit-only dumpsys fallback, one 2000ms budget.
+// Exact byte count and complete capture let the handler reject embedded NUL and overflow.
+int sysexec_capture_wifi_status(char *output, size_t capacity, size_t *used);
+
 // Execute an absolute path without a shell and copy stdout to an already-open descriptor. The child
 // receives /dev/null on stdin and stderr. Returns the raw child wait status, or -1 on I/O/fork error.
 int   sysexec_stream_argv(const char *path, const char *const argv[], int output_fd);

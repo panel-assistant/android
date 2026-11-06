@@ -564,6 +564,22 @@ int sysexec_capture_zigbee_role(char *output, size_t capacity, size_t *used) {
     return capture_argv_timeout_env(argv[0], argv, output, capacity, 3500u, NULL, role_env, used);
 }
 
+int sysexec_capture_wifi_status(char *output, size_t capacity, size_t *used) {
+    if (!used) return -1;
+    *used = 0;
+    unsigned long long start, now;
+    if (monotonic_millis(&start) != 0) return -1;
+    const char *const primary[] = { "/system/bin/cmd", "wifi", "status", NULL };
+    int status = capture_argv_timeout_env(primary[0], primary, output, capacity, 2000u,
+                                          NULL, clean_env, used);
+    if (status >= 0 && memchr(output, 0, *used)) return -1;
+    if (status <= 0 || !WIFEXITED(status) || WEXITSTATUS(status) == 0) return status;
+    if (monotonic_millis(&now) != 0 || now < start || now - start >= 2000u) return -2;
+    const char *const fallback[] = { "/system/bin/dumpsys", "wifi", NULL };
+    return capture_argv_timeout_env(fallback[0], fallback, output, capacity,
+                                    2000u - (unsigned)(now - start), NULL, clean_env, used);
+}
+
 int sysexec_stream_argv(const char *path, const char *const argv[], int output_fd) {
     if (output_fd < 0) return -1;
     return pipe_argv(path, argv, output_fd, NULL, 0);
