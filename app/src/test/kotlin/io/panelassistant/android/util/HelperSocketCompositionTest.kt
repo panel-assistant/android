@@ -40,7 +40,7 @@ class HelperSocketCompositionTest {
             ).redirectErrorStream(true).start()
             assertEquals("READY", second.inputStream.bufferedReader().readLine())
             assertTrue(Files.isDirectory(root.resolve(".hapaneld-guard-db-test")))
-            assertEquals("HELPER version=1.9.0 proto=1.9", SocketDaemon(socket).send("VERSION"))
+            assertEquals("HELPER version=1.10.0 proto=1.10", SocketDaemon(socket).send("VERSION"))
         } finally {
             second?.let {
                 it.destroy()
@@ -56,7 +56,7 @@ class HelperSocketCompositionTest {
         val daemon = SocketDaemon(socketPath)
 
         assertTrue(daemon.available())
-        assertEquals("HELPER version=1.9.0 proto=1.9", daemon.send("VERSION"))
+        assertEquals("HELPER version=1.10.0 proto=1.10", daemon.send("VERSION"))
         assertEquals("ERR", daemon.send("PINGEXTRA"))
         assertEquals("OK", daemon.sendLong("RELOAD io.example.dashboard", 5_000).replyValue())
     }
@@ -72,7 +72,7 @@ class HelperSocketCompositionTest {
         val daemon = SocketDaemon(socketPath)
         // The host fixture redirects fixed governor reads and refuses governor writes.
         listOf(
-            WireTranscript("VERSION", "HELPER version=1.9.0 proto=1.9"),
+            WireTranscript("VERSION", "HELPER version=1.10.0 proto=1.10"),
             WireTranscript("PING", "OK"),
             WireTranscript("BUILDID", "BUILDID development"),
             WireTranscript("COMPANIONCAPS", "COMPANIONCAPS 1 BACKUP RESTORE STATUS JOURNAL"),
@@ -109,6 +109,9 @@ class HelperSocketCompositionTest {
             WireTranscript("GOVREAD CURRENT extra", "ERR"),
             WireTranscript("GOVREAD current", "ERR"),
             WireTranscript("GOVREAD /path", "ERR"),
+            WireTranscript("ADBSTATE", "PROPS=1 LISTEN=0"),
+            WireTranscript("ADBSTATE extra", "ERR"),
+            WireTranscript("ADBSTATE /path", "ERR"),
             WireTranscript("WIFISTATUS", "SSID=${"Home, β".zigbeeHex()} RSSI=-63"),
             WireTranscript("WIFISTATUS extra", "ERR"),
             WireTranscript("WIFISTATUS /path", "ERR"),
@@ -133,6 +136,14 @@ class HelperSocketCompositionTest {
         assertTrue(daemon.available())
         assertEquals("OK", daemon.send("RELOAD io.example.dashboard"))
         assertContentEquals("PNG\nfixture\n".toByteArray(), daemon.sendBytesBounded("SCREENCAP", 1024L))
+    }
+
+    @Test(timeout = 10_000)
+    fun typedAdbCrossesVersionAdmissionAndNativeFixedObservations() {
+        val daemon = IdentityAdmittingHelperClient(ChannelSessionTransport(socketPath))
+        val state = requireNotNull(daemon.adbState())
+        assertEquals(true, state.properties)
+        assertEquals(false, state.listener)
     }
 
     @Test(timeout = 10_000)
@@ -356,6 +367,9 @@ class HelperSocketCompositionTest {
             val available = guardRoot.resolve("governor.available")
             Files.writeString(current, "Vendor_1.fast-2\n")
             Files.writeString(available, "powersave\tVendor_1.fast-2  performance\n")
+            val tcp = guardRoot.resolve("adb.tcp")
+            val tcp6 = guardRoot.resolve("adb.tcp6")
+            for (path in listOf(tcp, tcp6)) Files.writeString(path, "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n")
             zigbeeRoot = executable.parentFile.toPath().resolve("zigbee-socket-fixture")
             zigbeeRoot.toFile().deleteRecursively()
             val vendor = Files.createDirectories(zigbeeRoot.resolve("vendor"))
@@ -374,6 +388,9 @@ class HelperSocketCompositionTest {
                     environment()["HAPANELD_TEST_GOV_CURRENT"] = current.toString()
                     environment()["HAPANELD_TEST_GOV_AVAILABLE"] = available.toString()
                     environment()["HAPANELD_TEST_ZIGBEE_ROLE"] = """{"role":"Repeater"}"""
+                    for ((index, value) in listOf("", "5555", "-1", "0", "0").withIndex()) environment()["HAPANELD_TEST_ADB_PROP_$index"] = value
+                    environment()["HAPANELD_TEST_ADB_TCP"] = tcp.toString()
+                    environment()["HAPANELD_TEST_ADB_TCP6"] = tcp6.toString()
                     environment()["HAPANELD_TEST_WIFI_STATUS"] =
                         "WifiInfo: SSID: \"Home, β\", BSSID: 00:11:22:33:44:55, RSSI: -63, Link speed: 433Mbps\n"
                 }
@@ -404,6 +421,8 @@ class HelperSocketCompositionTest {
             Files.deleteIfExists(custody)
             Files.deleteIfExists(root.resolve("governor.current"))
             Files.deleteIfExists(root.resolve("governor.available"))
+            Files.deleteIfExists(root.resolve("adb.tcp"))
+            Files.deleteIfExists(root.resolve("adb.tcp6"))
             Files.deleteIfExists(root)
         }
 

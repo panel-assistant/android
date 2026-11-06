@@ -580,6 +580,26 @@ int sysexec_capture_wifi_status(char *output, size_t capacity, size_t *used) {
                                     2000u - (unsigned)(now - start), NULL, clean_env, used);
 }
 
+void sysexec_capture_adb_properties(struct adb_property_capture *capture) {
+    if (!capture) return;
+    memset(capture, 0, sizeof *capture);
+    for (size_t i = 0; i < ADB_PROPERTY_COUNT; i++) capture->status[i] = -1;
+    static const char *const names[ADB_PROPERTY_COUNT] = {
+        "service.adb.listen_addrs", "service.adb.tcp.port", "persist.adb.tcp.port",
+        "service.adb.tls.port", "persist.adb.tls_server.enable"
+    };
+    unsigned long long start, now;
+    if (monotonic_millis(&start) != 0) return;
+    for (size_t i = 0; i < ADB_PROPERTY_COUNT; i++) {
+        if (monotonic_millis(&now) != 0 || now < start || now - start >= 2000u) break;
+        const char *const argv[] = { "/system/bin/getprop", names[i], NULL };
+        capture->status[i] = capture_argv_timeout_env(argv[0], argv, capture->output[i],
+            sizeof capture->output[i], 2000u - (unsigned)(now - start), NULL, clean_env,
+            &capture->used[i]);
+        if (capture->status[i] == -2) break;
+    }
+}
+
 int sysexec_stream_argv(const char *path, const char *const argv[], int output_fd) {
     if (output_fd < 0) return -1;
     return pipe_argv(path, argv, output_fd, NULL, 0);

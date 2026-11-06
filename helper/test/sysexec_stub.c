@@ -392,3 +392,22 @@ int sysexec_capture_wifi_status(char *output, size_t capacity, size_t *used) {
     if (used) *used = strlen(output);
     return status;
 }
+
+void sysexec_capture_adb_properties(struct adb_property_capture *capture) {
+    if (!capture) return;
+    memset(capture, 0, sizeof *capture);
+    for (size_t i = 0; i < ADB_PROPERTY_COUNT; i++) capture->status[i] = -1;
+    static const char *const names[ADB_PROPERTY_COUNT] = {
+        "service.adb.listen_addrs", "service.adb.tcp.port", "persist.adb.tcp.port",
+        "service.adb.tls.port", "persist.adb.tls_server.enable"
+    };
+    for (size_t i = 0; i < ADB_PROPERTY_COUNT; i++) {
+        const char *const argv[] = { "/system/bin/getprop", names[i], NULL };
+        capture->status[i] = sysexec_capture_argv_timeout(argv[0], argv, capture->output[i],
+            sizeof capture->output[i], 2000u, NULL);
+        if (capture->status[i] == -2) break;
+        const popen_rule *rule = find_argv_rule(argv);
+        if (rule && strlen(rule->output) >= sizeof capture->output[i]) capture->status[i] = -1;
+        else if (capture->status[i] >= 0) capture->used[i] = strlen(capture->output[i]);
+    }
+}

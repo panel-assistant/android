@@ -6,6 +6,7 @@ import io.panelassistant.android.BuildConfig
 import io.panelassistant.android.platform.Daemon
 import io.panelassistant.android.platform.DaemonLongResult
 import io.panelassistant.android.platform.DaemonStreamResult
+import io.panelassistant.android.platform.HelperAdbState
 import io.panelassistant.android.platform.HelperWifiStatus
 import io.panelassistant.android.platform.HelperZigbeeHealth
 import io.panelassistant.android.platform.HelperZigbeeProcess
@@ -402,6 +403,14 @@ internal class IdentityAdmittingHelperClient(
         val ssid = match.groupValues[1].let { if (it == "-") null else zigbeeHex(it, 32)?.takeIf(String::isNotEmpty) ?: return null }
         val rssi = match.groupValues[2].let { if (it == "-") null else it.toIntOrNull()?.takeIf { value -> value in -126..0 } ?: return null }
         return HelperWifiStatus(ssid, rssi)
+    }
+
+    override fun adbState(): HelperAdbState? {
+        val bytes = readVersioned("ADBSTATE", 10, 17) ?: return null
+        if (bytes.size != 17) return null
+        val match = Regex("PROPS=([01?]) LISTEN=([01?])\\n").matchEntire(String(bytes, StandardCharsets.US_ASCII)) ?: return null
+        fun state(value: String): Boolean? = when (value) { "1" -> true; "0" -> false; else -> null }
+        return HelperAdbState(state(match.groupValues[1]), state(match.groupValues[2]))
     }
 
     private fun readVersioned(command: String, minimumMinor: Int, maxBytes: Long): ByteArray? {

@@ -6,6 +6,9 @@ import android.os.Looper
 import android.os.SystemClock
 import android.webkit.WebView
 import io.panelassistant.android.Config
+import io.panelassistant.android.platform.Daemon
+import io.panelassistant.android.platform.HelperAdbState
+import io.panelassistant.android.util.HelperClient
 import io.panelassistant.android.platform.RootRunOutcome
 import io.panelassistant.android.platform.RootShell
 import io.panelassistant.android.util.AccessDenialMemo
@@ -38,6 +41,9 @@ class AdbController internal constructor(
     // Production injects Su; a JVM test injects a fake root boundary.
     private val root: RootShell = Su,
     private val managedOff: () -> Boolean = { false },
+    private val daemon: Daemon = HelperClient,
+    private val directPropertyRead: (String) -> String? = ::readSystemPropertyDirect,
+    private val directListenerRead: (String) -> String? = ::readTcpListenerInventoryDirect,
 ) {
     constructor(context: Context, config: Config) : this(
         config = config,
@@ -66,42 +72,20 @@ class AdbController internal constructor(
         else config.setNetworkAdbEnabled(false) && RemoteDebugSecurityTransitionGate.sealHardened()
     }
 
-    /** Whether network adb is live or enabled right now, or null when the relevant properties cannot
-     *  all be proven inactive. The unprivileged reads detect Developer-options/external adb even on
-     *  devices without root; root cross-checks reads that are empty, unavailable, or malformed for the
-     *  app UID. */
-    fun activeState(allowRootCrossCheck: Boolean = true): Boolean? = remoteAdbActiveState(
-        propertyState = networkAdbActiveState(
-            directRead = ::readSystemPropertyDirect,
-            rootRead = if (allowRootCrossCheck) ::readSystemPropertyRoot else null,
-        ),
-        listenerState = listenerState(allowRootCrossCheck),
-    )
+    /** App-readable positive observations remain authoritative; unknown reads use one fixed helper
+     * observation on its admitted connection. Missing or refused helpers remain unknown. */
+    fun activeState(): Boolean? = observeNetworkAdbActiveState(directPropertyRead, directListenerRead, daemon::adbState)
 
-    /** Whether adbd is listening on [PORT] now, from the kernel socket tables; null when unreadable. The
-     *  properties only say what adbd was asked to do: vendor init can override them at boot, and a
-     *  stopped adbd leaves them set, so only the listener says network adb actually works. */
-    fun listenerState(allowRootCrossCheck: Boolean = true): Boolean? = networkAdbListenerActiveState(
-        directRead = ::readTcpListenerInventoryDirect,
-        rootRead = if (allowRootCrossCheck) ::readTcpListenerInventoryRoot else null,
-    )
+    /** Persisted intent reports the listener alone, rather than its own property writes. */
+    fun listenerState(): Boolean? = networkAdbListenerActiveState(directListenerRead) { daemon.adbState()?.listener }
 
-    /** True when network adb is known to be active or enabled over the LAN now. */
-    fun isActive(allowRootCrossCheck: Boolean = true): Boolean = activeState(allowRootCrossCheck) == true
+    fun isActive(): Boolean = activeState() == true
 
-    /** Bounded post-restart proof used both by explicit OFF and Hardened admission. */
-    fun proveInactive(allowRootCrossCheck: Boolean = true): Boolean = proveSettledNetworkAdbInactive(
-        sample = { activeState(allowRootCrossCheck) },
+    /** Every settled sample acquires fresh helper observations; no management cache can prove OFF. */
+    fun proveInactive(): Boolean = proveSettledNetworkAdbInactive(
+        sample = ::activeState,
         monotonicMs = SystemClock::elapsedRealtime,
-        waitMs = { delay ->
-            try {
-                Thread.sleep(delay)
-                true
-            } catch (_: InterruptedException) {
-                Thread.currentThread().interrupt()
-                false
-            }
-        },
+        waitMs = ::waitForNetworkAdb,
     )
 
     /**
@@ -252,36 +236,27 @@ class AdbController internal constructor(
 
         /** DB-free successor proof: the durable OFF transition is absent and all fixed Android
          * property plus IPv4/IPv6 listener observations remain inactive across restart settling. */
-        internal fun proveMaintenanceRemoteDebugOff(context: Context): Boolean {
+        internal fun proveMaintenanceRemoteDebugOff(
+            context: Context,
+            daemon: Daemon = HelperClient,
+            directPropertyRead: (String) -> String? = ::readSystemPropertyDirect,
+            directListenerRead: (String) -> String? = ::readTcpListenerInventoryDirect,
+            managedOff: () -> Boolean = {
+                io.panelassistant.android.panelassistant.RootLocalAdbEndpoint().state()
+                    ?.let { it.managed && !it.recoveryHold } == true
+            },
+            monotonicMs: () -> Long = SystemClock::elapsedRealtime,
+            waitMs: (Long) -> Boolean = ::waitForNetworkAdb,
+        ): Boolean {
             val marker = NetworkAdbDisableTransitionMarker(
                 context.applicationContext.noBackupFilesDir.resolve(NETWORK_ADB_DISABLE_MARKER_FILE),
             )
             if (!marker.isAbsentDurably()) return false
-            val managed = io.panelassistant.android.panelassistant.RootLocalAdbEndpoint().state()
-            if (managed?.managed == true && !managed.recoveryHold) return true
+            if (managedOff()) return true
             return proveSettledNetworkAdbInactive(
-                sample = {
-                    remoteAdbActiveState(
-                        propertyState = networkAdbActiveState(
-                            directRead = ::readSystemPropertyDirect,
-                            rootRead = ::readSystemPropertyRoot,
-                        ),
-                        listenerState = networkAdbListenerActiveState(
-                            directRead = ::readTcpListenerInventoryDirect,
-                            rootRead = ::readTcpListenerInventoryRoot,
-                        ),
-                    )
-                },
-                monotonicMs = SystemClock::elapsedRealtime,
-                waitMs = { delay ->
-                    try {
-                        Thread.sleep(delay)
-                        true
-                    } catch (_: InterruptedException) {
-                        Thread.currentThread().interrupt()
-                        false
-                    }
-                },
+                sample = { observeNetworkAdbActiveState(directPropertyRead, directListenerRead, daemon::adbState) },
+                monotonicMs = monotonicMs,
+                waitMs = waitMs,
             )
         }
     }
@@ -470,33 +445,30 @@ internal fun shouldReassertNetworkAdb(
     listening: Boolean?,
 ): Boolean = persisted && !disablePending && rootAvailable && listening == false
 
-/**
- * Prefer app-readable Android properties so an unrooted panel can still detect externally enabled adb.
- * Android may return an empty value when SELinux hides a property from the app UID, so empty, failed,
- * and malformed direct reads are cross-checked as root. A known-positive signal wins; false is returned
- * only when every classic-TCP and wireless-debugging signal is authoritatively inactive. Returning null
- * lets security-sensitive callers fail closed when that cannot be established.
- */
+/** A helper aggregate is read lazily once per observation and shared by both fixed read groups. */
+internal fun observeNetworkAdbActiveState(
+    directPropertyRead: (String) -> String?,
+    directListenerRead: (String) -> String?,
+    helperRead: () -> HelperAdbState?,
+): Boolean? {
+    val directProperties = networkAdbActiveState(directPropertyRead)
+    val directListener = networkAdbListenerActiveState(directListenerRead)
+    if (directProperties == true || directListener == true) return true
+    val helper by lazy(helperRead)
+    return remoteAdbActiveState(
+        directProperties ?: helper?.properties,
+        directListener ?: helper?.listener,
+    )
+}
+
+/** Direct empty properties may be hidden by SELinux, so only the helper can confirm their absence. */
 internal fun networkAdbActiveState(
     directRead: (String) -> String?,
-    rootRead: ((String) -> String?)?,
+    helperRead: () -> Boolean? = { null },
 ): Boolean? {
-    val directStates = NETWORK_ADB_PROPERTIES.associateWith { property ->
-        property.parse(directRead(property.name), emptyIsInactive = false)
-    }
-    if (directStates.values.any { it == true }) return true
-
-    var unknown = false
-    for (property in NETWORK_ADB_PROPERTIES) {
-        val state = directStates.getValue(property)
-            ?: rootRead?.let { property.parse(it(property.name), emptyIsInactive = true) }
-        when (state) {
-            true -> return true
-            false -> Unit
-            null -> unknown = true
-        }
-    }
-    return if (unknown) null else false
+    val states = NETWORK_ADB_PROPERTIES.map { it.parse(directRead(it.name)) }
+    if (states.any { it == true }) return true
+    return if (states.all { it == false }) false else helperRead()
 }
 
 /** Properties describe adbd's requested transports; the kernel socket tables prove that the classic
@@ -550,19 +522,11 @@ internal fun proveSettledNetworkAdbInactive(
  *  unknown rather than absence; no device-side text processor is required. */
 internal fun networkAdbListenerActiveState(
     directRead: (String) -> String?,
-    rootRead: ((String) -> String?)?,
+    helperRead: () -> Boolean? = { null },
 ): Boolean? {
-    var unknown = false
-    for (path in NETWORK_ADB_TCP_INVENTORIES) {
-        val direct = parseTcpListenerInventory(directRead(path))
-        val state = direct ?: rootRead?.let { parseTcpListenerInventory(it(path)) }
-        when (state) {
-            true -> return true
-            false -> Unit
-            null -> unknown = true
-        }
-    }
-    return if (unknown) null else false
+    val states = NETWORK_ADB_TCP_INVENTORIES.map { parseTcpListenerInventory(directRead(it)) }
+    if (states.any { it == true }) return true
+    return if (states.all { it == false }) false else helperRead()
 }
 
 /** `/proc/net/tcp*` rows are stable kernel ABI: local address is column 2 and state is column 4. */
@@ -624,15 +588,6 @@ private fun runGetprop(vararg fixedArguments: String): String? =
         }
     }.getOrNull()
 
-private fun readSystemPropertyRoot(name: String): String? {
-    val command = networkAdbRootReadCommand(name) ?: return null
-    return Su.runOutputIsolatedBounded(
-        command,
-        maxBytes = MAX_PROPERTY_OUTPUT_BYTES.toLong(),
-        timeoutMs = PROPERTY_READ_TIMEOUT_MS,
-    )?.trim()
-}
-
 private fun readTcpListenerInventoryDirect(path: String): String? {
     val fixedPath = NETWORK_ADB_TCP_INVENTORIES.firstOrNull { it == path } ?: return null
     return AccessDenialMemo.app.read(
@@ -640,15 +595,6 @@ private fun readTcpListenerInventoryDirect(path: String): String? {
         what = "Kernel socket table $fixedPath",
         probeDenied = { AccessDenialMemo.openDenied(fixedPath) },
     ) { readFixedCommand(fixedArgument = fixedPath, maxBytes = MAX_TCP_INVENTORY_BYTES) }
-}
-
-private fun readTcpListenerInventoryRoot(path: String): String? {
-    val command = networkAdbRootListenerReadCommand(path) ?: return null
-    return Su.runOutputIsolatedBounded(
-        command,
-        maxBytes = MAX_TCP_INVENTORY_BYTES.toLong(),
-        timeoutMs = PROPERTY_READ_TIMEOUT_MS,
-    )
 }
 
 private fun readFixedCommand(fixedArgument: String, maxBytes: Int): String? = runCatching {
@@ -713,9 +659,9 @@ private data class NetworkAdbProperty(
     val name: String,
     val kind: NetworkAdbPropertyKind,
 ) {
-    fun parse(raw: String?, emptyIsInactive: Boolean): Boolean? {
+    fun parse(raw: String?): Boolean? {
         val value = raw?.trim() ?: return null
-        if (value.isEmpty()) return if (emptyIsInactive) false else null
+        if (value.isEmpty()) return null
         return when (kind) {
             NetworkAdbPropertyKind.PORT -> value.toIntOrNull()?.let { port ->
                 when {
@@ -746,16 +692,6 @@ private val NETWORK_ADB_PROPERTIES = listOf(
     NetworkAdbProperty(PERSIST_ADB_TLS_SERVER_ENABLE_PROPERTY, NetworkAdbPropertyKind.ENABLED),
 )
 
-/** Only fixed, enumerated property names can enter the privileged shell command. */
-internal fun networkAdbRootReadCommand(name: String): String? =
-    NETWORK_ADB_PROPERTIES.firstOrNull { it.name == name }
-        ?.let { "$SYSTEM_GETPROP ${it.name}" }
-
-/** Only the two fixed kernel socket inventories can enter the privileged command. */
-internal fun networkAdbRootListenerReadCommand(path: String): String? =
-    NETWORK_ADB_TCP_INVENTORIES.firstOrNull { it == path }
-        ?.let { "$SYSTEM_CAT $it" }
-
 private const val MAX_NETWORK_PORT = 65_535
 
 internal fun networkAdbEnableCommand(): String = adbTransitionCommand(
@@ -778,3 +714,11 @@ internal fun networkAdbDisableCommand(): String = adbTransitionCommand(
  * would therefore report only the final command and could mask an earlier failed property write.
  */
 private fun adbTransitionCommand(vararg commands: String): String = commands.joinToString(" && ")
+
+private fun waitForNetworkAdb(delay: Long): Boolean = try {
+    Thread.sleep(delay)
+    true
+} catch (_: InterruptedException) {
+    Thread.currentThread().interrupt()
+    false
+}

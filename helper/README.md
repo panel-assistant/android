@@ -17,7 +17,7 @@ Newline-terminated ASCII on the abstract UNIX socket `@hapaneld-helper`. One or 
 
 | Command | Effect | Reply |
 | --- | --- | --- |
-| `VERSION` | read the helper identity without touching hardware | `HELPER version=1.9.0 proto=1.9` / `ERR` when arguments are supplied |
+| `VERSION` | read the helper identity without touching hardware | `HELPER version=1.10.0 proto=1.10` / `ERR` when arguments are supplied |
 | `RGB <r> <g> <b>` | set LED colour (each 0..255) | `OK` / `ERR` |
 | `OFF` | LED off | `OK` / `ERR` |
 | `BTN <0..255>` | button-backlight brightness | `OK` / `ERR` |
@@ -54,6 +54,7 @@ Newline-terminated ASCII on the abstract UNIX socket `@hapaneld-helper`. One or 
 | `ZIGBEESTATE` | argument-free, fixed Sonoff gateway footprint and complete process observation (protocol 1.6) | ordered `ZIGBEESTATE 1` frame ending `END`, or `ERR` |
 | `ZIGBEEHEALTH` | the same observation plus process start/jiffy samples, total CPU, bounded watchdog and network evidence (protocol 1.7) | ordered `ZIGBEEHEALTH 1` frame ending `END`, or `ERR` |
 | `ZIGBEEROLE` | argument-free, one fixed local broker topic under a 3500 ms child deadline (protocol 1.8) | `ZIGBEEROLE <hex JSON bytes>` / `ERR` |
+| `ADBSTATE` | argument-free bounded fixed Android ADB properties and direct TCP listener inventory (protocol 1.10) | `PROPS=<0 or 1 or ?> LISTEN=<0 or 1 or ?>` / `ERR` |
 | `WIFISTATUS` | argument-free bounded current Wi-Fi fields from fixed Android commands (protocol 1.9) | `SSID=<hex or -> RSSI=<dBm or ->` / `ERR` |
 | `ZIGBEECONTAIN` | argument-free containment for the exact vendor-native Sonoff `/vendor/bin/siliconlabs_host` layout; targets only its guard, gateway and matching broker, then demotes a surviving gateway | `OK` / `PARTIAL` / `ERR` |
 | `PERFDUMP` | CPU/load/temp/gpu/process snapshot (for sandbox-walled apps) | marker-delimited stream, then EOF |
@@ -232,3 +233,24 @@ The bundled executable also supports `--adb-recovery`, independently of the ordi
 Before managed network ADB closure, this separate owner establishes a persistent positive boot fallback and an independently watched healthy-app lease. Closure stops adbd using runtime properties; the firmware's boot path restores the positive baseline, and a fresh compatible session reapplies closure. Expiry, app removal, execution-worker failure or either recovery-owner failure restores network ADB. An explicit recovery request holds it open until a later compatible session. The separate executable and its root-owned directory do not replace the ordinary helper, its boot registration or its recovery custody.
 
 Hardened mode retains physical approval for each exact maintenance request. Automatic recovery also applies in Hardened mode: it invalidates the app's durable security authority before reopening. If allocating a fence fails, recovery retires the old authority without allocating a new file. If storage prevents every durable invalidation, emergency recovery still opens ADB and reports security as unverified; fresh live OFF proof remains mandatory before database maintenance can be admitted.
+
+`ADBSTATE` returns exactly `PROPS=0 LISTEN=0\n` with each scalar independently `0`, `1`, or `?`
+(17 bytes). Five supervised `/system/bin/getprop` children read only `service.adb.listen_addrs`,
+`service.adb.tcp.port`, `persist.adb.tcp.port`, `service.adb.tls.port`, and
+`persist.adb.tls_server.enable`, in that order, sharing a 2000 ms monotonic budget. Each capture
+accepts at most 256 stdout bytes with an overflow probe; nonzero exit, timeout, I/O failure,
+overflow, and embedded NUL are unknown. A complete successful empty value is inactive. Any
+nonempty trimmed listen-address value is active; ports retain signed 32-bit decimal semantics
+(1..65535 active, nonpositive inactive, malformed/overflow/greater values unknown); enable accepts
+only `0` or `1`. A positive property wins unknown observations; otherwise every property must be
+proven inactive. Fixed supervised commands preserve successful-empty versus failed reads; this
+operation starts up to five children and does not use the ambiguous absent-property result of the
+Bionic property API. There is no shell, `su`, caller-provided target, or settings mutation.
+
+Listener observation directly reads only `/proc/net/tcp` and `/proc/net/tcp6`, each bounded to
+128 KiB plus an overflow probe. Each table must have a complete recognized header and well-formed
+rows; unreadable, nonregular, NUL, malformed, unterminated, or overflowing tables are unknown.
+Port 5555 in LISTEN state counts at any local address, including loopback. A complete positive
+table wins an unavailable other table; a negative requires both complete valid tables. A malformed
+later row invalidates an earlier positive in the same table. This read-only parser is separate
+from ADB recovery and does not change recovery actions.

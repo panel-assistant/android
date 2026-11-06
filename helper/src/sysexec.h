@@ -77,6 +77,17 @@ int sysexec_capture_zigbee_role(char *output, size_t capacity, size_t *used);
 // Exact byte count and complete capture let the handler reject embedded NUL and overflow.
 int sysexec_capture_wifi_status(char *output, size_t capacity, size_t *used);
 
+#define ADB_PROPERTY_COUNT 5
+#define ADB_PROPERTY_CAPACITY 257
+struct adb_property_capture {
+    char output[ADB_PROPERTY_COUNT][ADB_PROPERTY_CAPACITY];
+    size_t used[ADB_PROPERTY_COUNT];
+    int status[ADB_PROPERTY_COUNT];
+};
+// Five fixed getprop reads under one 2000ms budget. Each status is independent; the caller validates
+// exact bytes, including embedded NUL. Unattempted entries stay unknown (-1, zero bytes).
+void sysexec_capture_adb_properties(struct adb_property_capture *capture);
+
 // Execute an absolute path without a shell and copy stdout to an already-open descriptor. The child
 // receives /dev/null on stdin and stderr. Returns the raw child wait status, or -1 on I/O/fork error.
 int   sysexec_stream_argv(const char *path, const char *const argv[], int output_fd);

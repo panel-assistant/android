@@ -12,253 +12,27 @@ import org.junit.Test
 class AdbControllerPolicyTest {
     private val emptyTcp = "  sl  local_address rem_address   st tx_queue rx_queue\n"
 
-    @Test fun `captured unavailable root route preserves direct truth without a cross-check`() {
-        assertEquals(
-            true,
-            networkAdbActiveState(
-                directRead = { property ->
-                    if (property == SERVICE_ADB_TCP_PORT_PROPERTY) "5555" else null
-                },
-                rootRead = null,
-            ),
-        )
-        assertNull(networkAdbActiveState(directRead = { "" }, rootRead = null))
-    }
-
-    @Test fun `unprivileged property read detects externally active network adb without root`() {
-        var rootCalled = false
-
-        val active = networkAdbActiveState(
-            directRead = { property ->
-                when (property) {
-                    SERVICE_ADB_TCP_PORT_PROPERTY -> "43210\n"
-                    SERVICE_ADB_TLS_PORT_PROPERTY, PERSIST_ADB_TLS_SERVER_ENABLE_PROPERTY -> "0"
-                    else -> null
-                }
-            },
-            rootRead = { rootCalled = true; null },
-        )
-
-        assertEquals(true, active)
-        assertFalse(rootCalled)
-    }
-
-    @Test fun `empty unprivileged property read falls back to root`() {
-        val rootReads = mutableListOf<String>()
-
-        val active = networkAdbActiveState(
-            directRead = { property ->
-                when (property) {
-                    SERVICE_ADB_TCP_PORT_PROPERTY -> "\n"
-                    SERVICE_ADB_TLS_PORT_PROPERTY, PERSIST_ADB_TLS_SERVER_ENABLE_PROPERTY -> "0"
-                    else -> null
-                }
-            },
-            rootRead = { property ->
-                rootReads += property
-                if (property == SERVICE_ADB_TCP_PORT_PROPERTY) "5037" else null
-            },
-        )
-
-        assertEquals(true, active)
-        assertEquals(
-            listOf(SERVICE_ADB_LISTEN_ADDRS_PROPERTY, SERVICE_ADB_TCP_PORT_PROPERTY),
-            rootReads,
-        )
-    }
-
-    @Test fun `persistent classic TCP port is active even when service port is disabled`() {
-        assertEquals(
-            true,
-            networkAdbActiveState(
-                directRead = { property ->
-                    when (property) {
-                        SERVICE_ADB_TCP_PORT_PROPERTY -> "-1"
-                        PERSIST_ADB_TCP_PORT_PROPERTY -> "5555"
-                        else -> null
-                    }
-                },
-                rootRead = { null },
-            ),
-        )
-    }
-
-    @Test fun `root-only persistent TCP port is active`() {
-        val rootReads = mutableListOf<String>()
-        assertEquals(
-            true,
-            networkAdbActiveState(
-                directRead = { "" },
-                rootRead = { property ->
-                    rootReads += property
-                    when (property) {
-                        SERVICE_ADB_LISTEN_ADDRS_PROPERTY -> ""
-                        SERVICE_ADB_TCP_PORT_PROPERTY -> "-1"
-                        PERSIST_ADB_TCP_PORT_PROPERTY -> "43210"
-                        else -> null
-                    }
-                },
-            ),
-        )
-        assertEquals(
-            listOf(
-                SERVICE_ADB_LISTEN_ADDRS_PROPERTY,
-                SERVICE_ADB_TCP_PORT_PROPERTY,
-                PERSIST_ADB_TCP_PORT_PROPERTY,
-            ),
-            rootReads,
-        )
-    }
-
-    @Test fun `explicit ADB listen addresses are active`() {
-        listOf(
-            "tcp:5555",
-            "tcp:localhost:5555",
-            "tcp:5555,vsock:5555",
-            "malformed-fails-closed",
-        ).forEach { addresses ->
-            assertEquals(
-                true,
-                networkAdbActiveState(
-                    directRead = { property ->
-                        if (property == SERVICE_ADB_LISTEN_ADDRS_PROPERTY) addresses else null
-                    },
-                    rootRead = { null },
-                ),
-            )
+    @Test fun `direct positive properties win without a helper cross check`() {
+        for ((name, value) in listOf(
+            SERVICE_ADB_TCP_PORT_PROPERTY to "5555",
+            PERSIST_ADB_TCP_PORT_PROPERTY to "43210",
+            SERVICE_ADB_TLS_PORT_PROPERTY to "37123",
+            PERSIST_ADB_TLS_SERVER_ENABLE_PROPERTY to "1",
+            SERVICE_ADB_LISTEN_ADDRS_PROPERTY to "unfamiliar-socket-spec",
+        )) {
+            assertEquals(true, networkAdbActiveState(
+                directRead = { if (it == name) value else null },
+                helperRead = { error("direct positive must win") },
+            ))
         }
     }
 
-    @Test fun `arbitrary positive classic TCP ports are active`() {
-        listOf("1", "5037", "43210", "65535").forEach { port ->
-            assertEquals(
-                true,
-                networkAdbActiveState(
-                    directRead = { property ->
-                        when (property) {
-                            SERVICE_ADB_TCP_PORT_PROPERTY -> port
-                            SERVICE_ADB_TLS_PORT_PROPERTY, PERSIST_ADB_TLS_SERVER_ENABLE_PROPERTY -> "0"
-                            else -> null
-                        }
-                    },
-                    rootRead = { null },
-                ),
-            )
+    @Test fun `hidden empty malformed and overflow direct properties use aggregate helper truth`() {
+        for (value in listOf("", "65536", "not-a-port", "999999999999999999999999")) {
+            assertNull(networkAdbActiveState({ if (it == SERVICE_ADB_TCP_PORT_PROPERTY) value else null }))
+            assertEquals(false, networkAdbActiveState({ null }) { false })
+            assertEquals(true, networkAdbActiveState({ null }) { true })
         }
-    }
-
-    @Test fun `wireless debugging TLS port is active`() {
-        assertEquals(
-            true,
-            networkAdbActiveState(
-                directRead = { property ->
-                    when (property) {
-                        SERVICE_ADB_TCP_PORT_PROPERTY -> "-1"
-                        SERVICE_ADB_TLS_PORT_PROPERTY -> "37123"
-                        PERSIST_ADB_TLS_SERVER_ENABLE_PROPERTY -> "0"
-                        else -> null
-                    }
-                },
-                rootRead = { null },
-            ),
-        )
-    }
-
-    @Test fun `wireless debugging enabled intent is active before its TLS port is published`() {
-        assertEquals(
-            true,
-            networkAdbActiveState(
-                directRead = { property ->
-                    when (property) {
-                        SERVICE_ADB_TCP_PORT_PROPERTY -> "-1"
-                        SERVICE_ADB_TLS_PORT_PROPERTY -> "0"
-                        PERSIST_ADB_TLS_SERVER_ENABLE_PROPERTY -> "1"
-                        else -> null
-                    }
-                },
-                rootRead = { null },
-            ),
-        )
-    }
-
-    @Test fun `disabled port values and authoritative empty listen addresses are inactive`() {
-        val rootReads = mutableListOf<String>()
-
-        val active = networkAdbActiveState(
-            directRead = { property ->
-                when (property) {
-                    SERVICE_ADB_LISTEN_ADDRS_PROPERTY -> ""
-                    SERVICE_ADB_TCP_PORT_PROPERTY -> "-1"
-                    PERSIST_ADB_TCP_PORT_PROPERTY -> "-1"
-                    SERVICE_ADB_TLS_PORT_PROPERTY -> "0"
-                    PERSIST_ADB_TLS_SERVER_ENABLE_PROPERTY -> "0"
-                    else -> null
-                }
-            },
-            rootRead = { property -> rootReads += property; "" },
-        )
-
-        assertEquals(false, active)
-        assertEquals(listOf(SERVICE_ADB_LISTEN_ADDRS_PROPERTY), rootReads)
-    }
-
-    @Test fun `empty root values authoritatively establish disabled properties`() {
-        val rootReads = mutableListOf<String>()
-
-        val active = networkAdbActiveState(
-            directRead = { "" },
-            rootRead = { property -> rootReads += property; "" },
-        )
-
-        assertEquals(false, active)
-        assertEquals(
-            listOf(
-                SERVICE_ADB_LISTEN_ADDRS_PROPERTY,
-                SERVICE_ADB_TCP_PORT_PROPERTY,
-                PERSIST_ADB_TCP_PORT_PROPERTY,
-                SERVICE_ADB_TLS_PORT_PROPERTY,
-                PERSIST_ADB_TLS_SERVER_ENABLE_PROPERTY,
-            ),
-            rootReads,
-        )
-    }
-
-    @Test fun `malformed and overflow ports fail closed`() {
-        listOf("not-a-port", "65536", "999999999999999999999999").forEach { value ->
-            assertNull(
-                networkAdbActiveState(
-                    directRead = { property ->
-                        when (property) {
-                            SERVICE_ADB_LISTEN_ADDRS_PROPERTY -> ""
-                            SERVICE_ADB_TCP_PORT_PROPERTY -> "-1"
-                            PERSIST_ADB_TCP_PORT_PROPERTY -> value
-                            SERVICE_ADB_TLS_PORT_PROPERTY -> "0"
-                            PERSIST_ADB_TLS_SERVER_ENABLE_PROPERTY -> "0"
-                            else -> null
-                        }
-                    },
-                    rootRead = { property ->
-                        if (property == SERVICE_ADB_LISTEN_ADDRS_PROPERTY) "" else null
-                    },
-                ),
-            )
-        }
-    }
-
-    @Test fun `root property commands are fixed and reject unlisted input`() {
-        listOf(
-            SERVICE_ADB_LISTEN_ADDRS_PROPERTY,
-            SERVICE_ADB_TCP_PORT_PROPERTY,
-            PERSIST_ADB_TCP_PORT_PROPERTY,
-            SERVICE_ADB_TLS_PORT_PROPERTY,
-            PERSIST_ADB_TLS_SERVER_ENABLE_PROPERTY,
-        ).forEach { property ->
-            assertEquals("/system/bin/getprop $property", networkAdbRootReadCommand(property))
-        }
-        assertNull(networkAdbRootReadCommand("service.adb.tcp.port; id"))
-        assertEquals("/system/bin/cat /proc/net/tcp", networkAdbRootListenerReadCommand("/proc/net/tcp"))
-        assertEquals("/system/bin/cat /proc/net/tcp6", networkAdbRootListenerReadCommand("/proc/net/tcp6"))
-        assertNull(networkAdbRootListenerReadCommand("/proc/net/tcp; id"))
     }
 
     @Test fun `classic adb listener is detected in IPv4 or IPv6 kernel inventory`() {
@@ -268,7 +42,7 @@ class AdbControllerPolicyTest {
             true,
             networkAdbListenerActiveState(
                 directRead = { path -> if (path == "/proc/net/tcp6") listen else emptyTcp },
-                rootRead = null,
+                helperRead = { null },
             ),
         )
         val nearby = emptyTcp + "   0: 00000000:15B4 00000000:0000 0A 00000000:00000000\n"
@@ -278,7 +52,7 @@ class AdbControllerPolicyTest {
     @Test fun `reassert follows the live listener, not ha-paneld's own persisted property`() {
         // Vendor init (service.adb.tcp.port=0 at boot) or an adbd restart leaves persist.adb.tcp.port=5555
         // set while nothing listens; that is exactly when the persisted intent must bring TCP back.
-        val noListener = networkAdbListenerActiveState(directRead = { emptyTcp }, rootRead = null)
+        val noListener = networkAdbListenerActiveState(directRead = { emptyTcp }, helperRead = { null })
         assertTrue(shouldReassertNetworkAdb(persisted = true, disablePending = false, rootAvailable = true, listening = noListener))
         // Already listening: restarting adbd would only drop live sessions.
         assertFalse(shouldReassertNetworkAdb(persisted = true, disablePending = false, rootAvailable = true, listening = true))
@@ -301,7 +75,7 @@ class AdbControllerPolicyTest {
         assertNull(parseTcpListenerInventory(null))
         assertNull(parseTcpListenerInventory(""))
         assertNull(parseTcpListenerInventory(emptyTcp + "broken\n"))
-        assertNull(networkAdbListenerActiveState(directRead = { null }, rootRead = { null }))
+        assertNull(networkAdbListenerActiveState(directRead = { null }, helperRead = { null }))
     }
 
     @Test fun `remote adb is inactive only when properties and both listener inventories are inactive`() {
@@ -355,7 +129,7 @@ class AdbControllerPolicyTest {
     }
 
     @Test fun `unknown property state fails closed`() {
-        assertNull(networkAdbActiveState(directRead = { "" }, rootRead = { null }))
+        assertNull(networkAdbActiveState(directRead = { "" }, helperRead = { null }))
         assertNull(
             networkAdbActiveState(
                 directRead = { property ->
@@ -366,7 +140,7 @@ class AdbControllerPolicyTest {
                         else -> null
                     }
                 },
-                rootRead = { null },
+                helperRead = { null },
             ),
         )
     }

@@ -23,6 +23,9 @@ interface Daemon {
     /** Fixed current Wi-Fi status; null means unavailable or an unverified helper protocol. */
     fun wifiStatus(): HelperWifiStatus? = null
 
+    /** Fixed ADB observations; unknown fields stay null and no root shell fallback is implied. */
+    fun adbState(): HelperAdbState? = null
+
     /** Send one command; return the exact printable reply line without its LF, or null if unreachable/malformed. */
     fun send(cmd: String): String?
 

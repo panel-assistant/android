@@ -39,6 +39,11 @@ int __wrap_open(const char *path, int flags, ...) {
         governor = 1;
         fixture = getenv("HAPANELD_TEST_GOV_AVAILABLE");
     }
+    if (!strcmp(path, "/proc/net/tcp") || !strcmp(path, "/proc/net/tcp6")) {
+        fixture = getenv(!strcmp(path, "/proc/net/tcp") ? "HAPANELD_TEST_ADB_TCP" : "HAPANELD_TEST_ADB_TCP6");
+        if (!fixture || !*fixture || (flags & O_ACCMODE) != O_RDONLY) { errno = EACCES; return -1; }
+        return __real_open(fixture, flags);
+    }
     if (governor) {
         if (!fixture || !*fixture || (flags & O_ACCMODE) != O_RDONLY) { errno = EACCES; return -1; }
         return __real_open(fixture, flags);
@@ -78,6 +83,17 @@ int main(int argc, char **argv) {
     if (role) sysexec_stub_add_popen("mosquitto_sub", role, 0);
     const char *wifi = getenv("HAPANELD_TEST_WIFI_STATUS");
     if (wifi) sysexec_stub_add_popen("cmd wifi status", wifi, 0);
+    static const char *const adb_names[] = { "service.adb.listen_addrs", "service.adb.tcp.port",
+        "persist.adb.tcp.port", "service.adb.tls.port", "persist.adb.tls_server.enable" };
+    for (unsigned i = 0; i < 5; i++) {
+        char key[40], command[100];
+        snprintf(key, sizeof key, "HAPANELD_TEST_ADB_PROP_%u", i);
+        const char *value = getenv(key);
+        if (value) {
+            snprintf(command, sizeof command, "getprop %s", adb_names[i]);
+            sysexec_stub_add_popen(command, value, 0);
+        }
+    }
     if (guard_maintenance_init() != 0) return 5;
     input_init();
     gpio_init();
