@@ -101,7 +101,7 @@ internal class ProximityCalibrationEngine(
     )
 
     private var calibration = initial
-    private var detector = initial?.takeIf { it.presenceSupported }?.let(::Detector)
+    private var detector = initial?.let(::createPresenceDetector)
     private var waveDetector = initial?.let(::createWaveDetector)
     private var pendingOperationalPulse: Long? = null
     private var operationalCooldownUntil = 0L
@@ -164,7 +164,7 @@ internal class ProximityCalibrationEngine(
                     message = "No verified capability can be saved. Your previous calibration is unchanged."
                 } else if (runCatching { commit(proposed) }.getOrDefault(false)) {
                     calibration = proposed
-                    detector = proposed.takeIf { it.presenceSupported }?.let(::Detector)
+                    detector = createPresenceDetector(proposed)
                     waveDetector = createWaveDetector(proposed)
                     finish(Stage.SAVED, now, "Calibration saved. Presence and wave features use their verified capabilities when enabled.")
                 } else finish(Stage.FAILED, now, "Could not save calibration. Your previous calibration is unchanged.")
@@ -229,7 +229,7 @@ internal class ProximityCalibrationEngine(
     @Synchronized fun reset(calibration: Calibration?, now: Long): Result {
         if (!admit(now)) return result()
         this.calibration = calibration
-        detector = calibration?.takeIf { it.presenceSupported }?.let(::Detector)
+        detector = calibration?.let(::createPresenceDetector)
         waveDetector = calibration?.let(::createWaveDetector)
         available = false; lastRaw = null; lastRawCapture = false
         generation++; resetOperational(); discardCandidate()
@@ -492,12 +492,23 @@ internal class ProximityCalibrationEngine(
         if (returnClearSince != null) return (CAPTURE_HOLD_MS - (now - checkNotNull(returnClearSince))).coerceAtLeast(0) to CAPTURE_HOLD_MS
         return 0L to 0L
     }
+    private fun createPresenceDetector(value: Calibration): Detector? = value.takeIf { it.presenceSupported }?.let {
+        // Only a kept presence calibration that cannot hold this source's drift band needs a
+        // bounded hysteresis hold. A weak wave calibration must not change presence semantics.
+        val boundedHold = driftMargined(it.copy(wave = null), driftMargin, driftDeclaredRange) == null
+        Detector(it, releaseGapAfterMs = if (boundedHold) KEPT_PRESENCE_GAP_MS else null)
+    }
+
     private fun createWaveDetector(value: Calibration): Detector? = value.effectiveWave()?.let {
         Detector(it.model(value.mode), triggerOnApproach = it.pattern == WavePattern.SINGLE)
     }
 
     /** Hysteretic reporting; single hand approaches fire on entry, explicit double waves on release. */
-    private class Detector(private val calibration: Calibration, private val triggerOnApproach: Boolean = false) {
+    private class Detector(
+        private val calibration: Calibration,
+        private val triggerOnApproach: Boolean = false,
+        private val releaseGapAfterMs: Long? = null,
+    ) {
         var presenceApproach = false
             private set
         private var pendingApproach = false
@@ -512,6 +523,8 @@ internal class ProximityCalibrationEngine(
         private var eligible = false
         private var cooldownUntil = 0L
         private var pendingGesture = false
+        private var lastEnterAt: Long? = null
+        private var atEnter = false
 
         fun reset() {
             near = null
@@ -524,11 +537,15 @@ internal class ProximityCalibrationEngine(
             eligible = false
             cooldownUntil = 0L
             pendingGesture = false
+            lastEnterAt = null
+            atEnter = false
         }
 
         fun observe(raw: Float, now: Long, live: Boolean): Boolean {
             presenceApproach = false
             val level = calibration.level(raw)
+            atEnter = level >= calibration.nearEnter * 100f
+            if (atEnter) lastEnterAt = now
             val next = when {
                 level >= calibration.nearEnter * 100f -> true
                 level <= calibration.clearExit * 100f -> false
@@ -565,11 +582,25 @@ internal class ProximityCalibrationEngine(
 
         fun releaseCooldown() { cooldownUntil = 0L }
 
-        fun needsTick(): Boolean = pendingGesture || rawNear != near || nearSince != null
+        fun needsTick(): Boolean = pendingGesture || rawNear != near || nearSince != null ||
+            (releaseGapAfterMs != null && rawNear == true && !atEnter)
 
         fun tick(now: Long): Boolean {
             var gesture = false
             presenceApproach = false
+            if (releaseGapAfterMs != null && rawNear == true && !atEnter &&
+                lastEnterAt?.let { now - it >= releaseGapAfterMs } == true) {
+                // This is absence of sustained presence evidence, never a deliberate hand wave.
+                // Keep a silent on-change source above enter near until its reading changes.
+                rawNear = false
+                near = false
+                pendingSince = now
+                clearSince = now
+                nearSince = null
+                eligible = false
+                pendingGesture = false
+                pendingApproach = false
+            }
             if (rawNear != null && now - pendingSince >= calibration.debounceMs) {
                 if (rawNear == true && pendingApproach) {
                     presenceApproach = near == false
@@ -625,6 +656,7 @@ internal class ProximityCalibrationEngine(
         const val APPROACH_TIMEOUT_MS = 30_000L
         const val WAVE_PHASE_TIMEOUT_MS = 45_000L
         const val REQUIRED_WAVES = 3
+        private const val KEPT_PRESENCE_GAP_MS = 180_000L
         private const val MINIMUM_NEAR_MS = 200L
         private const val MAXIMUM_NEAR_MS = 4_000L
         private fun isBinaryPair(clear: Float, near: Float) = (clear == 0f && near == 1f) || (clear == 1f && near == 0f)
