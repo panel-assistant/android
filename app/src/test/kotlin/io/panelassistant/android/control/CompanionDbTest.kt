@@ -155,7 +155,7 @@ class CompanionDbTest {
     }
 
     @Test fun warningQuietForHealthyOrMissingObservation() {
-        assertNull(CompanionDb.warning("", CompanionDb.ServerObservation.EMPTY, directSuReady = true))
-        assertNull(CompanionDb.warning("", null, directSuReady = true))
+        assertNull(CompanionDb.warning(io.panelassistant.android.util.CompanionInstaller.MINIMAL_PKG, CompanionDb.ServerObservation.EMPTY, directSuReady = true))
+        assertNull(CompanionDb.warning(io.panelassistant.android.util.CompanionInstaller.MINIMAL_PKG, null, directSuReady = true))
     }
 }

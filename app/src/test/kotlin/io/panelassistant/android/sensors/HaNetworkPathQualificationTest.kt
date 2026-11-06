@@ -116,10 +116,10 @@ class HaNetworkPathQualificationTest {
      * present here and still nothing about the path changes. Nothing is lost, so nothing may be said.
      */
     @Test fun sustainedLatencyOnTheRealSocketIsAResponsivenessVerdictAndNeverAPathOne() {
-        server.pongDelayMs.set(180L)
+        server.pongDelayMs.set(350L)
         owner.replacePresenceRegistryWatch(true)
         val warned = await("responsiveness warning", 6_000L) { it.responsiveness == HaNetworkPathSeverity.WARNING }
-        assertTrue("p95 ${warned.p95Ms}", warned.p95Ms >= 180L)
+        assertTrue("p95 ${warned.p95Ms}", warned.p95Ms > HaNetworkPath.WARN_P95_MS)
         assertEquals(0, warned.networkFailures)
         assertEquals(HaNetworkPathSeverity.HEALTHY, warned.severity)
         server.pongDelayMs.set(1_200L)

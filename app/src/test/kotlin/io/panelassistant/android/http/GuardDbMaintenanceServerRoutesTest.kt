@@ -43,6 +43,54 @@ import org.junit.rules.TemporaryFolder
 class GuardDbMaintenanceServerRoutesTest {
     @get:Rule val temporary = TemporaryFolder()
 
+    @Test fun `cancel refuses active custody and keeps local records until exact EMPTY settlement`() = testApplication {
+        val fixture = fixture(GuardDbSentinelState.BASELINE_READY)
+        assertTrue(fixture.sentinelStore.write(fixture.sentinel.copy(state = GuardDbSentinelState.INTENT)))
+        assertTrue(fixture.sentinelStore.promoteBaselineReady(fixture.session))
+        assertTrue(fixture.preparedStore.write(fixture.prepared))
+        install(fixture)
+        val body = generationBody(fixture.session, 7L)
+        suspend fun cancel() = client.post("/api/v1/guard-db/cancel") {
+            header(TEST_PEER_HEADER, DIRECT_PEER)
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }
+        fixture.transport.currentStatus = fixture.waitBHealth()
+        assertEquals(HttpStatusCode.Conflict, cancel().status)
+        assertTrue(fixture.broker.pending().isEmpty())
+        assertTrue(fixture.transport.commands.none { it.startsWith("GUARDCANCEL ") })
+        fixture.transport.currentStatus = fixture.staging().replace(" 1 STAGING ", " 7 STAGING ")
+        assertEquals(HttpStatusCode.Accepted, cancel().status)
+        assertTrue(fixture.broker.approve(fixture.broker.pending().single().id))
+        fixture.transport.longResult = DaemonLongResult.Indeterminate
+        val held = cancel()
+        assertEquals(HttpStatusCode.Accepted, held.status)
+        assertTrue(held.bodyAsText().contains("cancel-indeterminate-poll-status"))
+        assertTrue(fixture.preparedStore.load() is GuardDbPreparedArmLoad.Valid)
+        assertTrue(fixture.sentinelStore.load() is io.panelassistant.android.util.GuardDbSentinelLoad.Valid)
+        assertEquals(0, fixture.restartCalls)
+        assertEquals(1, fixture.transport.commands.count { it.startsWith("GUARDCANCEL ") })
+        val fresh = cancel()
+        assertEquals(HttpStatusCode.Accepted, fresh.status)
+        assertTrue(fresh.bodyAsText().contains("approval-required"))
+        assertEquals(1, fixture.transport.commands.count { it.startsWith("GUARDCANCEL ") })
+        assertTrue(fixture.broker.approve(fixture.broker.pending().single().id))
+        fixture.transport.statusReplies.add(fixture.transport.currentStatus)
+        fixture.transport.statusReplies.add(fixture.transport.currentStatus)
+        fixture.transport.statusReplies.add(fixture.empty())
+        fixture.transport.longResult = DaemonLongResult.Reply("OK GUARDCANCEL 8 EMPTY")
+        val settled = cancel()
+        assertEquals(HttpStatusCode.OK, settled.status)
+        assertEquals("CANCELLED_NO_MUTATION", org.json.JSONObject(settled.bodyAsText()).getString("outcome"))
+        assertTrue(fixture.preparedStore.load() is GuardDbPreparedArmLoad.Absent)
+        assertTrue(fixture.sentinelStore.load() is io.panelassistant.android.util.GuardDbSentinelLoad.Absent)
+        assertEquals(1, fixture.restartCalls)
+        assertEquals(
+            listOf("GUARDCANCEL ${fixture.session} 7", "GUARDCANCEL ${fixture.session} 7"),
+            fixture.transport.commands.filter { it.startsWith("GUARDCANCEL ") },
+        )
+    }
+
     @Test fun `successor admits direct LAN and refuses loopback before route work`() = testApplication {
         val fixture = fixture()
         install(fixture)
@@ -530,13 +578,23 @@ class GuardDbMaintenanceServerRoutesTest {
             atomicMove = { _, _ -> false },
             validateFile = { it.isFile },
         )
+        val preparedStore = GuardDbPreparedArmStore(
+            directory,
+            syncDirectory = { true },
+            validateFile = { it.isFile },
+        )
+        val sentinelStore = GuardDbSentinelStore(
+            directory,
+            syncDirectory = { true },
+            validateMarker = { it.isFile },
+        )
         val server = GuardDbMaintenanceServer(
             context = null,
             sentinel = sentinel,
             client = GuardDbMaintenanceClient(transport),
             staging = staging,
-            preparedStore = GuardDbPreparedArmStore(directory),
-            sentinelStore = GuardDbSentinelStore(directory),
+            preparedStore = preparedStore,
+            sentinelStore = sentinelStore,
             security = security,
             broker = broker,
             onFinalized = { restartCalls++ },

@@ -187,6 +187,9 @@ jobs:
           npm test
           npm run sbom
 
+      - name: Test the log-shipping receiver
+        run: node --test tools/logship-receiver/receiver.test.mjs
+
       - name: Set up JDK 17
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:

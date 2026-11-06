@@ -2,6 +2,7 @@ package io.panelassistant.android.assist.wakeword
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import io.panelassistant.android.CoreInstrumentation
 import io.panelassistant.android.audio.PcmFrame
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -10,11 +11,12 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Loads the bundled `okay_nabu` model through the real native engine and scores three seconds of
+ * Loads the bundled `okay_nabu` model through the real native engine and scores six seconds of
  * silence: the library must load on the device ABI, the model must be accepted, and inference
  * must run once per stride without a hit.
  */
 @RunWith(AndroidJUnit4::class)
+@CoreInstrumentation
 class NativeMicroWakeWordInstrumentedTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
 
@@ -25,17 +27,25 @@ class NativeMicroWakeWordInstrumentedTest {
         val loaded = catalog.load("okay_nabu")
         assertNotNull("engine rejected okay_nabu", loaded)
         val config = loaded!!.config
-        (loaded.scorer as NativeMicroWakeWord).use {
-            assertEquals(3, it.stride)
+        (loaded.scorer as NativeMicroWakeWord).use { native ->
+            assertEquals(3, native.stride)
             val hits = mutableListOf<WakeWordHit>()
-            val detector = WakeWordDetector(listOf(LoadedWakeWordModel(config, it)), { hit -> hits += hit })
+            var detectorInferences = 0
+            val scorer = object : WakeWordScorer by native {
+                override fun score(samples: ShortArray, count: Int): Int {
+                    val probability = native.score(samples, count)
+                    if (probability >= 0) detectorInferences++
+                    return probability
+                }
+            }
+            val detector = WakeWordDetector(listOf(LoadedWakeWordModel(config, scorer)), { hit -> hits += hit })
             var inferences = 0
             val silence = ShortArray(160)
-            repeat(300) { index ->
-                // Score through the scorer and the detector in lock-step is impossible (the stream is
-                // stateful), so count inferences from a second engine fed the same silence.
+            // Cross the real detector's warmup before checking silence does not fire.
+            repeat(600) { index ->
                 detector.onFrame(PcmFrame(silence, timestampNs = index.toLong()))
             }
+            assertTrue("silence must reach an armed detector", detectorInferences > WakeWordDetector.DEFAULT_WARMUP_INFERENCES)
             assertEquals(0, hits.size)
             catalog.load("okay_nabu")!!.scorer.use { probe ->
                 repeat(300) { if (probe.score(silence) >= 0) inferences++ }

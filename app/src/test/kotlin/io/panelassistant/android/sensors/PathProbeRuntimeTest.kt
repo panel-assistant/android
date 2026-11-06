@@ -70,8 +70,8 @@ class PathProbeRuntimeTest {
             successorInstalled.await(LATCH_SECONDS, TimeUnit.SECONDS)
             0L
         }
-        val read = AtomicReference<PathProbeMonitor.Snapshot?>()
-        val reader = thread { read.set(PathProbeRuntime.snapshot()) }
+        val read = AtomicReference<Result<PathProbeMonitor.Snapshot?>>()
+        val reader = thread { read.set(runCatching { PathProbeRuntime.snapshot() }) }
         assertTrue("the read never reached the predecessor's clock", reading.await(LATCH_SECONDS, TimeUnit.SECONDS))
 
         PathProbeRuntime.install(successor) { 0L }
@@ -79,7 +79,7 @@ class PathProbeRuntimeTest {
         reader.join(TimeUnit.SECONDS.toMillis(LATCH_SECONDS))
         assertFalse("the blocked read never finished", reader.isAlive)
 
-        assertNull("a read begun under a retired owner must not return that owner's result", read.get())
+        assertNull("a read begun under a retired owner must not return that owner's result", requireNotNull(read.get()).getOrThrow())
         assertEquals("ipv6", PathProbeRuntime.snapshot()?.family)
     }
 

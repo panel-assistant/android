@@ -49,6 +49,8 @@ class ManagementStatusProximityTest {
             assertEquals("calibration_required", proximity.getString("state"))
             assertFalse(proximity.getBoolean("wake_ready"))
             // The neighbouring components are untouched.
+            assertFalse("no prior direct-root loss", present.getBoolean("root_lost_since_boot"))
+            assertTrue("an unknown screen-lock source stays unknown", present.isNull("screen_lock_secure"))
             assertTrue(present.has("permissions"))
             assertTrue(present.has("power_safety"))
 

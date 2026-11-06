@@ -32,6 +32,7 @@ class HaPaneldApp : Application() {
             System.currentTimeMillis() - (android.os.SystemClock.elapsedRealtime() - startElapsed),
             startElapsed,
         )
+        io.panelassistant.android.control.Su.installBootHistory(base.noBackupFilesDir)
         // Installed before providers/components: every security/debug mutation publishes a durable
         // TRANSITION epoch, and maintenance successors can authenticate HARDENED without opening DB.
         RemoteDebugSecurityTransitionGate.install(base.noBackupFilesDir)

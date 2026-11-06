@@ -185,12 +185,21 @@ class LogShipAddressFamilyTest {
             val failure = AtomicReference<Throwable?>()
             val worker = Thread { runCatching { sink.send(listOf(CapturedLogLine("{}", 0L))) }.exceptionOrNull().let(failure::set) }
             worker.start()
-            val socket = requireNotNull(accepted.poll(2, TimeUnit.SECONDS))
-            sink.close()
-            worker.join(1_000)
-            socket.close()
-            assertTrue("close did not interrupt active POST", !worker.isAlive)
-            assertTrue("send unexpectedly succeeded", failure.get() != null)
+            var socket: Socket? = null
+            try {
+                socket = requireNotNull(accepted.poll(2, TimeUnit.SECONDS))
+                sink.close()
+                worker.join(1_000)
+                // Observe cancellation while the peer is still open. Peer EOF is cleanup,
+                // not evidence that closing the sink interrupted the active request.
+                assertTrue("close did not interrupt active POST", !worker.isAlive)
+                assertTrue("send unexpectedly succeeded", failure.get() != null)
+            } finally {
+                sink.close()
+                socket?.close()
+                accepted.poll()?.close()
+                worker.join(2_000)
+            }
         }
     }
 

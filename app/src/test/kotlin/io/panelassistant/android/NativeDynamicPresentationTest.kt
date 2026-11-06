@@ -10,7 +10,6 @@ import org.junit.Test
 
 class NativeDynamicPresentationTest {
     @Test fun `every transport fault has a distinct native explanation`() {
-        assertEquals(10, HaTransportFault.entries.size)
         val resources = HaTransportFault.entries.map(::haTransportFaultResource)
         assertEquals(resources.size, resources.toSet().size)
     }

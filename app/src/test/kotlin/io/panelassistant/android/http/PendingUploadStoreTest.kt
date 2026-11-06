@@ -74,8 +74,11 @@ class PendingUploadStoreTest {
         replaced.begin()
         assertTrue("a replacing request must retire the fetch it supersedes", replacedWork.isAborted)
 
-        val (released, releasedWork) = freshStoreWithWork()
-        released.abort(granted(released.begin()))
+        val releaseStore = PendingUploadStore { "token" }.apply { open() }
+        val released = releaseStore.begin("req") as PendingUploadStore.BeginResult.Granted
+        val releasedWork = requireNotNull(released.abort)
+        assertFalse(releasedWork.isAborted)
+        releaseStore.abort(released.lease)
         assertTrue("releasing the reservation must stop its work", releasedWork.isAborted)
     }
 

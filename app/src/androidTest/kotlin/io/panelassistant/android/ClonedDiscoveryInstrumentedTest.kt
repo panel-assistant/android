@@ -54,13 +54,14 @@ class ClonedDiscoveryInstrumentedTest {
         var running = advertisers(configs)
         fun discovered(): List<String> = names.map { name ->
             var service: ServiceInfo? = null
+            var did: String? = null
             val deadline = android.os.SystemClock.elapsedRealtime() + 15_000
-            while (service == null && android.os.SystemClock.elapsedRealtime() < deadline) {
+            while (did == null && android.os.SystemClock.elapsedRealtime() < deadline) {
                 service = browser.list(Config.MDNS_SERVICE_TYPE, 1_000)
                     .firstOrNull { it.name == name }
-                if (service == null) Thread.sleep(100)
+                did = service?.getPropertyString("did")
+                if (did == null) Thread.sleep(100)
             }
-            val did = service?.getPropertyString("did")
             assertTrue("$name must publish its discovery identity (service=$service, did=$did)", did?.matches(Regex("[0-9a-f]{64}")) == true)
             did!!
         }

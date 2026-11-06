@@ -396,14 +396,18 @@ check_provenance_case 'accepts a valid ancestor' ''
 make_provenance_case next-locale "$provenance_ancestor"
 python3 - "$provenance_case/tools/i18n_catalogue.py" <<'PY'
 from pathlib import Path
+import ast
 import re
 import sys
 
 path = Path(sys.argv[1])
 source = path.read_text(encoding="utf-8")
+policy = re.search(r'^LOCALES = (\{.+\})$', source, re.MULTILINE)
+assert policy is not None
+assert "test-Latn" not in ast.literal_eval(policy.group(1))
 source, replacements = re.subn(
     r'^LOCALES = \{(?P<values>.+)\}$',
-    lambda match: f'LOCALES = {{{match.group("values")}, "nl"}}',
+    lambda match: f'LOCALES = {{{match.group("values")}, "test-Latn"}}',
     source,
     count=1,
     flags=re.MULTILINE,
@@ -411,9 +415,9 @@ source, replacements = re.subn(
 assert replacements == 1
 path.write_text(source, encoding="utf-8")
 PY
-cp "$provenance_catalogues/$provenance_target_locale.json" "$provenance_catalogues/nl.json"
+cp "$provenance_catalogues/$provenance_target_locale.json" "$provenance_catalogues/test-Latn.json"
 check_provenance_case 'derives a newly registered catalogue from locale policy' ''
-rm "$provenance_catalogues/nl.json"
+rm "$provenance_catalogues/test-Latn.json"
 check_provenance_case 'rejects an omitted newly registered catalogue' 'Release catalogue files do not match the supported locales.'
 make_provenance_case differing "$provenance_ancestor"
 printf '{"sourceRevision":"%s"}\n' "$provenance_second" > "$provenance_catalogues/$provenance_target_locale.json"

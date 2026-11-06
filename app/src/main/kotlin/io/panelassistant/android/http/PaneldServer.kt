@@ -733,6 +733,7 @@ class PaneldServer internal constructor(
             english = catalogueLoader.strings(AppLocale.ENGLISH),
             profileId = { profile.id },
             webView = { webViewUpdate.observe().toString() },
+            screenLockSecure = system::screenLockSecure,
         )
     }
 

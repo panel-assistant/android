@@ -42,6 +42,106 @@ import org.junit.rules.TemporaryFolder
 class GuardDbBootstrapRoutesTest {
     @get:Rule val temporary = TemporaryFolder()
 
+    @Test fun `approved first ARM persists intent and hands off once with mutation fence held`() = testApplication {
+        val fixture = armFixture()
+        val session = "1".repeat(64)
+        val events = mutableListOf<String>()
+        val handedOff = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val previousAdmission = io.panelassistant.android.util.GuardDbProcessAdmission.current()
+        assertTrue(io.panelassistant.android.util.GuardDbProcessAdmission.ordinaryMutationsAllowed())
+        val dependencies = fixture.dependencies().copy(
+            commitSentinel = { _, intent ->
+                assertTrue(fixture.sentinel.write(intent))
+                events += "intent"
+                GuardDbSentinelCommit.Committed(
+                    fixture.sentinel.load() as io.panelassistant.android.util.GuardDbSentinelLoad.Valid,
+                )
+            },
+            prepare = { manifest, registerShutdown ->
+                assertEquals(session, manifest.session)
+                assertTrue(!io.panelassistant.android.util.GuardDbProcessAdmission.ordinaryMutationsAllowed())
+                assertTrue(InstallProgress.running)
+                events += "prepare"
+                registerShutdown {
+                    events += "shutdown"
+                    assertTrue(InstallProgress.running)
+                    assertTrue(!io.panelassistant.android.util.GuardDbProcessAdmission.ordinaryMutationsAllowed())
+                    assertTrue(InstallProgress.start("crossing mutation") == null)
+                    handedOff.complete(Unit)
+                }
+                true
+            },
+        )
+        installRoutes(dependencies)
+        try {
+            assertEquals(HttpStatusCode.Accepted, postArm(session, MIN_OVERALL_BUDGET_MS, DIRECT_PEER).status)
+            assertTrue(events.isEmpty())
+            assertTrue(fixture.broker.approve(fixture.broker.pending().single().id))
+            val response = postArm(session, MIN_OVERALL_BUDGET_MS, DIRECT_PEER)
+            assertEquals(HttpStatusCode.Accepted, response.status)
+            val receipt = JSONObject(response.bodyAsText())
+            assertEquals("preparing-clean-proof", receipt.getString("state"))
+            assertEquals("approve-arm-commit-after-shutdown", receipt.getString("settlement"))
+            assertEquals(session, receipt.getString("session"))
+            assertTrue(receipt.getBoolean("same_boot_only"))
+            kotlinx.coroutines.withTimeout(1_000L) { handedOff.await() }
+            assertEquals(listOf("intent", "prepare", "shutdown"), events)
+            val durable = fixture.sentinel.load() as io.panelassistant.android.util.GuardDbSentinelLoad.Valid
+            assertEquals(session, durable.sentinel.session)
+            assertEquals(io.panelassistant.android.util.GuardDbSentinelState.INTENT, durable.sentinel.state)
+            assertTrue(InstallProgress.running)
+        } finally {
+            // Production exits this process. Release its retained singleton ticket only for fixture isolation.
+            val active = InstallProgress::class.java.getDeclaredField("active").apply { isAccessible = true }
+                .get(null) as? InstallProgress.Ticket
+            active?.let { InstallProgress.finish(it, "fixture process exited") }
+            io.panelassistant.android.util.GuardDbProcessAdmission.update(
+                previousAdmission,
+            )
+        }
+    }
+
+    @Test fun `discard keeps a candidate across stale approval and deletes only after fresh approval`() = testApplication {
+        val fixture = stageFixture()
+        installRoutes(fixture)
+        suspend fun discard(peer: String = DIRECT_PEER) = client.post("/api/v1/guard-db/discard") {
+            header(TEST_PEER_HEADER, peer)
+            contentType(ContentType.Application.Json)
+            setBody("{\"role\":\"A\"}")
+        }
+        assertEquals(HttpStatusCode.Accepted, postStage(fixture.token, "A", DIRECT_PEER).status)
+        assertTrue(fixture.broker.approve(fixture.broker.pending().single().id))
+        assertEquals(HttpStatusCode.OK, postStage(fixture.token, "A", DIRECT_PEER).status)
+        val role = GuardDbMaintenanceProtocol.Role.A
+        val candidate = requireNotNull(fixture.staging.load(role))
+        assertEquals(HttpStatusCode.Forbidden, discard("127.0.0.1").status)
+        fixture.hardened = false
+        assertEquals(HttpStatusCode.PreconditionFailed, discard().status)
+        fixture.hardened = true
+        assertTrue(fixture.broker.pending().isEmpty())
+        assertTrue(candidate.file.exists())
+        assertEquals(HttpStatusCode.Accepted, discard().status)
+        assertTrue(candidate.file.exists())
+        assertTrue(fixture.broker.approve(fixture.broker.pending().single().id))
+        fixture.afterApproved = { RemoteDebugSecurityTransitionGate.mutate {} }
+        val stale = discard()
+        assertEquals(HttpStatusCode.Conflict, stale.status)
+        assertTrue(stale.bodyAsText().contains("discard-authority-changed"))
+        assertTrue(candidate.file.exists())
+        assertTrue(!InstallProgress.running)
+        fixture.afterApproved = {}
+        assertEquals(HttpStatusCode.Accepted, discard().status)
+        assertTrue(fixture.broker.approve(fixture.broker.pending().single().id))
+        val discarded = discard()
+        assertEquals(HttpStatusCode.OK, discarded.status)
+        assertEquals("A", JSONObject(discarded.bodyAsText()).getString("role"))
+        assertTrue(!candidate.file.exists())
+        assertTrue(fixture.staging.load(role) == null)
+        assertTrue(!InstallProgress.running)
+        assertEquals(HttpStatusCode.Conflict, discard().status)
+        assertTrue(fixture.broker.pending().isEmpty())
+    }
+
     @Test fun `Hardened stage consumes only the exact direct LAN replay once`() = testApplication {
         val fixture = stageFixture()
         installRoutes(fixture)
