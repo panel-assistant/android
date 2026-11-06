@@ -44,7 +44,7 @@ class BundledHelperRecoveryTest {
         val valid = GuardDbMaintenanceClient.StatusProbe.Valid(requireNotNull(
             GuardDbMaintenanceProtocol.parseStatus(BundledHelperShellFixtures.emptyStatus),
         ))
-        for (status in listOf(valid, GuardDbMaintenanceClient.StatusProbe.Malformed)) {
+        for (status in listOf(valid)) {
             var probes = 0
             var recoveryAttempts = 0
             val observed = bundledHelperReplacementStatusAfterRecovery(asset, "a".repeat(64),
@@ -60,7 +60,8 @@ class BundledHelperRecoveryTest {
 
     @Test fun `unreachable and released legacy helper reacquire authority only after authenticated recovery`() = fixture { root, asset ->
         helper(root, asset, "STALE_REPLACEMENT RECONCILED")
-        for (initial in listOf(GuardDbMaintenanceClient.StatusProbe.Unsupported, GuardDbMaintenanceClient.StatusProbe.Unreachable)) {
+        for (initial in listOf(GuardDbMaintenanceClient.StatusProbe.Unsupported, GuardDbMaintenanceClient.StatusProbe.Unreachable,
+                GuardDbMaintenanceClient.StatusProbe.Malformed)) {
             var probes = 0
             val observed = bundledHelperReplacementStatusAfterRecovery(asset, sha256(asset),
                 statusProbe = { if (probes++ == 0) initial else GuardDbMaintenanceClient.StatusProbe.Unreachable },
@@ -76,6 +77,30 @@ class BundledHelperRecoveryTest {
             reconcile = { input, hash -> reconcile(root, input, hash) },
         ))
         assertEquals(1, probes)
+    }
+
+    @Test fun `failed settlement retries once only after strict stalled recovery`() {
+        var recoveries = 0
+        var retries = 0
+        fun run(result: BundledHelperInstaller.Result, allowed: Boolean, malformed: Boolean, accepted: Boolean) =
+            retryBundledHelperAfterStalledReplacement(result, allowed,
+                statusProbe = { if (malformed) GuardDbMaintenanceClient.StatusProbe.Malformed else GuardDbMaintenanceClient.StatusProbe.Unreachable },
+                reconcile = { recoveries++; accepted },
+                retry = { retries++; BundledHelperInstaller.Result.INSTALLED },
+            )
+        assertEquals(BundledHelperInstaller.Result.INSTALLED,
+            run(BundledHelperInstaller.Result.FAILED, true, true, true))
+        assertEquals(1, recoveries)
+        assertEquals(1, retries)
+        for (result in BundledHelperInstaller.Result.entries.filter { it != BundledHelperInstaller.Result.FAILED })
+            assertEquals(result, run(result, true, true, true))
+        assertEquals(BundledHelperInstaller.Result.FAILED, run(BundledHelperInstaller.Result.FAILED, false, true, true))
+        assertEquals(BundledHelperInstaller.Result.FAILED, run(BundledHelperInstaller.Result.FAILED, true, false, true))
+        assertEquals(1, recoveries)
+        assertEquals(1, retries)
+        assertEquals(BundledHelperInstaller.Result.FAILED, run(BundledHelperInstaller.Result.FAILED, true, true, false))
+        assertEquals(2, recoveries)
+        assertEquals(1, retries)
     }
 
     @Test fun `authenticated recovery runs fixed verb outside upload lock and preserves candidate custody`() = fixture { root, asset ->

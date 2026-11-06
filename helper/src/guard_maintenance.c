@@ -1,5 +1,11 @@
 #define _GNU_SOURCE
 #include "guard_maintenance_internal.h"
+#include <stddef.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#ifndef SOCK_NAME
+#define SOCK_NAME "hapaneld-helper"
+#endif
 
 
 pthread_mutex_t guard_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -5281,7 +5287,7 @@ static int acquire_owner_lock(int dir) {
     if (fd < 0) return -1;
     struct stat st;
     if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode) || st.st_uid != geteuid() ||
-        st.st_nlink != 1 || fchmod(fd, 0600) != 0 || flock(fd, LOCK_EX | LOCK_NB) != 0) {
+        st.st_nlink != 1 || flock(fd, LOCK_EX | LOCK_NB) != 0 || fchmod(fd, 0600) != 0) {
         close(fd);
         return -1;
     }
@@ -5297,8 +5303,8 @@ static int previous_helper_bytes_exact(int parent, const guard_replacement *repl
         strcmp(sha, replacement->old_sha) == 0 ? 0 : -1;
 }
 
-/* This separate bootstrap is deliberately narrower than same-boot lease recovery. A reboot
- * invalidates the lease, not the durable identity evidence. Only the untouched pre-swap pair
+/* This separate bootstrap never adopts a lease. The exclusive owner lock proves that the old
+ * supervisor is gone, including on this boot. Only the untouched pre-swap pair
  * can be aborted; every other Guard artifact or topology remains owned recovery state. */
 static int stale_replacement_namespace_exact(int dir) {
     int fd = openat(dir, ".", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
@@ -5371,6 +5377,109 @@ static int stale_owner_metadata_safe(int dir) {
         st.st_nlink == 1 && (st.st_mode & 07777) == 0600;
 }
 
+/* Compatibility for supervisors predating occupied-FD3 export. Only their exact, already
+ * granted pre-swap transaction may be restarted; no ordinary live owner is displaced. */
+static int stale_replacement_custody_exact(int parent, int dir,
+        const guard_replacement *replacement, const struct stat *journal, const char *boot) {
+    struct stat current;
+    char current_boot[65];
+    return current_boot_nonce(current_boot) == 0 && strcmp(boot, current_boot) == 0 &&
+        stale_owner_metadata_safe(dir) && stale_replacement_namespace_exact(dir) &&
+        fstatat(dir, GUARD_REPLACEMENT, &current, AT_SYMLINK_NOFOLLOW) == 0 &&
+        stat_identity_unchanged_strict(journal, &current) &&
+        known_file_present(parent, GUARD_APP_HELPER_PREVIOUS) == 0 &&
+        known_file_present(parent, GUARD_APP_HELPER_PREVIOUS_TMP) == 0 &&
+        stale_helper_identity_exact(parent, GUARD_APP_HELPER_LIVE, replacement->old_bytes,
+            replacement->old_sha, replacement->old_dev, replacement->old_ino) &&
+        stale_helper_identity_exact(parent, GUARD_APP_HELPER_STAGE, replacement->new_bytes,
+            replacement->new_sha, replacement->new_dev, replacement->new_ino);
+}
+
+static int retire_stalled_replacement_owner(int parent, int dir,
+        const guard_replacement *replacement, const struct stat *journal, const char *boot) {
+    if (replacement->phase != GUARD_REPLACEMENT_GRANTED || replacement->generation != 2 ||
+        !replacement_boot_current(replacement)) return -1;
+    int socket_fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    struct sockaddr_un address = { .sun_family = AF_UNIX };
+    memcpy(address.sun_path + 1, SOCK_NAME, sizeof SOCK_NAME - 1);
+    struct ucred peer;
+    socklen_t peer_size = sizeof peer;
+    int worker = -1, supervisor = -1, result = -1;
+    if (socket_fd < 0 || connect(socket_fd, (struct sockaddr *)&address,
+            offsetof(struct sockaddr_un, sun_path) + sizeof SOCK_NAME) != 0 ||
+        getsockopt(socket_fd, SOL_SOCKET, SO_PEERCRED, &peer, &peer_size) != 0 ||
+        peer.uid != 0 || peer.pid <= 1 || peer.pid == getpid()) goto done;
+    char path[64], record[1024], state;
+    snprintf(path, sizeof path, "/proc/%ld", (long)peer.pid);
+    worker = open(path, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    int status = worker >= 0 ? openat(worker, "stat", O_RDONLY | O_CLOEXEC) : -1;
+    ssize_t used = status >= 0 ? read(status, record, sizeof record - 1) : -1;
+    if (status >= 0) close(status);
+    if (used <= 0) goto done;
+    record[used] = 0;
+    char *tail = strrchr(record, ')');
+    long parent_pid;
+    if (!tail || sscanf(tail + 1, " %c %ld", &state, &parent_pid) != 2 ||
+        parent_pid <= 1 || parent_pid > INT_MAX || parent_pid == getpid() || state == 'Z') goto done;
+    snprintf(path, sizeof path, "/proc/%ld", parent_pid);
+    supervisor = open(path, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    struct stat pinned, reached, old, worker_exe, fd3, null, owner;
+    if (supervisor < 0 || fstat(supervisor, &pinned) != 0 || pinned.st_uid != 0 ||
+        fstatat(supervisor, "exe", &old, 0) != 0 ||
+        fstatat(worker, "exe", &worker_exe, 0) != 0 ||
+        (uint64_t)old.st_dev != replacement->old_dev ||
+        (uint64_t)old.st_ino != replacement->old_ino ||
+        worker_exe.st_dev != old.st_dev || worker_exe.st_ino != old.st_ino ||
+        fstatat(supervisor, "fd/3", &fd3, 0) != 0 || stat("/dev/null", &null) != 0 ||
+        !S_ISCHR(fd3.st_mode) || fd3.st_dev != null.st_dev || fd3.st_ino != null.st_ino ||
+        fstatat(dir, GUARD_OWNER_LOCK, &owner, AT_SYMLINK_NOFOLLOW) != 0) goto done;
+    int command = openat(supervisor, "cmdline", O_RDONLY | O_CLOEXEC);
+    used = command >= 0 ? read(command, record, sizeof record) : -1;
+    if (command >= 0) close(command);
+    if (used <= 0 || record[used - 1] != 0) goto done;
+    size_t first = strnlen(record, (size_t)used) + 1;
+    if (first >= (size_t)used) goto done;
+    size_t arguments = (size_t)used - first;
+    int supervise = arguments == sizeof "--supervise" &&
+        memcmp(record + first, "--supervise", sizeof "--supervise") == 0;
+    int app_lease = arguments == sizeof "--supervise-app-lease" + 65 &&
+        memcmp(record + first, "--supervise-app-lease", sizeof "--supervise-app-lease") == 0 &&
+        lower_hex_64(record + first + sizeof "--supervise-app-lease");
+    if (!supervise && !app_lease) goto done;
+    int owner_found = 0;
+    for (int fd = 4; fd < 1024; fd++) {
+        char name[32]; struct stat held;
+        snprintf(name, sizeof name, "fd/%d", fd);
+        if (fstatat(supervisor, name, &held, 0) == 0 &&
+            held.st_dev == owner.st_dev && held.st_ino == owner.st_ino) { owner_found = 1; break; }
+    }
+    uint64_t started, checked;
+    if (!owner_found || process_start_ticks((pid_t)parent_pid, &started) != 1 ||
+        fstatat(supervisor, "exe", &old, 0) != 0 ||
+        (uint64_t)old.st_dev != replacement->old_dev || (uint64_t)old.st_ino != replacement->old_ino ||
+        stat(path, &reached) != 0 || reached.st_dev != pinned.st_dev || reached.st_ino != pinned.st_ino ||
+        process_start_ticks((pid_t)parent_pid, &checked) != 1 || checked != started ||
+        !stale_replacement_custody_exact(parent, dir, replacement, journal, boot) ||
+        fstatat(worker, "exe", &worker_exe, 0) != 0 ||
+        worker_exe.st_dev != old.st_dev || worker_exe.st_ino != old.st_ino ||
+        stat(path, &reached) != 0 || reached.st_dev != pinned.st_dev || reached.st_ino != pinned.st_ino ||
+        process_start_ticks((pid_t)parent_pid, &checked) != 1 || checked != started ||
+        kill((pid_t)parent_pid, SIGTERM) != 0) goto done;
+    /* The worker inherits the owner lease and has PDEATHSIG. Acquire only after both have
+     * released custody; a stuck worker keeps the journal and candidate untouched. */
+    for (unsigned attempt = 0; attempt < 200; attempt++) {
+        struct stat still_executing;
+        if (fstatat(worker, "exe", &still_executing, 0) != 0 && (errno == ENOENT || errno == ESRCH) &&
+            acquire_owner_lock(dir) == 0) { result = 0; break; }
+        usleep(10000);
+    }
+done:
+    if (socket_fd >= 0) close(socket_fd);
+    if (worker >= 0) close(worker);
+    if (supervisor >= 0) close(supervisor);
+    return result;
+}
+
 int guard_maintenance_reconcile_stale_replacement(void) {
     if (geteuid() != 0) return -1;
     helper_transaction_lock transaction;
@@ -5388,21 +5497,22 @@ int guard_maintenance_reconcile_stale_replacement(void) {
     if (dir < 0 || fstat(dir, &directory) != 0 || !S_ISDIR(directory.st_mode) ||
         directory.st_uid != 0 || directory.st_gid != 0 ||
         (directory.st_mode & 07777) != 0700 || flock(dir, LOCK_EX | LOCK_NB) != 0 ||
-        !stale_owner_metadata_safe(dir) || acquire_owner_lock(dir) != 0 ||
-        !retirement_owner_lock_exact(dir)) goto done;
+        !stale_owner_metadata_safe(dir)) goto done;
     int present = known_file_present(dir, GUARD_REPLACEMENT);
     if (present == 0) {
-        if (empty_inventory_safe(dir)) result = 0;
+        if (acquire_owner_lock(dir) == 0 && retirement_owner_lock_exact(dir) &&
+            empty_inventory_safe(dir)) result = 0;
         goto done;
     }
     guard_replacement replacement;
     char boot[65];
-    if (present != 1 || !stale_replacement_namespace_exact(dir) ||
+    if (present != 1 || known_file_present(dir, GUARD_OWNER_LOCK) != 1 ||
+        !stale_replacement_namespace_exact(dir) ||
         fstatat(dir, GUARD_REPLACEMENT, &journal, AT_SYMLINK_NOFOLLOW) != 0 ||
         !S_ISREG(journal.st_mode) || journal.st_uid != 0 || journal.st_gid != 0 ||
         (journal.st_mode & 07777) != 0600 || journal.st_nlink != 1 ||
         !stale_replacement_read(dir, &replacement) ||
-        current_boot_nonce(boot) != 0 || strcmp(boot, replacement.boot) == 0 ||
+        current_boot_nonce(boot) != 0 ||
         !((replacement.phase == GUARD_REPLACEMENT_REQUESTED && replacement.generation == 1) ||
           (replacement.phase == GUARD_REPLACEMENT_GRANTED && replacement.generation == 2)) ||
         known_file_present(parent, GUARD_APP_HELPER_PREVIOUS) != 0 ||
@@ -5414,6 +5524,11 @@ int guard_maintenance_reconcile_stale_replacement(void) {
         fstatat(dir, GUARD_REPLACEMENT, &journal_after, AT_SYMLINK_NOFOLLOW) != 0 ||
         !stat_identity_unchanged_strict(&journal, &journal_after) ||
         !stale_replacement_namespace_exact(dir)) goto done;
+    if (acquire_owner_lock(dir) != 0 &&
+        retire_stalled_replacement_owner(parent, dir, &replacement, &journal, boot) != 0) goto done;
+    /* The incumbent is now gone. Recheck every recorded byte and inode under its actual lease. */
+    if (!retirement_owner_lock_exact(dir) ||
+        !stale_replacement_custody_exact(parent, dir, &replacement, &journal, boot)) goto done;
     if (!TEST_FAULT(GUARD_TEST_FAULT_STALE_REPLACEMENT_UNLINK) &&
         unlinkat(dir, GUARD_REPLACEMENT, 0) == 0 &&
         !TEST_FAULT(GUARD_TEST_FAULT_STALE_REPLACEMENT_DIR_SYNC) && fsync(dir) == 0)

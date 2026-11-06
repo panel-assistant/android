@@ -45,7 +45,9 @@ internal object BundledHelperInstaller {
     fun resumeRetainedCurrent(context: Context): Boolean = resumeRetainedCurrentOutcome(context) == true
 
     @Synchronized
-    fun ensureCurrent(context: Context): Result {
+    fun ensureCurrent(context: Context): Result = ensureCurrentAttempt(context, retryStalled = true)
+
+    private fun ensureCurrentAttempt(context: Context, retryStalled: Boolean): Result {
         when (resumeRetainedCurrentOutcome(context)) {
             true -> return Result.INSTALLED
             false -> return Result.FAILED
@@ -98,7 +100,7 @@ internal object BundledHelperInstaller {
             val priorRecord = priorRecordReply?.let {
                 parseBundledLegacyTakeoverRecord(it) ?: return Result.FAILED
             }
-            installBundledHelperReplacement(
+            val result = installBundledHelperReplacement(
                 replacementMode, stagedBuildId, incumbentBuildId, incumbentIdentity, priorRecord,
                 stage = {
                     bundledHelperStaged(Su.runWithStdinLongChecked(
@@ -146,6 +148,12 @@ internal object BundledHelperInstaller {
                     )
                 },
                 cleanup = { cleanupAnyBundledLegacyTakeoverRecord() },
+            )
+            retryBundledHelperAfterStalledReplacement(
+                result, retryStalled,
+                statusProbe = GuardDbMaintenance.client::statusProbe,
+                reconcile = { reconcileBundledHelperReplacement(staged, expectedSha256) },
+                retry = { ensureCurrentAttempt(context, retryStalled = false) },
             )
         } catch (failure: Exception) {
             Log.w(TAG, "bundled helper migration failed", failure)

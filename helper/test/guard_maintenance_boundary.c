@@ -322,7 +322,7 @@ static int owner_lock_fd_count(void) {
     return count;
 }
 
-static void test_replacement_export_refuses_foreign_fd3(void) {
+static void test_replacement_export_replaces_inherited_fd3(void) {
     guard_test_reset();
     int placeholder = open("/dev/null", O_RDONLY);
     CHECK(placeholder >= 0 && (placeholder == GUARD_REPLACEMENT_LEASE_FD ||
@@ -335,20 +335,19 @@ static void test_replacement_export_refuses_foreign_fd3(void) {
     CHECK(guard_maintenance_replacement_parent_grant(nonce) == GUARD_REPLACEMENT_READY,
         "foreign-fd3 fixture grants the replacement\n");
     int owner_fds = owner_lock_fd_count();
-    CHECK(owner_fds == 1, "foreign-fd3 fixture holds one owner lock off fd 3 (got %d)\n", owner_fds);
-    int foreign = open("/tmp/.hapaneld-guard-foreign-fd3", O_RDWR | O_CREAT | O_TRUNC, 0600);
-    struct stat before, after;
-    CHECK(foreign >= 0 && dup2(foreign, GUARD_REPLACEMENT_LEASE_FD) == GUARD_REPLACEMENT_LEASE_FD &&
-          fstat(GUARD_REPLACEMENT_LEASE_FD, &before) == 0, "occupy fd 3 with a foreign file\n");
-    CHECK(guard_maintenance_replacement_export_lease() != 0,
-        "export refuses to overwrite a foreign descriptor on the lease fd\n");
-    CHECK(fstat(GUARD_REPLACEMENT_LEASE_FD, &after) == 0 && after.st_dev == before.st_dev &&
-          after.st_ino == before.st_ino, "foreign descriptor on the lease fd survives export\n");
-    close(GUARD_REPLACEMENT_LEASE_FD);
-    if (foreign >= 0 && foreign != GUARD_REPLACEMENT_LEASE_FD) close(foreign);
-    unlink("/tmp/.hapaneld-guard-foreign-fd3");
-    CHECK(guard_maintenance_replacement_parent_abort(nonce) == 0,
-        "foreign-fd3 fixture aborts the granted replacement\n");
+    CHECK(owner_fds == 2, "foreign-fd3 fixture exports owner lock onto fd 3 (got %d)\n", owner_fds);
+    struct stat exported, owner;
+    CHECK(stat(CUSTODY "/.owner.lock", &owner) == 0 &&
+          fstat(GUARD_REPLACEMENT_LEASE_FD, &exported) == 0 &&
+          exported.st_dev == owner.st_dev && exported.st_ino == owner.st_ino,
+        "grant replaces inherited fd3 with the exact authoritative owner lease\n");
+    CHECK(guard_maintenance_replacement_stage_app(nonce) == 0 &&
+          guard_maintenance_replacement_supervisor_adopt_app(nonce) == 0,
+        "occupied fd3 permits the distinct candidate to adopt the lease\n");
+    guard_test_set_supervised(1);
+    CHECK(guard_maintenance_replacement_worker_commit_app(nonce) == 0,
+        "occupied fd3 replacement settles and retires its journal\n");
+
 }
 
 static void test_replacement_adopt_closes_previous_owner_fd(void) {
@@ -582,10 +581,8 @@ static void test_stale_replacement_refusal_matrix(void) {
     for (int which = 0; which < 16; which++) {
         stale_fixture(which & 1);
         switch (which) {
-        case 0: {
-            static const char same_boot[] = "123e4567-e89b-12d3-a456-426614174000";
-            write_file_mode(BOOT_FILE, same_boot, sizeof same_boot - 1, 0600); break;
-        }
+        case 0: CHECK(unlink(CUSTODY "/.owner.lock") == 0,
+                      "missing owner fixture\n"); break;
         case 1: write_file_mode(BOOT_FILE, "invalid", 7, 0600); break;
         case 2: write_file_mode(CUSTODY "/manifest.v1", "owned", 5, 0600); break;
         case 3: write_file_mode(CUSTODY "/.replacement.v1.tmp", "owned", 5, 0600); break;
@@ -2447,7 +2444,7 @@ int main(void) {
     test_replacement_respects_installstream_package_gate();
     test_replacement_shared_lock_admission();
     test_replacement_fence_and_same_lease_app_swap();
-    test_replacement_export_refuses_foreign_fd3();
+    test_replacement_export_replaces_inherited_fd3();
     test_replacement_adopt_closes_previous_owner_fd();
     test_stale_replacement_refusal_matrix();
     test_stale_replacement_live_owner_and_postswap_hold();

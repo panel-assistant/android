@@ -100,7 +100,7 @@ int guard_maintenance_replacement_stage_app(const char nonce[65]);
 int guard_maintenance_replacement_supervisor_adopt_app(const char nonce[65]);
 int guard_maintenance_replacement_worker_commit_app(const char nonce[65]);
 int guard_maintenance_replacement_startup_reconcile_app(char nonce[65]);
-/* Fixed root bootstrap only. Abort an exact prior-boot pre-swap transaction, preserving both
+/* Fixed root bootstrap only. Abort an exact orphaned pre-swap transaction, preserving both
  * helper binaries. Returns 1 reconciled, 0 truly empty, -1 HOLD; never resumes or launches. */
 int guard_maintenance_reconcile_stale_replacement(void);
 
