@@ -95,9 +95,9 @@ internal class InteractiveController(
         }
     }
 
-    /** Whether a route [back] uses is live: the accessibility service is connected, or su answers. */
-    fun canBack(): Boolean =
-        accessibility.connected() || if (root === Su) Su.availableCachedIsolated() else root.available()
+    /** Whether a route [back] uses is live: the accessibility service is connected, or su is known to
+     *  answer. Read on every reconcile, so it never starts su itself. */
+    fun canBack(): Boolean = accessibility.connected() || root.observedUsable()
 
     fun back(): Boolean = navigate(
         rootCommand = "input keyevent ${KeyEvent.KEYCODE_BACK}",

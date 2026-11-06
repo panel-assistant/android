@@ -63,7 +63,7 @@ internal class PowerSafetyRepairReportsSettingTest : PanelRuntimeRig() {
         fun set(name: String, value: Any) =
             ServiceDisplay::class.java.getDeclaredField(name).apply { isAccessible = true }.set(display, value)
         set("power", power)
-        set("brightness", BrightnessController(context, FakeRootShell(), FakeDaemon()))
+        set("brightness", BrightnessController(context, FakeDaemon()))
         set(
             "powerSafety",
             PowerSafetyController(

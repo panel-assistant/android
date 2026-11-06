@@ -189,7 +189,7 @@ class AmbientThemeWiringContractTest {
                 override fun getApplicationContext(): Context = this
             }
             controller = AutoBrightnessController(
-                context, BrightnessController(context, FakeRootShell(), FakeDaemon()), config,
+                context, BrightnessController(context, FakeDaemon()), config,
                 wallClockMs = { 1_700_000_000_000L + now }, elapsedRealtimeMs = { now },
                 history = AmbientHistoryRuntime(context, executor = historyScheduler),
                 preference = ManualBrightnessAuthority(object : ManualBrightnessPreferenceStore {

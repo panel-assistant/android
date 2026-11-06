@@ -24,6 +24,15 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LoggingRoutesTest {
+    @Test fun `system log availability requires LOGCAT capability`() {
+        for (reply in listOf(null, "ERR", "OK", "LOGCATCAPS 0", "LOGCATCAPS 1")) {
+            assertEquals("capability reply: $reply", reply == "LOGCATCAPS 1", systemLogReadable { command ->
+                assertEquals("LOGCATCAPS", command)
+                reply
+            })
+        }
+    }
+
     @Test fun `full mount preserves logging refusals`() {
         PaneldServerHttpFixture().use { fixture ->
             testApplication {
@@ -31,7 +40,7 @@ class LoggingRoutesTest {
                 val cases = listOf(
                     "app" to (HttpStatusCode.NotFound to "log viewer unavailable\n"),
                     "webview" to (HttpStatusCode.ServiceUnavailable to "webview console needs log shipping configured\n"),
-                    "system" to (HttpStatusCode.ServiceUnavailable to "system log needs root or a LOGCAT helper\n"),
+                    "system" to (HttpStatusCode.ServiceUnavailable to "system log needs a LOGCAT helper\n"),
                     "invalid" to (HttpStatusCode.BadRequest to "unknown source 'invalid' (app|system|webview)\n"),
                 )
                 for ((source, expected) in cases) {

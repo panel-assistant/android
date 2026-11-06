@@ -1,6 +1,5 @@
 package io.panelassistant.android.http
 
-import io.panelassistant.android.control.Su
 import io.panelassistant.android.logship.LogCapture
 import io.panelassistant.android.logship.LogShipStatusProjection
 import io.panelassistant.android.util.HelperClient
@@ -53,7 +52,7 @@ private class LogCaptures(
         val capture = when (source) {
             "app" -> app
             "system" -> if (withContext(Dispatchers.IO) { systemLogAvailable() }) system else {
-                return LogSelection.Refused(HttpStatusCode.ServiceUnavailable, "system log needs root or a LOGCAT helper\n")
+                return LogSelection.Refused(HttpStatusCode.ServiceUnavailable, "system log needs a LOGCAT helper\n")
             }
             "webview" -> if (webViewConsoleEnabled()) webView else {
                 return LogSelection.Refused(HttpStatusCode.ServiceUnavailable, "webview console needs log shipping configured\n")
@@ -67,9 +66,11 @@ private class LogCaptures(
         (selection(source) as? LogSelection.Selected)?.capture?.let(::LogCaptureSource)
 }
 
-/** Whether the system log can be read: root, or a helper that serves LOGCAT. */
-internal fun systemLogReadable(): Boolean =
-    Su.availableCachedIsolated() || HelperClient.send("LOGCATCAPS") == "LOGCATCAPS 1"
+/** System logs require an authenticated helper that advertises LOGCAT. */
+internal fun systemLogReadable(): Boolean = systemLogReadable(HelperClient::send)
+
+internal fun systemLogReadable(send: (String) -> String?): Boolean =
+    send("LOGCATCAPS") == "LOGCATCAPS 1"
 
 // ---- live log stream (SSE) ----
 

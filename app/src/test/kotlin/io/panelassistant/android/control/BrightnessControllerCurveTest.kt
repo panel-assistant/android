@@ -31,45 +31,49 @@ class BrightnessControllerCurveTest {
     }
 
     private val perceptual = TransferCurve.Gamma(2.2, floor = 10 / 255.0)
-    private val node = "/sys/class/backlight/bl/"
+    /** A root helper over a 0..255 node that accepts every write; [nodeWrites] is what reached the node. */
+    private class Helper {
+        val nodeWrites = mutableListOf<Int>()
+        private val replies = mutableMapOf("BLREAD" to "0 255")
+        val daemon = FakeDaemon(replies, onSend = { cmd ->
+            cmd.removePrefix("BLSET ").takeIf { it != cmd }?.toIntOrNull()?.let { nodeWrites += it; replies[cmd] = "OK" }
+        })
+    }
 
-    private fun root() = FakeRootShell(
-        outputs = mapOf("ls -d /sys/class/backlight" to node, "cat ${node}max_brightness" to "255"),
-        runResult = true,
-    )
+    private fun helper() = Helper()
 
-    private fun controller(curve: TransferCurve, route: BacklightRoute, setting: BrightnessSetting, root: FakeRootShell, store: MemoryStore = MemoryStore()) =
-        BrightnessController(object : ContextWrapper(null) {}, root, FakeDaemon(), BacklightScale(curve, route, store), setting)
+    private fun controller(curve: TransferCurve, route: BacklightRoute, setting: BrightnessSetting, helper: Helper, store: MemoryStore = MemoryStore()) =
+        BrightnessController(object : ContextWrapper(null) {}, helper.daemon, BacklightScale(curve, route, store), setting)
 
-    private fun nodeWrites(root: FakeRootShell) = root.ran.filter { it.endsWith("${node}brightness") }
+    private fun nodeWrites(helper: Helper) = helper.nodeWrites
 
     @Test fun anUnprofiledPanelWritesTheLevelToBothActuators() {
         val setting = MemorySetting()
-        val root = root()
-        val brightness = controller(TransferCurve.Identity, BacklightRoute.NODE, setting, root)
+        val helper = helper()
+        val brightness = controller(TransferCurve.Identity, BacklightRoute.NODE, setting, helper)
         brightness.setBrightness(128)
         assertEquals(128, setting.value)
-        assertEquals(listOf("echo 128 > ${node}brightness"), nodeWrites(root))
+        assertEquals(listOf(128), nodeWrites(helper))
         assertEquals(128, brightness.getCommanded())
         assertFalse(brightness.curved)
     }
 
     @Test fun settingRouteCurvesTheSettingAndReadsBackTheLevelHomeAssistantSet() {
         val setting = MemorySetting()
-        val root = root()
+        val helper = helper()
         val store = MemoryStore()
-        val brightness = controller(perceptual, BacklightRoute.SETTING, setting, root, store)
+        val brightness = controller(perceptual, BacklightRoute.SETTING, setting, helper, store)
         for (level in listOf(10, 15, 64, 128, 200, 255)) {
             brightness.setBrightness(level)
             val curved = perceptual.toHardware(level)
             assertEquals("setting for $level", curved, setting.value)
             // ha-paneld's own node write agrees with the firmware's push of the setting.
-            assertEquals("echo $curved > ${node}brightness", nodeWrites(root).last())
+            assertEquals(curved, nodeWrites(helper).last())
             assertEquals("read-back of $level", level, brightness.getCommanded())
             assertTrue(brightness.consumeOwnedSettingChange(curved))
         }
         // A process restart keeps the exact read-back.
-        assertEquals(255, controller(perceptual, BacklightRoute.SETTING, setting, root(), store).getCommanded())
+        assertEquals(255, controller(perceptual, BacklightRoute.SETTING, setting, helper(), store).getCommanded())
         // Another app moving the setting is read through the inverse.
         setting.value = 200
         assertEquals(perceptual.toLevel(200), brightness.getCommanded())
@@ -79,22 +83,22 @@ class BrightnessControllerCurveTest {
 
     @Test fun nodeRouteKeepsTheSettingOnTheHomeAssistantScaleAndCurvesTheNode() {
         val setting = MemorySetting()
-        val root = root()
-        val brightness = controller(perceptual, BacklightRoute.NODE, setting, root)
+        val helper = helper()
+        val brightness = controller(perceptual, BacklightRoute.NODE, setting, helper)
         brightness.setBrightness(128)
         assertEquals(128, setting.value)
-        assertEquals(listOf("echo ${perceptual.toHardware(128)} > ${node}brightness"), nodeWrites(root))
+        assertEquals(listOf(perceptual.toHardware(128)), nodeWrites(helper))
         assertEquals(128, brightness.getCommanded())
     }
 
     @Test fun zeroIsOffOnEveryRoute() {
         for (route in BacklightRoute.entries) {
             val setting = MemorySetting()
-            val root = root()
-            val brightness = controller(perceptual, route, setting, root)
+            val helper = helper()
+            val brightness = controller(perceptual, route, setting, helper)
             brightness.setBrightnessRaw(0)
             assertEquals(route.name, 0, setting.value)
-            assertEquals(route.name, "echo 0 > ${node}brightness", nodeWrites(root).last())
+            assertEquals(route.name, 0, nodeWrites(helper).last())
             assertEquals(route.name, 0, brightness.getCommanded())
         }
     }
@@ -102,7 +106,7 @@ class BrightnessControllerCurveTest {
     @Test fun aFailedSettingWriteKeepsTheLastLevelHomeAssistantSet() {
         val setting = MemorySetting()
         val store = MemoryStore()
-        val brightness = controller(perceptual, BacklightRoute.SETTING, setting, root(), store)
+        val brightness = controller(perceptual, BacklightRoute.SETTING, setting, helper(), store)
         brightness.setBrightness(15)   // collapses onto the floor with its neighbours
         assertEquals(15, brightness.getCommanded())
         setting.reject = true
@@ -116,6 +120,6 @@ class BrightnessControllerCurveTest {
     }
 
     @Test fun anUnsetSettingReadsAsUnknown() {
-        assertEquals(-1, controller(perceptual, BacklightRoute.SETTING, MemorySetting(), root()).getCommanded())
+        assertEquals(-1, controller(perceptual, BacklightRoute.SETTING, MemorySetting(), helper()).getCommanded())
     }
 }

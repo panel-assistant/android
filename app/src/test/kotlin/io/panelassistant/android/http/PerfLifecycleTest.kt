@@ -1,12 +1,18 @@
 package io.panelassistant.android.http
 
 import io.panelassistant.android.RendererTarget
+import io.panelassistant.android.metrics.PerfDump
+import io.panelassistant.android.metrics.ProcessMetric
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -63,37 +69,125 @@ class PerfLifecycleTest {
         }
     }
 
-    @Test fun rootCapabilityProbeWaitsForAnActivePerfWindow() {
+    /** Run the sampler through [ticks] active ticks with [perfDump] as the helper, then stop it. */
+    private fun sampleActively(
+        ticks: Int,
+        afterSample: () -> Unit = {},
+        perfDump: () -> PerfDump?,
+    ): String {
         val executor = Executors.newSingleThreadExecutor()
         val dispatcher = executor.asCoroutineDispatcher()
         val scope = CoroutineScope(SupervisorJob() + dispatcher)
-        val firstPause = CountDownLatch(1)
-        val rootProbed = CountDownLatch(1)
+        val paused = Channel<Unit>(Channel.UNLIMITED)
         val releases = Channel<Unit>(Channel.UNLIMITED)
-        val rootCalls = AtomicInteger()
         try {
             PerfReader.stop()
             PerfReader.startForTest(
                 scope = scope,
-                rootAvailable = {
-                    rootCalls.incrementAndGet()
-                    rootProbed.countDown()
-                    true
-                },
+                perfDump = perfDump,
                 elapsedRealtime = { 100L },
                 pause = {
-                    firstPause.countDown()
+                    afterSample()
+                    paused.trySend(Unit)
                     releases.receive()
                 },
             )
+            runBlocking {
+                // Establish an idle first loop before opening the page, regardless of executor timing.
+                withTimeout(5_000L) { paused.receive() }
+                PerfReader.touchForTest(100L)
+                repeat(ticks) {
+                    releases.trySend(Unit)
+                    withTimeout(5_000L) { paused.receive() }
+                }
+            }
+            return PerfReader.json()
+        } finally {
+            PerfReader.stop()
+            scope.cancel()
+            dispatcher.close()
+            executor.shutdownNow()
+        }
+    }
 
+    private fun dump(): PerfDump = PerfDump(
+        stat = listOf(longArrayOf(100, 0, 100, 800)),
+        loadavg = emptyList(),
+        tempMilli = 0L,
+        gpuRaw = null,
+        proc = listOf(ProcessMetric(pid = 4242, jiffies = 50L, name = "helper-ranked-proc", rssPages = 2048L)),
+        rend = emptyMap(),
+    )
+
+    @Test fun anOpenPerfPageRanksProcessesFromTheHelperDump() {
+        val fetches = AtomicInteger()
+        val json = sampleActively(ticks = 6) { fetches.incrementAndGet(); dump() }
+
+        assertTrue("helper dump must be fetched while the page is open", fetches.get() > 0)
+        val topRam = JSONObject(json).optJSONArray("topRam")
+        assertNotNull("RAM ranking comes from the helper dump: $json", topRam)
+        assertEquals("helper-ranked-proc", topRam!!.getJSONObject(0).getString("name"))
+    }
+
+    @Test fun anOpenPerfPageFetchesOneHelperDumpPerTenSecondCycle() {
+        val fetches = AtomicInteger()
+        // Ticks 0..10 at 2 s each span three 5-tick cycles (ticks 0, 5 and 10).
+        sampleActively(ticks = 11) { fetches.incrementAndGet(); dump() }
+
+        assertEquals(3, fetches.get())
+    }
+
+    @Test fun withNoHelperTheProcessRankingsAreUnavailable() {
+        val json = JSONObject(sampleActively(ticks = 6) { null })
+
+        assertTrue(json.isNull("top"))
+        assertTrue(json.isNull("topRam"))
+        assertTrue(json.isNull("render"))
+    }
+
+    @Test fun helperLossClearsPublishedReadingsAndReturningProcessesStartWithFreshDeltas() {
+        val fetches = AtomicInteger()
+        val snapshots = mutableListOf<JSONObject>()
+        sampleActively(ticks = 21, afterSample = {
+            if (fetches.get() > snapshots.size) snapshots += JSONObject(PerfReader.json())
+        }) {
+            val sample = fetches.incrementAndGet()
+            if (sample == 3) null else dump().copy(
+                stat = listOf(longArrayOf(sample * 1_000L)),
+                proc = listOf(ProcessMetric(pid = 4242, jiffies = sample * 100L,
+                    name = "helper-ranked-proc", rssPages = 2048L)),
+                rend = mapOf(4242 to sample * 100L),
+            )
+        }
+
+        assertEquals("one dump for each ten-second cycle", 5, fetches.get())
+        assertEquals("helper-ranked-proc", snapshots[1].getJSONArray("top").getJSONObject(0).getString("name"))
+        assertNotNull(snapshots[1].optJSONObject("render"))
+        for (key in listOf("top", "topRam", "render")) {
+            assertTrue("helper loss clears $key", snapshots[2].isNull(key))
+        }
+        assertTrue("the returning process needs a fresh CPU baseline", snapshots[3].isNull("top"))
+        assertEquals("helper-ranked-proc", snapshots[3].getJSONArray("topRam").getJSONObject(0).getString("name"))
+        assertEquals("CPU deltas resume from the returning process's own baseline", 10.0,
+            snapshots[4].getJSONArray("top").getJSONObject(0).getDouble("cpu"), 0.001)
+    }
+
+    @Test fun anIdleSamplerFetchesNoHelperDump() {
+        val executor = Executors.newSingleThreadExecutor()
+        val dispatcher = executor.asCoroutineDispatcher()
+        val scope = CoroutineScope(SupervisorJob() + dispatcher)
+        val firstPause = CountDownLatch(1)
+        val fetches = AtomicInteger()
+        try {
+            PerfReader.stop()
+            PerfReader.startForTest(
+                scope = scope,
+                perfDump = { fetches.incrementAndGet(); dump() },
+                elapsedRealtime = { 100L },
+                pause = { firstPause.countDown(); kotlinx.coroutines.awaitCancellation() },
+            )
             assertTrue(firstPause.await(2, TimeUnit.SECONDS))
-            assertEquals("idle sampler must not launch a privileged probe", 0, rootCalls.get())
-
-            PerfReader.touchForTest(100L)
-            releases.trySend(Unit)
-            assertTrue("active sampling must probe root capability", rootProbed.await(2, TimeUnit.SECONDS))
-            assertEquals(1, rootCalls.get())
+            assertEquals("idle sampler must not fetch a dump", 0, fetches.get())
         } finally {
             PerfReader.stop()
             scope.cancel()

@@ -5,7 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Density/font-scale parsing and live helper↔su routing, with no device or privileged process. */
+/** Density/font-scale parsing, su-free reads and live helper↔su write routing, with no device or privileged process. */
 class DensityControllerTest {
     private data class Harness(
         val density: DensityController,
@@ -18,10 +18,11 @@ class DensityControllerTest {
         rootOutputs: Map<String, String> = emptyMap(),
         rootResult: Boolean = true,
         daemonReplies: Map<String, String> = emptyMap(),
+        app: AppSizing? = null,
     ): Harness {
         val root = FakeRootShell(outputs = rootOutputs, runResult = rootResult)
         val daemon = FakeDaemon(replies = daemonReplies)
-        return Harness(DensityController(canSu = canSu, root = root, daemon = daemon), root, daemon)
+        return Harness(DensityController(canSu = canSu, root = root, daemon = daemon, app = app), root, daemon)
     }
 
     private fun privilege(
@@ -29,22 +30,77 @@ class DensityControllerTest {
         helperRootReady: Boolean = false,
     ) = PrivilegedRouteObservation(directSuReady = directSuReady, helperRootReady = helperRootReady)
 
-    @Test fun sizingObservationReadsDensityAndFontScaleExactlyOnce() {
+    private val rootSizing = mapOf(
+        "wm density" to "Physical density: 480\nOverride density: 360",
+        "font_scale" to "0.85",
+    )
+
+    @Test fun repeatedSizingReadsOnARootPanelUseTheAppReadAndNoRootOrHelperWork() {
         val h = controller(
-            rootOutputs = mapOf(
-                "wm density" to "Physical density: 320\nOverride density: 240",
-                "font_scale" to "1.25",
-            ),
+            canSu = true,
+            rootOutputs = rootSizing,
+            daemonReplies = mapOf("DENSITY" to "PHYS=320 OVER=-", "FONTSCALE" to "SCALE=1.0"),
+            app = FakeAppSizing(base = 320, override = 240, font = 1.25f),
+        )
+
+        repeat(3) {
+            assertEquals(
+                DisplaySizingObservation(current = 240, base = 320, fontScale = 1.25f),
+                h.density.observeSizing(),
+            )
+        }
+        assertTrue(h.root.outputRan.isEmpty())
+        assertTrue(h.root.isolatedOutputRan.isEmpty())
+        assertTrue(h.daemon.sent.isEmpty())
+    }
+
+    @Test fun anAppRouteTheFirmwareRefusesFallsThroughToTheHelper() {
+        val refused = object : AppSizing by FakeAppSizing() {
+            override fun density(): Pair<Int, Int?>? = throw SecurityException("display_density_forced is hidden")
+            override fun fontScale(): Float? = throw SecurityException("font_scale refused")
+        }
+        val h = controller(
+            canSu = true,
+            rootOutputs = rootSizing,
+            daemonReplies = mapOf("DENSITY" to "PHYS=320 OVER=240", "FONTSCALE" to "SCALE=1.15"),
+            app = refused,
         )
 
         assertEquals(
-            DisplaySizingObservation(current = 240, base = 320, fontScale = 1.25f),
+            DisplaySizingObservation(current = 240, base = 320, fontScale = 1.15f),
             h.density.observeSizing(),
         )
-        assertEquals(1, h.root.outputRan.count { it.startsWith("wm density") })
-        assertEquals(1, h.root.outputRan.count { it.contains("font_scale") })
-        assertEquals(2, h.root.outputRan.size)
-        assertTrue(h.daemon.sent.isEmpty())
+        assertTrue(h.root.outputRan.isEmpty())
+    }
+
+    @Test fun withoutAnAppReadARootPanelReadsSizingFromTheHelperNotSu() {
+        val h = controller(
+            canSu = true,
+            rootOutputs = rootSizing,
+            daemonReplies = mapOf("DENSITY" to "PHYS=320 OVER=240", "FONTSCALE" to "SCALE=1.15"),
+        )
+
+        assertEquals(
+            DisplaySizingObservation(current = 240, base = 320, fontScale = 1.15f),
+            h.density.observeSizing(),
+        )
+        assertEquals(listOf("DENSITY", "FONTSCALE"), h.daemon.sent)
+        assertTrue(h.root.outputRan.isEmpty())
+    }
+
+    @Test fun sizingIsUnknownWithNoRootCallWhenNeitherTheAppNorTheHelperAnswers() {
+        val h = controller(
+            canSu = true,
+            rootOutputs = rootSizing,
+            daemonReplies = mapOf("DENSITY" to "ERR", "FONTSCALE" to "ERR"),
+        )
+
+        assertEquals(
+            DisplaySizingObservation(current = null, base = null, fontScale = 1.0f),
+            h.density.observeSizing(),
+        )
+        assertTrue(h.root.outputRan.isEmpty())
+        assertTrue(h.root.isolatedOutputRan.isEmpty())
     }
 
     @Test fun sizingObservationUsesTwoHelperCommandsWhenHelperIsPreferred() {
@@ -62,27 +118,6 @@ class DensityControllerTest {
         )
         assertEquals(listOf("DENSITY", "FONTSCALE"), h.daemon.sent)
         assertTrue(h.root.outputRan.isEmpty())
-    }
-
-    @Test fun sizingObservationFallsBackIndependentlyForBothReads() {
-        val h = controller(
-            rootOutputs = mapOf(
-                "wm density" to "unexpected",
-                "font_scale" to "not-a-scale",
-            ),
-            daemonReplies = mapOf(
-                "DENSITY" to "PHYS=480 OVER=360",
-                "FONTSCALE" to "SCALE=0.85",
-            ),
-        )
-
-        assertEquals(
-            DisplaySizingObservation(current = 360, base = 480, fontScale = 0.85f),
-            h.density.observeSizing(),
-        )
-        assertEquals(1, h.root.outputRan.count { it.startsWith("wm density") })
-        assertEquals(1, h.root.outputRan.count { it.contains("font_scale") })
-        assertEquals(listOf("DENSITY", "FONTSCALE"), h.daemon.sent)
     }
 
     @Test fun sizingObservationUsesOnlyRoutesCapturedReadyForThisRequest() {
@@ -118,24 +153,6 @@ class DensityControllerTest {
         )
         assertTrue(h.root.outputRan.isEmpty())
         assertTrue(h.daemon.sent.isEmpty())
-    }
-
-    @Test fun helperPreferredSizingObservationFallsBackToSu() {
-        val h = controller(
-            canSu = false,
-            rootOutputs = mapOf(
-                "wm density" to "Physical density: 480\nOverride density: 360",
-                "font_scale" to "0.85",
-            ),
-            daemonReplies = mapOf("DENSITY" to "ERR", "FONTSCALE" to "ERR"),
-        )
-
-        assertEquals(
-            DisplaySizingObservation(current = 360, base = 480, fontScale = 0.85f),
-            h.density.observeSizing(),
-        )
-        assertEquals(listOf("DENSITY", "FONTSCALE"), h.daemon.sent)
-        assertEquals(2, h.root.outputRan.size)
     }
 
     @Test fun sizingObservationKeepsDensityWhenFontScaleIsUnreadable() {

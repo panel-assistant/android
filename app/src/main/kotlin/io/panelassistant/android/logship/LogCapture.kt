@@ -1,7 +1,6 @@
 package io.panelassistant.android.logship
 
 import android.util.Log
-import io.panelassistant.android.device.SuForm
 import io.panelassistant.android.metrics.FeatureCostOperation
 import io.panelassistant.android.metrics.FeatureCostOutcome
 import io.panelassistant.android.metrics.FeatureCostRegistry
@@ -43,8 +42,7 @@ data class LogCaptureRecord(
  * there is no logcat subprocess at all. Two sources exist as separate instances:
  *  - [app]: ha-paneld's own-process logcat (its `Log.*` output + the Ktor SLF4J lines) —
  *    own-uid, so readable with no `READ_LOGS` permission and no root.
- *  - [system]: full system logcat via the profile's su form, or the authenticated helper when the app
- *    cannot use root itself.
+ *  - [system]: full system logcat through the authenticated helper; unavailable without its LOGCAT capability.
  *  - [webView]: the dashboard WebView's JavaScript console, read over the CDP relay by an in-process
  *    [lineStream] instead of a subprocess (see [WebViewConsoleStream]).
  *
@@ -72,8 +70,6 @@ class LogCapture(
     private val lineStream: (suspend (emit: (String) -> Unit) -> Unit)? = null,
     /** `-v long -v printable` escapes message newlines; only the blank footer separates entries. */
     private val longLogcatRecords: Boolean = false,
-    /** Only system capture uses this to choose the root process or the helper at each restart. */
-    private val processAvailable: () -> Boolean = { true },
     private val wallMillis: () -> Long = System::currentTimeMillis,
     private val timeZone: () -> TimeZone = TimeZone::getDefault,
     private val restartBaseMs: Long = BACKOFF_MS,
@@ -229,7 +225,7 @@ class LogCapture(
     /** One-shot dump of the last [lines] log lines (redacted). A single flight is shared by all
      * callers, output is capped before decoding, and a wedged command is forcibly terminated. */
     fun dump(lines: Int = DUMP_LINES): List<String> {
-        if (lines <= 0 || (lineStream != null && (streamCmd.isEmpty() || !processAvailable()))) return emptyList()
+        if (lines <= 0 || lineStream != null) return emptyList()
         val (flight, owner) = synchronized(this) {
             if (closed) return emptyList()
             val current = dumpFlight
@@ -361,7 +357,7 @@ class LogCapture(
                 val emittedBefore = emitted.get()
                 try {
                     val records = if (longLogcatRecords) LongLogcatRecords { emit(r, redact(it)) } else null
-                    if (producer != null && (streamCmd.isEmpty() || !processAvailable())) {
+                    if (producer != null) {
                         producer { line ->
                             if (records != null) records.accept(line) else emit(r, redact(line))
                         }
@@ -483,33 +479,24 @@ class LogCapture(
             { n -> listOf("logcat", "-v", "threadtime", "-d", "-t", "$n", "*:V") },
         )
 
-        /** Full system logcat. A helper producer is used only when root is unavailable to this app.
+        /** Full system logcat through the authenticated helper's `LOGCAT` stream only. Missing or
+         *  unsupported helpers leave this source unavailable; retries back off without starting su.
          *  `printable` escapes message newlines so only the `long` footer has a blank physical line;
          *  embedded blank lines in exceptions cannot be mistaken for record boundaries. */
         fun system(
             scope: CoroutineScope,
-            suForm: SuForm,
-            helperLines: (suspend (emit: (String) -> Unit) -> Unit)? = null,
-            rootAvailable: () -> Boolean = { true },
+            helperLines: suspend (emit: (String) -> Unit) -> Unit,
             processStarter: (List<String>) -> Process = { command ->
                 ProcessBuilder(command).redirectErrorStream(true).start()
             },
-        ): LogCapture {
-            val su = when (suForm) {
-                SuForm.TOOLBOX -> listOf("su", "-c")
-                SuForm.ANDROID -> listOf("su", "0", "sh", "-c")
-                SuForm.NONE -> emptyList()
-            }
-            return LogCapture(
-                scope,
-                su + "logcat -b all -v long -v epoch -v printable -T 1 '*:V'",
-                { n -> su + "logcat -b all -v long -v epoch -v printable -d -t $n '*:V'" },
-                processStarter = processStarter,
-                lineStream = helperLines,
-                longLogcatRecords = true,
-                processAvailable = { su.isNotEmpty() && rootAvailable() },
-            )
-        }
+        ) = LogCapture(
+            scope,
+            streamCmd = emptyList(),
+            dumpCmd = { emptyList() },
+            processStarter = processStarter,
+            lineStream = helperLines,
+            longLogcatRecords = true,
+        )
 
         /** Dashboard WebView console over the CDP relay. [enabled] keeps it idle unless log shipping is
          *  configured; it never starts the relay itself. */

@@ -12,6 +12,13 @@ interface RootShell {
     /** True if any su form works (a `su true` succeeds). */
     fun available(): Boolean
 
+    /**
+     * Whether root is usable as far as this process has already observed, never starting a root
+     * process. Repeated status, snapshot and capability reads use this; [available] is for an action
+     * about to run root anyway. The default keeps test/legacy fakes, which start no process, unchanged.
+     */
+    fun observedUsable(): Boolean = available()
+
     /** Run [cmd] as root, waiting for completion; true on exit 0. */
     fun run(cmd: String): Boolean
 

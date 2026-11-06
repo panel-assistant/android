@@ -66,7 +66,6 @@ enum class FeatureCostOperation(
     NAVBAR_ACTION("navbar.action"),
     COMMAND_DISPATCH("commands.dispatch"),
     COMMAND_QUEUE_WAIT("commands.queue_wait"),
-    PERF_ROOT_DIAGNOSTICS("performance.root_diagnostics"),
     PERF_FEATURE_COST_PROJECTION("performance.feature_cost_projection"),
     PROVISIONING_PLAN("provisioning.plan"),
     PROVISIONING_OBSERVATION_REFRESH("provisioning.observation_refresh", parentId = "provisioning.plan"),
