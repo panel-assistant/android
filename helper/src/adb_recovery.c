@@ -23,6 +23,7 @@
 #include <sys/stat.h>
 #include <sys/un.h>
 #include <sys/wait.h>
+#include <sys/resource.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -646,6 +647,329 @@ static int replace_incumbent(const struct sockaddr_un *address, socklen_t length
     if (fd >= 0) close(fd);
     return result;
 }
+#define ENSURE_TOTAL_MS 25000
+#define ENSURE_PROBE_MS 500
+#define ENSURE_SOURCE_LIMIT (8u * 1024u * 1024u)
+#define ENSURE_CHILD_LIMIT 2
+static _Atomic unsigned ensure_children, ensure_sequence;
+
+static int ensure_live(long long deadline) { long long now = now_ms(); return now >= 0 && now < deadline; }
+static int ensure_metadata(const struct stat *st) {
+    return S_ISREG(st->st_mode) && !st->st_uid && !st->st_gid &&
+        (st->st_mode & 07777) == 0700 && st->st_nlink == 1;
+}
+static int ensure_same(const struct stat *a, const struct stat *b) {
+    return a->st_dev == b->st_dev && a->st_ino == b->st_ino;
+}
+static int ensure_directory_current(int fd) {
+    struct stat held, named;
+    return !fstat(fd, &held) && !lstat(ADB_RECOVERY_DIRECTORY, &named) &&
+        S_ISDIR(named.st_mode) && !named.st_uid && !named.st_gid &&
+        (named.st_mode & 07777) == 0700 && ensure_same(&held, &named);
+}
+/* A superseded publication must never acquire or mutate incumbent custody. */
+static int ensure_startup_current(int directory) {
+    int fd = open("/proc/self/exe", O_RDONLY | O_CLOEXEC);
+    struct stat self, installed;
+    int valid = fd >= 0 && ensure_directory_current(directory) && !fstat(fd, &self) &&
+        ensure_metadata(&self) && !fstatat(directory, "helper", &installed, AT_SYMLINK_NOFOLLOW) &&
+        ensure_metadata(&installed) && ensure_same(&self, &installed);
+    if (fd >= 0) close(fd);
+    return valid;
+}
+static int ensure_wait(int fd, short events, long long deadline) {
+    for (;;) {
+        long long now = now_ms();
+        if (now < 0 || now >= deadline) return -1;
+        struct pollfd ready = { .fd = fd, .events = events };
+        int n = poll(&ready, 1, (int)(deadline - now));
+        if (n < 0 && errno == EINTR) continue;
+        return n > 0 && ensure_live(deadline) && !(ready.revents & POLLNVAL) ? 0 : -1;
+    }
+}
+/* Ordinary connections use only their own absolute deadline, never read_deadline. */
+static int ensure_status(long long deadline) {
+    int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0), process = -1, result = 0;
+    if (fd < 0 || !ensure_live(deadline)) goto done;
+    struct sockaddr_un address = { .sun_family = AF_UNIX };
+    size_t length = strlen(ADB_RECOVERY_SOCKET);
+    if (length + 1 > sizeof address.sun_path) goto done;
+    memcpy(address.sun_path + 1, ADB_RECOVERY_SOCKET, length);
+    if (connect(fd, (struct sockaddr *)&address, offsetof(struct sockaddr_un, sun_path) + 1 + length)) {
+        if (errno != EINPROGRESS || ensure_wait(fd, POLLOUT, deadline)) goto done;
+        int error; socklen_t size = sizeof error;
+        if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &size) || error) goto done;
+    }
+    struct ucred peer; socklen_t size = sizeof peer;
+    if (getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &peer, &size) || peer.uid || peer.pid <= 1) goto done;
+    char path[64], executable[PATH_MAX], canonical[PATH_MAX];
+    snprintf(path, sizeof path, "/proc/%ld", (long)peer.pid);
+    process = open(path, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (process < 0) goto done;
+    ssize_t n = readlinkat(process, "exe", executable, sizeof executable - 1);
+    if (n < 0 || n == (ssize_t)sizeof executable - 1) goto done;
+    executable[n] = 0;
+    int count = snprintf(canonical, sizeof canonical, "%s/helper", ADB_RECOVERY_DIRECTORY);
+    if (count < 0 || count >= (int)sizeof canonical) goto done;
+    if (strncmp(executable, canonical, (size_t)count) ||
+        (executable[count] && strcmp(executable + count, " (deleted)"))) goto done;
+    struct stat image, pinned, reached; char state; unsigned long long started, checked;
+    if (fstatat(process, "exe", &image, 0) || !S_ISREG(image.st_mode) || image.st_uid || image.st_gid ||
+        (image.st_mode & 07777) != 0700 || image.st_nlink > 1 ||
+        fstat(process, &pinned) || process_state(process, &state, &started) || state == 'Z') goto done;
+    const char request[] = "STATUS\n"; size_t sent = 0;
+    while (sent < sizeof request - 1) {
+        if (ensure_wait(fd, POLLOUT, deadline)) goto done;
+        n = send(fd, request + sent, sizeof request - 1 - sent, MSG_NOSIGNAL | MSG_DONTWAIT);
+        if (n < 0 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)) continue;
+        if (n <= 0) goto done;
+        sent += (size_t)n;
+    }
+    char response[160]; size_t used = 0;
+    for (;;) {
+        if (used + 1 >= sizeof response || ensure_wait(fd, POLLIN, deadline)) goto done;
+        char ch; n = recv(fd, &ch, 1, MSG_DONTWAIT);
+        if (n < 0 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)) continue;
+        if (n != 1) goto done;
+        if (ch == '\n') { response[used] = 0; break; }
+        if (ch < 32 || ch > 126) goto done;
+        response[used++] = ch;
+    }
+    char build[65];
+    if (used != 78 || memcmp(response, "READY 1 ", 8) || response[72] != ' ' ||
+        response[74] != ' ' || response[76] != ' ' ||
+        (response[73] != '0' && response[73] != '1') ||
+        (response[75] != '0' && response[75] != '1') ||
+        (response[77] != '0' && response[77] != '1')) goto done;
+    memcpy(build, response + 8, 64); build[64] = 0;
+    if (!nonce_valid(build) || strcmp(build, helper_build_id()) || stat(path, &reached) || !ensure_same(&pinned, &reached) ||
+        process_state(process, &state, &checked) || state == 'Z' || checked != started ||
+        fstatat(process, "exe", &reached, 0) || !ensure_same(&image, &reached) || !ensure_live(deadline)) goto done;
+    result = 1;
+ done:
+    if (process >= 0) close(process);
+    if (fd >= 0) close(fd);
+    return result;
+}
+
+/* Publication owns only its exclusive stage. Canonical state is never rolled back on failure. */
+static int ensure_publish(long long deadline) {
+    int source = -1, parent = -1, directory = -1, writer = -1, pin = -1, result = -1, staged = 0;
+    struct stat original, stage = {0}, st, before = {0}; int existed = 0;
+    char parent_path[PATH_MAX], stage_name[80];
+    size_t path_size = strlen(ADB_RECOVERY_DIRECTORY);
+    if (path_size >= sizeof parent_path) goto done;
+    memcpy(parent_path, ADB_RECOVERY_DIRECTORY, path_size + 1);
+    char *leaf = strrchr(parent_path, '/');
+    if (!leaf || leaf == parent_path || !leaf[1]) goto done;
+    *leaf++ = 0;
+    source = open("/proc/self/exe", O_RDONLY | O_CLOEXEC);
+    if (source < 0 || fstat(source, &original) || !S_ISREG(original.st_mode) || original.st_uid || original.st_gid ||
+        !(original.st_mode & 0111) || original.st_size <= 0 || original.st_size > ENSURE_SOURCE_LIMIT) goto done;
+    parent = open(parent_path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (parent < 0 || fstat(parent, &st) || st.st_uid || (st.st_mode & 0022)) goto done;
+    if (mkdirat(parent, leaf, 0700) && errno != EEXIST) goto done;
+    directory = openat(parent, leaf, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (directory < 0 || !ensure_directory_current(directory)) goto done;
+    long long lock_until = now_ms() + 2000;
+    if (lock_until > deadline) lock_until = deadline;
+    while (flock(directory, LOCK_EX | LOCK_NB)) {
+        if ((errno != EWOULDBLOCK && errno != EINTR) || !ensure_live(lock_until)) goto done;
+        usleep(20000);
+    }
+    if (!ensure_live(deadline) || !ensure_directory_current(directory) || fsync(directory) || fsync(parent)) goto done;
+    if (!fstatat(directory, "helper", &before, AT_SYMLINK_NOFOLLOW)) { if (!ensure_metadata(&before)) goto done; existed = 1; }
+    else if (errno != ENOENT) goto done;
+    for (unsigned attempt = 0; attempt < 8; attempt++) {
+        snprintf(stage_name, sizeof stage_name, ".ensure-%ld-%u", (long)getpid(), atomic_fetch_add(&ensure_sequence, 1));
+        writer = openat(directory, stage_name, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0700);
+        if (writer >= 0) break;
+        if (errno != EEXIST) goto done;
+    }
+    if (writer < 0 || fstat(writer, &stage)) goto done;
+    staged = 1;
+    if (fchown(writer, 0, 0) || fchmod(writer, 0700) || fstat(writer, &stage) || !ensure_metadata(&stage)) goto done;
+    off_t copied = 0;
+    while (copied < original.st_size) {
+        char bytes[16384]; size_t amount = (size_t)(original.st_size - copied);
+        if (amount > sizeof bytes) amount = sizeof bytes;
+        if (!ensure_live(deadline)) goto done;
+        ssize_t n = read(source, bytes, amount);
+        if (n < 0 && errno == EINTR) continue;
+        if (n <= 0) goto done;
+        size_t written = 0;
+        while (written < (size_t)n) {
+            if (!ensure_live(deadline)) goto done;
+            ssize_t w = write(writer, bytes + written, (size_t)n - written);
+            if (w < 0 && errno == EINTR) continue;
+            if (w <= 0) goto done;
+            written += (size_t)w;
+        }
+        copied += n;
+    }
+    char excess;
+    if (read(source, &excess, 1) != 0 || fstat(source, &st) || !ensure_same(&original, &st) ||
+        original.st_size != st.st_size || original.st_mtim.tv_sec != st.st_mtim.tv_sec ||
+        original.st_mtim.tv_nsec != st.st_mtim.tv_nsec || original.st_ctim.tv_sec != st.st_ctim.tv_sec ||
+        original.st_ctim.tv_nsec != st.st_ctim.tv_nsec || fsync(writer)) goto done;
+    /* No writable alias may survive actual exec (ETXTBSY), even if its pin is read-only. */
+    if (close(writer)) { writer = -1; goto done; }
+    writer = -1;
+    pin = openat(directory, stage_name, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    if (pin < 0 || fstat(pin, &st) || !ensure_metadata(&st) || !ensure_same(&stage, &st) || st.st_size != original.st_size) goto done;
+    if (!ensure_live(deadline) || !ensure_directory_current(directory)) goto done;
+    if (!fstatat(directory, "helper", &st, AT_SYMLINK_NOFOLLOW)) {
+        if (!existed || !ensure_metadata(&st) || !ensure_same(&before, &st)) goto done;
+    } else if (errno != ENOENT || existed) goto done;
+    if (renameat(directory, stage_name, directory, "helper")) goto done;
+    staged = 0;
+    if (fsync(directory) || !ensure_directory_current(directory) ||
+        fstatat(directory, "helper", &st, AT_SYMLINK_NOFOLLOW) || !ensure_metadata(&st) ||
+        !ensure_same(&stage, &st) || !ensure_live(deadline)) goto done;
+    result = pin; pin = -1;
+ done:
+    if (writer >= 0) close(writer);
+    if (staged && directory >= 0 && !fstatat(directory, stage_name, &st, AT_SYMLINK_NOFOLLOW) && ensure_same(&stage, &st))
+        (void)unlinkat(directory, stage_name, 0);
+    if (pin >= 0) close(pin);
+    if (source >= 0) close(source);
+    if (directory >= 0) close(directory); /* Release publication flock before the child starts. */
+    if (parent >= 0) close(parent);
+    return result;
+}
+
+typedef struct { pthread_mutex_t mutex; pthread_cond_t ready; int assigned; pid_t pid; } ensure_reaper;
+static void *ensure_reap(void *argument) {
+    ensure_reaper *job = argument;
+    pthread_mutex_lock(&job->mutex);
+    while (!job->assigned) pthread_cond_wait(&job->ready, &job->mutex);
+    pid_t pid = job->pid;
+    pthread_mutex_unlock(&job->mutex);
+    if (pid > 0) while (waitpid(pid, NULL, 0) < 0 && errno == EINTR) {}
+    pthread_cond_destroy(&job->ready); pthread_mutex_destroy(&job->mutex); free(job);
+    atomic_fetch_sub(&ensure_children, 1);
+    return NULL;
+}
+static ensure_reaper *ensure_reserve(void) {
+    if (atomic_fetch_add(&ensure_children, 1) >= ENSURE_CHILD_LIMIT) { atomic_fetch_sub(&ensure_children, 1); return NULL; }
+    ensure_reaper *job = calloc(1, sizeof *job);
+    if (!job) goto failed;
+    if (pthread_mutex_init(&job->mutex, NULL)) goto free_job;
+    if (pthread_cond_init(&job->ready, NULL)) goto destroy_mutex;
+    pthread_attr_t attr;
+    if (pthread_attr_init(&attr)) goto destroy_cond;
+    pthread_t thread;
+    int error = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    if (!error) error = pthread_create(&thread, &attr, ensure_reap, job);
+    pthread_attr_destroy(&attr);
+    if (!error) return job;
+ destroy_cond: pthread_cond_destroy(&job->ready);
+ destroy_mutex: pthread_mutex_destroy(&job->mutex);
+ free_job: free(job);
+ failed: atomic_fetch_sub(&ensure_children, 1); return NULL;
+}
+static void ensure_assign(ensure_reaper *job, pid_t pid) {
+    pthread_mutex_lock(&job->mutex); job->pid = pid; job->assigned = 1;
+    pthread_cond_signal(&job->ready); pthread_mutex_unlock(&job->mutex);
+}
+/* Existing descriptors may exceed a limit lowered before helper startup. New descriptors
+ * opened concurrently cannot exceed the current limit; scan existing ones before fork. */
+static int ensure_close_bound(long long deadline) {
+    struct rlimit limit;
+    if (getrlimit(RLIMIT_NOFILE, &limit) || limit.rlim_cur == RLIM_INFINITY ||
+        limit.rlim_cur > 1048576) return -1;
+    int bound = (int)limit.rlim_cur, valid = 1;
+    DIR *fds = opendir("/proc/self/fd");
+    if (!fds) return -1;
+    size_t entries = 0;
+    for (;;) {
+        if (!ensure_live(deadline)) { valid = 0; break; }
+        errno = 0;
+        struct dirent *entry = readdir(fds);
+        if (!entry) { if (errno) valid = 0; break; }
+        if (++entries > 1048578) { valid = 0; break; }
+        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..")) continue;
+        unsigned fd = 0;
+        for (const char *p = entry->d_name; *p; p++) {
+            if (*p < '0' || *p > '9' || fd > (1048575u - (unsigned)(*p - '0')) / 10u) { valid = 0; break; }
+            fd = fd * 10u + (unsigned)(*p - '0');
+        }
+        if (!valid) break;
+        if (fd + 1 > (unsigned)bound) bound = (int)fd + 1;
+    }
+    if (closedir(fds)) valid = 0;
+    return valid ? bound : -1;
+}
+static int ensure_spawn(int executable, ensure_reaper *job, long long deadline) {
+    int errors[2] = {-1,-1}, null = -1, result = -1;
+    int close_bound = ensure_close_bound(deadline);
+    char path[64]; snprintf(path, sizeof path, "/proc/self/fd/%d", executable);
+    char *const argv[] = { "hapaneld-helper", "--adb-recovery", NULL };
+    char *const environment[] = { "PATH=/system/bin:/vendor/bin", "ANDROID_ROOT=/system", "ANDROID_DATA=/data", "LANG=C", "LC_ALL=C", NULL };
+    if (executable < 3 || close_bound <= executable ||
+        !ensure_live(deadline) || pipe2(errors, O_CLOEXEC | O_NONBLOCK)) goto cancel;
+    null = open("/dev/null", O_RDWR | O_CLOEXEC);
+    if (null < 3 || errors[0] < 3 || errors[1] < 3) goto cancel;
+    pid_t child = fork();
+    if (!child) {
+        int failure = 0;
+        if (setsid() < 0 || dup2(null, 0) < 0 || dup2(null, 1) < 0 || dup2(null, 2) < 0) failure = errno ? errno : EIO;
+        if (!failure) {
+            for (int fd = 3; fd < close_bound; fd++) if (fd != executable && fd != errors[1]) close(fd);
+            execve(path, argv, environment); failure = errno ? errno : EIO;
+        }
+        const char *bytes = (const char *)&failure; size_t sent = 0;
+        while (sent < sizeof failure) {
+            ssize_t n = write(errors[1], bytes + sent, sizeof failure - sent);
+            if (n < 0 && errno == EINTR) continue;
+            if (n <= 0) break;
+            sent += (size_t)n;
+        }
+        _exit(127);
+    }
+    ensure_assign(job, child > 0 ? child : 0); job = NULL;
+    close(errors[1]); errors[1] = -1;
+    close(null); null = -1;
+    if (child < 0) goto done;
+    /* Exec EOF is only permission to probe readiness; it never implies READY. */
+    for (;;) {
+        if (ensure_wait(errors[0], POLLIN, deadline)) goto done;
+        int failure; ssize_t n = read(errors[0], &failure, sizeof failure);
+        if (n < 0 && (errno == EINTR || errno == EAGAIN)) continue;
+        if (!n && ensure_live(deadline)) result = 0;
+        break;
+    }
+    goto done;
+ cancel:
+    ensure_assign(job, 0);
+ done:
+    if (null >= 0) close(null);
+    if (errors[0] >= 0) close(errors[0]);
+    if (errors[1] >= 0) close(errors[1]);
+    return result;
+}
+int adb_recovery_ensure(void) {
+    long long start = now_ms();
+    if (geteuid() || start < 0) return 0;
+    long long deadline = start + ENSURE_TOTAL_MS;
+    if (ensure_status(start + ENSURE_PROBE_MS)) return 1;
+    if (!ensure_live(deadline)) return 0;
+    ensure_reaper *job = ensure_reserve();
+    if (!job) return 0;
+    int executable = ensure_publish(deadline);
+    if (executable < 0) { ensure_assign(job, 0); return 0; }
+    int spawned = ensure_spawn(executable, job, deadline);
+    close(executable);
+    if (spawned) return 0;
+    while (ensure_live(deadline)) {
+        long long until = now_ms() + ENSURE_PROBE_MS;
+        if (until > deadline) until = deadline;
+        if (ensure_status(until)) return 1;
+        if (ensure_live(deadline)) usleep(20000);
+    }
+    return 0;
+}
+
 int adb_recovery_main(void) {
     if (geteuid()) return 1;
     signal(SIGPIPE, SIG_IGN);
@@ -657,7 +981,7 @@ int adb_recovery_main(void) {
     socklen_t address_length = offsetof(struct sockaddr_un, sun_path) + 1 + socket_length;
     if (server < 0) return 1;
     int directory = replacement_directory();
-    if (directory < 0) { close(server); return 1; }
+    if (directory < 0 || !ensure_startup_current(directory)) { if (directory >= 0) close(directory); close(server); return 1; }
     struct stat retiring;
     int pending = retiring_inode(directory, &retiring, NULL);
     if (pending < 0) { close(directory); close(server); return 1; }

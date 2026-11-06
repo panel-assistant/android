@@ -29,6 +29,10 @@ interface Daemon {
     /** Strict fixed CDP process/listener observation; unavailable never proves absence. */
     fun cdpState(): HelperCdpState? = null
 
+    /** Ordinary-helper recovery bootstrap; admission is exact build + version on each carrying socket. */
+    fun supportsAdbRecoveryEnsure(): Boolean = false
+    fun ensureAdbRecovery(): Boolean = false
+
     /** Fixed SELF graphics counters; unavailable never falls back to a root shell. */
     fun gfxInfo(): HelperGfxInfo? = null
 

@@ -11,6 +11,10 @@
 #include <string.h>
 #include <unistd.h>
 
+static int ensure_result, ensure_calls;
+void sysexec_stub_set_ensure_result(int result) { ensure_result = result; }
+int sysexec_stub_count_ensure(void) { return ensure_calls; }
+
 #define MAX_POPEN_RULES 8
 #define MAX_RUN_HISTORY 32
 #define MAX_RUN_BYTES 4096
@@ -56,6 +60,7 @@ static int deadline_call_count;
 static unsigned deadline_elapsed_ms;
 
 void sysexec_stub_reset(void) {
+    ensure_result = ensure_calls = 0;
     memset(run_fail_needle, 0, sizeof run_fail_needle);
     run_fail_status = 0;
     memset(run_timeout_needle, 0, sizeof run_timeout_needle);
@@ -420,3 +425,6 @@ int sysexec_capture_gfxinfo(const char *package, char *output, size_t capacity, 
     if (output && capacity) *used = strlen(output);
     return status;
 }
+
+// No-exec socket/fuzz fixtures interpose the fixed ordinary recovery operation.
+int __wrap_adb_recovery_ensure(void) { ensure_calls++; return ensure_result; }

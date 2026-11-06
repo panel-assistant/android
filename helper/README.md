@@ -17,7 +17,7 @@ Newline-terminated ASCII on the abstract UNIX socket `@hapaneld-helper`. One or 
 
 | Command | Effect | Reply |
 | --- | --- | --- |
-| `VERSION` | read the helper identity without touching hardware | `HELPER version=1.14.0 proto=1.14` / `ERR` when arguments are supplied |
+| `VERSION` | read the helper identity without touching hardware | `HELPER version=1.15.0 proto=1.15` / `ERR` when arguments are supplied |
 | `RGB <r> <g> <b>` | set LED colour (each 0..255) | `OK` / `ERR` |
 | `OFF` | LED off | `OK` / `ERR` |
 | `BTN <0..255>` | button-backlight brightness | `OK` / `ERR` |
@@ -59,6 +59,7 @@ Newline-terminated ASCII on the abstract UNIX socket `@hapaneld-helper`. One or 
 | `GFXINFO SELF` | fixed authenticated app cumulative HWUI counters (protocol 1.14) | `GFXINFO SINCE=<u64> TOTAL=<u32> JANKY=<u32>` / `ERR` |
 | `CDPSTATE` | argument-free fixed relay process/listener exposure observation (protocol 1.13) | `CDPSTATE PRESENT` / `CDPSTATE ABSENT` / `CDPSTATE UNKNOWN` / `ERR` |
 | `ADBSTATE` | argument-free bounded fixed Android ADB properties and direct TCP listener inventory (protocol 1.10) | `PROPS=<0 or 1 or ?> LISTEN=<0 or 1 or ?>` / `ERR` |
+| `ADBRECOVERYENSURE` | argument-free publication and readiness of the independent ADB recovery owner (protocol 1.15) | `ADBRECOVERYENSURE READY` / `ADBRECOVERYENSURE UNAVAILABLE` / `ERR` for arguments |
 | `WIFISTATUS` | argument-free bounded current Wi-Fi fields from fixed Android commands (protocol 1.9) | `SSID=<hex or -> RSSI=<dBm or ->` / `ERR` |
 | `ZIGBEECONTAIN` | argument-free containment for the exact vendor-native Sonoff `/vendor/bin/siliconlabs_host` layout; targets only its guard, gateway and matching broker, then demotes a surviving gateway | `OK` / `PARTIAL` / `ERR` |
 | `PERFDUMP` | CPU/load/temp/gpu/process snapshot (for sandbox-walled apps) | marker-delimited stream, then EOF |
@@ -67,6 +68,23 @@ Newline-terminated ASCII on the abstract UNIX socket `@hapaneld-helper`. One or 
 | `GRANT <pkg> <capability>` | apply one grant from a fixed table to the app's own package: `NOTIFICATIONS`, `MICROPHONE`, `CAMERA` (runtime permissions), `WRITESETTINGS`, `OVERLAY` (app-ops), `BATTERY` (deviceidle whitelist, `cmd` with a `dumpsys` fallback), `ACCESSIBILITY` (append the panel service to the shared secure setting and enable accessibility, idempotently). No free-form permission, app-op or setting name is accepted, and no other package | `OK` / `ERR` |
 | `PING` | liveness probe | `OK` |
 | anything else | — | `ERR` |
+
+`ADBRECOVERYENSURE` accepts no paths, build IDs or commands. It first checks the fixed recovery
+endpoint for the running helper's exact build. Otherwise it copies its pinned running executable
+(at most 8 MiB) to an exclusive root-owned stage in the fixed recovery directory, syncs it, closes
+the writer, atomically publishes `helper`, and syncs the directory. Unsafe existing metadata is
+refused. Publication failure never removes the canonical helper or custody receipt. The child
+executes a read-only pin to that published inode with fixed arguments and a clean environment;
+its startup rechecks the canonical inode before touching incumbent custody. The existing recovery
+replacement, guardian drain and receipt validation remain authoritative.
+
+The operation shares a 25 s monotonic userspace budget, including a first readiness probe capped
+at 500 ms. Blocking kernel filesystem calls can outlast that budget. At most two children can be
+owned by pre-reserved detached reapers. An ordinary-helper exit or request timeout does not kill
+the independent recovery owner. Only a fresh root-peer, exact-build recovery `STATUS` establishes
+`READY`; launching alone does not. The reply has one trailing newline and is at most 32 bytes.
+This command does not arm or renew a recovery lease, and `ARM`, `BEAT`, `RECOVER` and `SHELL`
+remain on the separate recovery endpoint.
 
 `GOVREAD` accepts exactly `CURRENT` or `AVAILABLE`, with no extra arguments. It reads only
 `/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor` or `scaling_available_governors` in the same

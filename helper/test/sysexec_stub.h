@@ -28,4 +28,7 @@ int  sysexec_stub_count_deadline_calls(void);
 unsigned sysexec_stub_deadline_ms(int index);
 void sysexec_stub_set_deadline_elapsed(unsigned ms);
 
+void sysexec_stub_set_ensure_result(int result);
+int sysexec_stub_count_ensure(void);
+
 #endif

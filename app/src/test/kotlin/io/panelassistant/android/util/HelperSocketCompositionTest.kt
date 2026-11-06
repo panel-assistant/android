@@ -33,6 +33,16 @@ import org.junit.Test
 
 class HelperSocketCompositionTest {
     @Test(timeout = 10_000)
+    fun recoveryBootstrapRefusesTheHostFixtureBuildAndInvalidArgumentsBeforePublication() {
+        // This host fixture advertises BUILDID development, not the app's expected embedded digest.
+        val daemon = IdentityAdmittingHelperClient(ChannelSessionTransport(socketPath))
+        assertFalse(daemon.supportsAdbRecoveryEnsure())
+        assertFalse(daemon.ensureAdbRecovery())
+        assertEquals("BUILDID development", SocketDaemon(socketPath).send("BUILDID"))
+        assertEquals("ERR", SocketDaemon(socketPath).send("ADBRECOVERYENSURE extra"))
+    }
+
+    @Test(timeout = 10_000)
     fun fixedSelfGfxCountersCrossTheAdmittedNativeSocket() {
         val daemon = IdentityAdmittingHelperClient(ChannelSessionTransport(socketPath))
         assertEquals(io.panelassistant.android.platform.HelperGfxInfo("123456789", 120, 7), daemon.gfxInfo())
@@ -52,7 +62,7 @@ class HelperSocketCompositionTest {
             ).redirectErrorStream(true).start()
             assertEquals("READY", second.inputStream.bufferedReader().readLine())
             assertTrue(Files.isDirectory(root.resolve(".hapaneld-guard-db-test")))
-            assertEquals("HELPER version=1.14.0 proto=1.14", SocketDaemon(socket).send("VERSION"))
+            assertEquals("HELPER version=1.15.0 proto=1.15", SocketDaemon(socket).send("VERSION"))
         } finally {
             second?.let {
                 it.destroy()
@@ -68,7 +78,7 @@ class HelperSocketCompositionTest {
         val daemon = SocketDaemon(socketPath)
 
         assertTrue(daemon.available())
-        assertEquals("HELPER version=1.14.0 proto=1.14", daemon.send("VERSION"))
+        assertEquals("HELPER version=1.15.0 proto=1.15", daemon.send("VERSION"))
         assertEquals("ERR", daemon.send("PINGEXTRA"))
         assertEquals("OK", daemon.sendLong("RELOAD io.example.dashboard", 5_000).replyValue())
     }
@@ -84,7 +94,7 @@ class HelperSocketCompositionTest {
         val daemon = SocketDaemon(socketPath)
         // The host fixture redirects fixed governor reads and refuses governor writes.
         listOf(
-            WireTranscript("VERSION", "HELPER version=1.14.0 proto=1.14"),
+            WireTranscript("VERSION", "HELPER version=1.15.0 proto=1.15"),
             WireTranscript("PING", "OK"),
             WireTranscript("BUILDID", "BUILDID development"),
             WireTranscript("COMPANIONCAPS", "COMPANIONCAPS 1 BACKUP RESTORE STATUS JOURNAL"),

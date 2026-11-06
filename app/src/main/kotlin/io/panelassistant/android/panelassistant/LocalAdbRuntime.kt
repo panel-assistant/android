@@ -6,6 +6,8 @@ import io.panelassistant.android.Config
 import io.panelassistant.android.control.ManagedNetworkAdb
 import io.panelassistant.android.control.RemoteDebugSecurityTransitionGate
 import io.panelassistant.android.control.Su
+import io.panelassistant.android.platform.Daemon
+import io.panelassistant.android.util.HelperClient
 import io.panelassistant.android.util.helperAssetName
 import io.panelassistant.android.util.openRootAbstractSocket
 import kotlinx.coroutines.CoroutineScope
@@ -47,6 +49,7 @@ internal class LocalAdbRuntime(
     private val onClosed: () -> Unit = {},
     private val healthy: suspend () -> Boolean = { true },
     private val rootKnownUnusable: () -> Boolean = { false },
+    private val daemon: Daemon = HelperClient,
 ) : PanelAssistantLocalAdb {
     private val generation = AtomicLong()
     private val effects = Mutex()
@@ -55,10 +58,9 @@ internal class LocalAdbRuntime(
     @Volatile private var granted = false
     @Volatile private var compatibleHistory = false
 
-    // A panel without root cannot start the endpoint, so offering it only made Panel Assistant stage the
-    // helper and fail a root bootstrap before every operation, and kept this side retrying every 30 seconds.
-    // The endpoint is asked only when root is known unusable, so a rooted panel's hello waits on nothing new.
-    override fun offered(): Boolean = !rootKnownUnusable() || endpoint.state() != null
+    // A structural su refusal need not hide a compatible running ordinary helper. This short read-only
+    // capability check runs per PA hello; the eventual action independently admits its carrying socket.
+    override fun offered(): Boolean = !rootKnownUnusable() || endpoint.state() != null || daemon.supportsAdbRecoveryEnsure()
 
     override fun session(token: String, granted: Boolean) {
         val (current, fresh, retainExistingLease) = RemoteDebugSecurityTransitionGate.withLock {
@@ -215,16 +217,11 @@ internal class LocalAdbRuntime(
     }
 
     companion object {
-        fun create(context: Context, scope: CoroutineScope, config: Config): LocalAdbRuntime {
+        fun create(context: Context, scope: CoroutineScope, config: Config, daemon: Daemon = HelperClient): LocalAdbRuntime {
             val staging = LocalAdbAsset(context)
             val main = android.os.Handler(android.os.Looper.getMainLooper())
             return LocalAdbRuntime(scope, RootLocalAdbEndpoint(), { config.hardenedSecurityEnabled }, staging::prepare, {
-                if (!Su.available()) false else {
-                    val metadata = staging.prepare()
-                    val path = metadata.getString("path")
-                    val hash = metadata.getString("sha256")
-                    Su.runSingleAttempt(localAdbBootstrapProgram(path, hash), 15_000)
-                }
+                daemon.ensureAdbRecovery()
             }, authorize = { payload, pending, admitted ->
                 io.panelassistant.android.http.awaitSessionApproval(
                     io.panelassistant.android.security.SensitiveOperation.LOCAL_ADB_MAINTENANCE,
@@ -236,7 +233,7 @@ internal class LocalAdbRuntime(
                         main.post { if (acknowledgement.isActive) acknowledgement.resume(true) }
                     }
                 } == true
-            }, rootKnownUnusable = { Su.rootKnownUnusable() })
+            }, rootKnownUnusable = { Su.rootKnownUnusable() }, daemon = daemon)
         }
     }
 }
@@ -259,45 +256,6 @@ internal class LocalAdbAsset(private val context: Context) {
         check(path.setReadable(true, true) && path.setWritable(true, true))
         return JSONObject().put("path", path.absolutePath).put("sha256", hash).put("build_id", BuildConfig.HELPER_BUILD_ID)
     }
-}
-
-internal fun localAdbBootstrapProgram(path: String, hash: String, filesystemRoot: String = ""): String {
-    require(filesystemRoot.isEmpty() || filesystemRoot.matches(Regex("/[A-Za-z0-9_/-]+")))
-    require(filesystemRoot.split('/').none { it == ".." })
-    require(hash.matches(Regex("[0-9a-f]{64}")))
-    require(path.removePrefix(filesystemRoot).matches(Regex("/data/(user/0|data)/io\\.panelassistant\\.android/cache/adb-recovery/helper-$hash")))
-    return """
-        set -e
-        source='$path'
-        parent='$filesystemRoot/data/local'
-        directory='$filesystemRoot/data/local/panel-assistant-adb-recovery'
-        target='$filesystemRoot/data/local/panel-assistant-adb-recovery/helper'
-        [ -d "${'$'}parent" ] && [ ! -L "${'$'}parent" ]
-        [ "${'$'}(stat -c '%u' "${'$'}parent")" = 0 ]
-        if [ ! -e "${'$'}directory" ] && [ ! -L "${'$'}directory" ]; then
-          ( umask 077; mkdir "${'$'}directory" )
-        fi
-        [ -d "${'$'}directory" ] && [ ! -L "${'$'}directory" ]
-        [ "${'$'}(stat -c '%u:%g:%a' "${'$'}directory")" = '0:0:700' ]
-        [ -f "${'$'}source" ] && [ ! -L "${'$'}source" ]
-        [ "${'$'}(sha256sum "${'$'}source" | cut -d' ' -f1)" = '$hash' ]
-        if [ -e "${'$'}target" ] || [ -L "${'$'}target" ]; then
-          [ -f "${'$'}target" ] && [ ! -L "${'$'}target" ]
-          [ "${'$'}(stat -c '%u:%g:%a:%h' "${'$'}target")" = '0:0:700:1' ]
-        fi
-        umask 077
-        stage=${'$'}(mktemp "${'$'}directory/.helper.XXXXXX")
-        trap 'rm -f "${'$'}stage"' 0 1 2 15
-        cat "${'$'}source" > "${'$'}stage"
-        chown 0:0 "${'$'}stage"
-        chmod 700 "${'$'}stage"
-        [ "${'$'}(sha256sum "${'$'}stage" | cut -d' ' -f1)" = '$hash' ]
-        sync
-        mv "${'$'}stage" "${'$'}target"
-        trap - 0 1 2 15
-        sync
-        "${'$'}target" --adb-recovery </dev/null >/dev/null 2>&1 &
-    """.trimIndent()
 }
 
 internal class RootLocalAdbEndpoint : LocalAdbEndpoint {

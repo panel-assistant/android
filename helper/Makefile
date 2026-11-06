@@ -24,6 +24,8 @@ BUILD   := build
 # the unit tests, so coverage can never silently drop a module. main.c (accept loop) and sysexec.c
 # (real exec/pipe/thread/reboot) are deliberately NOT here: the fuzz and test builds swap in a stub
 # sysexec and never run main, so a valid REBOOT/RELOAD/WATCH/GPIOWATCH can't exec or spawn on the build host.
+# The dispatch-only ENSURE fixture and socket/fuzz fixtures additionally wrap its publisher; the
+# real replacement driver separately exercises publication and detached recovery processes.
 CORE_SRCS := $(addprefix $(SRC_DIR)/, identity.c adb_recovery.c util.c sha256.c led.c screen.c input.c gpio.c sysctl.c zigbee.c wifi.c adb_state.c sysfs_read.c perf.c cht8305.c vi530x.c version.c companion.c guard_maintenance.c guard_replacement.c logcat.c server.c dispatch.c)
 DAEMON_SRCS := $(CORE_SRCS) $(SRC_DIR)/main.c $(SRC_DIR)/sysexec.c
 STUB := test/sysexec_stub.c
@@ -46,13 +48,13 @@ TEST_BINS := $(BUILD)/adb-recovery $(BUILD)/uninstall-supervisor $(BUILD)/unit $
 test:
 	$(MAKE) test-units
 
-test-units: $(BUILD)/gfxinfo-boundary $(BUILD)/gfxinfo-exec $(BUILD)/cdp-state-boundary $(BUILD)/sysfs-read-boundary $(BUILD)/adb-state-boundary $(BUILD)/adb-exec $(BUILD)/wifi-boundary $(BUILD)/wifi-exec $(BUILD)/zigbee-boundary $(BUILD)/zigbee-role-exec $(TEST_BINS)
+test-units: $(BUILD)/adb-ensure-boundary $(BUILD)/gfxinfo-boundary $(BUILD)/gfxinfo-exec $(BUILD)/cdp-state-boundary $(BUILD)/sysfs-read-boundary $(BUILD)/adb-state-boundary $(BUILD)/adb-exec $(BUILD)/wifi-boundary $(BUILD)/wifi-exec $(BUILD)/zigbee-boundary $(BUILD)/zigbee-role-exec $(TEST_BINS)
 	$(MAKE) adb-recovery-retirement-test
 	$(MAKE) adb-recovery-replacement-test
 	$(BUILD)/adb-recovery
 	$(BUILD)/uninstall-supervisor
 	$(BUILD)/unit
-	test "$$($(BUILD)/hapaneld-helper --version)" = "HELPER version=1.14.0 proto=1.14"
+	test "$$($(BUILD)/hapaneld-helper --version)" = "HELPER version=1.15.0 proto=1.15"
 	$(BUILD)/companion-boundary
 	$(BUILD)/guard-maintenance-boundary
 	$(BUILD)/guard-maintenance-gates
@@ -62,6 +64,7 @@ test-units: $(BUILD)/gfxinfo-boundary $(BUILD)/gfxinfo-exec $(BUILD)/cdp-state-b
 	$(BUILD)/peer-auth
 	$(BUILD)/request-timeout
 	$(BUILD)/bounded-exec
+	$(BUILD)/adb-ensure-boundary
 	$(BUILD)/gfxinfo-boundary
 	$(BUILD)/gfxinfo-exec
 	$(BUILD)/cdp-state-boundary
@@ -160,7 +163,7 @@ $(BUILD)/cdprelay-test: cdprelay.c | $(BUILD)
 # Real UNIX-socket composition fixture: production server/dispatch core with the no-exec host stub.
 socket-test-server: $(BUILD)/socket-test-server
 $(BUILD)/socket-test-server: $(CORE_SRCS) $(STUB) test/socket_server.c $(SRC_DIR)/commands.def test/zigbee_paths.h | $(BUILD)
-	$(CC) $(CFLAGS) -DHAPANELD_TEST -DCDP_PROC_ROOT='"$(abspath $(BUILD)/cdp-state-socket-fixture)"' -DSYSFS_READ_CLASS_ROOT='"$(abspath $(BUILD)/sysfs-read-socket-fixture)"' -DZIGBEE_TEST_ROOT='"$(abspath $(BUILD)/zigbee-socket-fixture)"' -include test/zigbee_paths.h -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/socket_server.c $(LDLIBS) -Wl,--wrap=open -o $@
+	$(CC) $(CFLAGS) -DHAPANELD_TEST -DCDP_PROC_ROOT='"$(abspath $(BUILD)/cdp-state-socket-fixture)"' -DSYSFS_READ_CLASS_ROOT='"$(abspath $(BUILD)/sysfs-read-socket-fixture)"' -DZIGBEE_TEST_ROOT='"$(abspath $(BUILD)/zigbee-socket-fixture)"' -include test/zigbee_paths.h -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/socket_server.c $(LDLIBS) -Wl,--wrap=open -Wl,--wrap=adb_recovery_ensure -o $@
 
 # App<->daemon verb-contract cross-check: every verb the app sends must exist in commands.def.
 contract:
@@ -206,6 +209,20 @@ $(BUILD)/adb-recovery-replacement: test/adb_recovery_replacement.py test/adb_rec
 	cp $< $@
 	chmod +x $@
 
+# Small selections of the same real ordinary-dispatch/recovery driver for fault qualification.
+ENSURE_CASES_fresh := fresh
+ENSURE_CASES_bound := source-bound
+ENSURE_CASES_faults := unsafe-target,publication-faults
+ENSURE_CASES_reaper := reaper-failure
+ENSURE_CASES_status := readiness-faults
+ENSURE_CASES_contender := superseded
+ENSURE_CASES_drain := timeout-retry
+ENSURE_CASES_receipt := receipt-sync-fails
+$(BUILD)/adb-ensure-%: $(BUILD)/adb-recovery-replacement Makefile
+	test -n '$(ENSURE_CASES_$*)'
+	printf '%s\n' '#!/bin/sh' 'RECOVERY_REPLACEMENT_LEGS=ensure RECOVERY_REPLACEMENT_CASES=$(ENSURE_CASES_$*) exec "$$(dirname "$$0")/adb-recovery-replacement"' > $@
+	chmod +x $@
+
 # Real dispatch fixture; path substitution is compile-time and absent from shipped builds.
 $(BUILD)/zigbee-boundary: $(CORE_SRCS) $(STUB) test/zigbee_boundary.c test/zigbee_paths.h | $(BUILD)
 	$(CC) $(CFLAGS) -DHAPANELD_TEST -DZIGBEE_TEST_ROOT='"$(abspath $(BUILD)/zigbee-fixture)"' -include test/zigbee_paths.h -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/zigbee_boundary.c $(LDLIBS) -o $@
@@ -238,3 +255,7 @@ $(BUILD)/gfxinfo-boundary: $(CORE_SRCS) $(STUB) test/gfxinfo_boundary.c | $(BUIL
 
 $(BUILD)/gfxinfo-exec: $(SRC_DIR)/sysexec.c test/gfxinfo_exec.c | $(BUILD)
 	$(CC) $(CFLAGS) -I$(SRC_DIR) test/gfxinfo_exec.c $(SRC_DIR)/sysexec.c $(LDLIBS) -Wl,--wrap=execve -o $@
+
+# Ordinary fixed ENSURE wire/argument boundary; the real driver qualifies publication/custody.
+$(BUILD)/adb-ensure-boundary: $(CORE_SRCS) test/adb_ensure_boundary.c | $(BUILD)
+	$(CC) $(CFLAGS) -DHAPANELD_TEST -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/adb_ensure_boundary.c $(LDLIBS) -Wl,--wrap=adb_recovery_ensure -o $@

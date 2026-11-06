@@ -254,6 +254,23 @@ internal fun readHelperBootstrapLine(
     }
 }
 
+/** Install the remaining write timeout before either identity request can block. */
+internal fun exchangeHelperBootstrap(
+    command: String, input: InputStream, output: java.io.OutputStream,
+    setTimeoutMs: (Int) -> Unit, deadline: MonotonicDeadline,
+): HelperBootstrapReply = try {
+    require(command == "VERSION" || command == "PING" || command == "COMPANIONCAPS" || command == "BUILDID")
+    val remaining = deadline.remainingMs()
+    if (remaining <= 0L) HelperBootstrapReply.Missing else {
+        setTimeoutMs(remaining.toInt())
+        output.write((command + "\n").toByteArray(StandardCharsets.US_ASCII))
+        output.flush()
+        readHelperBootstrapLine(input, setTimeoutMs, deadline)
+    }
+} catch (_: Exception) {
+    HelperBootstrapReply.Missing
+}
+
 internal interface HelperCommandSession : AutoCloseable {
     fun bootstrap(command: String, deadline: MonotonicDeadline): HelperBootstrapReply
     fun send(cmd: String): String?
@@ -431,6 +448,31 @@ internal class IdentityAdmittingHelperClient(
             else -> null
         }
     }
+
+    override fun supportsAdbRecoveryEnsure(): Boolean = adbRecoveryEnsure(submit = false)
+
+    override fun ensureAdbRecovery(): Boolean = adbRecoveryEnsure(submit = true)
+
+    /** No generic/raw admission: the action must carry its own version and exact bundled identity. */
+    private fun adbRecoveryEnsure(submit: Boolean): Boolean = runCatching {
+        val deadline = MonotonicDeadline(if (submit) 30_000L else bootstrapTimeoutMs, nowNs)
+        val session = transport.open(deadline) ?: return false
+        session.use {
+            // VERSION and BUILDID together share the shorter admission allowance.
+            val admission = deadline.cappedTo(bootstrapTimeoutMs)
+            if (admission.remainingMs() == 0L) return false
+            val version = it.bootstrap("VERSION", admission) as? HelperBootstrapReply.Line ?: return false
+            val identity = parseHelperIdentity(version.value) ?: return false
+            if (identity.protocolMajor != SUPPORTED_HELPER_PROTOCOL_MAJOR || identity.protocolMinor < 15) return false
+            if (admission.remainingMs() == 0L) return false
+            val build = it.bootstrap("BUILDID", admission) as? HelperBootstrapReply.Line ?: return false
+            if (!helperBuildIdentitySupported(build.value, BuildConfig.HELPER_BUILD_ID) || admission.remainingMs() == 0L) return false
+            if (!submit) true else {
+                val reply = it.sendBytes("ADBRECOVERYENSURE", 32, deadline)
+                deadline.remainingMs() > 0L && reply?.contentEquals("ADBRECOVERYENSURE READY\n".toByteArray(StandardCharsets.US_ASCII)) == true
+            }
+        }
+    }.getOrDefault(false)
 
     override fun gfxInfo(): HelperGfxInfo? {
         val bytes = readVersioned("GFXINFO SELF", 14, 128, 5_000L) ?: return null
@@ -714,13 +756,8 @@ private class LocalSocketHelperSession(
     private val output = socket.outputStream
     private val logcatReader = HelperLogcatLineReader(BufferedInputStream(input, 4096))
 
-    override fun bootstrap(command: String, deadline: MonotonicDeadline): HelperBootstrapReply = try {
-        require(command == "VERSION" || command == "PING" || command == "COMPANIONCAPS")
-        output.apply { write((command + "\n").toByteArray(StandardCharsets.US_ASCII)); flush() }
-        readHelperBootstrapLine(input, { socket.soTimeout = it }, deadline)
-    } catch (_: Exception) {
-        HelperBootstrapReply.Missing
-    }
+    override fun bootstrap(command: String, deadline: MonotonicDeadline): HelperBootstrapReply =
+        exchangeHelperBootstrap(command, input, output, { socket.soTimeout = it }, deadline)
 
     override fun send(cmd: String): String? = try {
         socket.soTimeout = SHORT_TIMEOUT_MS

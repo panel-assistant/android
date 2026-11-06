@@ -23,6 +23,13 @@ static void *fixture_mmap(void *address, size_t length, int protection, int flag
     (void)address; (void)length; (void)protection; (void)flags; (void)file; (void)offset;
     return fixture_lease_region; /* shared with the test so it can hold the actuator */
 }
+/* Lease tests fork their owner in-process. Model its canonical self pin only here;
+ * the real replacement driver executes and verifies the actual canonical ELF inode. */
+static int fixture_open(const char *path, int flags, ...) {
+    mode_t mode = 0;
+    if (flags & O_CREAT) { va_list ap; va_start(ap, flags); mode = (mode_t)va_arg(ap, int); va_end(ap); }
+    return open(!strcmp(path, "/proc/self/exe") ? fixture_path("helper/helper") : path, flags, mode);
+}
 static int fixture_openat(int directory, const char *name, int flags, ...) {
     mode_t mode = 0;
     if (flags & O_CREAT) { va_list arguments; va_start(arguments, flags); mode = (mode_t)va_arg(arguments, int); va_end(arguments); }
@@ -39,6 +46,7 @@ static int fixture_execve(const char *path, char *const arguments[], char *const
     /* Only property fixtures need the host fixture directory. Shells use the real clean env. */
     return execve(path, arguments, !strcmp(path,"/proc/self/exe") ? environ : environment);
 }
+#define open fixture_open
 #define openat fixture_openat
 #define unlinkat fixture_unlinkat
 #define execve fixture_execve
@@ -54,6 +62,7 @@ static int fixture_execve(const char *path, char *const arguments[], char *const
 static unsigned fixture_lease_ms=600;
 #define ADB_RECOVERY_LEASE_MS fixture_lease_ms
 #include "../src/adb_recovery.c"
+#undef open
 #undef openat
 #undef unlinkat
 #undef execve
@@ -98,6 +107,11 @@ static void start(void) {
     put("init.svc.adbd","running");put("persist.adb.tcp.port","");put("service.adb.tcp.port","5555");
     put("tcp","0: 00000000:15B3 00000000:0000 0A\n");put("tcp6","");
     if (mkdir(ADB_RECOVERY_DIRECTORY,0700) && errno != EEXIST) abort();
+    int source = open("/proc/self/exe", O_RDONLY), target = open(fixture_path("helper/helper"), O_WRONLY|O_CREAT|O_TRUNC|O_NOFOLLOW,0700);
+    if(source<0 || target<0)abort();
+    char bytes[16384]; ssize_t n;
+    while((n=read(source,bytes,sizeof bytes))>0){ ssize_t used=0; while(used<n){ssize_t w=write(target,bytes+used,(size_t)(n-used));if(w<=0)abort();used+=w;} }
+    if(n<0 || close(source) || close(target))abort();
     owner=fork();if(!owner)_exit(adb_recovery_main());
     char response[160];int ready=0;
     for(int i=0;i<100;i++){if(!request("STATUS\n",response,sizeof response)){ready=1;break;}usleep(10000);}

@@ -25,7 +25,7 @@ echo ">> compiling sanitizer smoke harness (real src/*.c + sysexec stub, ASan+UB
   gcc -O1 -g -Wall -Wextra -Werror -Wno-format-truncation \
       -DHAPANELD_TEST \
       -fsanitize=address,undefined -fno-sanitize-recover=all \
-      -Isrc -Itest $CORE_SRCS test/sysexec_stub.c "$HERE/fuzz_parser.c" -lpthread -o "$OUT/fuzz_parser" )
+      -Isrc -Itest $CORE_SRCS test/sysexec_stub.c "$HERE/fuzz_parser.c" -lpthread -Wl,--wrap=adb_recovery_ensure -o "$OUT/fuzz_parser" )
 
 echo ">> running $ITERS iterations…"
 ASAN_OPTIONS=abort_on_error=1:detect_leaks=1 \

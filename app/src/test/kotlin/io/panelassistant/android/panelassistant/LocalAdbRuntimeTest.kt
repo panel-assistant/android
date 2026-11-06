@@ -97,6 +97,48 @@ class LocalAdbRuntimeTest {
         assertEquals(listOf("arm"), endpoint.effects)
     }
 
+    @Test fun aLostEnsureReplyStillArmsOnlyTheFreshExpectedEndpoint() = runTest {
+        val endpoint = Endpoint().apply { status = null }
+        var bootstraps = 0
+        val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, {
+            bootstraps++; endpoint.status = LocalAdbState(false, false); false
+        }, StandardTestDispatcher(testScheduler), { it() })
+        runtime.session("granted", true); runCurrent()
+        assertEquals(1, bootstraps)
+        assertEquals(listOf("arm"), endpoint.effects)
+        advanceTimeBy(30_001); runCurrent()
+        assertEquals(listOf("arm", "beat"), endpoint.effects)
+    }
+
+    @Test fun anEnsureReadyReplyNeverAuthorizesAMissingOrStaleEndpoint() = runTest {
+        for (stale in listOf(null, LocalAdbState(true, false, buildId = "0".repeat(64)))) {
+            val endpoint = Endpoint().apply { status = stale }
+            var bootstraps = 0
+            val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, {
+                bootstraps++; true
+            }, StandardTestDispatcher(testScheduler), { it() })
+            runtime.session("granted", true); runCurrent()
+            advanceTimeBy(30_001); runCurrent()
+            assertEquals(2, bootstraps)
+            assertTrue("READY cannot grant or renew another build", endpoint.effects.isEmpty())
+        }
+    }
+
+    @Test fun preparingTheSeparateAssetApiNeverBootstrapsRecovery() = runTest {
+        val endpoint = Endpoint()
+        var preparations = 0
+        var bootstraps = 0
+        val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, {
+            preparations++; JSONObject().put("path", "prepared-asset")
+        }, { bootstraps++; false }, StandardTestDispatcher(testScheduler), { it() })
+        runtime.session("granted", true); runCurrent()
+        val answer = runtime.request("adb.prepare", JSONObject(), { true })
+        assertEquals("applied", answer.outcome)
+        assertEquals("prepared-asset", (answer.result as JSONObject).optString("path"))
+        assertEquals(1, preparations)
+        assertEquals(0, bootstraps)
+    }
+
     @Test fun readyPreservesTheLegacyShapeUnlessBuildIdentityIsExplicitlyRequested() = runTest {
         val endpoint = Endpoint().apply { status = LocalAdbState(true, true, buildId = "0".repeat(64)) }
         val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), { it() })

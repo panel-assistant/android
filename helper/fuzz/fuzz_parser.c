@@ -3,9 +3,10 @@
 // It links the REAL capability + transport modules (helper/src/*.c, the same set the daemon ships —
 // see the Makefile's CORE_SRCS) together with test/sysexec_stub.c, so every byte of the parsing path
 // runs under the sanitizers while the only host-effecting calls (system/popen/thread-spawn/reboot,
-// all funnelled through sysexec) are neutralised at the LINK layer — no per-call macro stubbing.
+// funnelled through sysexec) are neutralised at the LINK layer. The separate zero-argument
+// recovery publisher is also link-wrapped, so its valid command cannot publish or fork here.
 //
-// It has no semantic oracle and is not independent validation. It can detect sanitizer-visible faults
+// Apart from the fixed ENSURE rejection check below, it has no semantic oracle and is not independent validation. It can detect sanitizer-visible faults
 // in paths reached by its corpus and deterministic pseudo-random byte streams. Peer authentication,
 // real host effects, process lifetime, and concurrent connection behaviour are outside this harness.
 //
@@ -77,6 +78,14 @@ int main(int argc, char **argv) {
     signal(SIGPIPE, SIG_IGN);
     devnull = open("/dev/null", O_WRONLY);
     reset_state();
+    // The real server and dispatch must reject caller paths before reaching the wrapped publisher.
+    const char *invalid_ensure = "ADBRECOVERYENSURE /tmp/helper\n";
+    int ensure_calls = sysexec_stub_count_ensure();
+    run_serve((const uint8_t *)invalid_ensure, strlen(invalid_ensure));
+    run_handle((const uint8_t *)invalid_ensure, strlen(invalid_ensure));
+    if (sysexec_stub_count_ensure() != ensure_calls) {
+        fputs("FAIL: ENSURE arguments reached the recovery publisher\n", stderr); return 1;
+    }
     sysexec_stub_add_popen("dumpsys gfxinfo io.panelassistant.android",
         "** Graphics info for pid 42 [io.panelassistant.android] **\nStats since: 1ns\nTotal frames rendered: 2\nJanky frames: 1 (50.00%)\n", 0);
 
@@ -117,7 +126,7 @@ int main(int argc, char **argv) {
         "RELAYREAD RELAY COUNT\n", "RELAYREAD ST_RELAY 1\n", "RELAYREAD STRELAY 16\n",
         "RELAYREAD RELAY 0\n", "RELAYREAD /sys/class/relay COUNT\n", "RELAYREAD RELAY 01\n",
         "GPIOREAD 0\n", "GPIOREAD 65535\n", "GPIOREAD 65536\n", "GPIOREAD 01\n", "GPIOREAD 1 extra\n",
-        "GFXINFO SELF\n", "GFXINFO\n", "GFXINFO io.panelassistant.android\n", "GFXINFO SELF reset\n",
+        "ADBRECOVERYENSURE\n", "ADBRECOVERYENSURE extra\n", "GFXINFO SELF\n", "GFXINFO\n", "GFXINFO io.panelassistant.android\n", "GFXINFO SELF reset\n",
         "CDPSTATE\n", "CDPSTATE x\n", "CDPSTATE /proc\n", "CDPSTATE ;reboot\n",
         "ADBSTATE\n", "ADBSTATE x\n", "ADBSTATE /proc/net/tcp\n", "ADBSTATE ;reboot\n",
         "WIFISTATUS\n", "WIFISTATUS x\n", "WIFISTATUS ;reboot\n",

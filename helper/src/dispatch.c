@@ -21,6 +21,7 @@
 #include "zigbee.h"
 #include "wifi.h"
 #include "adb_state.h"
+#include "adb_recovery.h"
 #include "sysfs_read.h"
 
 static void cmd_ping(conn_ctx *ctx, const char *args) { (void)args; reply(ctx->fd, "OK\n"); }
@@ -28,6 +29,13 @@ static void cmd_buildid(conn_ctx *ctx, const char *args) {
     (void)args;
     reply(ctx->fd, helper_build_id_record());
     reply(ctx->fd, "\n");
+}
+
+static void cmd_adbrecoveryensure(conn_ctx *ctx, const char *args) {
+    if (*args || (ctx->caller != HELPER_CALLER_ROOT && ctx->caller != HELPER_CALLER_SUCCESSOR)) {
+        reply(ctx->fd, "ERR\n"); return;
+    }
+    reply(ctx->fd, adb_recovery_ensure() ? "ADBRECOVERYENSURE READY\n" : "ADBRECOVERYENSURE UNAVAILABLE\n");
 }
 
 // Handlers live in the capability module that owns the verb (led.c, screen.c, …). commands.def is the

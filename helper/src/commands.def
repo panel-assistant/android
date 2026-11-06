@@ -78,3 +78,6 @@ COMMAND(CDPSTATE, cmd_cdpstate)
 
 // Authenticated app-only fixed cumulative HWUI counters (protocol 1.14).
 COMMAND(GFXINFO, cmd_gfxinfo)
+
+// Fixed no-argument recovery bootstrap (protocol 1.15), separate recovery control stays private.
+COMMAND(ADBRECOVERYENSURE, cmd_adbrecoveryensure)
