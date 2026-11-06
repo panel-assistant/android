@@ -24,7 +24,7 @@ BUILD   := build
 # the unit tests, so coverage can never silently drop a module. main.c (accept loop) and sysexec.c
 # (real exec/pipe/thread/reboot) are deliberately NOT here: the fuzz and test builds swap in a stub
 # sysexec and never run main, so a valid REBOOT/RELOAD/WATCH/GPIOWATCH can't exec or spawn on the build host.
-CORE_SRCS := $(addprefix $(SRC_DIR)/, identity.c adb_recovery.c util.c sha256.c led.c screen.c input.c gpio.c sysctl.c perf.c cht8305.c vi530x.c version.c companion.c guard_maintenance.c guard_replacement.c logcat.c server.c dispatch.c)
+CORE_SRCS := $(addprefix $(SRC_DIR)/, identity.c adb_recovery.c util.c sha256.c led.c screen.c input.c gpio.c sysctl.c zigbee.c perf.c cht8305.c vi530x.c version.c companion.c guard_maintenance.c guard_replacement.c logcat.c server.c dispatch.c)
 DAEMON_SRCS := $(CORE_SRCS) $(SRC_DIR)/main.c $(SRC_DIR)/sysexec.c
 STUB := test/sysexec_stub.c
 TEST_BUILD_ID := aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -46,13 +46,13 @@ TEST_BINS := $(BUILD)/adb-recovery $(BUILD)/uninstall-supervisor $(BUILD)/unit $
 test:
 	$(MAKE) test-units
 
-test-units: $(TEST_BINS)
+test-units: $(BUILD)/zigbee-boundary $(BUILD)/zigbee-role-exec $(TEST_BINS)
 	$(MAKE) adb-recovery-retirement-test
 	$(MAKE) adb-recovery-replacement-test
 	$(BUILD)/adb-recovery
 	$(BUILD)/uninstall-supervisor
 	$(BUILD)/unit
-	test "$$($(BUILD)/hapaneld-helper --version)" = "HELPER version=1.5.0 proto=1.5"
+	test "$$($(BUILD)/hapaneld-helper --version)" = "HELPER version=1.8.0 proto=1.8"
 	$(BUILD)/companion-boundary
 	$(BUILD)/guard-maintenance-boundary
 	$(BUILD)/guard-maintenance-gates
@@ -62,6 +62,8 @@ test-units: $(TEST_BINS)
 	$(BUILD)/peer-auth
 	$(BUILD)/request-timeout
 	$(BUILD)/bounded-exec
+	$(BUILD)/zigbee-boundary
+	$(BUILD)/zigbee-role-exec
 	$(BUILD)/logcat-boundary
 	bash ./test/replacement_identity_test.sh $(BUILD)/hapaneld-helper-old $(BUILD)/hapaneld-helper-new
 	$(BUILD)/cdprelay-resource-test $(BUILD)/cdprelay-test
@@ -149,8 +151,8 @@ $(BUILD)/cdprelay-test: cdprelay.c | $(BUILD)
 
 # Real UNIX-socket composition fixture: production server/dispatch core with the no-exec host stub.
 socket-test-server: $(BUILD)/socket-test-server
-$(BUILD)/socket-test-server: $(CORE_SRCS) $(STUB) test/socket_server.c $(SRC_DIR)/commands.def | $(BUILD)
-	$(CC) $(CFLAGS) -DHAPANELD_TEST -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/socket_server.c $(LDLIBS) -Wl,--wrap=open -o $@
+$(BUILD)/socket-test-server: $(CORE_SRCS) $(STUB) test/socket_server.c $(SRC_DIR)/commands.def test/zigbee_paths.h | $(BUILD)
+	$(CC) $(CFLAGS) -DHAPANELD_TEST -DZIGBEE_TEST_ROOT='"$(abspath $(BUILD)/zigbee-socket-fixture)"' -include test/zigbee_paths.h -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/socket_server.c $(LDLIBS) -Wl,--wrap=open -o $@
 
 # App<->daemon verb-contract cross-check: every verb the app sends must exist in commands.def.
 contract:
@@ -195,3 +197,10 @@ adb-recovery-replacement-test: $(BUILD)/adb-recovery-replacement
 $(BUILD)/adb-recovery-replacement: test/adb_recovery_replacement.py test/adb_recovery_replacement_cuts.c | $(BUILD)
 	cp $< $@
 	chmod +x $@
+
+# Real dispatch fixture; path substitution is compile-time and absent from shipped builds.
+$(BUILD)/zigbee-boundary: $(CORE_SRCS) $(STUB) test/zigbee_boundary.c test/zigbee_paths.h | $(BUILD)
+	$(CC) $(CFLAGS) -DHAPANELD_TEST -DZIGBEE_TEST_ROOT='"$(abspath $(BUILD)/zigbee-fixture)"' -include test/zigbee_paths.h -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/zigbee_boundary.c $(LDLIBS) -o $@
+
+$(BUILD)/zigbee-role-exec: $(SRC_DIR)/sysexec.c test/zigbee_role_exec.c | $(BUILD)
+	$(CC) $(CFLAGS) -I$(SRC_DIR) test/zigbee_role_exec.c $(SRC_DIR)/sysexec.c $(LDLIBS) -Wl,--wrap=execve -o $@

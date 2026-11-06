@@ -63,12 +63,17 @@ static void close_inherited_fds(int keep_a, int keep_b) {
         if (fd != keep_a && fd != keep_b) close(fd);
 }
 
-static void child_exec(const char *path, const char *const argv[], int input, int output, int error) {
+static void child_exec_env(const char *path, const char *const argv[], int input, int output, int error, char *const env[]) {
     if (dup2(input, STDIN_FILENO) < 0 || dup2(output, STDOUT_FILENO) < 0 ||
         dup2(error, STDERR_FILENO) < 0) _exit(127);
     close_inherited_fds(-1, -1);
-    exec_platform_argv(path, argv);
+    if (env == clean_env) exec_platform_argv(path, argv);
+    else execve(path, (char *const *)argv, env);
     _exit(127);
+}
+
+static void child_exec(const char *path, const char *const argv[], int input, int output, int error) {
+    child_exec_env(path, argv, input, output, error, clean_env);
 }
 
 static int wait_child(pid_t pid) {
@@ -446,8 +451,10 @@ int sysexec_capture_argv(const char *path, const char *const argv[], char *outpu
     return pipe_argv(path, argv, -1, output, capacity);
 }
 
-int sysexec_capture_argv_timeout(const char *path, const char *const argv[], char *output,
-                                 size_t capacity, unsigned timeout_ms, int *timed_out) {
+static int capture_argv_timeout_env(const char *path, const char *const argv[], char *output,
+                                 size_t capacity, unsigned timeout_ms, int *timed_out,
+                                 char *const env[], size_t *output_size) {
+    if (output_size) *output_size = 0;
     if (timed_out) *timed_out = 0;
     if (!path || path[0] != '/' || !argv || !argv[0] || !output || capacity == 0 ||
         timeout_ms == 0) return -1;
@@ -468,7 +475,7 @@ int sysexec_capture_argv_timeout(const char *path, const char *const argv[], cha
         close(pipefd[0]);
         if (prctl(PR_SET_PDEATHSIG, SIGKILL) != 0 || getppid() != parent ||
             setpgid(0, 0) != 0) _exit(127);
-        child_exec(path, argv, null_fd, pipefd[1], null_fd);
+        child_exec_env(path, argv, null_fd, pipefd[1], null_fd, env);
     }
     (void)setpgid(pid, pid);
     close(null_fd);
@@ -536,7 +543,25 @@ int sysexec_capture_argv_timeout(const char *path, const char *const argv[], cha
     }
     close(pipefd[0]);
     output[used] = '\0';
+    if (output_size) *output_size = used;
     return status;
+}
+
+int sysexec_capture_argv_timeout(const char *path, const char *const argv[], char *output,
+                                 size_t capacity, unsigned timeout_ms, int *timed_out) {
+    return capture_argv_timeout_env(path, argv, output, capacity, timeout_ms, timed_out, clean_env, NULL);
+}
+
+int sysexec_capture_zigbee_role(char *output, size_t capacity, size_t *used) {
+    // No generic environment input: only this fixed vendor client receives its fixed library root.
+    static char *const role_env[] = {
+        "PATH=/system/bin:/vendor/bin", "ANDROID_ROOT=/system", "ANDROID_DATA=/data",
+        "LANG=C", "LC_ALL=C", "LD_LIBRARY_PATH=/vendor/bin/siliconlabs_host", NULL
+    };
+    const char *const argv[] = { "/vendor/bin/siliconlabs_host/mosquitto_sub", "-h", "127.0.0.1",
+        "-p", "1883", "-i", "hapaneld_zr", "-t", "zigbee/system/network-role/information",
+        "-C", "1", "-W", "3", NULL };
+    return capture_argv_timeout_env(argv[0], argv, output, capacity, 3500u, NULL, role_env, used);
 }
 
 int sysexec_stream_argv(const char *path, const char *const argv[], int output_fd) {

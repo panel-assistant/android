@@ -382,8 +382,11 @@ internal class PanelStateCore(
             }
             if (observation.possible.zigbee) register("zigbee_router") {
                 if (!capabilityShape.current().live.zigbee) known("unknown")
-                else if (config.zigbeeRouterConfigured && !config.zigbeeRouterEnabled) known("OFF")
-                else known(if (zigbee.running()) "ON" else "OFF")
+                else when (zigbee.running()) {
+                    true -> known("ON")
+                    false -> known("OFF")
+                    null -> known("unknown")
+                }
             }
             if (observation.possible.zigbee) register("zigbee_gateway_health") {
                 if (!capabilityShape.current().live.zigbee) Observation.Unavailable

@@ -63,14 +63,6 @@ class ZigbeeHealthMonitorTest {
         assertFalse(joinedPan.explicitlyInvalid)
     }
 
-    @Test fun netInfoAcquisitionPrefersCanonicalFileAndBoundsBothSources() {
-        val command = zigbeeNetInfoCommand("/vendor/bin/siliconlabs_host")
-        assertTrue(command.contains("[ -s /data/vendor/siliconlabs_host/netinfo ]"))
-        assertTrue(command.contains("head -c 4097 /data/vendor/siliconlabs_host/netinfo"))
-        assertTrue(command.contains("/vendor/bin/siliconlabs_host/zgateway.log"))
-        assertTrue(command.endsWith("head -c 4097; fi"))
-    }
-
     @Test fun attributesExcludeRawSensitiveGatewayData() {
         val attributes = ZigbeeHealthSnapshot(
             state = ZigbeeHealthState.HEALTHY,

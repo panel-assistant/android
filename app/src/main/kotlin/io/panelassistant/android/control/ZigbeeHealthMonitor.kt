@@ -8,6 +8,8 @@ import io.panelassistant.android.metrics.FeatureCostOutcome
 import io.panelassistant.android.metrics.FeatureCosts
 import io.panelassistant.android.platform.Daemon
 import io.panelassistant.android.platform.RootShell
+import io.panelassistant.android.platform.HELPER_ZIGBEE_DIRECTORY
+import io.panelassistant.android.platform.HelperZigbeeHealth
 import io.panelassistant.android.util.HelperClient
 import io.panelassistant.android.util.InstallPresentation
 import io.panelassistant.android.util.SystemProps
@@ -86,6 +88,7 @@ data class ZigbeeGatewayObservation(
     val role: String?,
     val netInfo: ZigbeeNetInfo?,
     val recursiveWatchdogAssignment: Boolean,
+    val probeSucceeded: Boolean = true,
 )
 
 data class ZigbeeHealthSnapshot(
@@ -190,12 +193,6 @@ internal object ZigbeeNetInfoParser {
     }
 }
 
-internal fun zigbeeNetInfoCommand(gatewayDir: String): String =
-    "if [ -s /data/vendor/siliconlabs_host/netinfo ]; then " +
-        "head -c 4097 /data/vendor/siliconlabs_host/netinfo; else " +
-        "tail -n 200 /data/vendor/siliconlabs_host/zgateway.log $gatewayDir/zgateway.log 2>/dev/null | " +
-        "grep -i netinfo | tail -n 1 | head -c 4097; fi"
-
 internal fun normalizeGatewayCpu(rawPercent: Double?, cpuCount: Int, wholeMachineScale: Boolean): Double? {
     val raw = rawPercent?.takeIf { it.isFinite() && it >= 0.0 } ?: return null
     return (if (wholeMachineScale) raw * cpuCount.coerceAtLeast(1) else raw).coerceIn(0.0, 1000.0)
@@ -233,7 +230,7 @@ class ZigbeeHealthPolicy(
 
     fun evaluate(nowMs: Long, configuredOn: Boolean, observation: ZigbeeGatewayObservation): Decision {
         if (graceStartedAt == 0L) graceStartedAt = nowMs
-        if (!observation.present) {
+        if (!observation.probeSucceeded || !observation.present) {
             highCpuSamples = 0
             resetPidChurn()
             return Decision(ZigbeeHealthState.UNKNOWN, null, 0, false)
@@ -367,36 +364,25 @@ class AndroidZigbeeGatewayHealthSource(
     private val productVersion: () -> String? = { SystemProps.get("ro.product.version").ifBlank { null } },
 ) : ZigbeeGatewayHealthSource {
     private var previousTotalJiffies: Long? = null
-    private var previousProcessJiffies = emptyMap<Int, Long>()
+    private var previousProcessJiffies = emptyMap<Pair<Int, Long>, Long>()
 
     override fun observe(): ZigbeeGatewayObservation {
-        val gatewayDir = dir ?: return absent()
-        val files = zigbeeGatewayFiles(root, gatewayDir).orEmpty()
-        val layout = ZigbeeGatewayLayout.fromFiles(files)
-        val processes = parseProcesses(root.runOutput("ps -A -o PID=,ARGS= 2>/dev/null").orEmpty(), gatewayDir)
-        val cpu = sampleCpu(processes.gatewayPid, processes.guardPid)
-        val packageVersion = root.runOutput("cat $gatewayDir/package_version 2>/dev/null")
-            ?.trim()?.takeIf { it.isNotEmpty() && it.length <= 120 }
-        // Firmware writes the authoritative network snapshot to this canonical file. Older layouts may
-        // instead log an embedded `netinfo` object, so retain that as a fallback. Bound acquisition before
-        // parsing because the file also contains credentials/identity fields which must never be surfaced.
-        val netInfoRaw = root.runOutput(zigbeeNetInfoCommand(gatewayDir))
-        val recursive = root.runOutput(
-            "grep -Fxc 'export LD_LIBRARY_PATH=/vendor/bin/siliconlabs_host/:${'$'}{LD_LIBRARY_PATH}' " +
-                "$gatewayDir/guard_process.sh 2>/dev/null",
-        )?.trim()?.toIntOrNull() == 1
+        if (dir == null) { clearCpuBaseline(); return absent() }
+        val sample = if (dir == HELPER_ZIGBEE_DIRECTORY) daemon.zigbeeHealth() else null
+        if (sample == null) { clearCpuBaseline(); return absent(probeSucceeded = false) }
+        val cpu = sampleCpu(sample)
         return ZigbeeGatewayObservation(
-            present = files.isNotEmpty() || processes.gatewayPid != null,
-            layout = layout,
-            packageVersion = packageVersion,
+            present = sample.state.present,
+            layout = ZigbeeGatewayLayout.fromFiles(sample.state.files),
+            packageVersion = sample.state.packageVersion,
             productVersion = productVersion(),
-            gatewayPid = processes.gatewayPid,
-            gatewayCpu = processes.gatewayPid?.let(cpu::get),
-            guardPid = processes.guardPid,
-            guardCpu = processes.guardPid?.let(cpu::get),
-            role = processes.gatewayPid?.let { controller.role() },
-            netInfo = ZigbeeNetInfoParser.parse(netInfoRaw),
-            recursiveWatchdogAssignment = recursive,
+            gatewayPid = sample.gateway?.pid,
+            gatewayCpu = sample.gateway?.pid?.let(cpu::get),
+            guardPid = sample.guard?.pid,
+            guardCpu = sample.guard?.pid?.let(cpu::get),
+            role = sample.gateway?.let { controller.role() },
+            netInfo = ZigbeeNetInfoParser.parse(sample.netInfo),
+            recursiveWatchdogAssignment = sample.recursiveWatchdogAssignment,
         )
     }
 
@@ -409,73 +395,35 @@ class AndroidZigbeeGatewayHealthSource(
             }
         }
         if (layout == ZigbeeGatewayLayout.MANAGED) {
-            val stopped = controller.disable() && !controller.running()
+            val stopped = controller.disable() && controller.running() == false
             return if (stopped) ZigbeeContainmentResult.COMPLETE else ZigbeeContainmentResult.FAILED
         }
         return ZigbeeContainmentResult.FAILED
     }
 
-    private fun absent() = ZigbeeGatewayObservation(
+    private fun absent(probeSucceeded: Boolean = true) = ZigbeeGatewayObservation(
         false, ZigbeeGatewayLayout.UNKNOWN, null, productVersion(), null, null, null, null,
-        null, null, false,
+        null, null, false, probeSucceeded,
     )
 
-    private data class Processes(
-        val gatewayPid: Int? = null,
-        val guardPid: Int? = null,
-    )
-
-    private fun parseProcesses(raw: String, gatewayDir: String): Processes {
-        var gatewayPid: Int? = null
-        var guardPid: Int? = null
-        raw.lineSequence().forEach { line ->
-            val match = Regex("""^\s*(\d+)\s+(.+)$""").find(line) ?: return@forEach
-            val pid = match.groupValues[1].toIntOrNull() ?: return@forEach
-            val args = match.groupValues[2]
-            when {
-                args == "$gatewayDir/zgateway" || args.startsWith("$gatewayDir/zgateway ") ||
-                    args == "zgateway" -> gatewayPid = pid
-                args == "sh $gatewayDir/guard_process.sh" ||
-                    args == "/system/bin/sh $gatewayDir/guard_process.sh" -> guardPid = pid
-            }
-        }
-        return Processes(gatewayPid, guardPid)
+    private fun clearCpuBaseline() {
+        previousTotalJiffies = null
+        previousProcessJiffies = emptyMap()
     }
 
-    private fun sampleCpu(vararg candidatePids: Int?): Map<Int, Double> {
-        val pids = candidatePids.filterNotNull().distinct()
-        if (pids.isEmpty()) {
-            previousTotalJiffies = null
-            previousProcessJiffies = emptyMap()
-            return emptyMap()
-        }
-        val command = buildString {
-            append("head -n 1 /proc/stat 2>/dev/null")
-            pids.forEach { append("; cat /proc/$it/stat 2>/dev/null") }
-        }
-        val lines = root.runOutput(command)?.lineSequence()?.filter(String::isNotBlank)?.toList()
-            ?: return emptyMap()
-        val total = lines.firstOrNull()?.takeIf { it.startsWith("cpu ") }
-            ?.trim()?.split(Regex("\\s+"))?.drop(1)?.mapNotNull(String::toLongOrNull)?.sum()
-            ?: return emptyMap()
-        val current = linkedMapOf<Int, Long>()
-        lines.drop(1).forEach { line ->
-            val pid = line.substringBefore(' ').toIntOrNull() ?: return@forEach
-            val afterComm = line.substringAfterLast(") ", "")
-            val fields = afterComm.split(' ')
-            val user = fields.getOrNull(11)?.toLongOrNull() ?: return@forEach
-            val system = fields.getOrNull(12)?.toLongOrNull() ?: return@forEach
-            current[pid] = user + system
-        }
+    private fun sampleCpu(sample: HelperZigbeeHealth): Map<Int, Double> {
+        val processes = listOfNotNull(sample.gateway, sample.guard)
+        if (processes.isEmpty()) { clearCpuBaseline(); return emptyMap() }
         val previousTotal = previousTotalJiffies
         val previous = previousProcessJiffies
-        previousTotalJiffies = total
-        previousProcessJiffies = current
-        val totalDelta = previousTotal?.let { total - it }?.takeIf { it > 0L } ?: return emptyMap()
+        previousTotalJiffies = sample.totalJiffies
+        previousProcessJiffies = processes.associate { (it.pid to it.startJiffies) to it.jiffies }
+        val totalDelta = previousTotal?.let { sample.totalJiffies - it }?.takeIf { it > 0L } ?: return emptyMap()
         val cores = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
-        return current.mapNotNull { (pid, jiffies) ->
-            val processDelta = previous[pid]?.let { jiffies - it }?.takeIf { it >= 0L } ?: return@mapNotNull null
-            pid to gatewayCpuFromJiffyDelta(processDelta, totalDelta, cores)!!
+        return processes.mapNotNull { process ->
+            val old = previous[process.pid to process.startJiffies] ?: return@mapNotNull null
+            val delta = (process.jiffies - old).takeIf { it >= 0L } ?: return@mapNotNull null
+            gatewayCpuFromJiffyDelta(delta, totalDelta, cores)?.let { process.pid to it }
         }.toMap()
     }
 }

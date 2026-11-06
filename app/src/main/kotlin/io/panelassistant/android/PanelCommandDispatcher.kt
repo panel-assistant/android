@@ -663,7 +663,8 @@ internal class PanelCommandDispatcher(
     fun reconcileZigbeeBoot() {
         if (!core.capabilityShape.current().live.zigbee || !config.zigbeeRouterConfigured) return
         val want = config.zigbeeRouterEnabled
-        if (want == zigbee.running()) return // already in the desired state
+        val running = zigbee.running() ?: return // An unreadable gateway is never proof of OFF.
+        if (want == running) return // already in the desired state
         admitZigbee(want)
     }
 
@@ -691,7 +692,7 @@ internal class PanelCommandDispatcher(
                     // A newer runtime generation or command is already authoritative. Stop waiting and
                     // release the shared actuator so its latest desired state can run after this one.
                     if (!lifecycle.isOpen() || !zigbeeActuation.isCurrent(zigbeeLease) ||
-                        config.zigbeeRouterEnabled != desired || zigbee.running()
+                        config.zigbeeRouterEnabled != desired || zigbee.running() != false
                     ) break
                     Thread.sleep(5_000)
                 }

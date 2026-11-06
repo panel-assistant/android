@@ -69,6 +69,10 @@ int   sysexec_capture_argv(const char *path, const char *const argv[], char *out
 int   sysexec_capture_argv_timeout(const char *path, const char *const argv[], char *output,
                                    size_t capacity, unsigned timeout_ms, int *timed_out);
 
+// Fixed one-topic vendor broker read, child-only fixed LD_LIBRARY_PATH and 3500ms deadline.
+// Successful capture reports its exact byte count, so embedded NUL cannot hide trailing data.
+int sysexec_capture_zigbee_role(char *output, size_t capacity, size_t *used);
+
 // Execute an absolute path without a shell and copy stdout to an already-open descriptor. The child
 // receives /dev/null on stdin and stderr. Returns the raw child wait status, or -1 on I/O/fork error.
 int   sysexec_stream_argv(const char *path, const char *const argv[], int output_fd);

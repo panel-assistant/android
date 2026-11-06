@@ -15,7 +15,7 @@
 #define MAX_RUN_HISTORY 32
 #define MAX_RUN_BYTES 4096
 #define MAX_ARGV_HISTORY 32
-#define MAX_ARGV_ARGS 8
+#define MAX_ARGV_ARGS 32
 #define MAX_ARGV_BYTES 1280
 
 typedef struct {
@@ -372,3 +372,12 @@ unsigned sysexec_stub_deadline_ms(int index) {
 }
 
 void sysexec_stub_set_deadline_elapsed(unsigned ms) { deadline_elapsed_ms = ms; }
+
+int sysexec_capture_zigbee_role(char *output, size_t capacity, size_t *used) {
+    const char *const argv[] = { "/vendor/bin/siliconlabs_host/mosquitto_sub", "-h", "127.0.0.1",
+        "-p", "1883", "-i", "hapaneld_zr", "-t", "zigbee/system/network-role/information",
+        "-C", "1", "-W", "3", NULL };
+    int status = sysexec_capture_argv_timeout(argv[0], argv, output, capacity, 3500u, NULL);
+    if (used) *used = strlen(output);
+    return status;
+}

@@ -17,7 +17,7 @@ Newline-terminated ASCII on the abstract UNIX socket `@hapaneld-helper`. One or 
 
 | Command | Effect | Reply |
 | --- | --- | --- |
-| `VERSION` | read the helper identity without touching hardware | `HELPER version=1.5.0 proto=1.5` / `ERR` when arguments are supplied |
+| `VERSION` | read the helper identity without touching hardware | `HELPER version=1.8.0 proto=1.8` / `ERR` when arguments are supplied |
 | `RGB <r> <g> <b>` | set LED colour (each 0..255) | `OK` / `ERR` |
 | `OFF` | LED off | `OK` / `ERR` |
 | `BTN <0..255>` | button-backlight brightness | `OK` / `ERR` |
@@ -51,6 +51,9 @@ Newline-terminated ASCII on the abstract UNIX socket `@hapaneld-helper`. One or 
 | `FONTSCALE` / `FONTSCALE <n>\|reset` | get system font scale / set it (`settings system font_scale`) | `SCALE=<n\|null>` / `ERR` (get) · `OK` / `ERR` (set) |
 | `GOVREAD CURRENT` / `GOVREAD AVAILABLE` | read the fixed cpu0 scaling governor / available governors directly, without subprocesses (protocol 1.5) | `GOVREAD <tokens>` / `ERR` |
 | `GOV <name>` | set the CPU scaling governor on all cores | `OK` / `ERR` |
+| `ZIGBEESTATE` | argument-free, fixed Sonoff gateway footprint and complete process observation (protocol 1.6) | ordered `ZIGBEESTATE 1` frame ending `END`, or `ERR` |
+| `ZIGBEEHEALTH` | the same observation plus process start/jiffy samples, total CPU, bounded watchdog and network evidence (protocol 1.7) | ordered `ZIGBEEHEALTH 1` frame ending `END`, or `ERR` |
+| `ZIGBEEROLE` | argument-free, one fixed local broker topic under a 3500 ms child deadline (protocol 1.8) | `ZIGBEEROLE <hex JSON bytes>` / `ERR` |
 | `ZIGBEECONTAIN` | argument-free containment for the exact vendor-native Sonoff `/vendor/bin/siliconlabs_host` layout; targets only its guard, gateway and matching broker, then demotes a surviving gateway | `OK` / `PARTIAL` / `ERR` |
 | `PERFDUMP` | CPU/load/temp/gpu/process snapshot (for sandbox-walled apps) | marker-delimited stream, then EOF |
 | `CHT8305` | room temp/humidity from exact allowlisted input layouts (`temperature`/`humidity` or ZX-SMT156 `sun-ths`/`sun-hum`) | `T=<centi> H=<centi>` / `ERR` |
@@ -67,6 +70,39 @@ to single spaces between tokens. The reply has one trailing newline. Empty input
 NUL, invalid tokens, open/read failure, or raw input reaching the 4096-byte overflow probe returns
 `ERR`; at most 4095 raw bytes can succeed. There is no subprocess fallback. The broader read grammar
 does not change the governor writer's allowlist.
+
+`ZIGBEESTATE`, `ZIGBEEHEALTH` and `ZIGBEEROLE` accept no arguments. Paths are fixed to
+`/vendor/bin/siliconlabs_host`, `/data/vendor/siliconlabs_host` and `/proc`; callers cannot select
+another layout or target. A missing gateway directory alone never proves stopped: state and health
+complete a bounded scan (at most 8192 numeric process entries), skip vanished entries, zombies and
+kernel threads, and verify candidate executable inodes against the fixed gateway binary or platform
+shell. An unreadable, malformed, oversized or ambiguous observation, duplicate exact process, or
+symlinked/non-directory gateway tree returns `ERR`. No state or health read executes a subprocess.
+
+The state frame contains these exact ordered lines after `ZIGBEESTATE 1`: `managed=`, `guard=`,
+`run=`, `binary=`, `broker=`, `package_marker=`, `running=`, `guard_running=`, `package=`, then `END`.
+Flags are `0` or `1`. Package is lowercase hex encoding at most 120 printable UTF-8 bytes (empty
+allowed); the frame is at most 512 bytes. File flags describe regular, non-symlinked files; binary
+and broker must also have an executable bit. Absence requires a complete process scan.
+
+Health uses the same fields after `ZIGBEEHEALTH 1`, then `gateway_pid=`, `gateway_start=`,
+`gateway_jiffies=`, `guard_pid=`, `guard_start=`, `guard_jiffies=`, `total_jiffies=`, `recursive=`,
+`netinfo=`, and `END`. Process triplets are all canonical decimal values or all `-` when absent;
+start time is Linux start ticks, and jiffies are user plus system ticks. Total CPU sums the first
+eight aggregate counters (guest ticks are already included). Values fit signed 64-bit integers;
+PIDs fit a positive signed 32-bit integer. `recursive` is a `0`/`1` flag for the exact legacy recursive
+library-path assignment in a bounded 64 KiB guard script. `netinfo` is lowercase hex of at most 4096
+opaque bytes, or `-` when unavailable. The authoritative canonical file wins; only an absent/empty
+file permits the fixed gateway-log fallback (last 200 lines, bounded to 64 KiB per file). Nonregular,
+unreadable or oversized canonical evidence stays unknown. The app retains JSON parsing and public
+redaction; raw network evidence must never become public attributes. Health is at most 9216 bytes.
+
+Role runs only `/vendor/bin/siliconlabs_host/mosquitto_sub` with fixed argv
+`-h 127.0.0.1 -p 1883 -i hapaneld_zr -t zigbee/system/network-role/information -C 1 -W 3`.
+Only this child receives `LD_LIBRARY_PATH=/vendor/bin/siliconlabs_host`; the daemon environment is
+unchanged. A failed, empty, NUL-containing, oversized or timed-out result returns `ERR`, without a
+shell or fallback. Success returns complete broker JSON as lowercase hex (at most 4096 raw bytes,
+8204 wire bytes); the app validates JSON and the printable role. Every frame ends with a newline.
 
 `VERSION` is the stable compatibility bootstrap. `version` is the helper release version and `proto` is the wire protocol version; clients accept the same protocol major and treat later minor versions as additive. Helpers from before this command return the ordinary unknown-command `ERR`, so the app verifies them with `PING` and reports them as reachable but compatibility-unverified. Run `hapaneld-helper --version` to print the same identity without initializing hardware or binding the socket.
 
@@ -144,6 +180,7 @@ The daemon is split by capability under `helper/src/` (the binary, `@hapaneld-he
 | `sysctl.c` | density / governor read-back and control / reload / start / reboot / screencap privileged operations |
 | `companion.c` | descriptor-anchored, bounded HA Companion backup/restore transaction |
 | `perf.c` | `PERFDUMP` `/proc` snapshot |
+| `zigbee.c` | bounded fixed-layout gateway state, health and role observations |
 | `logcat.c` | bounded full-system log stream; sends complete entries only, with a drop record when entry or rate limits apply |
 | `cht8305.c` | `CHT8305`-compatible room climate read from exact input names/axes (`EVIOCGABS`, no exec) |
 | `util.c` | clamp, node IO, the argument validators |

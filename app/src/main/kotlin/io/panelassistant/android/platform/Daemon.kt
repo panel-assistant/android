@@ -15,6 +15,11 @@ interface Daemon {
     fun cpuGovernor(): String? = null
     fun cpuAvailableGovernors(): List<String>? = null
 
+    /** Fixed gateway observations; null means the helper could not prove a complete observation. */
+    fun zigbeeState(): HelperZigbeeState? = null
+    fun zigbeeHealth(): HelperZigbeeHealth? = null
+    fun zigbeeRole(): String? = null
+
     /** Send one command; return the exact printable reply line without its LF, or null if unreachable/malformed. */
     fun send(cmd: String): String?
 

@@ -20,6 +20,8 @@ import java.util.concurrent.TimeUnit
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.AfterClass
@@ -38,7 +40,7 @@ class HelperSocketCompositionTest {
             ).redirectErrorStream(true).start()
             assertEquals("READY", second.inputStream.bufferedReader().readLine())
             assertTrue(Files.isDirectory(root.resolve(".hapaneld-guard-db-test")))
-            assertEquals("HELPER version=1.5.0 proto=1.5", SocketDaemon(socket).send("VERSION"))
+            assertEquals("HELPER version=1.8.0 proto=1.8", SocketDaemon(socket).send("VERSION"))
         } finally {
             second?.let {
                 it.destroy()
@@ -54,7 +56,7 @@ class HelperSocketCompositionTest {
         val daemon = SocketDaemon(socketPath)
 
         assertTrue(daemon.available())
-        assertEquals("HELPER version=1.5.0 proto=1.5", daemon.send("VERSION"))
+        assertEquals("HELPER version=1.8.0 proto=1.8", daemon.send("VERSION"))
         assertEquals("ERR", daemon.send("PINGEXTRA"))
         assertEquals("OK", daemon.sendLong("RELOAD io.example.dashboard", 5_000).replyValue())
     }
@@ -70,7 +72,7 @@ class HelperSocketCompositionTest {
         val daemon = SocketDaemon(socketPath)
         // The host fixture redirects fixed governor reads and refuses governor writes.
         listOf(
-            WireTranscript("VERSION", "HELPER version=1.5.0 proto=1.5"),
+            WireTranscript("VERSION", "HELPER version=1.8.0 proto=1.8"),
             WireTranscript("PING", "OK"),
             WireTranscript("BUILDID", "BUILDID development"),
             WireTranscript("COMPANIONCAPS", "COMPANIONCAPS 1 BACKUP RESTORE STATUS JOURNAL"),
@@ -107,6 +109,9 @@ class HelperSocketCompositionTest {
             WireTranscript("GOVREAD CURRENT extra", "ERR"),
             WireTranscript("GOVREAD current", "ERR"),
             WireTranscript("GOVREAD /path", "ERR"),
+            WireTranscript("ZIGBEESTATE extra", "ERR"),
+            WireTranscript("ZIGBEEHEALTH /path", "ERR"),
+            WireTranscript("ZIGBEEROLE extra", "ERR"),
             WireTranscript("ZIGBEECONTAIN", "OK"),
             WireTranscript("VERSION unexpected", "ERR"),
             WireTranscript("PINGEXTRA", "ERR"),
@@ -132,6 +137,24 @@ class HelperSocketCompositionTest {
         val daemon = IdentityAdmittingHelperClient(ChannelSessionTransport(socketPath))
         assertEquals("Vendor_1.fast-2", daemon.cpuGovernor())
         assertEquals(listOf("powersave", "Vendor_1.fast-2", "performance"), daemon.cpuAvailableGovernors())
+    }
+
+    @Test(timeout = 10_000)
+    fun typedZigbeeReadsCrossNativeFixedPathsAndBoundedFrames() {
+        val daemon = IdentityAdmittingHelperClient(ChannelSessionTransport(socketPath))
+        val state = assertNotNull(daemon.zigbeeState())
+        assertEquals(managedZigbeeFiles, state.files)
+        assertEquals("sonoff-v3.5.4:sonoff-3.5.0", state.packageVersion)
+        assertFalse(state.running)
+        assertFalse(state.guardRunning)
+        val health = assertNotNull(daemon.zigbeeHealth())
+        assertEquals(state, health.state)
+        assertEquals(558L, health.totalJiffies)
+        assertNull(health.gateway)
+        assertNull(health.guard)
+        assertFalse(health.recursiveWatchdogAssignment)
+        assertEquals("""{"roleType":1,"nodeId":123,"panId":456}""", health.netInfo)
+        assertEquals("Repeater", daemon.zigbeeRole())
     }
 
     @Test(timeout = 10_000)
@@ -301,6 +324,7 @@ class HelperSocketCompositionTest {
         lateinit var socketPath: Path
         lateinit var guardRoot: Path
         lateinit var server: Process
+        lateinit var zigbeeRoot: Path
         lateinit var fixtureLock: FileLock
 
         @JvmStatic
@@ -320,10 +344,24 @@ class HelperSocketCompositionTest {
             val available = guardRoot.resolve("governor.available")
             Files.writeString(current, "Vendor_1.fast-2\n")
             Files.writeString(available, "powersave\tVendor_1.fast-2  performance\n")
+            zigbeeRoot = executable.parentFile.toPath().resolve("zigbee-socket-fixture")
+            zigbeeRoot.toFile().deleteRecursively()
+            val vendor = Files.createDirectories(zigbeeRoot.resolve("vendor"))
+            Files.createDirectories(zigbeeRoot.resolve("proc"))
+            Files.createDirectories(zigbeeRoot.resolve("data"))
+            for (name in managedZigbeeFiles) Files.writeString(vendor.resolve(name), "fixture\n")
+            Files.writeString(vendor.resolve("package_version"), "sonoff-v3.5.4:sonoff-3.5.0\n")
+            Files.writeString(vendor.resolve("mosquitto_sub"), "fixture\n")
+            for (name in listOf("zgateway", "mosquitto", "mosquitto_sub")) {
+                Files.setPosixFilePermissions(vendor.resolve(name), PosixFilePermissions.fromString("rwx------"))
+            }
+            Files.writeString(zigbeeRoot.resolve("proc/stat"), "cpu 100 2 30 400 5 6 7 8 20 1\n")
+            Files.writeString(zigbeeRoot.resolve("data/netinfo"), """{"roleType":1,"nodeId":123,"panId":456}""")
             server = ProcessBuilder(executable.absolutePath, socketPath.toString(), guardRoot.toString())
                 .apply {
                     environment()["HAPANELD_TEST_GOV_CURRENT"] = current.toString()
                     environment()["HAPANELD_TEST_GOV_AVAILABLE"] = available.toString()
+                    environment()["HAPANELD_TEST_ZIGBEE_ROLE"] = """{"role":"Repeater"}"""
                 }
                 .redirectErrorStream(true)
                 .start()
@@ -342,6 +380,7 @@ class HelperSocketCompositionTest {
             if (::socketPath.isInitialized) Files.deleteIfExists(socketPath)
             Files.deleteIfExists(Path.of("/tmp/hapaneld-helper-install-stream-test.apk"))
             if (::guardRoot.isInitialized) deleteGuardRoot(guardRoot)
+            if (::zigbeeRoot.isInitialized) zigbeeRoot.toFile().deleteRecursively()
             if (::fixtureLock.isInitialized) fixtureLock.channel().close()
         }
 

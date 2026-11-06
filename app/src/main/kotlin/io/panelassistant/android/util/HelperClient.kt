@@ -6,12 +6,18 @@ import io.panelassistant.android.BuildConfig
 import io.panelassistant.android.platform.Daemon
 import io.panelassistant.android.platform.DaemonLongResult
 import io.panelassistant.android.platform.DaemonStreamResult
+import io.panelassistant.android.platform.HelperZigbeeHealth
+import io.panelassistant.android.platform.HelperZigbeeProcess
+import io.panelassistant.android.platform.HelperZigbeeState
 import java.io.BufferedInputStream
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.InputStream
 import java.io.IOException
 import java.nio.charset.StandardCharsets
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
+import org.json.JSONObject
 
 const val SUPPORTED_HELPER_PROTOCOL_MAJOR = 1
 
@@ -88,6 +94,73 @@ private fun parseGovernorReply(reply: ByteArray?, single: Boolean): List<String>
     if (payload.length > MAX_GOVERNOR_PAYLOAD_BYTES) return null
     val tokens = payload.split(' ')
     return tokens.takeIf { (!single || it.size == 1) && it.all(GOVERNOR_TOKEN::matches) }
+}
+
+private val ZIGBEE_STATE_FIELDS = listOf(
+    "managed", "guard", "run", "binary", "broker", "package_marker", "running", "guard_running", "package",
+)
+private val ZIGBEE_HEALTH_FIELDS = ZIGBEE_STATE_FIELDS + listOf(
+    "gateway_pid", "gateway_start", "gateway_jiffies", "guard_pid", "guard_start", "guard_jiffies",
+    "total_jiffies", "recursive", "netinfo",
+)
+private val ZIGBEE_FILES = listOf("run_guard_process.sh", "guard_process.sh", "run.sh", "zgateway", "mosquitto", "package_version")
+private val UNSIGNED_DECIMAL = Regex("0|[1-9][0-9]*")
+
+private fun zigbeeFrame(bytes: ByteArray?, command: String, fields: List<String>, maxBytes: Int): Map<String, String>? {
+    bytes ?: return null
+    if (bytes.size > maxBytes || bytes.isEmpty() || bytes.last() != 10.toByte() ||
+        bytes.any { (it.toInt() and 255) != 10 && (it.toInt() and 255) !in 32..126 }
+    ) return null
+    val lines = String(bytes, StandardCharsets.US_ASCII).removeSuffix("\n").split('\n')
+    if (lines.size != fields.size + 2 || lines.first() != "$command 1" || lines.last() != "END") return null
+    return fields.mapIndexed { index, key ->
+        val line = lines[index + 1]
+        if (!line.startsWith("$key=")) return null
+        key to line.removePrefix("$key=")
+    }.toMap()
+}
+
+private fun zigbeeFlag(value: String?): Boolean? = when (value) { "0" -> false; "1" -> true; else -> null }
+private fun zigbeeNumber(value: String): Long? = value.takeIf(UNSIGNED_DECIMAL::matches)?.toLongOrNull()
+
+private fun zigbeeHex(value: String, maxBytes: Int, allowControls: Boolean = false): String? {
+    if (value.length > maxBytes * 2 || value.length % 2 != 0 || value.any { it !in '0'..'9' && it !in 'a'..'f' }) return null
+    val bytes = ByteArray(value.length / 2) { value.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
+    val decoded = runCatching {
+        StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes)).toString()
+    }.getOrNull() ?: return null
+    return decoded.takeIf { allowControls || it.none(Char::isISOControl) }
+}
+
+private fun parseZigbeeState(fields: Map<String, String>): HelperZigbeeState? {
+    val flags = ZIGBEE_STATE_FIELDS.take(8).map { zigbeeFlag(fields[it]) ?: return null }
+    val version = zigbeeHex(fields.getValue("package"), 120) ?: return null
+    return HelperZigbeeState(ZIGBEE_FILES.filterIndexed { index, _ -> flags[index] }.toSet(), flags[6], flags[7], version.trim().ifEmpty { null })
+}
+
+private fun parseZigbeeHealth(bytes: ByteArray?): HelperZigbeeHealth? {
+    val fields = zigbeeFrame(bytes, "ZIGBEEHEALTH", ZIGBEE_HEALTH_FIELDS, 9216) ?: return null
+    val state = parseZigbeeState(fields) ?: return null
+    fun process(prefix: String): HelperZigbeeProcess? {
+        val pid = zigbeeNumber(fields.getValue("${prefix}_pid"))?.takeIf { it in 1..Int.MAX_VALUE.toLong() } ?: return null
+        val start = zigbeeNumber(fields.getValue("${prefix}_start")) ?: return null
+        val jiffies = zigbeeNumber(fields.getValue("${prefix}_jiffies")) ?: return null
+        return HelperZigbeeProcess(pid.toInt(), start, jiffies)
+    }
+    fun absent(prefix: String) = listOf("pid", "start", "jiffies").all { fields["${prefix}_$it"] == "-" }
+    val gateway = process("gateway")
+    val guard = process("guard")
+    if (gateway == null && !absent("gateway") || guard == null && !absent("guard") ||
+        state.running != (gateway != null) || state.guardRunning != (guard != null) ||
+        gateway != null && guard != null && gateway.pid == guard.pid
+    ) return null
+    val total = zigbeeNumber(fields.getValue("total_jiffies")) ?: return null
+    val recursive = zigbeeFlag(fields["recursive"]) ?: return null
+    val netinfo = fields.getValue("netinfo").let {
+        if (it == "-") null else zigbeeHex(it, 4096, allowControls = true) ?: return null
+    }
+    return HelperZigbeeHealth(state, gateway, guard, total, recursive, netinfo)
 }
 
 private const val HELPER_BOOTSTRAP_TIMEOUT_MS = 1_000L
@@ -296,6 +369,35 @@ internal class IdentityAdmittingHelperClient(
             val identity = parseHelperIdentity(version.value) ?: return null
             if (identity.protocolMajor != SUPPORTED_HELPER_PROTOCOL_MAJOR || identity.protocolMinor < GOVREAD_PROTOCOL_MINOR) return null
             parseGovernorReply(it.sendBytes("GOVREAD $selector", MAX_GOVREAD_REPLY_BYTES), single)
+        }
+    }
+
+    override fun zigbeeState(): HelperZigbeeState? =
+        zigbeeFrame(readZigbee("ZIGBEESTATE", 6, 512), "ZIGBEESTATE", ZIGBEE_STATE_FIELDS, 512)?.let(::parseZigbeeState)
+
+    override fun zigbeeHealth(): HelperZigbeeHealth? = parseZigbeeHealth(readZigbee("ZIGBEEHEALTH", 7, 9216))
+
+    override fun zigbeeRole(): String? {
+        val bytes = readZigbee("ZIGBEEROLE", 8, 8204) ?: return null
+        if (bytes.isEmpty() || bytes.size > 8204 || bytes.last() != 10.toByte() ||
+            bytes.dropLast(1).any { (it.toInt() and 255) !in 32..126 }
+        ) return null
+        val line = String(bytes, 0, bytes.size - 1, StandardCharsets.US_ASCII)
+        if (!line.startsWith("ZIGBEEROLE ")) return null
+        val raw = zigbeeHex(line.removePrefix("ZIGBEEROLE "), 4096, allowControls = true) ?: return null
+        return runCatching {
+            (JSONObject(raw.trim()).opt("role") as? String)
+                ?.takeIf { it.isNotEmpty() && it.length <= 64 && it.none(Char::isISOControl) }
+        }.getOrNull()
+    }
+
+    private fun readZigbee(command: String, minimumMinor: Int, maxBytes: Long): ByteArray? {
+        val session = transport.open() ?: return null
+        return session.use {
+            val version = it.bootstrap("VERSION", newDeadline()) as? HelperBootstrapReply.Line ?: return null
+            val identity = parseHelperIdentity(version.value) ?: return null
+            if (identity.protocolMajor != SUPPORTED_HELPER_PROTOCOL_MAJOR || identity.protocolMinor < minimumMinor) return null
+            it.sendBytes(command, maxBytes)
         }
     }
 

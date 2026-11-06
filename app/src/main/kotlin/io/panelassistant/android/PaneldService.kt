@@ -1348,7 +1348,7 @@ class PaneldService : Service() {
             networkAdbActive = if (io.panelassistant.android.control.ManagedNetworkAdb.managed) false
                 else if (persistedAdb) controls.adb.listenerState(allowRootCrossCheck = privilege.directSuReady)
                 else controls.adb.activeState(allowRootCrossCheck = privilege.directSuReady),
-            zigbee = controls.zigbee.observe(includeRole = true, directSuReady = privilege.directSuReady),
+            zigbee = controls.zigbee.observe(includeRole = true),
             relayCount = controls.relay.count(allowRootProbe = privilege.directSuReady),
             buttonLedCount = controls.relay.ledCount(),
         )
