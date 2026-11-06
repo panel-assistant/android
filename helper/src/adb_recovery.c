@@ -21,6 +21,7 @@
 #include <inttypes.h>
 #include <pthread.h>
 #include <sys/stat.h>
+#include <sys/vfs.h>
 #include <sys/un.h>
 #include <sys/wait.h>
 #include <sys/resource.h>
@@ -970,8 +971,121 @@ int adb_recovery_ensure(void) {
     return 0;
 }
 
+/* Android init kills a service's uid_N/pid_N cgroup, including detached sessions.
+ * Establish custody before replacing an incumbent or forking the guardian. Only the
+ * recovery process moves; boot helpers, adbd and launchers retain their own custody.
+ * Android uses cgroup v2, or the memory hierarchy on older releases. Unknown layouts
+ * refuse startup rather than advertising a guardian that will die with adbd. */
+typedef struct { char unified[256], memory[256]; } recovery_cgroups;
+static int custody_groups(const char *path, recovery_cgroups *groups) {
+    int fd = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (fd < 0) return -1;
+    char text[8192]; size_t used = 0; int result = -1;
+    while (used + 1 < sizeof text) {
+        ssize_t n = read(fd, text + used, sizeof text - used - 1);
+        if (n < 0 && errno == EINTR) continue;
+        if (n < 0) goto done;
+        if (!n) break;
+        used += (size_t)n;
+    }
+    if (!used || used + 1 == sizeof text || text[used - 1] != '\n') goto done;
+    text[used] = 0; memset(groups, 0, sizeof *groups);
+    char *next = text;
+    while (*next) {
+        char *line = next, *end = strchr(line, '\n');
+        if (!end) goto done;
+        *end = 0; next = end + 1;
+        char *controllers = strchr(line, ':'), *group;
+        if (!controllers || controllers == line || strspn(line, "0123456789") != (size_t)(controllers - line)) goto done;
+        *controllers++ = 0; group = strchr(controllers, ':');
+        if (!group || group[1] != '/') goto done;
+        *group++ = 0;
+        char *target = NULL;
+        if (!strcmp(line, "0") && !*controllers) target = groups->unified;
+        else {
+            for (char *controller = controllers; *controller;) {
+                char *comma = strchr(controller, ',');
+                size_t length = comma ? (size_t)(comma - controller) : strlen(controller);
+                if (length == 6 && !strncmp(controller, "memory", 6)) target = groups->memory;
+                if (!comma) break;
+                controller = comma + 1;
+            }
+        }
+        /* Older init may kill through cpuacct (/acct) instead of memcg. Do not
+         * accept a service domain in a hierarchy whose root we cannot establish. */
+        if (!target && (strstr(group, "/uid_") || strstr(group, "/pid_"))) goto done;
+        if (target) {
+            if (*target || strlen(group) >= sizeof groups->unified) goto done;
+            strcpy(target, group);
+        }
+    }
+    if (*groups->unified || *groups->memory) result = 0;
+ done: close(fd); return result;
+}
+static int custody_android_group(const char *path, int memory) {
+    if (memory && !strncmp(path, "/apps/", 6)) path += 5;
+    if (strncmp(path, "/uid_", 5)) return 0;
+    path += 5;
+    size_t digits = strspn(path, "0123456789");
+    if (!digits || digits > 10 || strncmp(path + digits, "/pid_", 5)) return 0;
+    path += digits + 5;
+    digits = strspn(path, "0123456789");
+    return digits && digits <= 10 && !path[digits];
+}
+static int custody_root(const char *path, long magic) {
+    int directory = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (directory < 0) return -1;
+    struct stat st; struct statfs fs;
+    int result = -1, fd = -1;
+    if (fstat(directory, &st) || (st.st_uid != 0 && st.st_uid != 1000) || (st.st_mode & 0002) ||
+        fstatfs(directory, &fs) || (long)fs.f_type != magic) goto done;
+    fd = openat(directory, "cgroup.procs", O_RDWR | O_NOFOLLOW | O_CLOEXEC);
+    if (fd < 0 || fstat(fd, &st) || !S_ISREG(st.st_mode) ||
+        (st.st_uid != 0 && st.st_uid != 1000) || (st.st_mode & 0002)) goto done;
+    /* PID1 in the target proves this is the hierarchy root, not a delegated bind mount. */
+    char text[65536]; size_t used = 0; int init = 0;
+    while (used + 1 < sizeof text) {
+        ssize_t n = read(fd, text + used, sizeof text - used - 1);
+        if (n < 0 && errno == EINTR) continue;
+        if (n < 0) goto done;
+        if (!n) break;
+        used += (size_t)n;
+    }
+    text[used] = 0;
+    for (char *line = text; *line;) {
+        char *end = strchr(line, '\n');
+        if (!end) break;
+        if (end - line == 1 && *line == '1') { init = 1; break; }
+        line = end + 1;
+    }
+    if (!init || lseek(fd, 0, SEEK_SET) < 0) goto done;
+    char pid[32]; int length = snprintf(pid, sizeof pid, "%ld\n", (long)getpid());
+    ssize_t written;
+    do { written = write(fd, pid, (size_t)length); } while (written < 0 && errno == EINTR);
+    if (written == length) result = 0;
+ done:
+    if (fd >= 0) close(fd);
+    close(directory); return result;
+}
+static int recovery_custody(void) {
+    recovery_cgroups before, init, after;
+    if (custody_groups("/proc/self/cgroup", &before) || custody_groups("/proc/1/cgroup", &init)) return -1;
+    if (*before.unified && strcmp(before.unified, "/")) {
+        if (strcmp(init.unified, "/") || !custody_android_group(before.unified, 0) ||
+            custody_root("/sys/fs/cgroup", 0x63677270)) return -1;
+    }
+    if (*before.memory && strcmp(before.memory, "/")) {
+        if (strcmp(init.memory, "/") || !custody_android_group(before.memory, 1) ||
+            custody_root("/dev/memcg", 0x27e0eb)) return -1;
+    }
+    if (custody_groups("/proc/self/cgroup", &after)) return -1;
+    if ((*before.unified && strcmp(after.unified, "/")) || (*before.memory && strcmp(after.memory, "/"))) return -1;
+    /* Session separation also removes init's service process-group kill target. */
+    return getsid(0) == getpid() || setsid() >= 0 ? 0 : -1;
+}
+
 int adb_recovery_main(void) {
-    if (geteuid()) return 1;
+    if (geteuid() || recovery_custody()) return 1;
     signal(SIGPIPE, SIG_IGN);
     int server = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
     struct sockaddr_un address = { .sun_family = AF_UNIX };

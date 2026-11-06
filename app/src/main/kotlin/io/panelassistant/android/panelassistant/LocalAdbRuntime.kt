@@ -238,22 +238,29 @@ internal class LocalAdbRuntime(
     }
 }
 
-internal class LocalAdbAsset(private val context: Context) {
-    @Synchronized fun prepare(): JSONObject {
+internal class LocalAdbAsset(
+    private val cacheDirectory: () -> File,
+    private val readAsset: () -> ByteArray,
+    private val chmod: (File, Int) -> Unit,
+) {
+    constructor(context: Context) : this({ context.cacheDir }, {
         val name = requireNotNull(helperAssetName(android.os.Build.SUPPORTED_ABIS.asIterable()))
-        val bytes = context.assets.open(name).use { it.readBytes() }
+        context.assets.open(name).use { it.readBytes() }
+    }, { file, mode -> android.system.Os.chmod(file.absolutePath, mode) })
+
+    @Synchronized fun prepare(): JSONObject {
+        val bytes = readAsset()
         require(bytes.isNotEmpty() && bytes.size <= 8 * 1024 * 1024)
         val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
-        val directory = File(context.cacheDir, "adb-recovery")
+        val directory = File(cacheDirectory(), "adb-recovery")
         check(directory.mkdirs() || directory.isDirectory)
         check(!java.nio.file.Files.isSymbolicLink(directory.toPath()))
-        directory.setReadable(false, false); directory.setWritable(false, false); directory.setExecutable(false, false)
-        check(directory.setReadable(true, true) && directory.setWritable(true, true) && directory.setExecutable(true, true))
+        // cache directories may inherit setgid; the bootstrap contract requires exact 0700.
+        chmod(directory, 0x1c0)
         val path = File(directory, "helper-$hash")
         check(!java.nio.file.Files.isSymbolicLink(path.toPath()))
         java.io.FileOutputStream(path).use { it.write(bytes); it.fd.sync() }
-        path.setReadable(false, false); path.setWritable(false, false); path.setExecutable(false, false)
-        check(path.setReadable(true, true) && path.setWritable(true, true))
+        chmod(path, 0x180)
         return JSONObject().put("path", path.absolutePath).put("sha256", hash).put("build_id", BuildConfig.HELPER_BUILD_ID)
     }
 }

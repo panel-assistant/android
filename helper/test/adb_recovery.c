@@ -6,6 +6,8 @@
 #include <signal.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/vfs.h>
+#include <dirent.h>
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <errno.h>
@@ -25,9 +27,58 @@ static void *fixture_mmap(void *address, size_t length, int protection, int flag
 }
 /* Lease tests fork their owner in-process. Model its canonical self pin only here;
  * the real replacement driver executes and verifies the actual canonical ELF inode. */
+static int fixture_custody, fixture_migrated, fixture_root_fd = -1, fixture_root_directory = -1;
+static long fixture_magic = 0x63677270;
+static void custody_receipt(void) {
+    char path[700]; snprintf(path, sizeof path, "%s/custody-%ld", getenv("HAPANELD_ADB_FIXTURE"), (long)getpid());
+    int fd = open(path, O_CREAT | O_TRUNC | O_WRONLY, 0600);
+    if (fd < 0 || write(fd, fixture_migrated ? "root" : "service", fixture_migrated ? 4 : 7) < 0) abort();
+    close(fd);
+}
+static int custody_proc(const char *path) {
+    char text[512];
+    const char *group = fixture_migrated || !strcmp(path, "/proc/1/cgroup") ? "/" :
+        fixture_custody == 2 ? "/apps/uid_0/pid_42" : fixture_custody == 3 ? "/unknown" : "/uid_0/pid_42";
+    if (fixture_custody == 4) snprintf(text, sizeof text, "4:memory:/\n2:cpuacct:/uid_0/pid_42\n");
+    else snprintf(text, sizeof text, fixture_custody == 2 ? "4:memory:%s\n3:cpuset:/\n" : "4:memory:/\n0::%s\n", group);
+    FILE *stream = tmpfile(); if (!stream) abort();
+    if (fputs(text, stream) < 0 || fflush(stream) || fseek(stream, 0, SEEK_SET)) abort();
+    int fd = dup(fileno(stream)); fclose(stream);
+    if (!strcmp(path, "/proc/self/cgroup")) custody_receipt();
+    return fd;
+}
+static int __attribute__((unused)) fixture_fstatfs(int fd, struct statfs *fs) {
+    int result = fstatfs(fd, fs);
+    if (!result && fixture_custody && fd == fixture_root_directory) fs->f_type = fixture_magic;
+    return result;
+}
+static ssize_t fixture_write(int fd, const void *bytes, size_t count) {
+    if (fixture_custody && fd == fixture_root_fd) {
+        char expected[32]; int length = snprintf(expected, sizeof expected, "%ld\n", (long)getpid());
+        if ((size_t)length != count || memcmp(expected, bytes, count)) abort();
+        if (access(fixture_path("custody-write-fails"), F_OK) == 0) { errno = EPERM; return -1; }
+        if (access(fixture_path("custody-no-effect"), F_OK)) fixture_migrated = 1;
+        custody_receipt(); return (ssize_t)count;
+    }
+    return write(fd, bytes, count);
+}
+static int fixture_close(int fd) {
+    if (fd == fixture_root_fd) fixture_root_fd = -1;
+    if (fd == fixture_root_directory) fixture_root_directory = -1;
+    return close(fd);
+}
+static pid_t fixture_fork(void) {
+    pid_t child = fork();
+    if (!child && fixture_custody) custody_receipt();
+    return child;
+}
 static int fixture_open(const char *path, int flags, ...) {
     mode_t mode = 0;
     if (flags & O_CREAT) { va_list ap; va_start(ap, flags); mode = (mode_t)va_arg(ap, int); va_end(ap); }
+    if (fixture_custody && (!strcmp(path, "/proc/self/cgroup") || !strcmp(path, "/proc/1/cgroup"))) return custody_proc(path);
+    if (fixture_custody && (!strcmp(path, "/sys/fs/cgroup") || !strcmp(path, "/dev/memcg"))) {
+        fixture_root_directory = open(fixture_path("cgroup"), flags, mode); return fixture_root_directory;
+    }
     return open(!strcmp(path, "/proc/self/exe") ? fixture_path("helper/helper") : path, flags, mode);
 }
 static int fixture_openat(int directory, const char *name, int flags, ...) {
@@ -35,7 +86,9 @@ static int fixture_openat(int directory, const char *name, int flags, ...) {
     if (flags & O_CREAT) { va_list arguments; va_start(arguments, flags); mode = (mode_t)va_arg(arguments, int); va_end(arguments); }
     if ((flags & O_CREAT) && access(fixture_path("fence-write-fails"),F_OK)==0 &&
         (!strcmp(name,"network-adb-recovery.fence") || !strcmp(name,".remote-debug-security-authority.v1.publish"))) { errno=ENOSPC; return -1; }
-    return openat(directory,name,flags,mode);
+    int fd = openat(directory,name,flags,mode);
+    if (fixture_custody && directory == fixture_root_directory && !strcmp(name, "cgroup.procs")) fixture_root_fd = fd;
+    return fd;
 }
 static int fixture_unlinkat(int directory, const char *name, int flags) {
     if(!strcmp(name,"remote-debug-security-authority.v1") && access(fixture_path("authority-readonly"),F_OK)==0) { errno=EROFS; return -1; }
@@ -46,6 +99,10 @@ static int fixture_execve(const char *path, char *const arguments[], char *const
     /* Only property fixtures need the host fixture directory. Shells use the real clean env. */
     return execve(path, arguments, !strcmp(path,"/proc/self/exe") ? environ : environment);
 }
+#define close fixture_close
+#define fstatfs fixture_fstatfs
+#define write fixture_write
+#define fork fixture_fork
 #define open fixture_open
 #define openat fixture_openat
 #define unlinkat fixture_unlinkat
@@ -62,6 +119,10 @@ static int fixture_execve(const char *path, char *const arguments[], char *const
 static unsigned fixture_lease_ms=600;
 #define ADB_RECOVERY_LEASE_MS fixture_lease_ms
 #include "../src/adb_recovery.c"
+#undef close
+#undef fstatfs
+#undef write
+#undef fork
 #undef open
 #undef openat
 #undef unlinkat
@@ -246,10 +307,87 @@ static void shell_tests(void) {
     CHECK(!read_result&&!strcmp(reply,"RESULT 0 0 0 43"),"platform command receives fixed Android roots without inherited classpath");
     char package[44]={0};CHECK(!exact_read(fd,package,43)&&!strcmp(package,"package:/system/framework/framework-res.apk"),"platform package response survives the production shell environment");close(fd);
 }
+static void clear_custody_receipts(void) {
+    DIR *directory = opendir(getenv("HAPANELD_ADB_FIXTURE")); struct dirent *entry;
+    while (directory && (entry = readdir(directory))) {
+        if (!strncmp(entry->d_name, "custody-", 8)) unlink(fixture_path(entry->d_name));
+    }
+    if (directory) closedir(directory);
+}
+static void custody_tests(void) {
+    CHECK(!mkdir(fixture_path("cgroup"), 0700), "custody fixture creates its root");
+    put("cgroup/cgroup.procs", "1\n");
+    CHECK(!chmod(fixture_path("cgroup/cgroup.procs"), 0600), "custody fixture root control is private");
+    for (int hierarchy = 1; hierarchy <= 2; hierarchy++) {
+        fixture_custody = hierarchy; fixture_migrated = 0;
+        fixture_magic = hierarchy == 1 ? 0x63677270 : 0x27e0eb;
+        pid_t service = fork();
+        if (!service) { custody_receipt(); for (;;) pause(); }
+        usleep(20000);
+        start();
+        char name[80]; snprintf(name, sizeof name, "custody-%ld", (long)owner);
+        CHECK(!strcmp(get(name), "root"), "recovery owner leaves the service cgroup before readiness");
+        snprintf(name, sizeof name, "custody-%ld", (long)guardian);
+        CHECK(!strcmp(get(name), "root"), "guardian inherits independent recovery custody");
+        arm();
+        int status; pid_t killed = waitpid(service, &status, WNOHANG);
+        CHECK(killed == service && WIFSIGNALED(status) && WTERMSIG(status) == SIGKILL,
+              "ARM really terminates the modeled adbd service cgroup");
+        CHECK(!kill(owner, 0) && !kill(guardian, 0), "owner and guardian survive adbd service termination");
+        char reply[160];
+        CHECK(!request("STATUS\n", reply, sizeof reply), "recovery remains ready after adbd service termination");
+        if (!killed) { kill(service, SIGKILL); waitpid(service, NULL, 0); }
+        stop(); clear_custody_receipts();
+    }
+    fixture_custody = 1; fixture_migrated = 1; fixture_magic = 0;
+    start(); /* Already independent custody needs no filesystem mutation. */
+    CHECK(!kill(owner, 0) && !kill(guardian, 0), "existing root custody is reused without migration");
+    pid_t incumbent = owner;
+    for (int fault = 0; fault < 6; fault++) {
+        fixture_migrated = 0; fixture_magic = fault == 0 ? 0 : 0x63677270;
+        fixture_custody = fault == 4 ? 3 : fault == 5 ? 4 : 1;
+        if (fault == 1) put("cgroup/cgroup.procs", "42\n");
+        if (fault == 2) put("custody-write-fails", "yes");
+        if (fault == 3) put("custody-no-effect", "yes");
+        pid_t refused = fork(); if (!refused) _exit(adb_recovery_main());
+        int status; waitpid(refused, &status, 0);
+        CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 1, "unproved recovery custody refuses startup");
+        char reply[160];
+        CHECK(owner == incumbent && !kill(incumbent, 0) && !request("STATUS\n", reply, sizeof reply),
+              "custody refusal preserves the matching incumbent and its socket");
+        /* Also isolate admission from incumbent checks: an unsafe fresh candidate
+         * must fail before it can bind a socket, even if no old owner exists. */
+        stop();
+        refused = fork(); if (!refused) _exit(adb_recovery_main());
+        pid_t exited = 0;
+        for (int i = 0; i < 100 && !exited; i++) { exited = waitpid(refused, &status, WNOHANG); if (!exited) usleep(10000); }
+        CHECK(exited == refused && WIFEXITED(status) && WEXITSTATUS(status) == 1,
+              "unproved fresh recovery custody refuses startup");
+        if (!exited) {
+            char path[128]; snprintf(path, sizeof path, "/proc/%ld/task/%ld/children", (long)refused, (long)refused);
+            FILE *children = fopen(path, "r"); long child;
+            if (children) { while (fscanf(children, "%ld", &child) == 1) if (child > 1) kill((pid_t)child, SIGKILL); fclose(children); }
+            kill(refused, SIGKILL); waitpid(refused, NULL, 0);
+        }
+        put("cgroup/cgroup.procs", "1\n"); unlink(fixture_path("custody-write-fails")); unlink(fixture_path("custody-no-effect"));
+        fixture_migrated = 1; fixture_custody = 1; fixture_magic = 0; start(); incumbent = owner;
+    }
+    stop(); clear_custody_receipts(); fixture_custody = fixture_migrated = 0;
+    unlink(fixture_path("cgroup/cgroup.procs")); rmdir(fixture_path("cgroup"));
+}
 int main(int argc,char **argv) {
     if(argc==2){fputs(get(argv[1]),stdout);put("getprop.calls","yes");return 0;}
     if(argc==3){
-        if(!strcmp(argv[1],"ctl.stop")){put("init.svc.adbd","stopped");put("tcp","");}
+        if(!strcmp(argv[1],"ctl.stop")){
+            put("init.svc.adbd","stopped");put("tcp","");
+            DIR *members = opendir(getenv("HAPANELD_ADB_FIXTURE")); struct dirent *entry;
+            while (members && (entry = readdir(members))) {
+                long pid = 0; char extra;
+                if (sscanf(entry->d_name,"custody-%ld%c",&pid,&extra) == 1 && pid > 1 &&
+                    !strcmp(get(entry->d_name),"service")) (void)kill((pid_t)pid,SIGKILL);
+            }
+            if (members) closedir(members);
+        }
         else if(!strcmp(argv[1],"ctl.restart")){
             if(access(fixture_path("no_backup/network-adb-recovery.fence"),F_OK) || access(fixture_path("no_backup/.remote-debug-security-authority.v1.publish"),F_OK)) put("unfenced-reopen","yes");
             put("init.svc.adbd","running");
@@ -268,7 +406,7 @@ int main(int argc,char **argv) {
     if(fixture_lease_region==MAP_FAILED)abort();
     if (mkdir(fixture_path("no_backup"),0700)) abort();
     if (mkdir(APP_DATA,0700) || mkdir(APP_USER_DATA,0700)) abort();
-    heartbeat_tests(); absent_data_test(); managed_absent_trigger_test();
+    custody_tests(); heartbeat_tests(); absent_data_test(); managed_absent_trigger_test();
     start();unauthorized_test();shell_tests();worker_death_test();stop();start();arm();
     int slow=connect_owner();write_all(slow,"S",1);
     long long slow_deadline = now_ms() + 1200;
