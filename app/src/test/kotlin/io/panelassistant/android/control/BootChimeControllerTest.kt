@@ -188,6 +188,7 @@ class BootChimeControllerTest {
         // working helper must spare it.
         assertTrue(direct.applied.isEmpty())
         assertEquals(listOf("BOOTCHIME SILENCE"), daemon.sent)
+        assertEquals(listOf(30_000L), daemon.longTimeouts)
         assertTrue(root.ran.isEmpty())
     }
 
@@ -214,6 +215,7 @@ class BootChimeControllerTest {
 
         assertEquals(command, restoreHelperCommand(prior))
         assertEquals(listOf(command), daemon.sent)
+        assertEquals(listOf(30_000L), daemon.longTimeouts)
         assertTrue(root.ran.isEmpty())
         assertTrue(direct.applied.isEmpty())
     }
