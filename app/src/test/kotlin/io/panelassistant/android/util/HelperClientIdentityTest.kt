@@ -1,6 +1,5 @@
 package io.panelassistant.android.util
 
-import io.panelassistant.android.device.SuForm
 import io.panelassistant.android.logship.LogCapture
 import io.panelassistant.android.platform.DaemonLongResult
 import io.panelassistant.android.platform.DaemonStreamResult
@@ -107,9 +106,7 @@ class HelperClientIdentityTest {
 
     private fun systemCapture(client: IdentityAdmittingHelperClient, suStarts: AtomicInteger) = LogCapture.system(
         CoroutineScope(Dispatchers.IO),
-        suForm = SuForm.ANDROID,
         helperLines = { error("no stream in a backlog test") },
-        rootAvailable = { true },
         helperDump = client::logcatDump,
         processStarter = { suStarts.incrementAndGet(); error("su must not start for the system backlog") },
     )
