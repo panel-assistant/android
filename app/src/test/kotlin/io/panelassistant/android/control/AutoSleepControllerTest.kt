@@ -202,37 +202,40 @@ class AutoSleepControllerTest {
             h.now.set(atMs)
             return report(detector.observe(raw, atMs))
         }
-        fun tick(atMs: Long): ProximityCalibrationEngine.Result {
-            h.now.set(atMs)
-            return report(detector.tick(atMs))
+        fun settlePresence(raw: Float, near: Boolean): ProximityCalibrationEngine.Result {
+            var result = sample(raw, h.now.get())
+            repeat(32) {
+                if (result.presenceReady && result.near == near) return result
+                result = sample(raw, h.now.get() + 250L)
+            }
+            assertEquals("fresh samples must establish presence", near, result.near)
+            return result
         }
         try {
             assertFalse(h.start().enabled)
-            sample(220f, 0L)
-            val initialClear = tick(calibration.debounceMs)
+            val initialClear = settlePresence(220f, false)
             assertEquals(false, initialClear.near)
             assertEquals(0, initialClear.level)
             assertTrue(h.status().getBoolean("available"))
             val leaseMs = h.status().getLong("learned_lease_ms")
             assertTrue(leaseMs > 0L)
 
-            sample(240f, 1_000L)
-            val occupiedAtMs = 1_000L + calibration.debounceMs
-            val occupied = tick(occupiedAtMs)
+            val occupied = settlePresence(240f, true)
             assertEquals(true, occupied.near)
             assertEquals(100, occupied.level)
             h.await { h.status().getString("reason") == "source_active" }
             assertEquals("panel", h.status().getString("source"))
 
-            sample(240f, occupiedAtMs + 2 * leaseMs)
+            repeat((2 * leaseMs / 250L).toInt()) {
+                assertEquals(true, sample(240f, h.now.get() + 250L).near)
+            }
             h.controller.advanceToForTest(h.now.get())
             h.settle()
             assertFalse(h.screen.isIntendedOff())
             assertTrue(h.backlightPowered())
 
-            val clearAtMs = h.now.get() + 1_000L + calibration.debounceMs
-            sample(220f, clearAtMs - calibration.debounceMs)
-            val cleared = tick(clearAtMs)
+            val cleared = settlePresence(220f, false)
+            val clearAtMs = h.now.get()
             assertEquals(false, cleared.near)
             assertEquals(0, cleared.level)
             h.await { h.status().getString("reason") == "source_activity_lease" }
