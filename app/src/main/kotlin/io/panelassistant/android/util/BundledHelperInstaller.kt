@@ -42,11 +42,11 @@ internal object BundledHelperInstaller {
 
     /** Resume only an exact current-build ephemeral candidate; never stages or starts a replacement. */
     @Synchronized
-    fun resumeRetainedCurrent(): Boolean = resumeRetainedCurrentOutcome() == true
+    fun resumeRetainedCurrent(context: Context): Boolean = resumeRetainedCurrentOutcome(context) == true
 
     @Synchronized
     fun ensureCurrent(context: Context): Result {
-        when (resumeRetainedCurrentOutcome()) {
+        when (resumeRetainedCurrentOutcome(context)) {
             true -> return Result.INSTALLED
             false -> return Result.FAILED
             null -> Unit
@@ -157,7 +157,7 @@ internal object BundledHelperInstaller {
         }
     }
 
-    private fun resumeRetainedCurrentOutcome(): Boolean? {
+    private fun resumeRetainedCurrentOutcome(context: Context): Boolean? {
         val stagedBuildId = BuildConfig.HELPER_BUILD_ID
             .takeIf(GuardDbMaintenanceProtocol::validSha256) ?: return false
         val statusProbe = GuardDbMaintenance.client.statusProbe()
@@ -166,22 +166,31 @@ internal object BundledHelperInstaller {
         ) {
             Su.runOutputLong(bundledLegacyTakeoverRecordReadCommand(), INSTALL_TIMEOUT_MS)
                 ?.let(::parseBundledLegacyTakeoverRecord)
-                ?.takeIf { it.stagedBuildId == stagedBuildId }
         } else {
             null
         }
-        if (!bundledLegacyRecoveryAllowed(statusProbe, retainedLegacy)) return null
-        val record = requireNotNull(retainedLegacy)
-        val resumed = Su.runSingleAttempt(
-            bundledLegacyHelperResumeCommand(
-                record.candidateSha256,
-                record.stagedBuildId,
-                record.incumbentBuildId,
-            ),
-            LEGACY_TAKEOVER_TIMEOUT_MS,
+        return resumeBundledLegacyHelper(
+            statusProbe, retainedLegacy, stagedBuildId,
+            bundledIdentity = {
+                val asset = helperAssetName(Build.SUPPORTED_ABIS.asIterable()) ?: return@resumeBundledLegacyHelper null
+                runCatching {
+                    val bytes = context.assets.open(asset).use { it.readBytes() }
+                    GuardDbMaintenanceProtocol.SelfIdentity(
+                        bytes.size.toLong(), MessageDigest.getInstance("SHA-256").digest(bytes)
+                            .joinToString("") { "%02x".format(it) }, stagedBuildId,
+                    )
+                }.getOrNull()
+            },
+            rebind = ::settleBundledLegacyTakeoverRecord,
+            resume = { record ->
+                Su.runSingleAttempt(
+                    bundledLegacyHelperResumeCommand(
+                        record.candidateSha256, record.stagedBuildId, record.incumbentBuildId,
+                    ),
+                    LEGACY_TAKEOVER_TIMEOUT_MS,
+                ) && GuardDbMaintenance.client.statusProbe() is GuardDbMaintenanceClient.StatusProbe.Valid
+            },
         )
-        if (!resumed) return false
-        return GuardDbMaintenance.client.statusProbe() is GuardDbMaintenanceClient.StatusProbe.Valid
     }
 
     /** A different app build may not discard the record that makes the live helper reboot-recoverable. */
@@ -189,34 +198,33 @@ internal object BundledHelperInstaller {
         val reply = Su.runOutputLong(bundledLegacyTakeoverRecordReadCommand(), INSTALL_TIMEOUT_MS)
             ?: return if (verifyBundledLegacyTakeoverRecordAbsent()) null else Result.FAILED
         val record = parseBundledLegacyTakeoverRecord(reply) ?: return Result.FAILED
-        if (record.stagedBuildId != currentBuildId) {
-            // A successful guarded update may have outlived its app before stale-record cleanup.
-            // The exact current app-owned helper is now the recovery authority.
-            if (GuardDbMaintenance.client.selfIdentity()?.buildId != currentBuildId) {
-                return Result.REPROVISION_REQUIRED
-            }
-            return if (cleanupBundledLegacyTakeoverRecord(record)) null else Result.FAILED
-        }
-        return if (Su.runLong(
-            bundledLegacyTakeoverRecordCleanupCommand(
-                record.recordSha256,
-                record.recordBytes,
-                preserveIfOldAuthorityExact = record,
-            ),
-            INSTALL_TIMEOUT_MS,
-        )) null else Result.FAILED
+        val identity = GuardDbMaintenance.client.selfIdentity()
+            ?.takeIf { it.buildId == currentBuildId } ?: return Result.REPROVISION_REQUIRED
+        return if (settleBundledLegacyTakeoverRecord(record, identity)) null else Result.FAILED
     }
 
     private fun cleanupAnyBundledLegacyTakeoverRecord(): Boolean {
         val reply = Su.runOutputLong(bundledLegacyTakeoverRecordReadCommand(), INSTALL_TIMEOUT_MS)
             ?: return verifyBundledLegacyTakeoverRecordAbsent()
         val record = parseBundledLegacyTakeoverRecord(reply) ?: return false
-        return cleanupBundledLegacyTakeoverRecord(record)
+        val identity = GuardDbMaintenance.client.selfIdentity()
+            ?.takeIf { it.buildId == BuildConfig.HELPER_BUILD_ID } ?: return false
+        return settleBundledLegacyTakeoverRecord(record, identity)
     }
 
-    private fun cleanupBundledLegacyTakeoverRecord(record: BundledLegacyTakeoverRecord): Boolean =
+    private fun settleBundledLegacyTakeoverRecord(
+        record: BundledLegacyTakeoverRecord,
+        identity: GuardDbMaintenanceProtocol.SelfIdentity,
+    ): Boolean =
         Su.runLong(
-            bundledLegacyTakeoverRecordCleanupCommand(record.recordSha256, record.recordBytes),
+            bundledLegacyTakeoverRecordCleanupCommand(
+                record.recordSha256, record.recordBytes,
+                preserveIfOldAuthorityExact = record.copy(
+                    stagedBuildId = identity.buildId,
+                    candidateSha256 = identity.sha256,
+                    candidateBytes = identity.bytes,
+                ),
+            ),
             INSTALL_TIMEOUT_MS,
         )
 
@@ -296,6 +304,29 @@ internal fun bundledLegacyRecoveryAllowed(
     GuardDbMaintenanceClient.StatusProbe.Unreachable,
     GuardDbMaintenanceClient.StatusProbe.Unsupported,
 ) && record != null
+
+/** Recover finalized replacement even if its app died before rebinding the legacy boot record. */
+internal fun resumeBundledLegacyHelper(
+    status: GuardDbMaintenanceClient.StatusProbe,
+    record: BundledLegacyTakeoverRecord?,
+    currentBuildId: String,
+    bundledIdentity: () -> GuardDbMaintenanceProtocol.SelfIdentity?,
+    rebind: (BundledLegacyTakeoverRecord, GuardDbMaintenanceProtocol.SelfIdentity) -> Boolean,
+    resume: (BundledLegacyTakeoverRecord) -> Boolean,
+): Boolean? {
+    if (!bundledLegacyRecoveryAllowed(status, record)) return null
+    var recovery = requireNotNull(record)
+    if (recovery.stagedBuildId != currentBuildId) {
+        val identity = bundledIdentity()?.takeIf { it.buildId == currentBuildId } ?: return false
+        if (!rebind(recovery, identity)) return false
+        recovery = recovery.copy(
+            stagedBuildId = identity.buildId,
+            candidateSha256 = identity.sha256,
+            candidateBytes = identity.bytes,
+        )
+    }
+    return resume(recovery)
+}
 
 internal fun parseBundledLegacyTakeoverRecord(reply: String): BundledLegacyTakeoverRecord? {
     if ('\r' in reply || reply.toByteArray(Charsets.UTF_8).size !in 1..1024) return null
@@ -424,12 +455,47 @@ internal fun bundledLegacyTakeoverRecordCleanupCommand(
             SAFE_ABSOLUTE_PATH.matches(filesystemRoot) &&
             filesystemRoot.split('/').none { it == ".." }))
     val preserveExact = preserveIfOldAuthorityExact?.let { record ->
+        require(GuardDbMaintenanceProtocol.validSha256(record.stagedBuildId))
+        require(GuardDbMaintenanceProtocol.validSha256(record.candidateSha256))
+        require(record.candidateBytes in 1..MAX_STAGED_HELPER_BYTES)
+        val line = "OK LEGACYTAKEOVER 1 ${record.topology} ${record.oldSha256} ${record.oldBytes} " +
+            "${record.registrationSha256} ${record.registrationBytes} ${record.registrationMode} " +
+            "${record.incumbentBuildId} ${record.stagedBuildId} ${record.candidateSha256} ${record.candidateBytes}"
         """
-        if (
+        (
         ${bundledLegacyTakeoverOldAuthorityExactCommand(record, filesystemRoot).prependIndent("  ")}
-        ); then exit 0; fi
+        ) || exit 1
+        live=${'$'}root/data/local/hapaneld-helper
+        [ -f "${'$'}live" ] && [ ! -L "${'$'}live" ] || exit 1
+        live_meta=${'$'}(stat -c '%u:%g:%a:%h:%s' "${'$'}live" 2>/dev/null || toybox stat -c '%u:%g:%a:%h:%s' "${'$'}live" 2>/dev/null) || exit 1
+        [ "${'$'}live_meta" = '0:0:700:1:${record.candidateBytes}' ] || exit 1
+        live_hash=${'$'}(sha256sum "${'$'}live" 2>/dev/null || toybox sha256sum "${'$'}live" 2>/dev/null) || exit 1
+        [ "${'$'}{live_hash%% *}" = '${record.candidateSha256}' ] || exit 1
+        # Native replacement owns in-flight journals and previous bytes. Rebind only settled custody.
+        for authority in $BUNDLED_HELPER_FOREIGN_JOURNALS \
+          "${'$'}root/data/local/.hapaneld-helper.previous" \
+          "${'$'}root/data/local/.hapaneld-helper.previous.tmp"; do
+          [ ! -e "${'$'}authority" ] && [ ! -L "${'$'}authority" ] || exit 75
+        done
+        temporary=${'$'}record.tmp
+        if [ -e "${'$'}temporary" ] || [ -L "${'$'}temporary" ]; then
+          [ -f "${'$'}temporary" ] && [ ! -L "${'$'}temporary" ] || exit 1
+          temporary_meta=${'$'}(stat -c '%u:%g:%a:%h:%s' "${'$'}temporary" 2>/dev/null || toybox stat -c '%u:%g:%a:%h:%s' "${'$'}temporary" 2>/dev/null) || exit 1
+          case "${'$'}temporary_meta" in 0:0:600:1:*) ;; *) exit 1 ;; esac
+          [ "${'$'}{temporary_meta##*:}" -le 1024 ] || exit 1
+        fi
+        if [ "${'$'}(cat "${'$'}record")" = '$line' ]; then
+          rm -f "${'$'}temporary" && sync || exit 1
+          exit 0
+        fi
+        umask 077
+        printf '%s\n' '$line' > "${'$'}temporary" || exit 1
+        chown 0:0 "${'$'}temporary" && chmod 600 "${'$'}temporary" || exit 1
+        sync && record_exact || exit 1
+        mv -f "${'$'}temporary" "${'$'}record" && sync || exit 1
+        exit 0
         """.trimIndent()
-    }.orEmpty()
+    } ?: "exit 1"
     return """
         root=$filesystemRoot
         lock=${'$'}root/dev/.hapaneld-helper-transaction.lock
@@ -449,20 +515,15 @@ internal fun bundledLegacyTakeoverRecordCleanupCommand(
           exit 0
         fi
         [ $expectedRecordBytes -ge 1 ] || exit 1
-        [ -f "${'$'}record" ] && [ ! -L "${'$'}record" ] || exit 1
-        meta=${'$'}(stat -c '%u:%g:%a:%h:%s' "${'$'}record" 2>/dev/null || toybox stat -c '%u:%g:%a:%h:%s' "${'$'}record" 2>/dev/null) || exit 1
-        [ "${'$'}meta" = "0:0:600:1:$expectedRecordBytes" ] || exit 1
-        record_hash=${'$'}(sha256sum "${'$'}record" 2>/dev/null || toybox sha256sum "${'$'}record" 2>/dev/null) || exit 1
-        [ "${'$'}{record_hash%% *}" = '$expectedRecordSha256' ] || exit 1
+        record_exact() {
+          [ -f "${'$'}record" ] && [ ! -L "${'$'}record" ] || return 1
+          meta=${'$'}(stat -c '%u:%g:%a:%h:%s' "${'$'}record" 2>/dev/null || toybox stat -c '%u:%g:%a:%h:%s' "${'$'}record" 2>/dev/null) || return 1
+          [ "${'$'}meta" = "0:0:600:1:$expectedRecordBytes" ] || return 1
+          record_hash=${'$'}(sha256sum "${'$'}record" 2>/dev/null || toybox sha256sum "${'$'}record" 2>/dev/null) || return 1
+          [ "${'$'}{record_hash%% *}" = '$expectedRecordSha256' ]
+        }
+        record_exact || exit 1
         $preserveExact
-        # Rebind pathname metadata and bytes immediately before unlink; the shared lock excludes every
-        # helper transaction writer, while the exact digest prevents a same-target foreign replacement.
-        meta=${'$'}(stat -c '%u:%g:%a:%h:%s' "${'$'}record" 2>/dev/null || toybox stat -c '%u:%g:%a:%h:%s' "${'$'}record" 2>/dev/null) || exit 1
-        [ "${'$'}meta" = "0:0:600:1:$expectedRecordBytes" ] || exit 1
-        record_hash=${'$'}(sha256sum "${'$'}record" 2>/dev/null || toybox sha256sum "${'$'}record" 2>/dev/null) || exit 1
-        [ "${'$'}{record_hash%% *}" = '$expectedRecordSha256' ] || exit 1
-        rm -f "${'$'}record" || exit 1
-        sync || exit 1
     """.trimIndent()
 }
 
@@ -825,23 +886,27 @@ internal fun bundledLegacyHelperTakeoverCommand(
         elif ! absent "${dollar}stage"; then exit 1; fi
 
         expected_record="OK LEGACYTAKEOVER 1 ${dollar}topology ${dollar}old_sha ${dollar}old_bytes ${dollar}registration_sha ${dollar}registration_bytes ${dollar}registration_mode $incumbentBuildId $stagedBuildId $expectedSha256 ${dollar}candidate_bytes"
+        discard_record_tmp() {
+          absent "${dollar}record_tmp" && return 0
+          [ -f "${dollar}record_tmp" ] && [ ! -L "${dollar}record_tmp" ] || return 1
+          record_tmp_meta=${dollar}(file_meta "${dollar}record_tmp") || return 1
+          case "${dollar}record_tmp_meta" in 0:0:600:1:*) ;; *) return 1 ;; esac
+          [ "${dollar}{record_tmp_meta##*:}" -le 1024 ] || return 1
+          rm -f "${dollar}record_tmp" && sync
+        }
         retained_record=0
         if [ -f "${dollar}record" ] && [ ! -L "${dollar}record" ]; then
           record_meta=${dollar}(file_meta "${dollar}record") || exit 1
           case "${dollar}record_meta" in 0:0:600:1:*) ;; *) exit 1 ;; esac
           [ "${dollar}(cat "${dollar}record")" = "${dollar}expected_record" ] || exit 1
           retained_record=1
-          absent "${dollar}record_tmp" || exit 1
+          discard_record_tmp || exit 1
         else
           absent "${dollar}record" || exit 1
           $resumeAdmission
           if [ -f "${dollar}record_tmp" ] && [ ! -L "${dollar}record_tmp" ]; then
             [ "${dollar}candidate_source" = "${dollar}stage" ] && absent "${dollar}live" || exit 1
-            record_tmp_meta=${dollar}(file_meta "${dollar}record_tmp") || exit 1
-            case "${dollar}record_tmp_meta" in 0:0:600:1:*) ;; *) exit 1 ;; esac
-            record_tmp_bytes=${dollar}{record_tmp_meta##*:}
-            [ "${dollar}record_tmp_bytes" -le 1024 ] || exit 1
-            rm -f "${dollar}record_tmp" || exit 1
+            discard_record_tmp || exit 1
           elif ! absent "${dollar}record_tmp"; then exit 1; fi
           $initialReplacementProof
           umask 077

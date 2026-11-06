@@ -132,7 +132,7 @@ internal object GuardDbStartupAcknowledger {
         if (load is GuardDbSentinelLoad.Absent) return true
         val sentinel = (load as? GuardDbSentinelLoad.Valid)?.sentinel ?: return false
         if (guardDbBootNonce() != sentinel.bootNonce) return false
-        val probe = reacquireStatus()
+        val probe = reacquireStatus(context)
         val status = (probe as? GuardDbMaintenanceClient.StatusProbe.Valid)?.status ?: return false
         when (guardDbFreshProcessRoute(sentinel.state, status.phase)) {
             GuardDbFreshProcessRoute.ORDINARY_PANELD -> {
@@ -249,11 +249,11 @@ internal object GuardDbStartupAcknowledger {
         GuardDbMaintenanceProtocol.Phase.ROLLBACK_DB_RESTORED,
     )
 
-    private fun reacquireStatus(): GuardDbMaintenanceClient.StatusProbe {
+    private fun reacquireStatus(context: Context): GuardDbMaintenanceClient.StatusProbe {
         return try {
             reacquireGuardDbStartupStatus(
                 statusProbe = GuardDbMaintenance.client::statusProbe,
-                resumeRetainedCurrent = BundledHelperInstaller::resumeRetainedCurrent,
+                resumeRetainedCurrent = { BundledHelperInstaller.resumeRetainedCurrent(context) },
                 pause = { Thread.sleep(250L) },
             )
         } catch (_: InterruptedException) {
