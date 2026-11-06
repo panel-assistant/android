@@ -45,7 +45,9 @@ internal object BundledHelperInstaller {
     fun resumeRetainedCurrent(context: Context): Boolean = resumeRetainedCurrentOutcome(context) == true
 
     @Synchronized
-    fun ensureCurrent(context: Context): Result {
+    fun ensureCurrent(context: Context): Result = ensureCurrentAttempt(context, retryStalled = true)
+
+    private fun ensureCurrentAttempt(context: Context, retryStalled: Boolean): Result {
         when (resumeRetainedCurrentOutcome(context)) {
             true -> return Result.INSTALLED
             false -> return Result.FAILED
@@ -85,11 +87,15 @@ internal object BundledHelperInstaller {
             // the replacement namespace empty before it can touch any candidate bytes.
             val statusProbe = bundledHelperReplacementStatusAfterRecovery(staged, expectedSha256)
                 ?: return Result.FAILED
-            val replacementMode = bundledHelperReplacementMode(statusProbe) ?: return Result.BLOCKED_ACTIVE
+            val replacementProbe = bundledHelperReplacementProbe(statusProbe) {
+                probeBundledLegacyHelper(staged, expectedSha256, stagedBuildId)
+            } ?: return Result.FAILED
+            val replacementMode = bundledHelperReplacementMode(replacementProbe.status) ?: return Result.BLOCKED_ACTIVE
             val incumbentBuildId = if (replacementMode == BundledHelperReplacementMode.FRESH_INSTALL) {
                 null
             } else {
-                HelperClient.installedBuildId()?.takeIf { it != stagedBuildId } ?: return Result.FAILED
+                (replacementProbe.incumbentBuildId ?: HelperClient.installedBuildId())
+                    ?.takeIf { it != stagedBuildId } ?: return Result.FAILED
             }
             val incumbentIdentity = if (replacementMode == BundledHelperReplacementMode.GUARDED_RETIRE) {
                 GuardDbMaintenance.client.selfIdentity()
@@ -98,7 +104,7 @@ internal object BundledHelperInstaller {
             val priorRecord = priorRecordReply?.let {
                 parseBundledLegacyTakeoverRecord(it) ?: return Result.FAILED
             }
-            installBundledHelperReplacement(
+            val result = installBundledHelperReplacement(
                 replacementMode, stagedBuildId, incumbentBuildId, incumbentIdentity, priorRecord,
                 stage = {
                     bundledHelperStaged(Su.runWithStdinLongChecked(
@@ -146,6 +152,12 @@ internal object BundledHelperInstaller {
                     )
                 },
                 cleanup = { cleanupAnyBundledLegacyTakeoverRecord() },
+            )
+            retryBundledHelperAfterStalledReplacement(
+                result, retryStalled,
+                statusProbe = GuardDbMaintenance.client::statusProbe,
+                reconcile = { reconcileBundledHelperReplacement(staged, expectedSha256) },
+                retry = { ensureCurrentAttempt(context, retryStalled = false) },
             )
         } catch (failure: Exception) {
             Log.w(TAG, "bundled helper migration failed", failure)

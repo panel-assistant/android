@@ -492,8 +492,7 @@ static int run_supervisor(char **argv, const char *replacement_nonce) {
                     char nonce[65];
                     if (executor > 1 || pending_work != GUARD_WORK_NONE ||
                         guard_maintenance_replacement_parent_grant(nonce) !=
-                            GUARD_REPLACEMENT_READY ||
-                        guard_maintenance_replacement_export_lease() != 0) {
+                            GUARD_REPLACEMENT_READY) {
                         /* A bare exit code is only a worker crash. A valid durable request may not
                          * preempt package work; remain fail-closed under the original lease. */
                         worker_after_ms = now + 1000;

@@ -3,6 +3,26 @@ package io.panelassistant.android.util
 import io.panelassistant.android.control.Su
 import java.io.File
 
+internal data class BundledHelperReplacementProbe(
+    val status: GuardDbMaintenanceClient.StatusProbe,
+    val incumbentBuildId: String? = null,
+)
+
+/** An older package-only daemon is distinguishable from an absent socket only through root. */
+internal fun bundledHelperReplacementProbe(
+    status: GuardDbMaintenanceClient.StatusProbe,
+    rootProbe: () -> BundledHelperLegacyProbe,
+): BundledHelperReplacementProbe? {
+    if (status != GuardDbMaintenanceClient.StatusProbe.Unreachable) return BundledHelperReplacementProbe(status)
+    return when (val root = rootProbe()) {
+        BundledHelperLegacyProbe.Absent -> BundledHelperReplacementProbe(status)
+        is BundledHelperLegacyProbe.Legacy -> BundledHelperReplacementProbe(
+            GuardDbMaintenanceClient.StatusProbe.Unsupported, root.incumbentBuildId,
+        )
+        BundledHelperLegacyProbe.Refused -> null
+    }
+}
+
 internal fun bundledHelperReplacementStatusAfterRecovery(
     asset: File,
     expectedSha256: String,
@@ -10,11 +30,22 @@ internal fun bundledHelperReplacementStatusAfterRecovery(
     reconcile: (File, String) -> Boolean = { file, hash -> reconcileBundledHelperReplacement(file, hash) },
 ): GuardDbMaintenanceClient.StatusProbe? {
     val before = statusProbe()
-    if (before != GuardDbMaintenanceClient.StatusProbe.Unreachable &&
-        before != GuardDbMaintenanceClient.StatusProbe.Unsupported) return before
+    if (before is GuardDbMaintenanceClient.StatusProbe.Valid) return before
     if (!reconcile(asset, expectedSha256)) return null
     return statusProbe()
 }
+
+/** One failed guarded settlement can recover an exact stalled incumbent and retry installation. */
+internal fun retryBundledHelperAfterStalledReplacement(
+    result: BundledHelperInstaller.Result,
+    retryStalled: Boolean,
+    statusProbe: () -> GuardDbMaintenanceClient.StatusProbe,
+    reconcile: () -> Boolean,
+    retry: () -> BundledHelperInstaller.Result,
+): BundledHelperInstaller.Result = if (
+    result == BundledHelperInstaller.Result.FAILED && retryStalled &&
+    statusProbe() == GuardDbMaintenanceClient.StatusProbe.Malformed && reconcile()
+) retry() else result
 
 internal fun reconcileBundledHelperReplacement(
     asset: File,

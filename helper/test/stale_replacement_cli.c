@@ -114,11 +114,27 @@ static void test_prior_boot(const char *phase) {
     guard_test_drop_runtime();
 }
 
+static void test_same_boot(const char *phase) {
+    retained_replacement(phase);
+    static const char same_boot[] = "123e4567-e89b-12d3-a456-426614174000";
+    write_file_mode(BOOT_FILE, same_boot, sizeof same_boot - 1, 0600);
+    char reply[128];
+    int result = invoke(0, 0, reply);
+    CHECK(result == 0 && !strcmp(reply, "STALE_REPLACEMENT RECONCILED\n") &&
+          access(CUSTODY "/replacement.v1", F_OK) != 0 &&
+          file_equals(HELPER_LIVE, old_bytes, sizeof old_bytes - 1) &&
+          file_equals(HELPER_STAGE, new_bytes, sizeof new_bytes - 1),
+        "app recovery CLI reconciles exact same-boot orphan phase=%s rc=%d reply=%s\n",
+        phase, result, reply);
+}
+
 int main(void) {
     if (geteuid() != 0) {
         fprintf(stderr, "stale-replacement-cli requires root for explicit identity controls\n");
         return 2;
     }
+    test_same_boot("REQUESTED");
+    test_same_boot("GRANTED");
     test_prior_boot("REQUESTED");
     test_prior_boot("GRANTED");
     reset_case();

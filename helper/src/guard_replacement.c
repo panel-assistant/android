@@ -4,7 +4,8 @@
 #include "guard_maintenance_internal.h"
 
 int guard_maintenance_replacement_parent_grant(char nonce[65]) {
-    if (!guard_maintenance_supervisor_authoritative() || !nonce) return GUARD_REPLACEMENT_HOLD;
+    if (!guard_maintenance_supervisor_authoritative() || !nonce ||
+        guard_maintenance_replacement_export_lease() != 0) return GUARD_REPLACEMENT_HOLD;
     pthread_mutex_lock(&guard_lock);
     int dir = open_guard_dir();
     guard_replacement replacement;
@@ -12,6 +13,7 @@ int guard_maintenance_replacement_parent_grant(char nonce[65]) {
     int valid = loaded == 1 && replacement.phase == GUARD_REPLACEMENT_REQUESTED &&
         replacement_boot_current(&replacement) && replacement_old_caller_exact(&replacement) == 0;
     int stored = GUARD_PUBLISH_FAILED;
+    /* The lease is already exported before opening the directory or publishing GRANTED. */
     if (valid) {
         replacement.phase = GUARD_REPLACEMENT_GRANTED;
         replacement.generation++;
@@ -28,10 +30,8 @@ int guard_maintenance_replacement_export_lease(void) {
     struct stat owner, exported;
     if (fstat(guard_owner_fd, &owner) != 0 || !S_ISREG(owner.st_mode) ||
         owner.st_uid != geteuid() || owner.st_nlink != 1) return -1;
-    struct stat occupant;
-    if (fcntl(GUARD_REPLACEMENT_LEASE_FD, F_GETFD, 0) >= 0 &&
-        (fstat(GUARD_REPLACEMENT_LEASE_FD, &occupant) != 0 ||
-         occupant.st_dev != owner.st_dev || occupant.st_ino != owner.st_ino)) return -1;
+    /* FD3 can be /dev/null inherited from su. dup2 closes that local descriptor while the
+     * authoritative open file description retains the lock without an ownership gap. */
     if (dup2(guard_owner_fd, GUARD_REPLACEMENT_LEASE_FD) < 0 ||
         fstat(GUARD_REPLACEMENT_LEASE_FD, &exported) != 0 ||
         owner.st_dev != exported.st_dev || owner.st_ino != exported.st_ino) return -1;
