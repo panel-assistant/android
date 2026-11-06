@@ -843,7 +843,7 @@ class SystemControllerTest {
         assertEquals(listOf("cmd package set-home-activity $OWN/io.panelassistant.android.AdminLauncherActivity"), suRoot.ran)
     }
 
-    @Test fun launcherHomePolicyExplicitSelfOverridesButOtherSelectionRestoresAutomaticPolicy() {
+    @Test fun launcherHomePolicyExplicitSelfOverridesButOtherSelectionNeverAssignsCompanionHome() {
         val explicitEnv = FakeSystemEnv(default = ActivityRef(VENDOR, "Home"))
         val explicitCommand = "SETHOME $OWN/io.panelassistant.android.AdminLauncherActivity"
         val (explicit, _, explicitDaemon) = sc(explicitEnv, daemon = mapOf(explicitCommand to "OK"))
@@ -855,10 +855,11 @@ class SystemControllerTest {
             homes = listOf(ActivityRef(MIN, "Home")),
             default = ActivityRef(OWN, "$OWN.AdminLauncherActivity"),
         )
-        val automaticCommand = "SETHOME $MIN/Home"
-        val (automatic, _, automaticDaemon) = sc(automaticEnv, daemon = mapOf(automaticCommand to "OK"))
+        val (automatic, automaticRoot, automaticDaemon) = sc(automaticEnv, daemon = null)
         assertFalse(automatic.applyLauncherHomePolicy(VENDOR, MIN))
-        assertEquals(listOf(automaticCommand), automaticDaemon.sent)
+        assertTrue(automaticRoot.ran.isEmpty())
+        assertTrue(automaticDaemon.sent.isEmpty())
+        assertEquals(ActivityRef(OWN, "$OWN.AdminLauncherActivity"), automaticEnv.defaultHome())
     }
 
     @Test fun launcherHomePolicyPreservesBuiltinReadinessGateWhenLeavingExplicitSelf() {
