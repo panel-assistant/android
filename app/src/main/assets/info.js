@@ -144,7 +144,7 @@ function rendererMeasurement(mode,r){
  if(r&&r.status!=='no-renderer'){
   var rows=[{label:text('dashboard.renderer.measurement_mode','Measurement mode'),val:text('dashboard.renderer.cpu_proxy','renderer CPU proxy'),suf:text('dashboard.renderer.not_tap_latency','· not actual tap latency'),col:'var(--fg-muted)'},
    {label:text('dashboard.renderer.main_thread','Dashboard main-thread'),val:text('dashboard.renderer.core_percent','{percent}% of one core',{percent:r.mainPct}),suf:text('dashboard.renderer.saturated','· 100% means the renderer thread is saturated'),bold:true}];
-  if(r.jankPct!=null)rows.push({label:text('dashboard.renderer.rendering_proxy','Rendering proxy'),val:text('dashboard.renderer.janky_percent','{percent}% janky',{percent:r.jankPct}),suf:text('dashboard.renderer.worst_frame','· worst frame {milliseconds} ms',{milliseconds:r.p99})});
+  if(r.jankPct!=null)rows.push({label:text('dashboard.renderer.rendering_proxy','Rendering proxy'),val:text('dashboard.renderer.janky_percent','{percent}% janky',{percent:r.jankPct}),suf:r.p99!=null?text('dashboard.renderer.worst_frame','· worst frame {milliseconds} ms',{milliseconds:r.p99}):''});
   return {header:text('dashboard.renderer.external_proxy_header','· external renderer proxy'),title:text('dashboard.renderer.measuring','measuring {package}',{package:r.pkg}),rows:rows};
  }
  return {header:'',title:'',rows:[{label:text('dashboard.renderer.measurement_mode','Measurement mode'),val:text('dashboard.renderer.needs_root','External renderer proxy needs root/helper access'),col:'var(--fg-muted)'}]};

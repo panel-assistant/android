@@ -33,6 +33,15 @@ import org.junit.Test
 
 class HelperSocketCompositionTest {
     @Test(timeout = 10_000)
+    fun fixedSelfGfxCountersCrossTheAdmittedNativeSocket() {
+        val daemon = IdentityAdmittingHelperClient(ChannelSessionTransport(socketPath))
+        assertEquals(io.panelassistant.android.platform.HelperGfxInfo("123456789", 120, 7), daemon.gfxInfo())
+        for (request in listOf("GFXINFO", "GFXINFO other.package", "GFXINFO SELF reset", "GFXINFO 123")) {
+            assertEquals("ERR", SocketDaemon(socketPath).send(request))
+        }
+    }
+
+    @Test(timeout = 10_000)
     fun concurrentNativeSocketKeepsItsOwnGuardCustody() {
         val root = scratchDirectory("hapaneld-helper-guard-")
         val socket = Path.of(System.getProperty("java.io.tmpdir"), "hapaneld-helper-${UUID.randomUUID()}.sock")
@@ -43,7 +52,7 @@ class HelperSocketCompositionTest {
             ).redirectErrorStream(true).start()
             assertEquals("READY", second.inputStream.bufferedReader().readLine())
             assertTrue(Files.isDirectory(root.resolve(".hapaneld-guard-db-test")))
-            assertEquals("HELPER version=1.13.0 proto=1.13", SocketDaemon(socket).send("VERSION"))
+            assertEquals("HELPER version=1.14.0 proto=1.14", SocketDaemon(socket).send("VERSION"))
         } finally {
             second?.let {
                 it.destroy()
@@ -59,7 +68,7 @@ class HelperSocketCompositionTest {
         val daemon = SocketDaemon(socketPath)
 
         assertTrue(daemon.available())
-        assertEquals("HELPER version=1.13.0 proto=1.13", daemon.send("VERSION"))
+        assertEquals("HELPER version=1.14.0 proto=1.14", daemon.send("VERSION"))
         assertEquals("ERR", daemon.send("PINGEXTRA"))
         assertEquals("OK", daemon.sendLong("RELOAD io.example.dashboard", 5_000).replyValue())
     }
@@ -75,7 +84,7 @@ class HelperSocketCompositionTest {
         val daemon = SocketDaemon(socketPath)
         // The host fixture redirects fixed governor reads and refuses governor writes.
         listOf(
-            WireTranscript("VERSION", "HELPER version=1.13.0 proto=1.13"),
+            WireTranscript("VERSION", "HELPER version=1.14.0 proto=1.14"),
             WireTranscript("PING", "OK"),
             WireTranscript("BUILDID", "BUILDID development"),
             WireTranscript("COMPANIONCAPS", "COMPANIONCAPS 1 BACKUP RESTORE STATUS JOURNAL"),
@@ -456,6 +465,8 @@ class HelperSocketCompositionTest {
             Files.writeString(zigbeeRoot.resolve("data/netinfo"), """{"roleType":1,"nodeId":123,"panId":456}""")
             server = ProcessBuilder(executable.absolutePath, socketPath.toString(), guardRoot.toString())
                 .apply {
+                    environment()["HAPANELD_TEST_GFXINFO"] =
+                        "** Graphics info for pid 42 [io.panelassistant.android] **\nStats since: 123456789ns\nTotal frames rendered: 120\nJanky frames: 7 (5.83%)\nJanky frames (legacy): 99 (82.5%)\n"
                     environment()["HAPANELD_TEST_GOV_CURRENT"] = current.toString()
                     environment()["HAPANELD_TEST_GOV_AVAILABLE"] = available.toString()
                     environment()["HAPANELD_TEST_ZIGBEE_ROLE"] = """{"role":"Repeater"}"""

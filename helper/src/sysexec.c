@@ -564,6 +564,14 @@ int sysexec_capture_zigbee_role(char *output, size_t capacity, size_t *used) {
     return capture_argv_timeout_env(argv[0], argv, output, capacity, 3500u, NULL, role_env, used);
 }
 
+int sysexec_capture_gfxinfo(const char *package, char *output, size_t capacity, size_t *used) {
+    if (used) *used = 0;
+    if (!package || !*package || !used) return -1;
+    // Package comes only from the authenticated SELF handler's fixed identity table.
+    const char *const argv[] = { "/system/bin/dumpsys", "gfxinfo", package, NULL };
+    return capture_argv_timeout_env(argv[0], argv, output, capacity, 2000u, NULL, clean_env, used);
+}
+
 int sysexec_capture_wifi_status(char *output, size_t capacity, size_t *used) {
     if (!used) return -1;
     *used = 0;

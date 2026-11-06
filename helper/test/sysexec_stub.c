@@ -411,3 +411,12 @@ void sysexec_capture_adb_properties(struct adb_property_capture *capture) {
         else if (capture->status[i] >= 0) capture->used[i] = strlen(capture->output[i]);
     }
 }
+
+int sysexec_capture_gfxinfo(const char *package, char *output, size_t capacity, size_t *used) {
+    if (used) *used = 0;
+    if (!package || !*package || !used) return -1;
+    const char *const argv[] = { "/system/bin/dumpsys", "gfxinfo", package, NULL };
+    int status = sysexec_capture_argv_timeout(argv[0], argv, output, capacity, 2000u, NULL);
+    if (output && capacity) *used = strlen(output);
+    return status;
+}

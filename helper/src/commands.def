@@ -75,3 +75,6 @@ COMMAND(GPIOREAD, cmd_gpioread)
 
 // Complete fixed process/listener exposure observation (protocol 1.13).
 COMMAND(CDPSTATE, cmd_cdpstate)
+
+// Authenticated app-only fixed cumulative HWUI counters (protocol 1.14).
+COMMAND(GFXINFO, cmd_gfxinfo)

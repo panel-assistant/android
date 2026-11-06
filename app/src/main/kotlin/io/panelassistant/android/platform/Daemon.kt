@@ -29,6 +29,9 @@ interface Daemon {
     /** Strict fixed CDP process/listener observation; unavailable never proves absence. */
     fun cdpState(): HelperCdpState? = null
 
+    /** Fixed SELF graphics counters; unavailable never falls back to a root shell. */
+    fun gfxInfo(): HelperGfxInfo? = null
+
     /** Fixed relay/GPIO observations; null means unknown, never an invitation to launch su. */
     fun relayCount(relayClass: HelperRelayClass): Int? = null
     fun relayRead(relayClass: HelperRelayClass, relay: Int): Boolean? = null

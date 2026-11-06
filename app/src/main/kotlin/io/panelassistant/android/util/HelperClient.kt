@@ -6,6 +6,7 @@ import io.panelassistant.android.BuildConfig
 import io.panelassistant.android.platform.Daemon
 import io.panelassistant.android.platform.DaemonLongResult
 import io.panelassistant.android.platform.DaemonStreamResult
+import io.panelassistant.android.platform.HelperGfxInfo
 import io.panelassistant.android.platform.HelperCdpState
 import io.panelassistant.android.platform.HelperGpioState
 import io.panelassistant.android.platform.HelperRelayClass
@@ -429,6 +430,20 @@ internal class IdentityAdmittingHelperClient(
             "CDPSTATE UNKNOWN\n" -> HelperCdpState.UNKNOWN
             else -> null
         }
+    }
+
+    override fun gfxInfo(): HelperGfxInfo? {
+        val bytes = readVersioned("GFXINFO SELF", 14, 128, 5_000L) ?: return null
+        if (bytes.size > 128) return null
+        val decimal = "(0|[1-9][0-9]{0,19})"
+        val match = Regex("GFXINFO SINCE=$decimal TOTAL=$decimal JANKY=$decimal\\n")
+            .matchEntire(String(bytes, StandardCharsets.US_ASCII)) ?: return null
+        val since = match.groupValues[1]
+        // Keep the unsigned epoch as a token: only equality, never signed arithmetic, is needed.
+        if (since.length == 20 && since > "18446744073709551615") return null
+        val total = match.groupValues[2].toLongOrNull()?.takeIf { it <= 4_294_967_295L } ?: return null
+        val janky = match.groupValues[3].toLongOrNull()?.takeIf { it <= total } ?: return null
+        return HelperGfxInfo(since, total, janky)
     }
 
     override fun relayCount(relayClass: HelperRelayClass): Int? {

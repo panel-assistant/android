@@ -81,6 +81,8 @@ int main(int argc, char **argv) {
     sysexec_stub_add_popen("screencap -p", "PNG\nfixture\n", 0);
     const char *role = getenv("HAPANELD_TEST_ZIGBEE_ROLE");
     if (role) sysexec_stub_add_popen("mosquitto_sub", role, 0);
+    const char *gfx = getenv("HAPANELD_TEST_GFXINFO");
+    if (gfx) sysexec_stub_add_popen("dumpsys gfxinfo io.panelassistant.android", gfx, 0);
     const char *wifi = getenv("HAPANELD_TEST_WIFI_STATUS");
     if (wifi) sysexec_stub_add_popen("cmd wifi status", wifi, 0);
     static const char *const adb_names[] = { "service.adb.listen_addrs", "service.adb.tcp.port",

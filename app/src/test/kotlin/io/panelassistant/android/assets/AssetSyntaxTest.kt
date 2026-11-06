@@ -233,6 +233,11 @@ class AssetSyntaxTest {
             assert.ok(nodes.smhdr.title.includes('com.example.wallpanel'));
             assert.ok(!visible.includes('Companion'));
             assert.ok(visible.includes('renderer CPU proxy'));
+            visible=update('foreign_proxy',{pkg:'builtin',mainPct:40,jankPct:20});
+            assert.ok(visible.includes('20% janky'));
+            assert.ok(!visible.includes('worst frame')&&!visible.includes('null ms'));
+            visible=update('foreign_proxy',{pkg:'builtin',mainPct:40,jankPct:20,p99:17});
+            assert.ok(visible.includes('worst frame 17 ms'));
             visible=update('foreign_proxy',{status:'no-renderer'});
             assert.ok(visible.includes('External renderer proxy needs root/helper access'));
         """.trimIndent()

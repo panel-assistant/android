@@ -17,7 +17,7 @@ Newline-terminated ASCII on the abstract UNIX socket `@hapaneld-helper`. One or 
 
 | Command | Effect | Reply |
 | --- | --- | --- |
-| `VERSION` | read the helper identity without touching hardware | `HELPER version=1.13.0 proto=1.13` / `ERR` when arguments are supplied |
+| `VERSION` | read the helper identity without touching hardware | `HELPER version=1.14.0 proto=1.14` / `ERR` when arguments are supplied |
 | `RGB <r> <g> <b>` | set LED colour (each 0..255) | `OK` / `ERR` |
 | `OFF` | LED off | `OK` / `ERR` |
 | `BTN <0..255>` | button-backlight brightness | `OK` / `ERR` |
@@ -56,6 +56,7 @@ Newline-terminated ASCII on the abstract UNIX socket `@hapaneld-helper`. One or 
 | `ZIGBEEROLE` | argument-free, one fixed local broker topic under a 3500 ms child deadline (protocol 1.8) | `ZIGBEEROLE <hex JSON bytes>` / `ERR` |
 | `RELAYREAD <RELAY or ST_RELAY or STRELAY> <COUNT or 1..16>` | fixed relay class inventory/value (protocol 1.11) | `RELAYREAD <class> COUNT=<0..16 or ?>` / `RELAYREAD <class> RELAY=<n> VALUE=<0 or 1 or ?>` / `ERR` |
 | `GPIOREAD <0..65535>` | fixed GPIO value and output preparation observation (protocol 1.12) | `GPIOREAD <pin> VALUE=<0 or 1 or ?> PREPARED=<0 or 1 or ?>` / `ERR` |
+| `GFXINFO SELF` | fixed authenticated app cumulative HWUI counters (protocol 1.14) | `GFXINFO SINCE=<u64> TOTAL=<u32> JANKY=<u32>` / `ERR` |
 | `CDPSTATE` | argument-free fixed relay process/listener exposure observation (protocol 1.13) | `CDPSTATE PRESENT` / `CDPSTATE ABSENT` / `CDPSTATE UNKNOWN` / `ERR` |
 | `ADBSTATE` | argument-free bounded fixed Android ADB properties and direct TCP listener inventory (protocol 1.10) | `PROPS=<0 or 1 or ?> LISTEN=<0 or 1 or ?>` / `ERR` |
 | `WIFISTATUS` | argument-free bounded current Wi-Fi fields from fixed Android commands (protocol 1.9) | `SSID=<hex or -> RSSI=<dBm or ->` / `ERR` |
@@ -267,3 +268,8 @@ These observations follow legitimate kernel sysfs class/device symlinks. They ne
 `CDPSTATE` reads only fixed `/proc/PID/comm`, `/proc/net/tcp`, and `/proc/net/tcp6`. An exact complete `cdprelay` comm record or an independently complete valid TCP table with any local-address port9222 in LISTEN state proves `PRESENT`. `ABSENT` requires a complete negative process scan and complete valid negative tables; only IPv6 table open `ENOENT` is permitted as negative. Missing IPv4 or any other unavailable evidence remains `UNKNOWN` unless another complete observation proves presence. A malformed later row invalidates an earlier matching row in the same table. The existing ADB5555 observation retains its own stricter missing-table policy.
 
 The process scan is limited to8192 total directory entries, including non-PID entries. Each comm file must be regular, complete within64rawbytes plus an overflow probe, NUL-free and newline-terminated. Only the exact complete bytes `cdprelay\n` count positive; other kernel-valid names may contain nonprintable bytes or embedded newlines. An unreadable or malformed live comm record makes absence unknown, but scanning continues so later independent process evidence can prove presence. Missing comm is skipped only after confirming its PID directory disappeared. Each TCP table is bounded at128KiB plus an overflow probe. Replies are exact newline-terminated records of at most17bytes. Extra arguments are rejected before observations. This is a non-atomic exposure observation, including arbitrary processes with the exact comm name; it does not authenticate an executable, filter zombies, run commands, or stop/start processes.
+
+
+`GFXINFO SELF` derives the target package from the authenticated app identity table and executes only `/system/bin/dumpsys gfxinfo io.panelassistant.android`, without flags, under a two-second deadline and the fixed clean child environment. Root/operator and unauthenticated callers have no SELF package and receive `ERR`; caller packages, PIDs, reset/framestats flags, and extra arguments are rejected before capture. This intentionally runs one fixed platform command, with no shell or su fallback.
+
+The capture must finish successfully, fit within 128 KiB plus an overflow probe, contain no NUL, and end in a newline. Exactly one ordered complete primary `Stats since:`, `Total frames rendered:`, and `Janky frames:` summary is accepted. Separately named legacy-jank and unrelated lines are ignored; missing, duplicated, malformed, or multiple-process summaries and failure lines produce `ERR`. Exactly one positive-PID process header must identify the fixed package. Decimal counters reject signs, leading zeros, overflow, and trailing garbage; epoch supports the full unsigned 64-bit range, counts the unsigned 32-bit range, and janky cannot exceed total. The AOSP two-decimal percentage presentation is checked for shape and omitted from the reply; older zero-frame `nan` presentations are conservatively unavailable. The canonical newline-terminated frame is at most 128 bytes. These are cumulative counters; this operation does not reset HWUI state or report interval percentiles.

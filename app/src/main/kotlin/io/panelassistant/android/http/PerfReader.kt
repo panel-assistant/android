@@ -13,6 +13,8 @@ import io.panelassistant.android.metrics.OsMetricSource
 import io.panelassistant.android.metrics.PanelMetrics
 import io.panelassistant.android.metrics.PerfDump
 import io.panelassistant.android.metrics.RamRingSink
+import io.panelassistant.android.platform.HelperGfxInfo
+import io.panelassistant.android.util.HelperClient
 import io.panelassistant.android.util.Json
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -34,7 +36,8 @@ import org.json.JSONObject
  * PERFDUMP: free from the shared reader's dump when it fetched one this tick (exposed as
  * [io.panelassistant.android.metrics.Snapshot.dump]), otherwise one dump of PerfReader's own on the ticks that
  * need it. They are repeated reads while the page is open, so they never use su; with no helper they are
- * unavailable. The helper has no gfxinfo verb, so render jank carries no gfxinfo frame figures.
+ * unavailable. Built-in rendering also uses fixed SELF GFXINFO counters for an optional interval jank
+ * percentage, without resetting HWUI counters or inferring an interval percentile.
  *
  * CPU % is a delta the reader computes (so the first tick has no value). GPU is Rockchip Mali devfreq load
  * ("<load>@<freq>Hz"); absent on panels without it.
@@ -76,6 +79,7 @@ object PerfReader {
     @Volatile private var renderJson = "null"
     private val stutterHist = ArrayDeque<Int>()   // CrRendererMain %-of-one-core per render window
     private var prevRenderJiffies = HashMap<Int, Long>() // renderer pid -> CrRendererMain utime+stime
+    private var prevGfx: Pair<RendererIdentity, HelperGfxInfo>? = null
     private var prevRenderAt = 0L
     private var tickCount = 0
     private var prevTopTotal = 0L                 // /proc/stat aggregate jiffies at last top sample
@@ -84,6 +88,7 @@ object PerfReader {
     private var prevSelf = 0L                     // own jiffies incl. reaped children at last top sample
     // Fetches a helper PERFDUMP for a tick whose shared snapshot carried none; tests install a fake.
     @Volatile private var helperDump: () -> PerfDump? = ::fetchHelperDump
+    @Volatile private var helperGfx: () -> HelperGfxInfo? = { HelperClient.gfxInfo() }
 
     // Page-view gate. Instrumentation is the tool, not a tax: it must not be the panel's biggest CPU
     // consumer 24/7. So sampling runs only while the info page has been fetched within [ACTIVE_MS];
@@ -108,6 +113,7 @@ object PerfReader {
         ownPackage = ownPackage,
         initialTarget = initialTarget,
         perfDump = ::fetchHelperDump,
+        gfxInfo = { HelperClient.gfxInfo() },
         elapsedRealtime = { android.os.SystemClock.elapsedRealtime() },
         pause = { delay(it) },
     )
@@ -119,7 +125,8 @@ object PerfReader {
         pause: suspend (Long) -> Unit,
         ownPackage: String = "",
         initialTarget: RendererTarget? = null,
-    ) = startOwned(scope, ownPackage, initialTarget, perfDump, elapsedRealtime, pause)
+        gfxInfo: () -> HelperGfxInfo? = { null },
+    ) = startOwned(scope, ownPackage, initialTarget, perfDump, gfxInfo, elapsedRealtime, pause)
 
     /** Update the renderer-target snapshot at the applied-configuration boundary. Generation-guarded so a
      *  call before start or after stop is a no-op — a dead/rejected generation can never publish. */
@@ -138,6 +145,7 @@ object PerfReader {
         ownPackage: String,
         initialTarget: RendererTarget?,
         perfDump: () -> PerfDump?,
+        gfxInfo: () -> HelperGfxInfo?,
         elapsedRealtime: () -> Long,
         pause: suspend (Long) -> Unit,
     ) {
@@ -145,6 +153,7 @@ object PerfReader {
             if (generation != 0L) return
             resetStateLocked()
             helperDump = perfDump
+            helperGfx = gfxInfo
             (++nextGeneration).also {
                 generation = it
                 // Install the identity snapshot as part of admission, so a rejected duplicate start
@@ -156,7 +165,7 @@ object PerfReader {
             while (isActive && isCurrent(runGeneration)) {
                 val now = elapsedRealtime()
                 if (withinActiveWindow(now, lastAccessAt)) {
-                    runCatching { tick(runGeneration) }
+                    runCatching { tick(runGeneration, now) }
                 } else {
                     ifCurrent(runGeneration) { resetLocalBaselines() }
                 }
@@ -192,6 +201,7 @@ object PerfReader {
         tickCount = 0
         rendererIdentity = RendererIdentity()
         helperDump = ::fetchHelperDump
+        helperGfx = { HelperClient.gfxInfo() }
         resetLocalBaselines()
         synchronized(lock) {
             sink.clear()
@@ -220,6 +230,11 @@ object PerfReader {
      *  in [PanelMetrics] and is deliberately NOT reset here (a stale prev just yields one valid
      *  longer-window CPU% on the next read, never a bogus delta). */
     private fun resetLocalBaselines() {
+        prevGfx = null
+        resetPerfDumpBaselines()
+    }
+
+    private fun resetPerfDumpBaselines() {
         prevTopTotal = 0L; prevSelf = 0L
         prevProc = HashMap(); prevComm = HashMap(); prevRenderJiffies = HashMap(); prevRenderAt = 0L
     }
@@ -454,29 +469,48 @@ object PerfReader {
         publishTop(runGeneration, cur, rssPages, comm, total)
     }
 
-    /** Dashboard responsiveness from the helper's CrRendererMain thread jiffies (`top`-style %-of-one-core:
-     *  the thread the HA frontend handles the WebSocket state firehose on). There is no gfxinfo frame-jank
-     *  figure: it needs `dumpsys`, which the helper does not run and which repeated reads may not su for. */
-    private fun sampleRenderDump(runGeneration: Long, dump: PerfDump) {
-        val now = android.os.SystemClock.elapsedRealtime()
-        val mainPct = ifCurrent(runGeneration) { advanceRenderDelta(dump.rend, now) } ?: return
-        if (mainPct < 0) {
-            ifCurrent(runGeneration) {
-                synchronized(lock) { renderJson = noRendererJson() }
+    /** Cumulative HWUI counts only form an interval within one reset epoch and renderer identity. */
+    private fun advanceGfx(identity: RendererIdentity, current: HelperGfxInfo?): Double? {
+        val previous = prevGfx
+        prevGfx = current?.let { identity to it }
+        if (current == null || previous == null || previous.first !== identity) return null
+        val old = previous.second
+        if (current.since != old.since || current.total < old.total || current.janky < old.janky) return null
+        val frames = current.total - old.total
+        val janky = current.janky - old.janky
+        if (frames <= 0L || janky > frames) return null
+        return Math.round(janky * 1000.0 / frames) / 10.0
+    }
+
+    /** Read callbacks run outside the lifecycle lock. Admit both baselines and publication together. */
+    private fun sampleRenderDump(
+        runGeneration: Long, dump: PerfDump?, now: Long, identity: RendererIdentity, gfx: HelperGfxInfo?,
+    ) = synchronized(lifecycleLock) {
+        if (generation != runGeneration || rendererIdentity !== identity) return@synchronized
+        // Seed on the first cycle, before the CPU delta's first-sample early return.
+        val jankPct = advanceGfx(identity, gfx)
+        if (dump == null) {
+            resetPerfDumpBaselines()
+            synchronized(lock) {
+                topJson = "null"; topRamJson = "null"; renderJson = "null"; stutterHist.clear()
             }
-            return
+            return@synchronized
+        }
+        val mainPct = advanceRenderDelta(dump.rend, now)
+        if (mainPct < 0) {
+            synchronized(lock) { renderJson = noRendererJson() }
+            return@synchronized
         }
         val pct1 = Math.round(mainPct.coerceIn(0.0, 100.0) * 10) / 10.0
         val verdict = if (pct1 < 50) "smooth" else if (pct1 < 85) "occasional" else "janky"
-        ifCurrent(runGeneration) {
-            synchronized(lock) {
-                push(stutterHist, Math.round(pct1).toInt())
-                renderJson = "{\"pkg\":\"dashboard\",\"mainPct\":$pct1,\"verdict\":\"$verdict\",\"hist\":${stutterHist.toList()}}"
-            }
+        synchronized(lock) {
+            push(stutterHist, Math.round(pct1).toInt())
+            val jank = jankPct?.let { ",\"jankPct\":$it" } ?: ""
+            renderJson = "{\"pkg\":\"dashboard\",\"mainPct\":$pct1,\"verdict\":\"$verdict\",\"hist\":${stutterHist.toList()}$jank}"
         }
     }
 
-    private fun tick(runGeneration: Long) {
+    private fun tick(runGeneration: Long, now: Long) {
         val snap = PanelMetrics.shared.systemSnapshot()
         if (!isCurrent(runGeneration)) return
         // Top-5 + render jank (PerfReader-only) from ONE helper PERFDUMP per ~10s cycle: the shared
@@ -485,22 +519,14 @@ object PerfReader {
         // untouched and only top-5/render run at this cadence. Never su: with no helper they stay null.
         val phase = ifCurrent(runGeneration) { tickCount % 5 } ?: return
         if (phase == 0) {
+            val identity = rendererIdentity
             val fetch = helperDump
+            val fetchGfx = helperGfx
             val dump = snap.dump ?: runCatching(fetch).getOrNull()
-            if (dump != null) {
-                runCatching { sampleTopDump(runGeneration, dump) }
-                runCatching { sampleRenderDump(runGeneration, dump) }
-            } else {
-                ifCurrent(runGeneration) {
-                    resetLocalBaselines()
-                    synchronized(lock) {
-                        topJson = "null"
-                        topRamJson = "null"
-                        renderJson = "null"
-                        stutterHist.clear()
-                    }
-                }
-            }
+            // SELF is meaningful only for our built-in renderer; a foreign target never borrows it.
+            val gfx = if (identity.target is RendererTarget.Builtin) runCatching(fetchGfx).getOrNull() else null
+            if (dump != null) runCatching { sampleTopDump(runGeneration, dump) }
+            sampleRenderDump(runGeneration, dump, now, identity, gfx)
         }
         ifCurrent(runGeneration) { tickCount++ } ?: return
 

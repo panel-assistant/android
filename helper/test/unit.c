@@ -521,10 +521,10 @@ static void test_perfdump_bridge_protocol(void) {
 
 static void test_dispatch_exact_match(void) {
     char out[64];
-    CHECK(strcmp(helper_identity(), "HELPER version=1.13.0 proto=1.13") == 0,
+    CHECK(strcmp(helper_identity(), "HELPER version=1.14.0 proto=1.14") == 0,
           "helper identity is stable (got '%s')\n", helper_identity());
     dispatch_reply("VERSION", out, sizeof out);
-    CHECK(strcmp(out, "HELPER version=1.13.0 proto=1.13\n") == 0,
+    CHECK(strcmp(out, "HELPER version=1.14.0 proto=1.14\n") == 0,
           "VERSION -> machine-readable identity (got '%s')\n", out);
     dispatch_reply("VERSION extra", out, sizeof out);
     CHECK(strcmp(out, "ERR\n") == 0, "VERSION rejects arguments (got '%s')\n", out);

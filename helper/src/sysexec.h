@@ -76,6 +76,8 @@ int sysexec_capture_zigbee_role(char *output, size_t capacity, size_t *used);
 // Fixed Wi-Fi status read, cmd then nonzero-exit-only dumpsys fallback, one 2000ms budget.
 // Exact byte count and complete capture let the handler reject embedded NUL and overflow.
 int sysexec_capture_wifi_status(char *output, size_t capacity, size_t *used);
+// Fixed dumpsys gfxinfo; package is selected internally by authenticated SELF identity.
+int sysexec_capture_gfxinfo(const char *package, char *output, size_t capacity, size_t *used);
 
 #define ADB_PROPERTY_COUNT 5
 #define ADB_PROPERTY_CAPACITY 257
