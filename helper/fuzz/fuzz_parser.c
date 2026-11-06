@@ -102,6 +102,8 @@ int main(int argc, char **argv) {
         "GPIOV1\n", "GPIOV1 extra\n", "GPIORESET\n",
         "GPIOWATCH 0\n", "GPIOWATCH 65535\n", "GPIOWATCH 65536\n",
         "GPIOWATCH -1\n", "GPIOWATCH 1 trailing\n", "GPIOSUBSCRIBE\n",
+        "LOGCATDUMP\n", "LOGCATDUMP 300\n", "LOGCATDUMP 0\n", "LOGCATDUMP 1001\n", "LOGCATDUMP abc\n",
+        "LOGCATDUMP 300 x\n", "LOGCATDUMP -1\n", "LOGCATDUMP 99999999999999999999\n",
         "REBOOT\n", "REBOOTNOW\n",
         "DENSITY\n", "DENSITY 240\n", "DENSITY reset\n", "DENSITY 99999999999999\n",
         "DENSITY ../../x\n", "DENSITY -1\n",
@@ -143,7 +145,7 @@ int main(int argc, char **argv) {
 
     // 2) length-boundary lines around MAX_LINE for every verb.
     size_t lens[] = { MAX_LINE - 1, MAX_LINE, MAX_LINE + 1, 4096, 65536 };
-    const char *verbs[] = { "RGB ", "BTN ", "RELOAD ", "START ", "WATCH /dev/input/", "GPIOWATCH ",
+    const char *verbs[] = { "RGB ", "BTN ", "RELOAD ", "START ", "WATCH /dev/input/", "GPIOWATCH ", "LOGCATDUMP ",
                             "DENSITY ", "FONTSCALE ", "GOV ", "SCREEN ",
                             "STOP ", "DISABLE ", "ENABLE ", "OVERLAY ", "" };
     for (size_t li = 0; li < sizeof lens / sizeof lens[0]; li++)

@@ -74,6 +74,8 @@ class LogCapture(
     private val timeZone: () -> TimeZone = TimeZone::getDefault,
     private val restartBaseMs: Long = BACKOFF_MS,
     private val restartMaxMs: Long = BACKOFF_MAX_MS,
+    /** Raw long-format backlog lines from the helper; when set it is the only dump source. */
+    private val helperDump: ((Int) -> List<String>)? = null,
 ) {
     init {
         require(maxViewers > 0) { "maxViewers must be positive" }
@@ -225,7 +227,7 @@ class LogCapture(
     /** One-shot dump of the last [lines] log lines (redacted). A single flight is shared by all
      * callers, output is capped before decoding, and a wedged command is forcibly terminated. */
     fun dump(lines: Int = DUMP_LINES): List<String> {
-        if (lines <= 0 || lineStream != null) return emptyList()
+        if (lines <= 0 || (helperDump == null && lineStream != null)) return emptyList()
         val (flight, owner) = synchronized(this) {
             if (closed) return emptyList()
             val current = dumpFlight
@@ -267,6 +269,7 @@ class LogCapture(
     }
 
     private fun runDump(lines: Int): List<String> {
+        helperDump?.let { source -> return LongLogcatRecords.collect(source(lines), ::redact).takeLast(lines) }
         val p = processStarter(dumpCmd(lines))
         val admitted = synchronized(this) {
             if (closed) false else {
@@ -486,6 +489,7 @@ class LogCapture(
         fun system(
             scope: CoroutineScope,
             helperLines: suspend (emit: (String) -> Unit) -> Unit,
+            helperDump: ((Int) -> List<String>)? = null,
             processStarter: (List<String>) -> Process = { command ->
                 ProcessBuilder(command).redirectErrorStream(true).start()
             },
@@ -496,6 +500,7 @@ class LogCapture(
             processStarter = processStarter,
             lineStream = helperLines,
             longLogcatRecords = true,
+            helperDump = helperDump,
         )
 
         /** Dashboard WebView console over the CDP relay. [enabled] keeps it idle unless log shipping is
@@ -534,6 +539,14 @@ class LogCapture(
 
 /** `logcat -v long -v printable` separates complete native entries with an empty line. */
 private class LongLogcatRecords(private val emit: (String) -> Unit) {
+    companion object {
+        fun collect(lines: List<String>, transform: (String) -> String): List<String> {
+            val records = ArrayList<String>()
+            LongLogcatRecords { records += transform(it) }.also { reader -> lines.forEach(reader::accept) }
+            return records
+        }
+    }
+
     private val entry = StringBuilder()
 
     fun accept(line: String) {

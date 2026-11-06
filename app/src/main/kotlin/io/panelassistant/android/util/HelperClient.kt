@@ -7,6 +7,7 @@ import io.panelassistant.android.platform.Daemon
 import io.panelassistant.android.platform.DaemonLongResult
 import io.panelassistant.android.platform.DaemonStreamResult
 import java.io.BufferedInputStream
+import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.InputStream
 import java.io.IOException
@@ -244,6 +245,29 @@ internal class IdentityAdmittingHelperClient(
         })
     }
 
+    /**
+     * Raw long-format backlog lines from `LOGCATDUMP` (blank lines separate entries). Only a
+     * compatible helper at protocol 1.4 or later is asked; an older helper, a refusal or a failed
+     * exchange yields no backlog. There is no root fallback.
+     */
+    fun logcatDump(lines: Int): List<String> {
+        if (lines !in 1..LOGCAT_DUMP_MAX_LINES) return emptyList()
+        val session = transport.open() ?: return emptyList()
+        return session.use {
+            val status = probeIdentity(it, newDeadline()).status
+            if (status !is HelperIdentityStatus.Compatible ||
+                status.identity.protocolMinor < LOGCAT_DUMP_PROTOCOL_MINOR
+            ) return emptyList()
+            val bytes = it.sendBytes("LOGCATDUMP $lines", LOGCAT_DUMP_MAX_REPLY_BYTES) ?: return emptyList()
+            val reader = HelperLogcatLineReader(ByteArrayInputStream(bytes))
+            if (runCatching { reader.readLine() }.getOrNull() != "OK") return emptyList()
+            buildList {
+                // A cap or deadline can cut the final line; the reader refuses that partial tail.
+                while (true) add(runCatching { reader.readLine() }.getOrNull() ?: break)
+            }
+        }
+    }
+
     override fun available(): Boolean = execute(null) { it.send("PING") } == "OK"
 
     override fun send(cmd: String): String? = execute(null) { it.send(cmd) }
@@ -370,6 +394,9 @@ object HelperClient : Daemon by admittedHelperClient {
 
     /** Opens a closeable raw system log stream on the authenticated helper socket. */
     internal fun openLogcat(): HelperLogcatOpenResult = admittedHelperClient.openLogcat()
+
+    /** Bounded system-log backlog for a viewer opening; empty from a helper older than protocol 1.4. */
+    internal fun logcatDump(lines: Int): List<String> = admittedHelperClient.logcatDump(lines)
 
     /**
      * Read-only bootstrap probe for provisioning and diagnostics. Ordinary operations repeat this
@@ -593,6 +620,9 @@ private class LocalSocketHelperSession(
 private const val COMPANION_CAPABILITY_VERSION = "COMPANIONCAPS 1 BACKUP RESTORE STATUS JOURNAL"
 private const val MAX_LOGCAT_LINE_BYTES = 8192
 private const val LOGCAT_READ_TIMEOUT_MS = 1_000
+private const val LOGCAT_DUMP_PROTOCOL_MINOR = 4
+private const val LOGCAT_DUMP_MAX_LINES = 1_000
+private const val LOGCAT_DUMP_MAX_REPLY_BYTES = 3L + 256L * 1024L // "OK\n" + the helper's byte cap
 
 /** Keeps a partial source line across read timeouts so cancellation cannot split an entry. */
 internal class HelperLogcatLineReader(private val input: InputStream) {

@@ -722,6 +722,7 @@ class PaneldService : Service() {
                     HelperLogcatOpenResult.Failed -> error("helper LOGCAT unavailable")
                 }
             },
+            helperDump = HelperClient::logcatDump,
         )
         // The dashboard's JavaScript console, read over a CDP relay the user started. Off unless log
         // shipping is configured, and never in Hardened mode, where the relay itself is refused.

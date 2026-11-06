@@ -1,5 +1,7 @@
 package io.panelassistant.android.util
 
+import io.panelassistant.android.device.SuForm
+import io.panelassistant.android.logship.LogCapture
 import io.panelassistant.android.platform.DaemonLongResult
 import io.panelassistant.android.platform.DaemonStreamResult
 import java.io.ByteArrayInputStream
@@ -8,6 +10,9 @@ import java.io.IOException
 import java.util.Collections
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -98,6 +103,73 @@ class HelperClientIdentityTest {
             assertFalse(source.exists())
             assertTrue(directory.listFiles().orEmpty().isEmpty())
         }
+    }
+
+    private fun systemCapture(client: IdentityAdmittingHelperClient, suStarts: AtomicInteger) = LogCapture.system(
+        CoroutineScope(Dispatchers.IO),
+        suForm = SuForm.ANDROID,
+        helperLines = { error("no stream in a backlog test") },
+        rootAvailable = { true },
+        helperDump = client::logcatDump,
+        processStarter = { suStarts.incrementAndGet(); error("su must not start for the system backlog") },
+    )
+
+    @Test
+    fun systemCaptureBacklogComesFromHelperDumpWithoutSu() {
+        val dump = "OK\n[ 1790592713.123  123: 456 E/AndroidRuntime ]\n" +
+            "java.lang.IllegalStateException: password=hunter2secret\\x0A    at Example.first(Example.kt:12)\n\n" +
+            "[ 1790592713.124  123: 456 I/Example ]\nrecovered\n\n[ 1790592713.125  1: 2 I/Cut ]\npart"
+        val transport = FakeHelperTransport(FakeGeneration(
+            version = HelperBootstrapReply.Line("HELPER version=1.4.0 proto=1.4"),
+            bytesReplies = mapOf("LOGCATDUMP 300" to dump.toByteArray()),
+        ))
+        val suStarts = AtomicInteger()
+        val capture = systemCapture(IdentityAdmittingHelperClient(transport, nowNs = { 0L }), suStarts)
+        try {
+            assertEquals(
+                listOf(
+                    "[ 1790592713.123  123: 456 E/AndroidRuntime ]\n" +
+                        "java.lang.IllegalStateException: password=***\n    at Example.first(Example.kt:12)",
+                    "[ 1790592713.124  123: 456 I/Example ]\nrecovered",
+                ),
+                capture.initialBacklog(),
+            )
+            assertEquals(0, suStarts.get())
+            assertEquals(listOf("LOGCATDUMP 300"), transport.byteCommands.map { it.command })
+            assertEquals(transport.bootstrapCommands.single().session, transport.byteCommands.single().session)
+        } finally {
+            capture.close()
+        }
+    }
+
+    @Test
+    fun systemCaptureBacklogIsEmptyFromAPreDumpHelperWithoutSu() {
+        for (version in listOf("HELPER version=1.3.1 proto=1.3", "HELPER version=2.0.0 proto=2.4", "ERR")) {
+            val transport = FakeHelperTransport(FakeGeneration(
+                version = HelperBootstrapReply.Line(version),
+                bytesReplies = mapOf("LOGCATDUMP 300" to "OK\n[ 1.000 1: 2 I/X ]\nleak\n\n".toByteArray()),
+            ))
+            val suStarts = AtomicInteger()
+            val capture = systemCapture(IdentityAdmittingHelperClient(transport, nowNs = { 0L }), suStarts)
+            try {
+                assertEquals(emptyList(), capture.initialBacklog(), version)
+                assertEquals(0, suStarts.get(), version)
+                assertTrue(transport.byteCommands.isEmpty(), version)
+            } finally {
+                capture.close()
+            }
+        }
+    }
+
+    @Test
+    fun logcatDumpRefusalYieldsNoBacklog() {
+        val transport = FakeHelperTransport(FakeGeneration(
+            version = HelperBootstrapReply.Line("HELPER version=1.4.0 proto=1.4"),
+            bytesReplies = mapOf("LOGCATDUMP 300" to "ERR\n".toByteArray()),
+        ))
+        assertEquals(emptyList(), IdentityAdmittingHelperClient(transport, nowNs = { 0L }).logcatDump(300))
+        assertEquals(emptyList(), IdentityAdmittingHelperClient(transport, nowNs = { 0L }).logcatDump(1001))
+        assertEquals(1, transport.byteCommands.size)
     }
 
     @Test
@@ -610,6 +682,7 @@ private data class FakeGeneration(
     val lineReply: String? = "OK",
     val lineReplies: Map<String, String?> = emptyMap(),
     val streamReply: DaemonStreamResult = DaemonStreamResult.Reply("OK"),
+    val bytesReplies: Map<String, ByteArray> = emptyMap(),
 ) {
     @Volatile var afterVersion: (() -> Unit)? = null
     @Volatile var afterPing: (() -> Unit)? = null
@@ -666,7 +739,7 @@ private class FakeHelperTransport(initial: FakeGeneration = FakeGeneration()) : 
 
             override fun sendBytes(cmd: String, maxBytes: Long): ByteArray? {
                 byteCommands += RecordedBytes(session, snapshot.id, cmd, maxBytes)
-                return byteArrayOf(1, 2, 3)
+                return snapshot.bytesReplies[cmd] ?: byteArrayOf(1, 2, 3)
             }
 
             override fun readLogcatLine(): String? = null
