@@ -6,6 +6,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
+import androidx.test.uiautomator.Condition
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import java.net.InetAddress
@@ -71,7 +72,15 @@ class FirstRunSignInInstrumentedTest {
             ).use {
                 assertTrue(
                     "The real Activity must display the local HA authorization page before any entity hold",
-                    device.wait(Until.hasObject(By.text(SignInServer.MARKER)), 30_000),
+                    device.wait(
+                        Condition<UiDevice, Boolean> { current ->
+                            current.findObjects(By.clazz("android.webkit.WebView")).any { webView ->
+                                webView.hasObject(By.text(SignInServer.MARKER)) ||
+                                    webView.hasObject(By.desc(SignInServer.MARKER))
+                            }
+                        },
+                        30_000,
+                    ),
                 )
                 assertTrue(device.hasObject(By.clazz("android.webkit.WebView")))
                 assertTrue("The visible page must have come through HA authorization", server.authorizations.get() > 0)
