@@ -72,3 +72,6 @@ COMMAND(PING,      cmd_ping)
 // Fixed read-only relay class inventory and GPIO observations (protocol 1.11 / 1.12).
 COMMAND(RELAYREAD, cmd_relayread)
 COMMAND(GPIOREAD, cmd_gpioread)
+
+// Complete fixed process/listener exposure observation (protocol 1.13).
+COMMAND(CDPSTATE, cmd_cdpstate)

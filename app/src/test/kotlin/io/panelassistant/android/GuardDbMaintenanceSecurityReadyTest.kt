@@ -12,7 +12,7 @@ class GuardDbMaintenanceSecurityReadyTest {
         assertTrue(guardDbMaintenanceSecurityReady(
             expectedEpoch = 41L,
             durableHardenedEpoch = { events += "epoch"; 41L },
-            relayRunning = { events += "relay"; false },
+            relayAbsent = { events += "relay"; true },
             remoteDebugOff = { events += "adb"; true },
         ))
         assertEquals(listOf("epoch", "relay", "adb", "epoch", "relay"), events)
@@ -31,7 +31,7 @@ class GuardDbMaintenanceSecurityReadyTest {
         assertFalse(guardDbMaintenanceSecurityReady(
             expectedEpoch = 41L,
             durableHardenedEpoch = { if (read++ == 0) 41L else 42L },
-            relayRunning = { false },
+            relayAbsent = { true },
             remoteDebugOff = { true },
         ))
         assertEquals(2, read)
@@ -43,7 +43,7 @@ class GuardDbMaintenanceSecurityReadyTest {
             assertFalse(relayState, guardDbMaintenanceSecurityReady(
                 41L,
                 { 41L },
-                { true },
+                { false },
                 { adbCalls++; true },
             ))
             assertEquals(relayState, 0, adbCalls)
@@ -53,7 +53,7 @@ class GuardDbMaintenanceSecurityReadyTest {
         assertFalse(guardDbMaintenanceSecurityReady(
             41L,
             { 41L },
-            { relayRead++ != 0 },
+            { relayRead++ == 0 },
             { true },
         ))
         assertEquals(2, relayRead)
@@ -63,7 +63,7 @@ class GuardDbMaintenanceSecurityReadyTest {
             assertFalse(adbState, guardDbMaintenanceSecurityReady(
                 41L,
                 { epochRead++; 41L },
-                { false },
+                { true },
                 { false },
             ))
             assertEquals("failed ADB proof must short-circuit the second epoch read", 1, epochRead)

@@ -1,7 +1,9 @@
 #include "adb_state.h"
 #include "sysexec.h"
 #include "util.h"
+#include <dirent.h>
 #include <errno.h>
+#include <limits.h>
 #include <fcntl.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -68,7 +70,7 @@ static size_t columns(char *line, char **out, size_t capacity) {
     }
     return count;
 }
-static int tcp_table(char *raw, size_t length, size_t address_digits) {
+static int tcp_table(char *raw, size_t length, size_t address_digits, unsigned target_port) {
     if (!length || raw[length-1] != '\n' || memchr(raw, 0, length)) return -1;
     raw[length] = 0;
     char *next = strchr(raw, '\n');
@@ -98,13 +100,13 @@ static int tcp_table(char *raw, size_t length, size_t address_digits) {
         const char *port = col[1] + address_digits + 1;
         unsigned n = 0;
         for (unsigned j = 0; j < 4; j++) n = n * 16u + (unsigned)hex_digit((unsigned char)port[j]);
-        if (n == 5555 && hex_digit((unsigned char)col[3][0]) == 0 && hex_digit((unsigned char)col[3][1]) == 10) listening = 1;
+        if (n == target_port && hex_digit((unsigned char)col[3][0]) == 0 && hex_digit((unsigned char)col[3][1]) == 10) listening = 1;
     }
     return listening;
 }
-static int listener(const char *path, size_t address_digits) {
+static int listener(const char *path, size_t address_digits, unsigned target_port, int missing_ok) {
     int fd = open(path, O_RDONLY | O_CLOEXEC | O_NONBLOCK | O_NOFOLLOW);
-    if (fd < 0) return -1;
+    if (fd < 0) return missing_ok && errno == ENOENT ? 0 : -1;
     struct stat st;
     char *raw = NULL;
     int result = -1;
@@ -119,7 +121,7 @@ static int listener(const char *path, size_t address_digits) {
         if (used == TCP_CAPTURE_BYTES) goto done;
         used += (size_t)got;
     }
-    result = tcp_table(raw, used, address_digits);
+    result = tcp_table(raw, used, address_digits, target_port);
 done:
     free(raw); close(fd); return result;
 }
@@ -133,10 +135,94 @@ void cmd_adbstate(conn_ctx *ctx, const char *args) {
         if (value == 1) { properties = 1; break; }
         if (value < 0) properties = -1;
     }
-    int tcp = listener("/proc/net/tcp", 8), tcp6 = listener("/proc/net/tcp6", 32);
+    int tcp = listener("/proc/net/tcp", 8, 5555, 0), tcp6 = listener("/proc/net/tcp6", 32, 5555, 0);
     int active = tcp == 1 || tcp6 == 1 ? 1 : tcp == 0 && tcp6 == 0 ? 0 : -1;
     char out[] = "PROPS=? LISTEN=?\n";
     out[6] = properties < 0 ? '?' : (char)('0' + properties);
     out[15] = active < 0 ? '?' : (char)('0' + active);
     reply(ctx->fd, out);
+}
+
+#ifndef CDP_PROC_ROOT
+#define CDP_PROC_ROOT "/proc"
+#endif
+#define CDP_SCAN_ENTRIES 8192u
+#define CDP_COMM_BYTES 64u
+
+// Only kernel PID directory names can select a comm node; other proc entries are ignored.
+static int cdp_pid(const char *name) {
+    if (!*name) return 0;
+    for (const char *p = name; *p; p++) if (*p < '0' || *p > '9') return 0;
+    if (*name == '0') return -1;
+    unsigned n = 0;
+    for (; *name; name++) {
+        unsigned digit = (unsigned)(*name - '0');
+        if (n > ((unsigned)INT_MAX - digit) / 10u) return -1;
+        n = n * 10u + digit;
+    }
+    return 1;
+}
+static int cdp_comm(int pidfd) {
+    int fd = openat(pidfd, "comm", O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
+    if (fd < 0) return -1;
+    unsigned char raw[CDP_COMM_BYTES + 1];
+    size_t used = 0;
+    int result = -1, error = EINVAL;
+    struct stat st;
+    if (fstat(fd, &st)) { error = errno; goto done; }
+    if (!S_ISREG(st.st_mode)) goto done;
+    for (;;) {
+        ssize_t got = read(fd, raw + used, sizeof raw - used);
+        if (got < 0) { if (errno == EINTR) continue; error = errno; goto done; }
+        if (!got) break;
+        used += (size_t)got;
+        if (used > CDP_COMM_BYTES) { error = EOVERFLOW; goto done; }
+    }
+    if (!used || raw[used-1] != '\n' || memchr(raw, 0, used)) goto done;
+    result = used == 9 && !memcmp(raw, "cdprelay\n", 9) ? 1 : 0;
+done:
+    if (close(fd)) { result = -1; error = errno; }
+    if (result < 0) errno = error;
+    return result;
+}
+static int cdp_process(void) {
+    int rootfd = open(CDP_PROC_ROOT, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NONBLOCK);
+    if (rootfd < 0) return -1;
+    DIR *dir = fdopendir(rootfd);
+    if (!dir) { close(rootfd); return -1; }
+    int result = 0;
+    unsigned entries = 0;
+    for (;;) {
+        errno = 0;
+        struct dirent *entry = readdir(dir);
+        if (!entry) { if (errno) result = -1; break; }
+        if (++entries > CDP_SCAN_ENTRIES) { result = -1; break; }
+        int candidate = cdp_pid(entry->d_name);
+        if (!candidate) continue;
+        if (candidate < 0) { result = -1; continue; }
+        int pidfd = openat(rootfd, entry->d_name, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
+        if (pidfd < 0) { if (errno != ENOENT && errno != ESRCH) result = -1; continue; }
+        int found = cdp_comm(pidfd), error = errno;
+        if (close(pidfd)) { if (found != 1) found = -1; error = errno; }
+        if (found == 1) { result = 1; break; }
+        if (found < 0) {
+            struct stat st;
+            // Missing comm proves nothing about a live PID; verify the PID directory vanished.
+            if ((error == ENOENT || error == ESRCH) &&
+                fstatat(rootfd, entry->d_name, &st, AT_SYMLINK_NOFOLLOW) < 0 &&
+                (errno == ENOENT || errno == ESRCH)) continue;
+            result = -1;
+        }
+    }
+    if (closedir(dir) && result != 1) result = -1;
+    return result;
+}
+void cmd_cdpstate(conn_ctx *ctx, const char *args) {
+    if (*args) { reply(ctx->fd, "ERR\n"); return; }
+    int process = cdp_process();
+    int tcp = listener(CDP_PROC_ROOT "/net/tcp", 8, 9222, 0);
+    int tcp6 = listener(CDP_PROC_ROOT "/net/tcp6", 32, 9222, 1);
+    if (process == 1 || tcp == 1 || tcp6 == 1) reply(ctx->fd, "CDPSTATE PRESENT\n");
+    else if (process == 0 && tcp == 0 && tcp6 == 0) reply(ctx->fd, "CDPSTATE ABSENT\n");
+    else reply(ctx->fd, "CDPSTATE UNKNOWN\n");
 }

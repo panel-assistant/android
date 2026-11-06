@@ -26,6 +26,9 @@ interface Daemon {
     /** Fixed ADB observations; unknown fields stay null and no root shell fallback is implied. */
     fun adbState(): HelperAdbState? = null
 
+    /** Strict fixed CDP process/listener observation; unavailable never proves absence. */
+    fun cdpState(): HelperCdpState? = null
+
     /** Fixed relay/GPIO observations; null means unknown, never an invitation to launch su. */
     fun relayCount(relayClass: HelperRelayClass): Int? = null
     fun relayRead(relayClass: HelperRelayClass, relay: Int): Boolean? = null

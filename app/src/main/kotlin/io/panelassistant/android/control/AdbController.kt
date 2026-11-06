@@ -68,7 +68,7 @@ class AdbController internal constructor(
     private fun managedOffProof(): Boolean = ManagedNetworkAdb.managed && managedOff()
 
     internal fun resealManagedHardened(): Boolean = RemoteDebugSecurityTransitionGate.withLock {
-        if (!config.hardenedSecurityEnabled || !managedOffProof() || CdpRelay.running || !disableMarker.isAbsentDurably()) false
+        if (!config.hardenedSecurityEnabled || !managedOffProof() || !CdpRelay.proveAbsent() || !disableMarker.isAbsentDurably()) false
         else config.setNetworkAdbEnabled(false) && RemoteDebugSecurityTransitionGate.sealHardened()
     }
 
@@ -209,7 +209,7 @@ class AdbController internal constructor(
         root.run(networkAdbEnableCommand())
 
     private fun resealHardenedAuthorityIfExact() {
-        if (config.hardenedSecurityEnabled && !CdpRelay.running && hardenedRemoteDebugOff()) {
+        if (config.hardenedSecurityEnabled && CdpRelay.proveAbsent() && hardenedRemoteDebugOff()) {
             check(RemoteDebugSecurityTransitionGate.sealHardened()) {
                 "durable Hardened security authority publication failed"
             }

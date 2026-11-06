@@ -17,7 +17,7 @@ Newline-terminated ASCII on the abstract UNIX socket `@hapaneld-helper`. One or 
 
 | Command | Effect | Reply |
 | --- | --- | --- |
-| `VERSION` | read the helper identity without touching hardware | `HELPER version=1.12.0 proto=1.12` / `ERR` when arguments are supplied |
+| `VERSION` | read the helper identity without touching hardware | `HELPER version=1.13.0 proto=1.13` / `ERR` when arguments are supplied |
 | `RGB <r> <g> <b>` | set LED colour (each 0..255) | `OK` / `ERR` |
 | `OFF` | LED off | `OK` / `ERR` |
 | `BTN <0..255>` | button-backlight brightness | `OK` / `ERR` |
@@ -56,6 +56,7 @@ Newline-terminated ASCII on the abstract UNIX socket `@hapaneld-helper`. One or 
 | `ZIGBEEROLE` | argument-free, one fixed local broker topic under a 3500 ms child deadline (protocol 1.8) | `ZIGBEEROLE <hex JSON bytes>` / `ERR` |
 | `RELAYREAD <RELAY or ST_RELAY or STRELAY> <COUNT or 1..16>` | fixed relay class inventory/value (protocol 1.11) | `RELAYREAD <class> COUNT=<0..16 or ?>` / `RELAYREAD <class> RELAY=<n> VALUE=<0 or 1 or ?>` / `ERR` |
 | `GPIOREAD <0..65535>` | fixed GPIO value and output preparation observation (protocol 1.12) | `GPIOREAD <pin> VALUE=<0 or 1 or ?> PREPARED=<0 or 1 or ?>` / `ERR` |
+| `CDPSTATE` | argument-free fixed relay process/listener exposure observation (protocol 1.13) | `CDPSTATE PRESENT` / `CDPSTATE ABSENT` / `CDPSTATE UNKNOWN` / `ERR` |
 | `ADBSTATE` | argument-free bounded fixed Android ADB properties and direct TCP listener inventory (protocol 1.10) | `PROPS=<0 or 1 or ?> LISTEN=<0 or 1 or ?>` / `ERR` |
 | `WIFISTATUS` | argument-free bounded current Wi-Fi fields from fixed Android commands (protocol 1.9) | `SSID=<hex or -> RSSI=<dBm or ->` / `ERR` |
 | `ZIGBEECONTAIN` | argument-free containment for the exact vendor-native Sonoff `/vendor/bin/siliconlabs_host` layout; targets only its guard, gateway and matching broker, then demotes a surviving gateway | `OK` / `PARTIAL` / `ERR` |
@@ -262,3 +263,7 @@ from ADB recovery and does not change recovery actions.
 `GPIOREAD` accepts only a canonical decimal pin 0..65535 and observes `/sys/class/gpio/gpioN/value` and `direction`. Values are independent of output preparation: `VALUE` accepts only trimmed `0` or `1`; `PREPARED` is one only when trimmed direction is `out` and the fixed value node passes `W_OK`. Direction `in` or an established missing/denied/read-only value node proves preparation zero. Otherwise malformed or unavailable direction/access evidence remains unknown. Value read failure does not erase independent preparation evidence; inability to open the GPIO directory for reading alone does not prove that its value node is unwritable. Each scalar must be a regular file, fully read within 64 raw bytes plus an overflow probe, contain no NUL, and match exactly after ASCII whitespace trimming. Replies are at most 64 bytes, echo the canonical pin, and terminate with one newline. Unknown fields use `?`.
 
 These observations follow legitimate kernel sysfs class/device symlinks. They never export GPIOs, write values or directions, configure edges, start watchers, or execute commands. Caller paths, arbitrary classes, noncanonical integers, and extra arguments are rejected with `ERR`.
+
+`CDPSTATE` reads only fixed `/proc/PID/comm`, `/proc/net/tcp`, and `/proc/net/tcp6`. An exact complete `cdprelay` comm record or an independently complete valid TCP table with any local-address port9222 in LISTEN state proves `PRESENT`. `ABSENT` requires a complete negative process scan and complete valid negative tables; only IPv6 table open `ENOENT` is permitted as negative. Missing IPv4 or any other unavailable evidence remains `UNKNOWN` unless another complete observation proves presence. A malformed later row invalidates an earlier matching row in the same table. The existing ADB5555 observation retains its own stricter missing-table policy.
+
+The process scan is limited to8192 total directory entries, including non-PID entries. Each comm file must be regular, complete within64rawbytes plus an overflow probe, NUL-free and newline-terminated. Only the exact complete bytes `cdprelay\n` count positive; other kernel-valid names may contain nonprintable bytes or embedded newlines. An unreadable or malformed live comm record makes absence unknown, but scanning continues so later independent process evidence can prove presence. Missing comm is skipped only after confirming its PID directory disappeared. Each TCP table is bounded at128KiB plus an overflow probe. Replies are exact newline-terminated records of at most17bytes. Extra arguments are rejected before observations. This is a non-atomic exposure observation, including arbitrary processes with the exact comm name; it does not authenticate an executable, filter zombies, run commands, or stop/start processes.

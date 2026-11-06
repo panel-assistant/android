@@ -30,6 +30,7 @@ internal fun guardDbBootstrapDependencies(
     scope: CoroutineScope,
     pendingApks: PendingUploadStore,
     guardDbStaging: GuardDbAppStaging,
+    remoteDebugOff: () -> Boolean = { AdbController(appContext, config).hardenedRemoteDebugOff() },
 ): GuardDbBootstrapRouteDependencies = GuardDbBootstrapRouteDependencies(
     pendingUploads = pendingApks,
     staging = guardDbStaging,
@@ -50,11 +51,10 @@ internal fun guardDbBootstrapDependencies(
         RemoteDebugSecurityTransitionGate.withLock {
             val epoch = RemoteDebugSecurityTransitionGate.hardenedAuthorityEpoch()
                 ?: return@withLock null
-            val adb = AdbController(appContext, config)
             epoch.takeIf {
-                config.hardenedSecurityEnabled && !CdpRelay.running &&
-                    adb.hardenedRemoteDebugOff() && config.hardenedSecurityEnabled &&
-                    !CdpRelay.running &&
+                config.hardenedSecurityEnabled && CdpRelay.proveAbsent() &&
+                    remoteDebugOff() && config.hardenedSecurityEnabled &&
+                    CdpRelay.proveAbsent() &&
                     RemoteDebugSecurityTransitionGate.hardenedAuthorityEpoch() == epoch
             }
         }
@@ -63,13 +63,12 @@ internal fun guardDbBootstrapDependencies(
         when (val authority = RemoteDebugSecurityTransitionGate.withEpoch(expectedEpoch) {
             if (sentinel.securityAuthorityEpoch != expectedEpoch ||
                 RemoteDebugSecurityTransitionGate.hardenedAuthorityEpoch() != expectedEpoch ||
-                !config.hardenedSecurityEnabled || CdpRelay.running
+                !config.hardenedSecurityEnabled || !CdpRelay.proveAbsent()
             ) {
                 return@withEpoch GuardDbSentinelCommit.SecurityRefused
             }
-            val adb = AdbController(appContext, config)
-            if (!adb.hardenedRemoteDebugOff() || !config.hardenedSecurityEnabled ||
-                CdpRelay.running ||
+            if (!remoteDebugOff() || !config.hardenedSecurityEnabled ||
+                !CdpRelay.proveAbsent() ||
                 RemoteDebugSecurityTransitionGate.hardenedAuthorityEpoch() != expectedEpoch
             ) return@withEpoch GuardDbSentinelCommit.SecurityRefused
             val store = guardDbSentinelStore(appContext)
@@ -125,11 +124,10 @@ internal fun guardDbBootstrapDependencies(
             RemoteDebugSecurityTransitionGate.withLock {
                 val epoch = RemoteDebugSecurityTransitionGate.hardenedAuthorityEpoch()
                     ?: return@withLock null
-                val adb = AdbController(appContext, config)
                 epoch.takeIf {
-                    config.hardenedSecurityEnabled && !CdpRelay.running &&
-                        adb.hardenedRemoteDebugOff() && config.hardenedSecurityEnabled &&
-                        !CdpRelay.running &&
+                    config.hardenedSecurityEnabled && CdpRelay.proveAbsent() &&
+                        remoteDebugOff() && config.hardenedSecurityEnabled &&
+                        CdpRelay.proveAbsent() &&
                         RemoteDebugSecurityTransitionGate.hardenedAuthorityEpoch() == epoch
                 }
             }

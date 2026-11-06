@@ -46,13 +46,13 @@ TEST_BINS := $(BUILD)/adb-recovery $(BUILD)/uninstall-supervisor $(BUILD)/unit $
 test:
 	$(MAKE) test-units
 
-test-units: $(BUILD)/sysfs-read-boundary $(BUILD)/adb-state-boundary $(BUILD)/adb-exec $(BUILD)/wifi-boundary $(BUILD)/wifi-exec $(BUILD)/zigbee-boundary $(BUILD)/zigbee-role-exec $(TEST_BINS)
+test-units: $(BUILD)/cdp-state-boundary $(BUILD)/sysfs-read-boundary $(BUILD)/adb-state-boundary $(BUILD)/adb-exec $(BUILD)/wifi-boundary $(BUILD)/wifi-exec $(BUILD)/zigbee-boundary $(BUILD)/zigbee-role-exec $(TEST_BINS)
 	$(MAKE) adb-recovery-retirement-test
 	$(MAKE) adb-recovery-replacement-test
 	$(BUILD)/adb-recovery
 	$(BUILD)/uninstall-supervisor
 	$(BUILD)/unit
-	test "$$($(BUILD)/hapaneld-helper --version)" = "HELPER version=1.12.0 proto=1.12"
+	test "$$($(BUILD)/hapaneld-helper --version)" = "HELPER version=1.13.0 proto=1.13"
 	$(BUILD)/companion-boundary
 	$(BUILD)/guard-maintenance-boundary
 	$(BUILD)/guard-maintenance-gates
@@ -62,6 +62,7 @@ test-units: $(BUILD)/sysfs-read-boundary $(BUILD)/adb-state-boundary $(BUILD)/ad
 	$(BUILD)/peer-auth
 	$(BUILD)/request-timeout
 	$(BUILD)/bounded-exec
+	$(BUILD)/cdp-state-boundary
 	$(BUILD)/sysfs-read-boundary
 	$(BUILD)/adb-state-boundary
 	$(BUILD)/adb-exec
@@ -157,7 +158,7 @@ $(BUILD)/cdprelay-test: cdprelay.c | $(BUILD)
 # Real UNIX-socket composition fixture: production server/dispatch core with the no-exec host stub.
 socket-test-server: $(BUILD)/socket-test-server
 $(BUILD)/socket-test-server: $(CORE_SRCS) $(STUB) test/socket_server.c $(SRC_DIR)/commands.def test/zigbee_paths.h | $(BUILD)
-	$(CC) $(CFLAGS) -DHAPANELD_TEST -DSYSFS_READ_CLASS_ROOT='"$(abspath $(BUILD)/sysfs-read-socket-fixture)"' -DZIGBEE_TEST_ROOT='"$(abspath $(BUILD)/zigbee-socket-fixture)"' -include test/zigbee_paths.h -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/socket_server.c $(LDLIBS) -Wl,--wrap=open -o $@
+	$(CC) $(CFLAGS) -DHAPANELD_TEST -DCDP_PROC_ROOT='"$(abspath $(BUILD)/cdp-state-socket-fixture)"' -DSYSFS_READ_CLASS_ROOT='"$(abspath $(BUILD)/sysfs-read-socket-fixture)"' -DZIGBEE_TEST_ROOT='"$(abspath $(BUILD)/zigbee-socket-fixture)"' -include test/zigbee_paths.h -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/socket_server.c $(LDLIBS) -Wl,--wrap=open -o $@
 
 # App<->daemon verb-contract cross-check: every verb the app sends must exist in commands.def.
 contract:
@@ -225,3 +226,6 @@ $(BUILD)/adb-exec: $(SRC_DIR)/sysexec.c test/adb_exec.c | $(BUILD)
 # Fixed sysfs paths are substituted only for dispatch fixtures; production remains /sys/class.
 $(BUILD)/sysfs-read-boundary: $(CORE_SRCS) $(STUB) test/sysfs_read_boundary.c | $(BUILD)
 	$(CC) $(CFLAGS) -DHAPANELD_TEST -DSYSFS_READ_CLASS_ROOT='"$(abspath $(BUILD)/sysfs-read-fixture)"' -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/sysfs_read_boundary.c $(LDLIBS) -Wl,--wrap=readdir -Wl,--wrap=read -Wl,--wrap=__read_chk -Wl,--wrap=faccessat -Wl,--wrap=openat -Wl,--wrap=open -o $@
+
+$(BUILD)/cdp-state-boundary: $(CORE_SRCS) $(STUB) test/cdp_state_boundary.c | $(BUILD)
+	$(CC) $(CFLAGS) -DHAPANELD_TEST -DCDP_PROC_ROOT='"$(abspath $(BUILD)/cdp-state-fixture)"' -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/cdp_state_boundary.c $(LDLIBS) -Wl,--wrap=open -Wl,--wrap=openat -Wl,--wrap=read -Wl,--wrap=__read_chk -Wl,--wrap=readdir -Wl,--wrap=fstatat -o $@

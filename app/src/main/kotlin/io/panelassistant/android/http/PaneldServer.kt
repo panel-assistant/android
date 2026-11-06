@@ -23,6 +23,7 @@ import io.panelassistant.android.i18n.Strings as AppStrings
 import io.panelassistant.android.camera.AbsentCameraSurface
 import io.panelassistant.android.camera.CameraSurface
 import io.panelassistant.android.platform.PanelPermissionRepair
+import io.panelassistant.android.util.GuardDbProcessAdmission
 import io.panelassistant.android.control.CdpRelay
 import io.panelassistant.android.control.AdbController
 import io.panelassistant.android.control.CompanionDataOperationState
@@ -679,9 +680,13 @@ class PaneldServer internal constructor(
             // Serialize against an admitted start: teardown either prevents it or waits and then kills it.
             stopRelay = {
                 synchronized(inspectLock) {
-                    val stopped = !CdpRelay.running || CdpRelay.stop()
-                    if (stopped && config.hardenedSecurityEnabled) AdbController(appContext, config).reassert()
-                    stopped
+                    if (GuardDbProcessAdmission.maintenanceRequired()) {
+                        CdpRelay.proveAbsentForGuardDbHandoff()
+                    } else {
+                        val stopped = CdpRelay.proveAbsent() || CdpRelay.stop()
+                        if (stopped && config.hardenedSecurityEnabled) AdbController(appContext, config).reassert()
+                        stopped
+                    }
                 }
             },
             drainTameMutations = { tameReconciliation.closeAndJoin(TAME_SHUTDOWN_MS) },

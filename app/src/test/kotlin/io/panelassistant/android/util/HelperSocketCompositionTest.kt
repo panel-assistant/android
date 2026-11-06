@@ -25,6 +25,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import org.junit.Assume.assumeTrue
 import io.panelassistant.android.platform.HelperRelayClass
+import io.panelassistant.android.platform.HelperCdpState
 import io.panelassistant.android.platform.HelperGpioState
 import org.junit.AfterClass
 import org.junit.BeforeClass
@@ -42,7 +43,7 @@ class HelperSocketCompositionTest {
             ).redirectErrorStream(true).start()
             assertEquals("READY", second.inputStream.bufferedReader().readLine())
             assertTrue(Files.isDirectory(root.resolve(".hapaneld-guard-db-test")))
-            assertEquals("HELPER version=1.12.0 proto=1.12", SocketDaemon(socket).send("VERSION"))
+            assertEquals("HELPER version=1.13.0 proto=1.13", SocketDaemon(socket).send("VERSION"))
         } finally {
             second?.let {
                 it.destroy()
@@ -58,7 +59,7 @@ class HelperSocketCompositionTest {
         val daemon = SocketDaemon(socketPath)
 
         assertTrue(daemon.available())
-        assertEquals("HELPER version=1.12.0 proto=1.12", daemon.send("VERSION"))
+        assertEquals("HELPER version=1.13.0 proto=1.13", daemon.send("VERSION"))
         assertEquals("ERR", daemon.send("PINGEXTRA"))
         assertEquals("OK", daemon.sendLong("RELOAD io.example.dashboard", 5_000).replyValue())
     }
@@ -74,7 +75,7 @@ class HelperSocketCompositionTest {
         val daemon = SocketDaemon(socketPath)
         // The host fixture redirects fixed governor reads and refuses governor writes.
         listOf(
-            WireTranscript("VERSION", "HELPER version=1.12.0 proto=1.12"),
+            WireTranscript("VERSION", "HELPER version=1.13.0 proto=1.13"),
             WireTranscript("PING", "OK"),
             WireTranscript("BUILDID", "BUILDID development"),
             WireTranscript("COMPANIONCAPS", "COMPANIONCAPS 1 BACKUP RESTORE STATUS JOURNAL"),
@@ -209,6 +210,27 @@ class HelperSocketCompositionTest {
         assertFalse(health.recursiveWatchdogAssignment)
         assertEquals("""{"roleType":1,"nodeId":123,"panId":456}""", health.netInfo)
         assertEquals("Repeater", daemon.zigbeeRole())
+    }
+
+    @Test(timeout = 10_000)
+    fun strictCdpObservationCrossesNativeProcessAndListenerInventory() {
+        val daemon = IdentityAdmittingHelperClient(ChannelSessionTransport(socketPath))
+        assertEquals(HelperCdpState.ABSENT, daemon.cdpState())
+        val pid = Files.createDirectory(cdpRoot.resolve("123"))
+        try {
+            Files.writeString(pid.resolve("comm"), "cdprelay\n")
+            assertEquals(HelperCdpState.PRESENT, daemon.cdpState())
+            Files.writeString(pid.resolve("comm"), "other\n")
+            assertEquals(HelperCdpState.ABSENT, daemon.cdpState())
+            Files.delete(cdpRoot.resolve("net/tcp"))
+            assertEquals(HelperCdpState.UNKNOWN, daemon.cdpState())
+            Files.writeString(pid.resolve("comm"), "cdprelay\n")
+            assertEquals(HelperCdpState.PRESENT, daemon.cdpState())
+            assertEquals("ERR", SocketDaemon(socketPath).send("CDPSTATE extra"))
+        } finally {
+            pid.toFile().deleteRecursively()
+            Files.writeString(cdpRoot.resolve("net/tcp"), TCP_HEADER)
+        }
     }
 
     @Test(timeout = 10_000)
@@ -380,6 +402,8 @@ class HelperSocketCompositionTest {
         lateinit var server: Process
         lateinit var sysfsReadRoot: Path
         lateinit var zigbeeRoot: Path
+        lateinit var cdpRoot: Path
+        private const val TCP_HEADER = "  sl  local_address rem_address st tx_queue rx_queue tr tm->when retrnsmt uid timeout inode\n"
         lateinit var fixtureLock: FileLock
 
         @JvmStatic
@@ -413,6 +437,10 @@ class HelperSocketCompositionTest {
                 Files.writeString(directory.resolve("value"), "$value\n")
                 Files.writeString(directory.resolve("direction"), "$direction\n")
             }
+            cdpRoot = executable.parentFile.toPath().resolve("cdp-state-socket-fixture")
+            cdpRoot.toFile().deleteRecursively()
+            Files.createDirectories(cdpRoot.resolve("net"))
+            Files.writeString(cdpRoot.resolve("net/tcp"), TCP_HEADER)
             zigbeeRoot = executable.parentFile.toPath().resolve("zigbee-socket-fixture")
             zigbeeRoot.toFile().deleteRecursively()
             val vendor = Files.createDirectories(zigbeeRoot.resolve("vendor"))
@@ -455,6 +483,7 @@ class HelperSocketCompositionTest {
             Files.deleteIfExists(Path.of("/tmp/hapaneld-helper-install-stream-test.apk"))
             if (::guardRoot.isInitialized) deleteGuardRoot(guardRoot)
             if (::sysfsReadRoot.isInitialized) sysfsReadRoot.toFile().deleteRecursively()
+            if (::cdpRoot.isInitialized) cdpRoot.toFile().deleteRecursively()
             if (::zigbeeRoot.isInitialized) zigbeeRoot.toFile().deleteRecursively()
             if (::fixtureLock.isInitialized) fixtureLock.channel().close()
         }

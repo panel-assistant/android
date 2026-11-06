@@ -6,6 +6,7 @@ import io.panelassistant.android.BuildConfig
 import io.panelassistant.android.platform.Daemon
 import io.panelassistant.android.platform.DaemonLongResult
 import io.panelassistant.android.platform.DaemonStreamResult
+import io.panelassistant.android.platform.HelperCdpState
 import io.panelassistant.android.platform.HelperGpioState
 import io.panelassistant.android.platform.HelperRelayClass
 import io.panelassistant.android.platform.HelperAdbState
@@ -418,6 +419,16 @@ internal class IdentityAdmittingHelperClient(
         val match = Regex("PROPS=([01?]) LISTEN=([01?])\\n").matchEntire(String(bytes, StandardCharsets.US_ASCII)) ?: return null
         fun state(value: String): Boolean? = when (value) { "1" -> true; "0" -> false; else -> null }
         return HelperAdbState(state(match.groupValues[1]), state(match.groupValues[2]))
+    }
+
+    override fun cdpState(): HelperCdpState? {
+        val bytes = readVersioned("CDPSTATE", 13, 17, 5_000L) ?: return null
+        return when (String(bytes, StandardCharsets.US_ASCII)) {
+            "CDPSTATE PRESENT\n" -> HelperCdpState.PRESENT
+            "CDPSTATE ABSENT\n" -> HelperCdpState.ABSENT
+            "CDPSTATE UNKNOWN\n" -> HelperCdpState.UNKNOWN
+            else -> null
+        }
     }
 
     override fun relayCount(relayClass: HelperRelayClass): Int? {

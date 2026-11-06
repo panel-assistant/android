@@ -114,6 +114,7 @@ int main(int argc, char **argv) {
         "RELAYREAD RELAY COUNT\n", "RELAYREAD ST_RELAY 1\n", "RELAYREAD STRELAY 16\n",
         "RELAYREAD RELAY 0\n", "RELAYREAD /sys/class/relay COUNT\n", "RELAYREAD RELAY 01\n",
         "GPIOREAD 0\n", "GPIOREAD 65535\n", "GPIOREAD 65536\n", "GPIOREAD 01\n", "GPIOREAD 1 extra\n",
+        "CDPSTATE\n", "CDPSTATE x\n", "CDPSTATE /proc\n", "CDPSTATE ;reboot\n",
         "ADBSTATE\n", "ADBSTATE x\n", "ADBSTATE /proc/net/tcp\n", "ADBSTATE ;reboot\n",
         "WIFISTATUS\n", "WIFISTATUS x\n", "WIFISTATUS ;reboot\n",
         "ZIGBEESTATE\n", "ZIGBEEHEALTH\n", "ZIGBEEROLE\n",
@@ -155,7 +156,7 @@ int main(int argc, char **argv) {
     // 2) length-boundary lines around MAX_LINE for every verb.
     size_t lens[] = { MAX_LINE - 1, MAX_LINE, MAX_LINE + 1, 4096, 65536 };
     const char *verbs[] = { "RGB ", "BTN ", "RELOAD ", "START ", "WATCH /dev/input/", "GPIOWATCH ", "LOGCATDUMP ",
-                            "DENSITY ", "FONTSCALE ", "GOV ", "GOVREAD ", "WIFISTATUS ", "ADBSTATE ", "RELAYREAD ", "GPIOREAD ", "ZIGBEESTATE ", "ZIGBEEHEALTH ", "ZIGBEEROLE ", "SCREEN ",
+                            "DENSITY ", "FONTSCALE ", "GOV ", "GOVREAD ", "WIFISTATUS ", "ADBSTATE ", "CDPSTATE ", "RELAYREAD ", "GPIOREAD ", "ZIGBEESTATE ", "ZIGBEEHEALTH ", "ZIGBEEROLE ", "SCREEN ",
                             "STOP ", "DISABLE ", "ENABLE ", "OVERLAY ", "" };
     for (size_t li = 0; li < sizeof lens / sizeof lens[0]; li++)
         for (size_t vi = 0; vi < sizeof verbs / sizeof verbs[0]; vi++) {

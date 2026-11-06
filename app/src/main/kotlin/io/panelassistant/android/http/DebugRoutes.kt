@@ -43,11 +43,12 @@ internal fun Route.debugInspectionRoutes(
         call.respondText(inspectJson(config, status), ContentType.Application.Json)
     }
     post("/inspect/stop") {
-        synchronized(inspectLock) {
-            if (CdpRelay.running) CdpRelay.stop()
-            if (config.hardenedSecurityEnabled) AdbController(appContext, config).reassert()
+        val stopped = synchronized(inspectLock) {
+            CdpRelay.stop().also { stopped ->
+                if (stopped && config.hardenedSecurityEnabled) AdbController(appContext, config).reassert()
+            }
         }
-        call.respondText(inspectJson(config, "off"), ContentType.Application.Json)
+        call.respondText(inspectJson(config, if (stopped) "off" else "failed"), ContentType.Application.Json)
     }
 }
 
