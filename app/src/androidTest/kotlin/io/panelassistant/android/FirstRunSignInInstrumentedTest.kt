@@ -1,5 +1,6 @@
 package io.panelassistant.android
 
+import android.content.Intent
 import android.net.ConnectivityManager
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -35,7 +36,12 @@ class FirstRunSignInInstrumentedTest {
         config.setupEverCompleted = false
         config.setDashboardEntityLearningEnabled(false)
         assertTrue(config.builtInRendererReady())
-        ActivityScenario.launch(DashboardActivity::class.java).use {
+        ActivityScenario.launch<DashboardActivity>(
+            Intent(Intent.ACTION_MAIN).setClass(
+                InstrumentationRegistry.getInstrumentation().targetContext,
+                DashboardActivity::class.java,
+            ),
+        ).use {
             val context = InstrumentationRegistry.getInstrumentation().targetContext
             assertTrue(
                 "A credentialed panel must keep its real setup-question surface",
@@ -57,7 +63,12 @@ class FirstRunSignInInstrumentedTest {
             assertFalse("The regression input must be before renderer readiness", config.builtInRendererReady())
             assertFalse(config.setupEverCompleted)
             assertFalse(config.setupEntityFilterAnswered)
-            ActivityScenario.launch(DashboardActivity::class.java).use {
+            ActivityScenario.launch<DashboardActivity>(
+                Intent(Intent.ACTION_MAIN).setClass(
+                    InstrumentationRegistry.getInstrumentation().targetContext,
+                    DashboardActivity::class.java,
+                ),
+            ).use {
                 assertTrue(
                     "The real Activity must display the local HA authorization page before any entity hold",
                     device.wait(Until.hasObject(By.text(SignInServer.MARKER)), 30_000),
@@ -79,6 +90,12 @@ class FirstRunSignInInstrumentedTest {
             listOf("ro.kernel.qemu", "ro.boot.qemu").any {
                 device.executeShellCommand("getprop $it").trim() == "1"
             },
+        )
+        device.executeShellCommand("settings put secure immersive_mode_confirmations confirmed")
+        assertEquals(
+            "The disposable emulator must acknowledge Android's fullscreen introduction",
+            "confirmed",
+            device.executeShellCommand("settings get secure immersive_mode_confirmations").trim(),
         )
         val context = instrumentation.targetContext
         assertTrue(
