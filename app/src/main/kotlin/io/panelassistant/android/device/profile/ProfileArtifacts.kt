@@ -37,5 +37,15 @@ object ProfileArtifacts {
             abis = setOf("arm64-v8a", "armeabi-v7a"),
             minSdk = 29,
         ),
+        "lineageos-156-arm" to WebViewSpec(
+            url = "https://panel-assistant.io/downloads/webview/0dc261c3f37e9ac16a4f593ef316a097fc59815bb2082a8e38c519647bbcb3cc.apk",
+            version = "156.0.8078.47",
+            certSha256 = "32a2fc74d731105859e5a85df16d95f102d85b22099b8064c5d8915c61dad1e0",
+            apkSha256 = "0dc261c3f37e9ac16a4f593ef316a097fc59815bb2082a8e38c519647bbcb3cc",
+            versionCode = 807804700L,
+            size = 98126751L,
+            abis = setOf("armeabi-v7a"),
+            minSdk = 29,
+        ),
     )
 }
