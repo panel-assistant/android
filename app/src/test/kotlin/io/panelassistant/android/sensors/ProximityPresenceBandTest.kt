@@ -244,6 +244,70 @@ class ProximityPresenceBandTest {
         }
     }
 
+    @Test fun sustainedWiderNoiseAroundTheSameClearMeanCanBeLearnedWithoutOccupancy() {
+        for (scale in listOf(1f, .001f, -1f)) {
+            val h = Replay(700f * scale, 720f * scale)
+            h.run(20_000) { 700f * scale }
+            assertEquals(false, h.state.near)
+            h.run(120_000) { (if (it / 250 % 2 == 0L) 690f else 710f) * scale }
+            assertEquals(false, h.state.near)
+            assertEquals(0, h.approaches)
+            assertTrue(h.state.quiet.variance > 50 * scale * scale)
+            h.run(10_000) { (720f + if (it / 250 % 2 == 0L) -10f else 10f) * scale }
+            // This twenty-count shift is close to the wider process's statistical uncertainty;
+            // a clearly separated shift still confirms normally after variance expansion.
+            h.run(10_000) { (740f + if (it / 250 % 2 == 0L) -10f else 10f) * scale }
+            assertEquals(true, h.state.near)
+            assertEquals(1, h.approaches)
+        }
+        val flat = ProximityPresenceBand.QuietBand(700.0, 0.0, 8)
+        val widened = ProximityPresenceBand.QuietBand(700.0, 100.0, 8)
+        assertTrue(ProximityPresenceBand.meansWithin(flat, widened))
+        assertFalse(ProximityPresenceBand.within(flat, widened))
+    }
+
+    @Test fun occupiedNoiseStaysFrozenButANoisierReturnToClearCanRelease() {
+        val h = Replay(700f, 740f)
+        h.run(20_000) { 700f }
+        h.run(2_000) { if (it / 250 % 2 == 0L) 690f else 710f }
+        h.run(4_000) { 700f }
+        assertEquals(0.0, h.state.quiet.variance, .0001)
+        h.run(10_000) { 740f }
+        assertEquals(true, h.state.near)
+        h.run(20_000) { if (it / 250 % 2 == 0L) 730f else 750f }
+        assertEquals(true, h.state.near)
+        assertEquals(0.0, h.state.quiet.variance, .0001)
+        h.run(4_000) { if (it / 250 % 2 == 0L) 690f else 710f }
+        assertEquals(true, h.state.near)
+        assertEquals(0.0, h.state.quiet.variance, .0001)
+        h.run(6_000) { if (it / 250 % 2 == 0L) 690f else 710f }
+        assertEquals(false, h.state.near)
+        assertTrue(h.state.quiet.variance > 50)
+        assertEquals(1, h.approaches)
+    }
+
+    @Test fun widerOccupiedVarianceCannotExcuseAnUnchangedOccupiedMean() {
+        for (scale in listOf(1f, .001f, -1f)) {
+            val h = Replay(700f * scale, 1_100f * scale)
+            h.run(30_000) { (700f + if (it / 250 % 2 == 0L) -1f else 1f) * scale }
+            assertEquals(false, h.state.near)
+            h.run(10_000) { (740f + if (it / 250 % 2 == 0L) -1f else 1f) * scale }
+            assertEquals(true, h.state.near)
+            val quiet = h.state.quiet
+            h.run(30_000) { (740f + if (it / 250 % 2 == 0L) -100f else 100f) * scale }
+            assertEquals(true, h.state.near)
+            assertEquals(quiet, h.state.quiet)
+            h.run(10_000) { (700f + if (it / 250 % 2 == 0L) -10f else 10f) * scale }
+            assertEquals(false, h.state.near)
+            assertTrue(h.state.quiet.variance > 50 * scale * scale)
+            assertEquals(1, h.approaches)
+        }
+        assertFalse(ProximityPresenceBand.meanWithinQuiet(
+            ProximityPresenceBand.QuietBand(700.0, 1.0, 8),
+            ProximityPresenceBand.QuietBand(740.0, 10_000.0, 8),
+        ))
+    }
+
     private class Replay(clear: Float, near: Float) {
         val band = ProximityPresenceBand(clear, near)
         var now = 0L

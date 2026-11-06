@@ -422,13 +422,14 @@ internal class ProximityCalibrationEngine(
         val observed = ambientSamples.quietBand()
         if (observed != null && observed.count >= 4) {
             val quiet = ambientQuiet
+            val previous = ambientPrevious
+            val steadyWindows = previous != null && ProximityPresenceBand.within(previous, observed) &&
+                ProximityPresenceBand.within(observed, previous)
             if (quiet == null) {
-                val previous = ambientPrevious
-                if (previous != null && ProximityPresenceBand.within(previous, observed) &&
-                    ProximityPresenceBand.within(observed, previous)) ambientQuiet = observed
-                ambientPrevious = observed
-            }
-            else if (ProximityPresenceBand.within(quiet, observed)) {
+                if (steadyWindows) ambientQuiet = observed
+            } else if (ProximityPresenceBand.within(quiet, observed) || steadyWindows &&
+                ProximityPresenceBand.meanWithinQuiet(quiet, observed) &&
+                ProximityPresenceBand.meanWithinQuiet(quiet, checkNotNull(previous))) {
                 val alpha = ((now - checkNotNull(ambientStarted)) / 120_000.0).coerceAtMost(.1)
                 val delta = observed.mean - quiet.mean
                 ambientQuiet = ProximityPresenceBand.QuietBand(
@@ -438,6 +439,7 @@ internal class ProximityCalibrationEngine(
                 )
             }
             // A sustained shift freezes the candidate instead of replacing it with a person.
+            ambientPrevious = observed
         }
         clearAmbientWindow()
     }

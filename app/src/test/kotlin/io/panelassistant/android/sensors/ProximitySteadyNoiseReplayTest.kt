@@ -65,7 +65,7 @@ class ProximitySteadyNoiseReplayTest {
             wave = ProximityCalibrationEngine.WaveCalibration(clearRaw = 700f, nearRaw = 1400f),
         )
         val outcomes = mutableListOf<Pair<ProximityCalibrationEngine.Stage?, ProximityCalibrationEngine.CapabilityStatus>>()
-        for (initial in listOf(null, waveOnly)) {
+        for (flatFirst in listOf(false, true)) for (initial in listOf(null, waveOnly)) {
             val engine = ProximityCalibrationEngine(initial)
             var now = 0L
             fun noisyHold(mean: Float, duration: Long) {
@@ -74,7 +74,8 @@ class ProximitySteadyNoiseReplayTest {
                     engine.observe(mean + if (index % 2 == 0) -10f else 10f, now)
                 }
             }
-            noisyHold(700f, 20_000)
+            if (flatFirst) repeat(80) { now += 250; engine.observe(700f, now) }
+            noisyHold(700f, if (flatFirst) 120_000 else 20_000)
             noisyHold(740f, 60_000)
             noisyHold(700f, 10_000)
             engine.start(now)
@@ -94,7 +95,7 @@ class ProximitySteadyNoiseReplayTest {
             outcomes += engine.current().stage to engine.current().presenceStatus
         }
         assertEquals(
-            listOf(null, waveOnly).map { ProximityCalibrationEngine.Stage.WAVE_BASELINE to ProximityCalibrationEngine.CapabilityStatus.NOT_DETECTED },
+            List(4) { ProximityCalibrationEngine.Stage.WAVE_BASELINE to ProximityCalibrationEngine.CapabilityStatus.NOT_DETECTED },
             outcomes,
         )
     }

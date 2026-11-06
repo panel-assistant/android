@@ -63,6 +63,7 @@ internal class ProximityPresenceBand(
     private var heldSettled = false
     private var occupiedReference: QuietBand? = null
     private var entryShift = 0.0
+    private var pendingQuietVariance: QuietBand? = null
 
     init {
         require(clearRaw.isFinite() && nearRaw.isFinite() && span > 0 && span.isFinite())
@@ -84,6 +85,7 @@ internal class ProximityPresenceBand(
         if (lastSampleAt?.let { now - it > BLOCK_MS } == true) {
             clearBlock()
             clearPending()
+            pendingQuietVariance = null
         }
         lastSampleAt = now
         heldSettled = false
@@ -128,6 +130,7 @@ internal class ProximityPresenceBand(
         heldSettled = false
         occupiedReference = null
         entryShift = 0.0
+        pendingQuietVariance = null
         clearBlock()
         clearPending()
         return snapshot()
@@ -143,15 +146,28 @@ internal class ProximityPresenceBand(
             quiet = QuietBand(quiet.mean, observed.variance, observed.count)
             measuredQuiet = true
         }
+        val widenedQuiet = if (!held && !within(quiet, observed) && meanWithinQuiet(quiet, observed)) {
+            val previous = pendingQuietVariance
+            pendingQuietVariance = observed
+            if (previous != null && within(previous, observed) && within(observed, previous)) {
+                // Increased noise needs two compatible fresh blocks around the existing clear
+                // mean. While occupied, this remains provisional until clearing is confirmed.
+                QuietBand(quiet.mean, max(previous.variance, observed.variance), max(quiet.count, observed.count))
+            } else null
+        } else {
+            pendingQuietVariance = null
+            null
+        }
+        val comparisonQuiet = widenedQuiet ?: quiet
         val delta = (observed.mean - quiet.mean) * direction
-        val enter = separation(quiet, observed)
-        val quietVariance = !measuredQuiet || observed.variance <= quiet.variance * 4 + resolution(quiet, observed).let { it * it }
+        val enter = separation(comparisonQuiet, observed)
+        val quietVariance = !measuredQuiet || observed.variance <= comparisonQuiet.variance * 4 + resolution(comparisonQuiet, observed).let { it * it }
         // A single held plateau cannot measure noise. Before any real block, only the saved
         // clear anchor itself establishes clear; a wide saved span must not certify an offset
         // occupied plateau and later manufacture an arrival when actual variance becomes known.
         val heldClearAnchored = !held || measuredQuiet || abs(delta) <= resolution(quiet, observed)
         val clear = delta <= enter * CLEAR_RATIO && quietVariance && heldClearAnchored
-        if (clear && !held && bootstrapQuietBlocks < QUIET_BOOTSTRAP_BLOCKS) {
+        if (clear && !held && near != true && widenedQuiet == null && bootstrapQuietBlocks < QUIET_BOOTSTRAP_BLOCKS) {
             // Quiet noise includes variation between block means, not only jitter within a
             // two-second block. Cold startup estimates this from actual clear-qualified blocks;
             // suspected occupied blocks cannot broaden the learned clear band.
@@ -175,7 +191,10 @@ internal class ProximityPresenceBand(
         }
         if (target == near) {
             clearPending()
-            if (!target && !held) learnQuiet(observed, enter, durationMs)
+            if (!target && !held) {
+                acceptWiderQuiet(widenedQuiet)
+                learnQuiet(observed, enter, durationMs)
+            }
             if (target && !held && occupied != null && quietVariance &&
                 abs(observed.mean - occupied.mean) <= separation(occupied, observed)) {
                 // Track only slow changes in the occupied reference. The clear baseline remains
@@ -208,8 +227,17 @@ internal class ProximityPresenceBand(
                 // environmental drift while occupied. No stationary occupied block can do this.
                 quiet = observed
                 measuredQuiet = true
-            } else if (!held) learnQuiet(observed, enter, durationMs)
+            } else if (!held) {
+                acceptWiderQuiet(widenedQuiet)
+                learnQuiet(observed, enter, durationMs)
+            }
         }
+    }
+
+    private fun acceptWiderQuiet(widened: QuietBand?) {
+        if (widened == null) return
+        quiet = widened
+        bootstrapQuietBlocks = QUIET_BOOTSTRAP_BLOCKS
     }
 
     private fun learnQuiet(observed: QuietBand, threshold: Double, durationMs: Long) {
@@ -259,9 +287,19 @@ internal class ProximityPresenceBand(
 
         /** A noisy or undersampled return is not affirmative evidence that the area cleared. */
         fun within(clear: QuietBand, other: QuietBand): Boolean =
+            meansWithin(clear, other) && other.variance <= clear.variance * 4 + resolution(clear, other).let { it * it }
+
+        fun meansWithin(clear: QuietBand, other: QuietBand): Boolean =
             clear.count >= MINIMUM_SAMPLES && other.count >= MINIMUM_SAMPLES &&
-                abs(other.mean - clear.mean) <= separation(clear, other) * CLEAR_RATIO &&
-                other.variance <= clear.variance * 4 + resolution(clear, other).let { it * it }
+                abs(other.mean - clear.mean) <= separation(clear, other) * CLEAR_RATIO
+
+        /** Variance expansion cannot use the candidate's own noise to excuse a changed mean. */
+        fun meanWithinQuiet(quiet: QuietBand, observed: QuietBand): Boolean =
+            quiet.count >= MINIMUM_SAMPLES && observed.count >= MINIMUM_SAMPLES &&
+                abs(observed.mean - quiet.mean) <= max(
+                    3.0 * sqrt(quiet.variance / min(quiet.count, EFFECTIVE_SAMPLES)),
+                    resolution(quiet, observed),
+                ) * CLEAR_RATIO
 
         private fun separation(clear: QuietBand, other: QuietBand): Double {
             // At most four independent observations are credited, however fast the source callbacks.
