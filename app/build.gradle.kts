@@ -551,6 +551,7 @@ val unitTestRuntimeReadFiles = listOf(
     "../gradle/libs.versions.toml",
     "../helper/Makefile", // the socket test server recipe, with the three test sources below
     "../helper/source-id.sh",
+    "../helper/test/replacement_handoff.py",
     "../helper/test/socket_server.c",
     "../helper/test/sysexec_stub.c",
     "../helper/test/sysexec_stub.h",
