@@ -98,7 +98,7 @@ class SystemControllerHomeAcknowledgementTest {
         val env = environment(companion)
         val (controller, root) = controller(env)
         controller.ensureDashboardHome(companion.pkg)
-        assertAcknowledged(env, companion)
+        assertTrue(env.acknowledgements.isEmpty())
         assertTrue(root.ran.isEmpty())
         env.home = laterLauncher
         controller.ensureDashboardHome(companion.pkg)

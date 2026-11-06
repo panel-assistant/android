@@ -45,7 +45,7 @@ class HomeChooserListTest {
         val env = FakeSystemEnv(ownPackage = own, homes = listOf(dashboard.activity, launcher.activity), default = resolver)
         val root = FakeRootShell(available = false, runResult = false)
         val daemon = FakeDaemon(available = false)
-        val system = SystemController(env, root, daemon, builtinForeground = { true }, homeWarning = {})
+        val system = SystemController(env, root, daemon, builtinForeground = { true })
         var setup: Boolean? = true
         var target = configuredChooserHome(own, launcherSetting, "builtin", true, listOf(dashboard, launcher))
         var window = ChooserWindow(own, null, null, null)

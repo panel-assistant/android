@@ -10,10 +10,13 @@ import io.panelassistant.android.preservePreviousHome
 import io.panelassistant.android.setupEverCompleted
 import io.panelassistant.android.migrateSetupQuestionsForExistingInstall
 import io.panelassistant.android.homeTakeoverPending
+import io.panelassistant.android.previousHomeComponent
+import io.panelassistant.android.completeHomeTakeover
 import io.panelassistant.android.withHomeCustody
 import io.panelassistant.android.control.Su
 import io.panelassistant.android.control.SystemController
 import io.panelassistant.android.util.HelperClient
+import io.panelassistant.android.util.AndroidInput
 import kotlin.concurrent.thread
 
 /** Shell-only write-ahead capture and acknowledgement for the installer's deferred HOME ownership. */
@@ -33,6 +36,7 @@ class PreservePreviousHomeReceiver : BroadcastReceiver() {
                         claim = operation == "claim_pending_home",
                         nativeAvailable = { HelperClient.available() || Su.availableIsolated() },
                         setHome = { SystemController(env).setHomeActivity(it) },
+                        restoreHome = { SystemController(env).restoreDashboardHome(it) },
                         shellLockIdentity = intent.getStringExtra("home_lock_identity"),
                     )
                     pending.resultCode = result.code
@@ -52,6 +56,7 @@ class PreservePreviousHomeReceiver : BroadcastReceiver() {
             val env = AndroidSystemEnv(context)
             val result = previousHomeOperation(
                 config, env, context.packageName, operation, intent.getStringExtra("previous_home_component"),
+                shellLockIdentity = intent.getStringExtra("home_lock_identity"),
             )
             data = result.data
             result.code == 1
@@ -70,11 +75,32 @@ internal fun previousHomeOperation(
     ownPackage: String,
     operation: String?,
     supplied: String?,
+    shellLockIdentity: String? = null,
+    lockIdentity: () -> String? = NativeHomeLock::identity,
     parse: (String) -> ActivityRef? = {
         ComponentName.unflattenFromString(it)?.let { component -> ActivityRef(component.packageName, component.className) }
     },
 ): PreviousHomeReply {
     if (operation != null) config.migrateSetupQuestionsForExistingInstall()
+    if (operation == "dashboard_home_policy" || operation == "restore_previous_home_shell_lock_eligibility" ||
+        operation == "acknowledge_retained_home") return withHomeCustody {
+        if (!config.setupEverCompleted) return@withHomeCustody PreviousHomeReply(0)
+        if (config.dashboardOwnsHome(env)) return@withHomeCustody if (operation == "dashboard_home_policy")
+            PreviousHomeReply(1, "panel-assistant-home-builtin") else PreviousHomeReply(0)
+        if (!AndroidInput.isPackage(config.dashboardPackage)) return@withHomeCustody PreviousHomeReply(0)
+        val retained = retainedDashboardHome(env, config.previousHomeComponent)
+            ?: return@withHomeCustody PreviousHomeReply(0)
+        when (operation) {
+            "acknowledge_retained_home" -> if (retained.component == supplied && env.defaultHome() == retained &&
+                config.completeHomeTakeover()) PreviousHomeReply(1, "panel-assistant-home-retained") else PreviousHomeReply(0)
+            "restore_previous_home_shell_lock_eligibility" -> if (retained.component == supplied &&
+                env.defaultHome() != retained && shellLockIdentity != null && shellLockIdentity == lockIdentity())
+                PreviousHomeReply(1, "panel-assistant-home-restore-shell-locked") else PreviousHomeReply(0)
+            else -> if (env.defaultHome() == retained) {
+                if (config.completeHomeTakeover()) PreviousHomeReply(2, "panel-assistant-home-retained") else PreviousHomeReply(0)
+            } else PreviousHomeReply(3, "panel-assistant-home-restore:${retained.component}")
+        }
+    }
     val ok = when (operation) {
         "setup_eligibility" -> config.setupEverCompleted
         "acknowledge_home" -> {
@@ -103,6 +129,7 @@ internal enum class PendingHomeResult(val code: Int, val data: String?) {
     CLAIMED(1, "panel-assistant-pending-home-claimed"),
     SHELL(2, "panel-assistant-pending-home-shell"),
     SHELL_LOCKED(1, "panel-assistant-pending-home-shell-locked"),
+    RETAINED(1, "panel-assistant-pending-home-retained"),
 }
 
 /** The automatic setup caller has less authority than an explicit install or update repair. */
@@ -114,6 +141,7 @@ internal fun pendingHomeOperation(
     nativeAvailable: () -> Boolean,
     shellLockIdentity: String? = null,
     lockIdentity: () -> String? = NativeHomeLock::identity,
+    restoreHome: ((String) -> Boolean)? = null,
     setHome: (String) -> Boolean,
 ): PendingHomeResult {
     // Probing can block. The intent must be read again after it, under HOME custody.
@@ -124,6 +152,16 @@ internal fun pendingHomeOperation(
     return withHomeCustody {
         if (!config.setupEverCompleted || !config.homeTakeoverPending) {
             return@withHomeCustody PendingHomeResult.DEFERRED
+        }
+        if (!config.dashboardOwnsHome(env)) {
+            if (!AndroidInput.isPackage(config.dashboardPackage)) return@withHomeCustody PendingHomeResult.DEFERRED
+            val retained = retainedDashboardHome(env, config.previousHomeComponent)
+                ?: return@withHomeCustody PendingHomeResult.DEFERRED
+            if (env.defaultHome() != retained && (!claim || !native || restoreHome?.invoke(retained.component) != true)) {
+                return@withHomeCustody PendingHomeResult.DEFERRED
+            }
+            return@withHomeCustody if (env.defaultHome() == retained && config.completeHomeTakeover())
+                PendingHomeResult.RETAINED else PendingHomeResult.DEFERRED
         }
         if (!claim) return@withHomeCustody if (native) PendingHomeResult.DEFERRED else PendingHomeResult.SHELL_LOCKED
         val target = env.homeActivities().singleOrNull {

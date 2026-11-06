@@ -13,6 +13,7 @@ import io.panelassistant.android.platform.DaemonLongResult
 import io.panelassistant.android.platform.NativeHomeLock
 import io.panelassistant.android.platform.RootShell
 import io.panelassistant.android.platform.SystemEnv
+import io.panelassistant.android.platform.retainedDashboardHome
 import io.panelassistant.android.platform.endDream
 import io.panelassistant.android.util.AndroidInput
 import io.panelassistant.android.util.Cached
@@ -46,8 +47,6 @@ class SystemController(
     // Foreground state of the built-in renderer (our own activity) — seamed so the `builtin` dashboard
     // path stays unit-testable without loading an Android Activity. Defaults to the live process flag.
     private val builtinForeground: () -> Boolean = { BuiltinDashboard.foreground },
-    // This is the real Log.w sink by default; the focused controller test observes the same emitted line.
-    private val homeWarning: (String) -> Unit = { Log.w(TAG, it) },
     private val beforeReboot: () -> Unit = {},
     private val homeDashboard: () -> String = { "" },
     private val onCompanionHome: (String, String) -> Unit = { _, _ -> },
@@ -69,10 +68,6 @@ class SystemController(
     private val privilegedRouteAvailable = Cached(60_000L) {
         daemon.available() || root.observedUsable()
     }
-
-    // Drift checks run repeatedly. Retain only the currently missing target so a recovered alias can
-    // report again if it becomes unavailable later, without turning a steady state into log noise.
-    private var missingHomeTarget: String? = null
 
     private enum class PrivilegedStartResult { STARTED, BLOCKED, FAILED }
 
@@ -404,47 +399,32 @@ class SystemController(
         }
     }
 
-    /**
-     * Keep the selected foreign dashboard app as the default home.
-     *
-     * Our [AdminLauncherActivity] declares `CATEGORY_HOME` so it's a selectable / last-resort launcher.
-     * The side effect: Android **clears the default-home association** whenever a package adds or changes
-     * a HOME activity (i.e. every ha-paneld install/update) — after which pressing Home pops a chooser
-     * instead of booting straight to the dashboard. So on boot we re-assert the dashboard app as the
-     * default home when home is unowned (the system resolver or Settings FallbackHome), owned by *us*,
-     * or still assigned to a supported Companion renderer ha-paneld previously selected. A deliberate
-     * third-party launcher set as home is left alone. If the dashboard app isn't installed we do
-     * nothing, leaving our admin launcher as the genuine last-resort home.
-     */
+    /** Built-in dashboards own HOME. Foreign renderers retain the owner's launcher, restoring the
+     * recorded original if an earlier installation assigned our dashboard instead. */
     fun ensureDashboardHome(dashboardPkg: String, builtinReady: Boolean = true) {
         val target = resolveDashboard(dashboardPkg)
         // Only claim HOME for the built-in renderer once it's actually renderable (an HA URL is set) —
         // else DashboardActivity would be the home yet immediately hand off, churning HOME needlessly.
-        if (isBuiltin(target)) { missingHomeTarget = null; if (builtinReady) ensureBuiltinHome(); return }
-        if (target.isBlank()) { missingHomeTarget = null; Log.i(TAG, "ensureHome: no dashboard app installed; leaving home as-is"); return }
-        val currentHome = env.defaultHome()
-        val current = currentHome?.pkg
-        if (current == target) {
-            missingHomeTarget = null
-            if (env.homeTakeoverAllowed()) currentHome?.component?.let(env::acknowledgeHomeTakeover)
-            return
-        }     // already correct
-        // Respect a real third-party launcher the user chose. A known Companion HOME is one ha-paneld
-        // may previously have assigned, so switching between installed renderer variants must reclaim it.
-        if (current != null && current != "android" && current != env.ownPackage &&
-            current !in KNOWN_RENDERER_HOMES && !isSystemFallbackHome(currentHome) && !env.homeTakeoverPending()) {
-            missingHomeTarget = null
-            return
+        if (isBuiltin(target)) { if (builtinReady) ensureBuiltinHome(); return }
+        if (!AndroidInput.isPackage(target) || !env.homeTakeoverAllowed()) return
+        val retained = retainedDashboardHome(env, env.previousHomeComponent()) ?: return
+        if (env.defaultHome() == retained || restoreDashboardHome(retained.component)) {
+            if (env.defaultHome() == retained) env.acknowledgeRetainedHome(retained.component)
         }
-        val comp = env.homeActivities().firstOrNull { it.pkg == target }?.component
-        if (comp == null) {
-            if (missingHomeTarget != target) homeWarning("ensureHome: $target has no HOME activity")
-            missingHomeTarget = target
-            return
+    }
+
+    /** Recheck the retained target after taking exclusion, so a later launcher choice wins. */
+    internal fun restoreDashboardHome(expected: String): Boolean {
+        val lock = acquireHomeLock() ?: return false
+        try {
+            val retained = retainedDashboardHome(env, env.previousHomeComponent()) ?: return false
+            if (retained.component != expected) return false
+            if (env.defaultHome() == retained) return true
+            if (!env.preservePreviousHome()) return false
+            return setHomeActivityWithRoute(retained.component, null, restoringHome = true)
+        } finally {
+            lock.close()
         }
-        missingHomeTarget = null
-        Log.i(TAG, "ensureHome: default home was '$current' -> $comp")
-        setHomeActivity(comp)
     }
 
     /** Make our built-in DashboardActivity the default home (parity with the Companion path): so the
@@ -563,7 +543,7 @@ class SystemController(
         val expectedHome = if (builtin) env.ownPackage else target
         // Existing HOME policy preserves a deliberate foreign launcher, but reclaims our own
         // launcher or an old Companion renderer when the configured dashboard has changed.
-        if (home.pkg != expectedHome && (home.pkg == env.ownPackage || home.pkg in KNOWN_RENDERER_HOMES)) {
+        if (home.pkg != expectedHome && (home.pkg == env.ownPackage || builtin && home.pkg in KNOWN_RENDERER_HOMES)) {
             return HomeUiProof("blocked", "home_mismatch", "home_resolve")
         }
         val evidence = if (builtin) "builtin_lifecycle" else "dashboard_appstate"
