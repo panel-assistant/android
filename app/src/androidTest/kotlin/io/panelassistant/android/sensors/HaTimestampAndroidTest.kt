@@ -3,6 +3,7 @@ package io.panelassistant.android.sensors
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.panelassistant.android.CoreInstrumentation
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -13,8 +14,10 @@ import org.junit.runner.RunWith
 class HaTimestampAndroidTest {
     @Test fun offsetTimestampParsesOnFleetApiFloor() {
         assertEquals(1_754_044_530_123L, parseHaTimestampEpochMs("2025-08-01T10:35:30.123456+00:00"))
+        val utc = parseHaTimestampEpochMs("2026-07-16T09:42:00Z")
+        assertNotNull("whole-second UTC timestamps must parse", utc)
         assertEquals(
-            parseHaTimestampEpochMs("2026-07-16T09:42:00Z"),
+            utc,
             parseHaTimestampEpochMs("2026-07-16T10:42:00+01:00"),
         )
         assertNull(parseHaTimestampEpochMs("not-a-timestamp"))

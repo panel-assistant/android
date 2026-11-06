@@ -9,7 +9,7 @@ class MdnsAdvertisedUrlPolicyTest {
     fun acceptsHttpUrlOnlyWhenItResolvesToAdvertiser() {
         val loopback = setOf("127.0.0.1", "0:0:0:0:0:0:0:1")
         assertEquals("http://localhost:8123", safeAdvertisedHaUrl("http://localhost:8123/", loopback))
-        assertNull(safeAdvertisedHaUrl("http://example.com:8123", loopback))
+        assertNull(safeAdvertisedHaUrl("http://192.0.2.1:8123", loopback))
     }
 
     @Test

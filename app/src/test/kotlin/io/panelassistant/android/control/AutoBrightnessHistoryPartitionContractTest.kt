@@ -11,7 +11,7 @@ class AutoBrightnessHistoryPartitionContractTest {
 
     @Test fun `sensitivity reapplies policy without restarting the ambient source`() {
         val handler = dispatcher.substringAfter("override fun handleAutoBrightnessSensitivity")
-            .substringBefore("override fun handleAutoBrightnessMinimum")
+            .substringBefore("override fun handleAutoBrightnessMaximum")
 
         assertTrue(handler.contains("autoBright.reapplyLatest()"))
         assertFalse(handler.contains("onAutoBrightnessConfigChanged()"))

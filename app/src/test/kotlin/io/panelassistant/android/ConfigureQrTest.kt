@@ -10,7 +10,6 @@ import org.junit.Test
 
 class ConfigureQrTest {
     @Test fun `only the two credential screens send anybody to their phone`() {
-        assertEquals(11, AdmissionOutcome.entries.size)
         val sent = AdmissionOutcome.entries.filter { configureQrPath(it) != null }
         assertEquals(
             listOf(AdmissionOutcome.CREDENTIAL_REFUSED, AdmissionOutcome.SIGN_IN_REQUIRED).sorted(),

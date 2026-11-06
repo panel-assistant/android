@@ -82,6 +82,11 @@ async function measure(browser, port, width, font) {
         const k = h ? h.textContent.replace(/\s+/g, ' ').trim() : (n && (n.id || n.tagName)) || '?'; window.__by[k] = (window.__by[k] || 0) + e.value; } }
     }).observe({ type: 'layout-shift', buffered: true });
   });
+  await page.waitForFunction(() =>
+    document.querySelector('#perf th')?.textContent === 'CPU'
+    && Boolean(document.querySelector('#topproc td')?.textContent)
+    && document.querySelector('#perfage')?.textContent === '· live',
+  null, { timeout: 5000 });
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
   await page.waitForTimeout(SECS * 1000);
   const r = await page.evaluate(() => ({ cls: +window.__cls.toFixed(4), by: window.__by }));

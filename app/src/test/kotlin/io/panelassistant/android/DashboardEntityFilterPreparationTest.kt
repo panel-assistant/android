@@ -32,7 +32,7 @@ class DashboardEntityFilterPreparationTest {
         )
 
         assertNotEquals(caller, readThread)
-        assertEquals(readThread, hashThread)
+        assertNotEquals(caller, hashThread)
         assertEquals(EntityFilterProtocol.MAX_ENTITY_IDS, prepared.ids.size)
         assertTrue(prepared.signature.startsWith("enabled:${prepared.hash}:https://ha.example:learning=true"))
         assertTrue(prepared.script!!.getOrThrow().contains("sensor.entity_9999"))

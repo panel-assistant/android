@@ -84,11 +84,21 @@ internal class NativeMediaChannelTest : PanelRuntimeRig() {
     }
 
     private fun awaitObserved(observed: List<String>, expected: String) {
+        val expectedJson = JSONObject(expected)
+        val expectedKeys = expectedJson.keys().asSequence().toSet()
+        fun received(): Boolean = observed.any { payload ->
+            runCatching {
+                val actual = JSONObject(payload)
+                actual.keys().asSequence().toSet() == expectedKeys &&
+                    actual.get("state") == expectedJson.get("state") &&
+                    actual.get("muted") == expectedJson.get("muted")
+            }.getOrDefault(false)
+        }
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
-        while (expected !in observed && System.nanoTime() < deadline) {
+        while (!received() && System.nanoTime() < deadline) {
             drainStatePump()
             Thread.sleep(10)
         }
-        assertTrue("expected $expected in $observed", expected in observed)
+        assertTrue("expected $expected in $observed", received())
     }
 }

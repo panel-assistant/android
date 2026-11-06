@@ -30,7 +30,9 @@ import org.junit.runner.RunWith
 @CoreInstrumentation
 @RunWith(AndroidJUnit4::class)
 class UpgradeRecoveryPostCommitCandidateTest {
-    private val context = ApplicationProvider.getApplicationContext<Context>()
+    private val context = HistoricalCatalogFixture.isolatedContext(
+        ApplicationProvider.getApplicationContext<Context>(), "upgrade-candidate",
+    )
 
     @Before fun cleanBefore() = clean()
     @After fun cleanAfter() = clean()

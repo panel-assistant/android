@@ -37,6 +37,8 @@ class NativeLibraryBindingTest {
         System.load(library("libhapaneld_led.so").absolutePath)
         // Throws UnsatisfiedLinkError if the symbol names do not match the class; the host has no LED.
         assertFalse(NativeLed.nativeProbe())
+        assertTrue(NativeLed.nativeSetRgb(0, 0, 0) < 0)
+        assertTrue(NativeLed.nativeOff() < 0)
     }
 
 
