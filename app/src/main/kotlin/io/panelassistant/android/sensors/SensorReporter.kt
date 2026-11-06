@@ -222,6 +222,9 @@ class SensorReporter(
     private var staleCheckScheduled = false
     private var onChangeProbeScheduled = false
     private var onChangeProbeAwaiting = false
+    private var onChangeProbeRetainsReading = false
+    private var previousFreshProximityRaw = Float.NaN
+    private var proximityReadingStable = false
     private var calibrationTickScheduled = false
     private var proximityReceived = false
     private val proximityTimestampGate = ProximityTimestampGate()
@@ -233,13 +236,13 @@ class SensorReporter(
             if (!run.isOpen()) return
             val now = SystemClock.elapsedRealtime()
             if (stkRawGate?.expire(now) == true) deliverUnavailable(run)
-            proximityRuntime?.tick(now, reportingSparse())?.let { deliverProximity(it, run) }
+            proximityRuntime?.tick(now, reportingSparse(), heldEvidence = canRetainStableHalReading())?.let { deliverProximity(it, run) }
             scheduleCalibrationTick()
         }
     }
 
     private fun scheduleCalibrationTick() {
-        if (calibrationTickScheduled || proximityRuntime?.needsTick() != true) return
+        if (calibrationTickScheduled || proximityRuntime?.needsTick(heldEvidence = canRetainStableHalReading()) != true) return
         val handler = sensorHandler ?: return
         calibrationTickScheduled = true
         handler.postDelayed(calibrationTick, 100L)
@@ -262,6 +265,7 @@ class SensorReporter(
             proximityRuntime?.tick(
                 SystemClock.elapsedRealtime(),
                 sparseReporting = true,
+                heldEvidence = canRetainStableHalReading(),
             )?.let { deliverProximity(it, run) }
         }
     }
@@ -276,13 +280,13 @@ class SensorReporter(
             scheduleStaleCheck(remaining + 1L)
             return@Runnable
         }
-        proximityRuntime?.sourceUnavailable(now)?.let { deliverProximity(it, run) }
+        if (!canRetainStableHalReading()) deliverUnavailable(run)
         val recovery = proximityCadenceAfterStale()
         cadenceClassified = recovery.cadenceClassified
         continuousCadenceConfirmed = recovery.continuousCadenceConfirmed
         proximitySampleCount = recovery.sampleCount
-        // Healthy dense delivery is watched without perturbing the HAL. A real stall is different:
-        // re-register immediately, then make the resumed callbacks prove their cadence again.
+        // Dense delivery can end at a stable on-change value. Probe without discarding that clear
+        // evidence; a final changed value or continuous source still fails closed on a stall.
         scheduleOnChangeProbe(1L)
     }
 
@@ -291,7 +295,8 @@ class SensorReporter(
         onChangeProbeAwaiting = false
         val run = activeRun ?: return@Runnable
         if (!run.isOpen()) return@Runnable
-        deliverUnavailable(run)
+        if (!onChangeProbeRetainsReading || !canRetainStableHalReading()) deliverUnavailable(run)
+        onChangeProbeRetainsReading = false
         scheduleOnChangeProbe(ON_CHANGE_PROBE_INTERVAL_MS)
     }
 
@@ -302,13 +307,16 @@ class SensorReporter(
         val activeListener = listener ?: return@Runnable
         val handler = sensorHandler ?: return@Runnable
         if (!run.isOpen() || !needsHalLivenessProbe()) return@Runnable
-        // Android on-change registration is required to produce a current-value event. Re-registering
-        // infrequently is a liveness probe, not a polling path; failure takes HA offline fail-closed.
+        // Some on-change HALs omit the current-value event while their value is unchanged. A
+        // successful registration may retain an observed stable plateau, but never proves an
+        // unobserved physical change. Registration refusal still takes the source offline.
         sm.unregisterListener(activeListener, sensor)
+        onChangeProbeRetainsReading = canRetainStableHalReading()
         onChangeProbeAwaiting = true
         val registered = sm.registerListener(activeListener, sensor, SensorManager.SENSOR_DELAY_NORMAL, handler)
         if (!registered) {
             onChangeProbeAwaiting = false
+            onChangeProbeRetainsReading = false
             deliverUnavailable(run)
             scheduleOnChangeProbe(ON_CHANGE_PROBE_INTERVAL_MS)
         } else {
@@ -334,6 +342,9 @@ class SensorReporter(
             appContext, proximitySourceIdentity(), profileId = profile.id, profileRevision = profile.revision,
             profile.proximityCalibration.takeUnless { proximityAcquisition == ProximityAcquisition.STK_RAW },
             observedSourceMode = if (proximityAcquisition == ProximityAcquisition.STK_RAW) ProximityCalibrationEngine.Mode.RANGED else null,
+            driftMargin = proximityDriftMargin(proximityAcquisition),
+            driftDeclaredRange = proximityDriftDeclaredRange(proximityAcquisition, proximitySensor?.maximumRange),
+            keepStoredInsideDriftBand = proximityKeepsStoredInsideDriftBand(proximityAcquisition),
         )
         updateLearnedEligibility()
     }
@@ -502,6 +513,9 @@ class SensorReporter(
         staleCheckScheduled = false
         onChangeProbeScheduled = false
         onChangeProbeAwaiting = false
+        onChangeProbeRetainsReading = false
+        previousFreshProximityRaw = Float.NaN
+        proximityReadingStable = false
 
         listener = object : SensorEventListener {
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
@@ -734,7 +748,10 @@ class SensorReporter(
         if (!run.isOpen() || activeRun !== run) return
         val now = SystemClock.elapsedRealtime()
         val fresh = timestampNs == null || proximityTimestampGate.accept(timestampNs, now, System.currentTimeMillis())
-        val wakeEligible = fresh && proximityReceived && !onChangeProbeAwaiting
+        // A fresh change from a retained plateau is still a real approach during a liveness probe.
+        // An unchanged registration seed, initial acquisition and calibration probes cannot wake.
+        val wakeEligible = fresh && proximityReceived &&
+            (!onChangeProbeAwaiting || onChangeProbeRetainsReading && raw != previousFreshProximityRaw)
         proximityReceived = true
         // Preserve the admitted final edge, then immediately reopen empirical classification. A HAL
         // that resumes dense delivery after a quiet startup therefore gets at most that one sparse
@@ -742,6 +759,9 @@ class SensorReporter(
         val sparseForObservation = reportingSparse()
         lastRaw = raw
         if (raw.isFinite() && fresh) {
+            // A last changed callback alone cannot establish that dense delivery ended at rest.
+            proximityReadingStable = raw == previousFreshProximityRaw
+            previousFreshProximityRaw = raw
             liveProximityAt = now
             if (!proximityPolicy.sparseLearning && !continuousCadenceConfirmed) {
                 if (cadenceClassified) {
@@ -765,6 +785,9 @@ class SensorReporter(
             if (needsHalLivenessProbe()) {
                 scheduleOnChangeProbe(ON_CHANGE_PROBE_INTERVAL_MS)
             }
+        } else {
+            previousFreshProximityRaw = Float.NaN
+            proximityReadingStable = false
         }
         val decision = proximityRuntime?.observe(raw, now, sparseReporting = sparseForObservation, live = wakeEligible, calibrationLive = fresh) ?: return
         updateLearnedEligibility()
@@ -773,7 +796,6 @@ class SensorReporter(
     }
 
     private fun deliverProximity(decision: ProximityCalibrationRuntime.Decision, run: SensorRunCallbacks) {
-        SensorTrace.recordProx(lastRaw, decision.near)
         if (decision.reportMask != ProximityReportGate.NONE) {
             run.proximity(decision.near, decision.normalizedLevel, decision.reportMask)
         }
@@ -800,7 +822,11 @@ class SensorReporter(
         sensorHandler?.removeCallbacks(onChangeProbeTimeout)
         onChangeProbeScheduled = false
         onChangeProbeAwaiting = false
+        onChangeProbeRetainsReading = false
     }
+
+    private fun canRetainStableHalReading(): Boolean =
+        proximityPolicy.onChangeHalLiveness && proximityReadingStable && proximityRuntime?.active() != true
 
     private fun needsHalLivenessProbe(): Boolean = proximityNeedsHalLivenessProbe(
         acquisition = proximityAcquisition,
@@ -816,6 +842,8 @@ class SensorReporter(
     )
 
     private fun deliverUnavailable(run: SensorRunCallbacks) {
+        previousFreshProximityRaw = Float.NaN
+        proximityReadingStable = false
         proximityRuntime?.sourceUnavailable()?.takeIf {
             it.reportMask != ProximityReportGate.NONE
         }?.let {

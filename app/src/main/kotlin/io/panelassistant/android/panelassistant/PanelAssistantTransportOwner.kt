@@ -201,6 +201,7 @@ internal class PanelAssistantTransportOwner(
     private val onConnection: (io.panelassistant.android.sensors.HaApiSession, PanelAssistantSession) -> Boolean = { _, _ -> true },
     private val checkPreferred: suspend () -> Boolean = { false },
     private val onTransportFailure: (io.panelassistant.android.HaConnectionRoute) -> Unit = {},
+    private val logs: PanelAssistantLogs? = null,
 ) : AutoCloseable {
     private val lock = Any()
     private val generation = AtomicLong()
@@ -352,11 +353,13 @@ internal class PanelAssistantTransportOwner(
                         val offered = PanelAssistantTransportProtocol.CAPABILITIES.filter { capability ->
                             when (capability) {
                                 PanelAssistantTransportProtocol.CAPABILITY_STATE -> reporter != null
+                                PanelAssistantTransportProtocol.CAPABILITY_LOGS -> logs != null
                                 PanelAssistantTransportProtocol.CAPABILITY_VOICE -> voice?.offered() == true
                                 PanelAssistantTransportProtocol.CAPABILITY_MEDIA,
                                 PanelAssistantTransportProtocol.CAPABILITY_UNKNOWN_STATE,
                                 -> reporter != null
                                 PanelAssistantTransportProtocol.CAPABILITY_VOICE_STREAM_SESSION -> streamClientId != null
+                                PanelAssistantTransportProtocol.CAPABILITY_LOCAL_ADB -> management?.localAdb?.offered() == true
                                 // The sidebar relay, its subscriptions and the bundle ride the management requests.
                                 PanelAssistantTransportProtocol.CAPABILITY_MANAGEMENT,
                                 PanelAssistantTransportProtocol.CAPABILITY_UI_SUBSCRIBE,
@@ -403,6 +406,8 @@ internal class PanelAssistantTransportOwner(
                                 val speaking = voice?.takeIf {
                                     PanelAssistantTransportProtocol.CAPABILITY_VOICE in outcome.session.capabilities
                                 }
+                                management?.localAdb?.session(outcome.session.token,
+                                    PanelAssistantTransportProtocol.CAPABILITY_LOCAL_ADB in outcome.session.capabilities)
                                 val streamGrant = outcome.session.voiceStream
                                 val streaming = voiceStream?.takeIf { streamGrant != null }
                                 val reason = try {
@@ -410,6 +415,7 @@ internal class PanelAssistantTransportOwner(
                                         attemptedRoute = null // a local owner change, not the route's fault
                                         throw PanelAssistantProtocolException("panel state owner changed during hello")
                                     }
+                                    logs?.open(outcome.session.logs.orEmpty())
                                     reporting?.open(
                                         described,
                                         PanelAssistantTransportProtocol.CAPABILITY_UNKNOWN_STATE in outcome.session.capabilities,
@@ -420,6 +426,7 @@ internal class PanelAssistantTransportOwner(
                                     holdSession(run, opened, outcome.session, reporting, commanding, speaking, streaming)
                                 } finally {
                                     publish(run, PanelAssistantTransportStatus(PanelAssistantTransportPhase.WAITING, attempt))
+                                    logs?.disconnect()
                                     speaking?.close()
                                     streaming?.close()
                                     commanding?.close()
@@ -452,7 +459,7 @@ internal class PanelAssistantTransportOwner(
                 // a lost socket and retries like one.
                 currentCoroutineContext().ensureActive()
                 lifecycleCurrent(run, onLifecycleDisconnected)
-                attemptedRoute?.let(onTransportFailure)
+                if (!hadSession) attemptedRoute?.let(onTransportFailure)
                 Retry.Fast(REFUSAL_TRANSPORT).also {
                     log("native transport attempt failed: ${cancelled.javaClass.simpleName}")
                 }
@@ -466,10 +473,14 @@ internal class PanelAssistantTransportOwner(
                 }
             } catch (failure: Exception) {
                 lifecycleCurrent(run, onLifecycleDisconnected)
-                attemptedRoute?.let(onTransportFailure)
+                // A route that carried an accepted session reached Home Assistant; the session's end (a stall,
+                // a dropped socket, a Core restart) is not the route's fault. Marking it failed sent the
+                // reconnect to a peer address, and the dashboard rebuilt on every blip (ha-integration #25).
+                // The reconnect still proves each address first, so a route that is really gone still yields.
+                if (!hadSession) attemptedRoute?.let(onTransportFailure)
                 // Network, TLS, frame bound, closed socket, malformed reply or liveness: never parks.
                 Retry.Fast(REFUSAL_TRANSPORT).also {
-                    log("native transport attempt failed: ${failure.javaClass.simpleName}")
+                    log("native transport attempt failed: ${failure.javaClass.simpleName}: ${failure.message.orEmpty()}")
                 }
             } finally {
                 // A known-ended session cannot authorize updates while bounded socket cleanup waits.
@@ -531,7 +542,7 @@ internal class PanelAssistantTransportOwner(
             emptyList()
         }
         connection.send(PanelAssistantTransportProtocol.hello(
-            HELLO_ID, identity, offered, described, unsupported, currentAddresses, voiceStreamClientId,
+            HELLO_ID, identity, offered, described, unsupported, currentAddresses, voiceStreamClientId, logs?.hello(),
         ))
         val deadline = monotonicMillis() + helloTimeoutMs
         while (true) {
@@ -580,6 +591,8 @@ internal class PanelAssistantTransportOwner(
         try {
             sessionLoop(run, connection, session, reporting, commanding, managing, frames, speaking, streaming)
         } finally {
+            // Retire capture authority before coroutineScope waits for a cancelled socket reader.
+            logs?.disconnect()
             managing?.close()
             reader.cancel()
         }
@@ -606,6 +619,9 @@ internal class PanelAssistantTransportOwner(
         if (reporting != null) log("native transport state reporting started")
         while (true) {
             val now = monotonicMillis()
+            if (logs?.expire(now) == true) {
+                throw PanelAssistantProtocolException("log batch was not acknowledged")
+            }
             val notice = restart.get()
             if (notice != null && now >= notice.expiresAtMs) notice.acknowledged.complete(false)
             if (notice != null && notice !== sentRestart && !notice.acknowledged.isCompleted) {
@@ -657,7 +673,13 @@ internal class PanelAssistantTransportOwner(
                     continue
                 }
             }
-            val due = listOfNotNull(awaiting ?: nextPingAt, reporting?.nextDeadline(now), commanding?.nextDeadline(now)).min()
+            val logBatch = logs?.next(nextMessageId, now, session.token)
+            if (logBatch != null) {
+                connection.send(logBatch.toString())
+                nextMessageId++
+                continue
+            }
+            val due = listOfNotNull(awaiting ?: nextPingAt, reporting?.nextDeadline(now), commanding?.nextDeadline(now), logs?.deadline()).min()
             val text = select<String?> {
                 frames.onReceive { it }
                 reporting?.wake?.onReceive { null }
@@ -666,6 +688,7 @@ internal class PanelAssistantTransportOwner(
                 restartWake.onReceive { null }
                 speaking?.wake?.onReceive { null }
                 streaming?.wake?.onReceive { null }
+                logs?.wake?.onReceive { null }
                 onTimeout((due - now).coerceAtLeast(0L)) { null }
             } ?: continue
             pongDeadline = null
@@ -703,6 +726,15 @@ internal class PanelAssistantTransportOwner(
                         log("native transport command_result refused: ${result.code}")
                     }
                     else -> Unit
+                }
+                continue
+            }
+            if (frame.optString("type") == "result" && id != null && logs?.result(id, frame.opt("success") == true) == true) {
+                val result = PanelAssistantTransportProtocol.reportResult(frame)
+                if (result is PanelAssistantReportResult.Failed &&
+                    result.code == PanelAssistantTransportProtocol.CODE_SESSION_UNKNOWN
+                ) {
+                    return PanelAssistantTransportProtocol.CODE_SESSION_UNKNOWN
                 }
                 continue
             }

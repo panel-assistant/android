@@ -7,9 +7,9 @@
  * VERSION is the helper's stable bootstrap contract. Protocol minor revisions are additive; a
  * protocol major change means the client must not claim compatibility.
  */
-#define HAPANELD_HELPER_VERSION "1.3.1"
+#define HAPANELD_HELPER_VERSION "1.15.0"
 #define HAPANELD_HELPER_PROTOCOL_MAJOR 1
-#define HAPANELD_HELPER_PROTOCOL_MINOR 3
+#define HAPANELD_HELPER_PROTOCOL_MINOR 15
 
 const char *helper_identity(void);
 const char *helper_build_id(void);

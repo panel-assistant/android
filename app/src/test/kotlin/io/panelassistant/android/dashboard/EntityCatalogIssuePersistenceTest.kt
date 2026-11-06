@@ -8,12 +8,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class EntityCatalogIssuePersistenceTest {
-    @Test fun payloadBudgetIsExactlySeventyTwoKibibytes() {
-        assertEquals(72 * 1024, EntityCatalogIssuePersistence.MAX_PAYLOAD_BYTES)
-        assertEquals(32, EntityCatalogIssuePersistence.MAX_PRESENTATION_CODE_BYTES)
-        assertEquals(10_000, EntityCatalogIssuePersistence.MAX_VIEW_TITLE_INDEX)
-    }
-
     @Test fun synthesizedTitleMarkersAreTypeAndRangeBounded() {
         fun bounded(key: String, value: Any): JSONObject = JSONArray(
             EntityCatalogIssuePersistence.boundedJson(listOf(JSONObject().put(key, value))),

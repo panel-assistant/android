@@ -4,11 +4,13 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
 
-/** Fixed presence interpretation and independently validated deliberate gestures. Only Save persists. */
+/** Learned ranged presence and independently validated deliberate gestures. Only Save persists. */
 internal class ProximityCalibrationEngine(
     initial: Calibration? = null,
     private val requestedWavePattern: WavePattern = WavePattern.SINGLE,
     private val observedSourceMode: Mode? = null,
+    private val driftMargin: Float = 0f,
+    private val driftDeclaredRange: Float = 0f,
     private val commit: (Calibration) -> Boolean = { true },
 ) {
     enum class Mode { BINARY, RANGED }
@@ -99,7 +101,7 @@ internal class ProximityCalibrationEngine(
     )
 
     private var calibration = initial
-    private var detector = initial?.takeIf { it.presenceSupported }?.let(::Detector)
+    private var detector = initial?.takeIf { it.presenceSupported }?.let(::PresenceDetector)
     private var waveDetector = initial?.let(::createWaveDetector)
     private var pendingOperationalPulse: Long? = null
     private var operationalCooldownUntil = 0L
@@ -120,6 +122,10 @@ internal class ProximityCalibrationEngine(
     private var stageStarted = 0L
     private var captureStarted: Long? = null
     private var returnClearSince: Long? = null
+    /** Median and spread of the completed hold whose presence could not be distinguished. */
+    private var refusedPosition: Pair<Float, Float>? = null
+    private var previousQuiet: ProximityPresenceBand.QuietBand? = null
+    private var setupQuiet: ProximityPresenceBand.QuietBand? = null
     private var wavePeak: Float? = null
     private var waveStarted: Long? = null
     private var observedNonBinary = observedSourceMode == Mode.RANGED
@@ -127,17 +133,30 @@ internal class ProximityCalibrationEngine(
     private var waveStatus = CapabilityStatus.NOT_TESTED
     private val clearSamples = Samples()
     private val nearSamples = Samples()
+    private val returnSamples = Samples()
     private val waveBaselineSamples = Samples()
+    // Before presence has been calibrated, a steady plateau is only a quiet candidate. The
+    // operator's clear-room capture must agree before setup can use these longer observations.
+    private val ambientSamples = Samples()
+    private var ambientQuiet: ProximityPresenceBand.QuietBand? = null
+    private var ambientPrevious: ProximityPresenceBand.QuietBand? = null
+    private var ambientStarted: Long? = null
+    private var ambientLastSample: Long? = null
 
     @Synchronized fun current(): Result = result()
-    @Synchronized fun needsTick(): Boolean = active() || detector?.needsTick() == true || waveDetector?.needsTick() == true || pendingOperationalPulse != null
+    @Synchronized fun needsTick(heldEvidence: Boolean = false): Boolean = active() || detector?.needsTick(heldEvidence) == true || waveDetector?.needsTick() == true || pendingOperationalPulse != null
     @Synchronized fun releaseGestureCooldown() { operationalCooldownUntil = 0L; waveDetector?.releaseCooldown() }
 
     @Synchronized fun start(now: Long): Result {
         if (!admit(now) || active()) return result()
         generation++
+        val learnedQuiet = detector?.learnedQuiet() ?: ambientQuiet
         resetOperational()
         discardCandidate()
+        clearAmbientWindow()
+        ambientLastSample = null
+        ambientPrevious = null
+        previousQuiet = learnedQuiet
         accepted = 0
         sessionStarted = now
         available = false
@@ -160,7 +179,7 @@ internal class ProximityCalibrationEngine(
                     message = "No verified capability can be saved. Your previous calibration is unchanged."
                 } else if (runCatching { commit(proposed) }.getOrDefault(false)) {
                     calibration = proposed
-                    detector = proposed.takeIf { it.presenceSupported }?.let(::Detector)
+                    detector = proposed.takeIf { it.presenceSupported }?.let { PresenceDetector(it, setupQuiet) }
                     waveDetector = createWaveDetector(proposed)
                     finish(Stage.SAVED, now, "Calibration saved. Presence and wave features use their verified capabilities when enabled.")
                 } else finish(Stage.FAILED, now, "Could not save calibration. Your previous calibration is unchanged.")
@@ -180,7 +199,7 @@ internal class ProximityCalibrationEngine(
         if (active()) {
             if ((candidate?.mode == Mode.BINARY || candidateWaveMode == Mode.BINARY) && raw != 0f && raw != 1f) return loseSource(now, "The sensor representation changed. Your previous calibration is unchanged.")
             if (calibrationLive && raw != 0f && raw != 1f) observedNonBinary = true
-            detector?.observe(raw, now, false)
+            detector?.observe(raw, now, false, false)
             waveDetector?.observe(raw, now, false)
             if (calibrationLive) advanceWizard(raw, now, true) else {
                 candidateDetector?.observe(raw, now, false)
@@ -196,15 +215,19 @@ internal class ProximityCalibrationEngine(
             return result()
         }
         if (!live) { generation++; pendingOperationalPulse = null }
-        detector?.observe(raw, now, live)
+        if (detector == null && calibrationLive &&
+            (calibration?.mode == Mode.RANGED || observedSourceMode == Mode.RANGED || raw != 0f && raw != 1f)) {
+            observeAmbientQuiet(raw, now)
+        }
+        detector?.observe(raw, now, live, calibrationLive)
         val pulse = waveDetector?.observe(raw, now, live) == true
         return result(operationalGesture(pulse, now), detector?.presenceApproach == true)
     }
 
-    @Synchronized fun tick(now: Long): Result {
+    @Synchronized fun tick(now: Long, heldEvidence: Boolean = false): Result {
         if (!admit(now)) return result()
         expire(now)
-        detector?.tick(now)
+        detector?.tick(now, heldEvidence && !active())
         val pulse = waveDetector?.tick(now) == true
         if (active() && available && lastRawCapture) lastRaw?.let { advanceWizard(it, now, false) }
         return if (active()) result() else result(operationalGesture(pulse, now), detector?.presenceApproach == true)
@@ -225,7 +248,7 @@ internal class ProximityCalibrationEngine(
     @Synchronized fun reset(calibration: Calibration?, now: Long): Result {
         if (!admit(now)) return result()
         this.calibration = calibration
-        detector = calibration?.takeIf { it.presenceSupported }?.let(::Detector)
+        detector = calibration?.takeIf { it.presenceSupported }?.let(::PresenceDetector)
         waveDetector = calibration?.let(::createWaveDetector)
         available = false; lastRaw = null; lastRawCapture = false
         generation++; resetOperational(); discardCandidate()
@@ -238,27 +261,37 @@ internal class ProximityCalibrationEngine(
         when (stage) {
             Stage.CLEAR -> {
                 if (stageAge < COUNTDOWN_MS) return
-                if (capture(clearSamples, raw, now, live)) transition(Stage.NEAR, now, "Approach normally and stand where you use the panel. Keep your hands down.")
+                if (capture(clearSamples, raw, now, live)) {
+                    val measured = clearSamples.quietBand()
+                    setupQuiet = previousQuiet?.takeIf { learned -> measured != null && ProximityPresenceBand.within(learned, measured) } ?: measured
+                    transition(Stage.NEAR, now, "Approach normally and stand where you use the panel. Keep your hands down.")
+                }
             }
             Stage.NEAR -> {
                 if (stageAge >= APPROACH_TIMEOUT_MS) {
-                    presenceStatus = CapabilityStatus.NOT_DETECTED
-                    transition(Stage.WAVE_BASELINE, now, "Your normal approach was not detected. Stay at your normal position while hand-wave support is tested.")
+                    refuseApproach(now)
                     return
                 }
                 if (stageAge < COUNTDOWN_MS) return
                 val clear = clearSamples.median() ?: return
-                if (abs(raw - clear) <= max(separationFloor(raw, clear), clearSamples.spread() * 1.5f)) {
-                    nearSamples.clear(); captureStarted = null; return
-                }
+                // A normal approach is a sustained distribution shift, even when individual values
+                // overlap the empty-room noise. Do not restart the hold for each overlapping sample.
                 if (capture(nearSamples, raw, now, live)) {
                     val near = nearSamples.median() ?: return
-                    val span = abs(near - clear)
-                    if (!separated(clearSamples, nearSamples, span)) {
-                        nearSamples.clear(); captureStarted = null
+                    val sourceMode = mode(clear, near)
+                    val distinguished = if (sourceMode == Mode.BINARY) separated(clearSamples, nearSamples, abs(near - clear))
+                        else setupQuiet?.let { quiet ->
+                            nearSamples.quietBand()?.let { ProximityPresenceBand.separated(quiet, it) }
+                        } == true
+                    if (!distinguished) {
+                        refusedPosition = near to nearSamples.spread()
+                        refuseApproach(now)
                         return
                     }
-                    candidate = Calibration(mode = mode(clear, near), clearRaw = clear, nearRaw = near)
+                    candidate = if (sourceMode == Mode.RANGED) Calibration(
+                        mode = sourceMode, clearRaw = checkNotNull(setupQuiet).mean.toFloat(),
+                        nearRaw = checkNotNull(nearSamples.quietBand()).mean.toFloat(),
+                    ) else Calibration(mode = sourceMode, clearRaw = clear, nearRaw = near)
                     transition(Stage.RETURN_CLEAR, now, "Move away again. The panel will confirm that your presence clears.")
                 }
             }
@@ -271,22 +304,38 @@ internal class ProximityCalibrationEngine(
                 }
                 if (stageAge < COUNTDOWN_MS) return
                 val model = candidate ?: return
-                if (model.level(raw) <= model.clearExit * 100f) {
+                if (model.mode == Mode.BINARY) {
+                    if (model.level(raw) <= model.clearExit * 100f) {
+                        if (returnClearSince == null) returnClearSince = now
+                    } else returnClearSince = null
+                } else {
                     if (returnClearSince == null) returnClearSince = now
-                    if (now - checkNotNull(returnClearSince) >= CAPTURE_HOLD_MS) {
+                    if (live) returnSamples.add(raw, now)
+                }
+                if (returnClearSince?.let { now - it >= CAPTURE_HOLD_MS } == true) {
+                    val quiet = setupQuiet
+                    val returned = returnSamples.quietBand()
+                    val returnedClear = model.mode == Mode.BINARY || quiet != null && returned != null &&
+                        ProximityPresenceBand.within(quiet, returned)
+                    if (returnedClear) {
                         presenceStatus = CapabilityStatus.VALIDATED
                         transition(Stage.WAVE_BASELINE, now, if (requestedWavePattern == WavePattern.DOUBLE)
                             "Stay clear. Prepare to wave twice in succession without walking toward the panel."
                         else "Return to your normal position and stand still. Next, only your hand will move.")
-                    }
-                } else returnClearSince = null
+                    } else { returnClearSince = null; returnSamples.clear() }
+                }
             }
             Stage.WAVE_BASELINE -> {
                 if (stageAge >= WAVE_PHASE_TIMEOUT_MS) { reviewWithoutWave(now); return }
                 if (stageAge < COUNTDOWN_MS) return
                 val presence = candidate?.takeIf { presenceStatus == CapabilityStatus.VALIDATED }
                 val atBaseline = when {
-                    presence == null -> abs(raw - checkNotNull(clearSamples.median())) <= max(clearSamples.spread() * 1.5f, separationFloor(raw, checkNotNull(clearSamples.median())))
+                    // Without presence the hand starts from the clear floor, or from where the person was
+                    // told to stay after a completed hold refused their approach: a still body, hands down,
+                    // above the floor but not far enough to be presence. Never from a hold the approach
+                    // window cut short, which no one checked for stillness.
+                    presence == null -> atSamples(raw, clearSamples) ||
+                        refusedPosition?.let { (median, spread) -> abs(raw - median) <= max(spread * 1.5f, separationFloor(raw, median)) } == true
                     requestedWavePattern == WavePattern.DOUBLE -> presence.level(raw) <= presence.clearExit * 100f
                     else -> presence.level(raw) >= presence.nearEnter * 100f
                 }
@@ -313,7 +362,9 @@ internal class ProximityCalibrationEngine(
                     val peak = checkNotNull(wavePeak)
                     waveStarted = null; wavePeak = null
                     if (duration !in MINIMUM_NEAR_MS..MAXIMUM_NEAR_MS) return
-                    val wave = WaveCalibration(pattern = requestedWavePattern, clearRaw = baseline, nearRaw = peak)
+                    val wave = driftMargined(
+                        WaveCalibration(pattern = requestedWavePattern, clearRaw = baseline, nearRaw = peak), driftMargin, driftDeclaredRange,
+                    ) ?: return
                     candidateWave = wave
                     candidateWaveMode = mode(wave.clearRaw, wave.nearRaw)
                     candidateDetector = Detector(wave.model(checkNotNull(candidateWaveMode))).also { it.observe(raw, now, false) }
@@ -341,9 +392,9 @@ internal class ProximityCalibrationEngine(
                     if (accepted >= REQUIRED_WAVES) {
                         val presence = candidate?.takeIf { presenceStatus == CapabilityStatus.VALIDATED }
                         candidate = presence?.copy(wave = wave) ?: Calibration(
-                            mode = checkNotNull(candidateWaveMode), clearRaw = wave.clearRaw, nearRaw = wave.nearRaw,
-                            presenceSupported = false, wave = wave,
-                        )
+                                mode = checkNotNull(candidateWaveMode), clearRaw = wave.clearRaw, nearRaw = wave.nearRaw,
+                                presenceSupported = false, wave = wave,
+                            )
                         waveStatus = CapabilityStatus.VALIDATED
                         transition(Stage.REVIEW, now, "Measurements complete. Review presence and wave support, then Save on the panel.")
                     }
@@ -355,8 +406,53 @@ internal class ProximityCalibrationEngine(
 
     private fun capture(samples: Samples, raw: Float, now: Long, live: Boolean): Boolean {
         if (captureStarted == null) captureStarted = now
-        if (live || samples.size == 0) samples.add(raw)
+        if (live || samples.size == 0) samples.add(raw, now, includeQuiet = live)
         return now - checkNotNull(captureStarted) >= CAPTURE_HOLD_MS
+    }
+    private fun observeAmbientQuiet(raw: Float, now: Long) {
+        if (ambientLastSample?.let { now - it < ProximityPresenceBand.SAMPLE_INTERVAL_MS } == true) return
+        if (ambientLastSample?.let { now - it > ProximityPresenceBand.BLOCK_MS } == true) {
+            clearAmbientWindow()
+            ambientPrevious = null
+        }
+        ambientLastSample = now
+        if (ambientStarted == null) ambientStarted = now
+        ambientSamples.add(raw, now)
+        if (now - checkNotNull(ambientStarted) < ProximityPresenceBand.BLOCK_MS * 4) return
+        val observed = ambientSamples.quietBand()
+        if (observed != null && observed.count >= 4) {
+            val quiet = ambientQuiet
+            val previous = ambientPrevious
+            val steadyWindows = previous != null && ProximityPresenceBand.within(previous, observed) &&
+                ProximityPresenceBand.within(observed, previous)
+            if (quiet == null) {
+                if (steadyWindows) ambientQuiet = observed
+            } else if (ProximityPresenceBand.within(quiet, observed) || steadyWindows &&
+                ProximityPresenceBand.meanWithinQuiet(quiet, observed) &&
+                ProximityPresenceBand.meanWithinQuiet(quiet, checkNotNull(previous))) {
+                val alpha = ((now - checkNotNull(ambientStarted)) / 120_000.0).coerceAtMost(.1)
+                val delta = observed.mean - quiet.mean
+                ambientQuiet = ProximityPresenceBand.QuietBand(
+                    quiet.mean + alpha * delta,
+                    quiet.variance + alpha * (observed.variance - quiet.variance) + alpha * (1 - alpha) * delta * delta,
+                    max(quiet.count, observed.count),
+                )
+            }
+            // A sustained shift freezes the candidate instead of replacing it with a person.
+            ambientPrevious = observed
+        }
+        clearAmbientWindow()
+    }
+    private fun clearAmbientWindow() {
+        ambientSamples.clear(); ambientStarted = null
+    }
+    private fun refuseApproach(now: Long) {
+        presenceStatus = CapabilityStatus.NOT_DETECTED
+        transition(Stage.WAVE_BASELINE, now, "Your normal approach was not detected. Stay at your normal position while hand-wave support is tested.")
+    }
+    private fun atSamples(raw: Float, samples: Samples): Boolean {
+        val median = samples.median() ?: return false
+        return abs(raw - median) <= max(samples.spread() * 1.5f, separationFloor(raw, median))
     }
     private fun separated(clear: Samples, near: Samples, span: Float): Boolean = span.isFinite() && span > separationFloor(clear.median()!!, near.median()!!) &&
         clear.spread() <= span * .5f && near.spread() <= span * .5f && clear.spread() + near.spread() <= span * .75f
@@ -389,8 +485,9 @@ internal class ProximityCalibrationEngine(
     }
     private fun discardCandidate() {
         candidate = null; candidateWave = null; candidateWaveMode = null; candidateDetector = null; pendingCandidatePulse = null
-        clearSamples.clear(); nearSamples.clear(); waveBaselineSamples.clear()
-        captureStarted = null; returnClearSince = null; waveStarted = null; wavePeak = null
+        clearSamples.clear(); nearSamples.clear(); returnSamples.clear(); waveBaselineSamples.clear()
+        captureStarted = null; returnClearSince = null; waveStarted = null; wavePeak = null; refusedPosition = null
+        previousQuiet = null; setupQuiet = null
         observedNonBinary = observedSourceMode == Mode.RANGED; presenceStatus = CapabilityStatus.NOT_TESTED; waveStatus = CapabilityStatus.NOT_TESTED
     }
     private fun expire(now: Long) {
@@ -398,6 +495,9 @@ internal class ProximityCalibrationEngine(
     }
     private fun loseSource(now: Long, text: String): Result {
         available = false; lastRaw = null; lastRawCapture = false
+        clearAmbientWindow()
+        ambientLastSample = null
+        ambientPrevious = null
         if (active()) finish(Stage.FAILED, now, text) else { generation++; resetOperational(); message = text }
         return result()
     }
@@ -419,7 +519,7 @@ internal class ProximityCalibrationEngine(
         val near = if (available && !active && presenceSupported) detector?.near else null
         val timing = cueTiming()
         return Result(stage, message, accepted, near,
-            if (near != null) lastRaw?.let { model?.level(it) } else null, model?.mode, available,
+            if (near != null) lastRaw?.let { detector?.level(it) } else null, model?.mode, available,
             available && !active && wave != null && waveDetector?.hasClearEvidence == true,
             active, gesture && !active, generation, calibration, needsTick(), approach && !active,
             available && presenceSupported && (active || near != null), presenceSupported,
@@ -461,6 +561,30 @@ internal class ProximityCalibrationEngine(
     }
     private fun createWaveDetector(value: Calibration): Detector? = value.effectiveWave()?.let {
         Detector(it.model(value.mode), triggerOnApproach = it.pattern == WavePattern.SINGLE)
+    }
+
+    /** Binary sources retain their edge contract; every ranged source shares the quiet-band policy. */
+    private class PresenceDetector(
+        private val calibration: Calibration,
+        initialQuiet: ProximityPresenceBand.QuietBand? = null,
+    ) {
+        private val binary = if (calibration.mode == Mode.BINARY) Detector(calibration) else null
+        private val ranged = if (calibration.mode == Mode.RANGED)
+            ProximityPresenceBand(calibration.clearRaw, calibration.nearRaw, initialQuiet) else null
+        val near get() = binary?.near ?: ranged?.snapshot()?.near
+        val presenceApproach get() = binary?.presenceApproach ?: (ranged?.snapshot()?.approach == true)
+        fun level(raw: Float) = ranged?.snapshot()?.level ?: calibration.level(raw)
+        fun observe(raw: Float, now: Long, live: Boolean, fresh: Boolean) {
+            binary?.observe(raw, now, live)
+            ranged?.observe(raw, now, fresh, live)
+        }
+        fun tick(now: Long, heldEvidence: Boolean) {
+            binary?.tick(now)
+            ranged?.tick(now, heldEvidence)
+        }
+        fun reset() { binary?.reset(); ranged?.sourceUnavailable() }
+        fun learnedQuiet() = ranged?.learnedQuiet()
+        fun needsTick(heldEvidence: Boolean) = binary?.needsTick() ?: (heldEvidence && ranged?.needsTick() == true)
     }
 
     /** Hysteretic reporting; single hand approaches fire on entry, explicit double waves on release. */
@@ -574,8 +698,18 @@ internal class ProximityCalibrationEngine(
         var size = 0
             private set
         private var next = 0
-        fun add(raw: Float) { values[next] = raw; next = (next + 1) % values.size; size = (size + 1).coerceAtMost(values.size) }
-        fun clear() { size = 0; next = 0 }
+        private var lastQuietSample: Long? = null
+        private val quietValues = FloatArray(32)
+        private var quietCount = 0
+        fun add(raw: Float, now: Long, includeQuiet: Boolean = true) {
+            values[next] = raw; next = (next + 1) % values.size; size = (size + 1).coerceAtMost(values.size)
+            if (includeQuiet && lastQuietSample?.let { now - it >= ProximityPresenceBand.SAMPLE_INTERVAL_MS } != false && quietCount < quietValues.size) {
+                quietValues[quietCount++] = raw
+                lastQuietSample = now
+            }
+        }
+        fun quietBand() = ProximityPresenceBand.QuietBand.from(quietValues, quietCount)
+        fun clear() { size = 0; next = 0; lastQuietSample = null; quietCount = 0 }
         fun median(): Float? = if (size == 0) null else values.copyOf(size).apply { sort() }[size / 2]
         fun spread(): Float {
             if (size == 0) return 0f
@@ -596,5 +730,70 @@ internal class ProximityCalibrationEngine(
         private const val MAXIMUM_NEAR_MS = 4_000L
         private fun isBinaryPair(clear: Float, near: Float) = (clear == 0f && near == 1f) || (clear == 1f && near == 0f)
         private fun separationFloor(a: Float, b: Float) = max(Math.ulp(a), Math.ulp(b)) * 4f
+
+        /** Enter near no closer to the clear observation than this multiple of the drift band. */
+        const val NEAR_ENTER_DRIFT_HEADROOM = 1.5f
+
+        /** A boundary above this fraction of the span is indistinguishable from the near observation. */
+        const val MAXIMUM_NEAR_ENTER = .85f
+
+        /**
+         * Whether these readings are counts, the unit the band is measured in, rather than centimetres.
+         *
+         * The Android proximity contract is centimetres up to the sensor's declared maximum range, and a
+         * conforming HAL reports something like 0 and 5. Five centimetres cannot hold a hundred-count band,
+         * so imposing it there would refuse every calibration on hardware that worked. The panels the band
+         * was measured on report counts far beyond their own declared range: a Sonoff NSPanel 86 declares
+         * 9 and reads 3 to 485 from an empty room. A reading above the declared range cannot be
+         * centimetres, so that is the test. Magnitude alone is not: those panels' readings sit below any
+         * size threshold the band could set, which once exempted exactly the panels that stick at near.
+         * A route that is counts by construction passes a declared range of 0.
+         */
+        private fun countedBeyondDeclaredRange(clear: Float, near: Float, declaredRange: Float): Boolean =
+            max(abs(clear), abs(near)) > declaredRange
+
+        /**
+         * Hold both decision boundaries above the source's own multi-day clear-floor drift.
+         *
+         * The fractions alone place the boundary relative to whichever clear floor one five-second
+         * capture happened to see, so a session that measured a weak near observation leaves the
+         * boundary sitting inside a day's ordinary drift. `margin` is that drift band, in the
+         * source's own raw units. Raising `clearExit` matters as much as raising `nearEnter`: a
+         * floor that drifts past the exit boundary while someone is present leaves the panel near
+         * after they leave, which is the state in which auto-sleep cannot sleep and a
+         * single-approach wake cannot rearm.
+         *
+         * Returns null when the two observations are too close together to hold a margined
+         * boundary. That is not a calibration to weaken; it is a separation that was not measured.
+         * Fractions only ever rise, so a calibration with room to spare is returned unchanged.
+         */
+        fun driftMargined(value: Calibration, margin: Float, declaredRange: Float = 0f): Calibration? {
+            if (margin <= 0f || value.mode == Mode.BINARY ||
+                !countedBeyondDeclaredRange(value.clearRaw, value.nearRaw, declaredRange)
+            ) return value
+            val span = abs(value.nearRaw - value.clearRaw)
+            if (!span.isFinite() || span <= 0f) return null
+            val nearEnter = max(value.nearEnter, margin * NEAR_ENTER_DRIFT_HEADROOM / span)
+            if (!(nearEnter <= MAXIMUM_NEAR_ENTER)) return null
+            val wave = value.wave?.let { driftMargined(it, margin, declaredRange) ?: return null }
+            // A boundary pair the model itself refuses is not a calibration to fall back on.
+            return runCatching {
+                value.copy(nearEnter = nearEnter, clearExit = max(value.clearExit, margin / span), wave = wave)
+            }.getOrNull()
+        }
+
+        /** The same rule for a deliberate wave, whose baseline drifts exactly as the clear floor does. */
+        fun driftMargined(value: WaveCalibration, margin: Float, declaredRange: Float = 0f): WaveCalibration? {
+            if (margin <= 0f || isBinaryPair(value.clearRaw, value.nearRaw) ||
+                !countedBeyondDeclaredRange(value.clearRaw, value.nearRaw, declaredRange)
+            ) return value
+            val span = abs(value.nearRaw - value.clearRaw)
+            if (!span.isFinite() || span <= 0f) return null
+            val waveNearEnter = max(value.nearEnter, margin * NEAR_ENTER_DRIFT_HEADROOM / span)
+            if (!(waveNearEnter <= MAXIMUM_NEAR_ENTER)) return null
+            return runCatching {
+                value.copy(nearEnter = waveNearEnter, clearExit = max(value.clearExit, margin / span))
+            }.getOrNull()
+        }
     }
 }

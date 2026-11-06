@@ -68,6 +68,7 @@ class DashboardEntityBootstrapDarkReleaseTest {
             override val screenAwake get() = screenAwake
             override fun buildAndLoad(config: Config) { built += config }
             override fun teardownWeb() = Unit
+            override fun reconcile() = Unit
         },
         readConfig = { config },
     )

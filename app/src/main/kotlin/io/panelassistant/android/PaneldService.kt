@@ -283,12 +283,12 @@ internal fun configOwnerRefreshPlan(changedKeys: Set<String>): ConfigOwnerRefres
             "log_ship_enabled", "log_ship_system_enabled", "log_ship_host", "log_ship_port", "log_ship_protocol",
         )::contains),
         keepAwake = "keep_awake" in changedKeys,
-        launcherHome = changedKeys.any(setOf("launcher_package", "dashboard_package", "ha_url")::contains),
+        launcherHome = changedKeys.any(setOf("launcher_package", "dashboard_package", "ha_url", SETUP_EVER_COMPLETED_PREF)::contains),
         rendererTarget = changedKeys.any((ha + setOf("dashboard_package", "home_dashboard"))::contains),
         // The master switch closes a live session on this lane too, not only on the watchdog tick.
         camera = "camera_enabled" in changedKeys,
         // Credentials only; the owner itself ignores a change that leaves the credential identity equal.
-        panelAssistantTransport = changedKeys.any(ha::contains),
+        panelAssistantTransport = "http_port" in changedKeys || changedKeys.any(ha::contains),
         // A rename from Home Assistant, the sidebar or the Configure page, or a restored name.
         androidDeviceName = "friendly_name" in changedKeys,
     )
@@ -385,14 +385,6 @@ class PaneldService : Service() {
     private var proximityWizard: ProximityWizardCoordinator? = null
     private var approvalPrompt: ApprovalPrompt? = null
 
-    /**
-     * Whether this panel could repair its own Android System WebView, computed away from the screen.
-     *
-     * Cached rather than asked for on demand because deciding it costs a privileged probe: a cold
-     * [Su.availableCachedIsolated] forks `su` and waits for it, and the caller is a blocked status screen
-     * being drawn on the main thread. Null until the first answer lands, which the screen renders as
-     * saying nothing rather than as a confident "this panel cannot".
-     */
     private val lightPublisher = SensorLightPublisher(
         publish = { lux ->
             if (!teardownBoundary.isStopping) {
@@ -412,6 +404,17 @@ class PaneldService : Service() {
     // Controllers are fields so the network runtime can be rebuilt on a panel_id change.
     private lateinit var haLinks: ServiceHaLinks
     private val androidDeviceName by lazy { AndroidDeviceName.of(this) }
+    internal var portalNameAccessibility: io.panelassistant.android.platform.AccessibilityActions =
+        io.panelassistant.android.input.PanelAccessibilityService
+    private val portalNameGeneration = java.util.concurrent.atomic.AtomicLong()
+    @Volatile internal var portalNameStatus = "Not requested"
+        private set
+    // The name Meta's editor last verified in this process. Panel Assistant offers the same name on every
+    // new session; once Meta has verified it, opening the editor again would only cover the dashboard.
+    // Guarded by portalNameLock with the generation: Meta answers on its own thread, and a late answer
+    // must not mark its name verified after a newer attempt has started.
+    private var portalNameVerified: String? = null
+    private val portalNameLock = Any()
     // Outlives runtime generations: each new state core binds its converger here, and the transport owner
     // reports what it records only on a session Panel Assistant accepts. The button event's types include
     // the active profile's.
@@ -548,7 +551,9 @@ class PaneldService : Service() {
         preparedConfig.migrateLiveStore() // carry persisted settings across a schema bump before anything reads them
         // These migrations and generated identities precede every renderer and network owner.
         preparedConfig.migrateLogShipTcpDefault()
-        preparedConfig.migrateSetupQuestionsForExistingInstall()
+        io.panelassistant.android.platform.reconcileSetupDeviceAdmin(
+            preparedConfig, io.panelassistant.android.platform.AndroidScreenPower(this@PaneldService),
+        )
         preparedConfig.ensureDeviceUid()
         preparedConfig.ensurePanelId()
         val preparedLiveSettings = LiveSettingAuthority.persistent(
@@ -688,20 +693,13 @@ class PaneldService : Service() {
         appliedNetworkConfiguration = currentNetworkConfigurationSnapshot()
         sensors = SensorReporter(this, config, profile)
         wifiOutageTracker = WifiOutageTracker(store = wifiStore)
-        wifiDiagnostics = AndroidWifiDiagnostics(this) {
-            Su.runOutputIsolatedBounded(
-                "cmd wifi status 2>/dev/null || dumpsys wifi",
-                maxBytes = 128 * 1024L,
-                timeoutMs = 2_000L,
-            )
-        }
+        wifiDiagnostics = AndroidWifiDiagnostics(this, HelperClient::wifiStatus)
         // Shared demand-driven logcat captures (one producer and redaction pass per source): app,
-        // system and browser feed the sink and their live viewers. System uses the helper when this
-        // app cannot run su. Idle-stopped — no logcat runs until something subscribes.
+        // system and browser feed the sink and their live viewers. System uses the helper exclusively.
+        // Idle-stopped — no logcat runs until something subscribes.
         logCaptureApp = LogCapture.app(scope)
         logCaptureSystem = LogCapture.system(
             scope,
-            suForm = profile.suForm,
             helperLines = { emit ->
                 when (val opened = HelperClient.openLogcat()) {
                     is HelperLogcatOpenResult.Open -> opened.stream.use { stream ->
@@ -718,7 +716,7 @@ class PaneldService : Service() {
                     HelperLogcatOpenResult.Failed -> error("helper LOGCAT unavailable")
                 }
             },
-            rootAvailable = Su::availableCachedIsolated,
+            helperDump = HelperClient::logcatDump,
         )
         // The dashboard's JavaScript console, read over a CDP relay the user started. Off unless log
         // shipping is configured, and never in Hardened mode, where the relay itself is refused.
@@ -729,10 +727,10 @@ class PaneldService : Service() {
 
         displayPower.buildControllers()
         voiceAudio.buildAnnouncements()
-        // The Home Assistant links and their health, built once in this order on the configuration above.
         haLinks = ServiceHaLinks(
             this, scope, config, teardownBoundary, panelAssistantReporter, panelAssistantCommands,
             voiceAudio.panelAssistantVoice, voiceAudio.voiceStream, { runtime }, { server },
+            panelAssistantLogs = io.panelassistant.android.panelassistant.PanelAssistantLogs(config, logCaptureApp, logCaptureSystem, logShipper::setPanelAssistantForwarding),
         )
         displayPower.bindHaAmbient()
         controls.buildLighting()
@@ -916,6 +914,7 @@ class PaneldService : Service() {
             profileReport = passiveProfileProbe::report,
             profileProbe = { passiveProfileProbe.report() },
             onProfileRestart = { profileRestart.request() },
+            onWebViewRebind = { webViewRebindRestart.request() },
             onDurableStateRestored = {
                 wifiOutageTracker.adoptRestoredRecord()
                 sensors.reloadProximityCalibration()
@@ -1010,7 +1009,6 @@ class PaneldService : Service() {
         config,
         runtimePanelId = identity.panelId,
         runtimeFriendlyName = identity.friendlyName,
-        runtimeHttpPort = identity.httpPort,
     )
 
     /** Make the journalled desired value immediately visible/durable, but pass the previous value through
@@ -1057,7 +1055,11 @@ class PaneldService : Service() {
             if (resetLiveRetries) changedKeys.forEach { liveSettingRetryAttempts[it] = 0 }
         }
         if (configOwnerRefreshPlan(changedKeys).launcherHome) {
-            controls.onLauncherHomeChanged()
+            controls.onLauncherHomeChanged {
+                if (SETUP_EVER_COMPLETED_PREF in changedKeys && config.setupEverCompleted) {
+                    server.requestTameReconcile()
+                }
+            }
         }
         when (runtime.requestLatest()) {
             ServiceRuntimeOwner.LatestAdmission.COALESCED ->
@@ -1283,6 +1285,38 @@ class PaneldService : Service() {
             if (outcome != AndroidDeviceName.Outcome.NOT_CHOSEN && outcome != AndroidDeviceName.Outcome.UNCHANGED) {
                 Log.i(TAG, "android device name: ${outcome.name.lowercase()}")
             }
+            // Only an explicitly accepted name starts Meta's normal flow, including an offer already
+            // stored by an older app. Startup/default labels never reach this refresh branch.
+            if (!teardownBoundary.isStopping && ::profile.isInitialized &&
+                io.panelassistant.android.input.PortalStartupOverlayDismissal.supportsProfile(profile.id)) {
+                val name = config.chosenFriendlyName?.takeIf { it.isNotBlank() }
+                if (name == null) {
+                    synchronized(portalNameLock) { portalNameGeneration.incrementAndGet() }
+                    portalNameAccessibility.cancelPortalRename()
+                    portalNameStatus = "No chosen name"
+                } else {
+                    val generation = synchronized(portalNameLock) {
+                        if (name == portalNameVerified) return@synchronized null
+                        // A new attempt may leave Meta's name anywhere until it reports back.
+                        portalNameVerified = null
+                        portalNameStatus = "Pending native verification"
+                        portalNameGeneration.incrementAndGet()
+                    }
+                    if (generation != null && !portalNameAccessibility.renamePortal(name) { success, reason ->
+                            synchronized(portalNameLock) {
+                                if (generation == portalNameGeneration.get()) {
+                                    portalNameStatus = if (success) "Verified: $reason" else "Failed: $reason"
+                                    if (success) portalNameVerified = name
+                                }
+                            }
+                            if (success) Log.i(TAG, "Meta Portal name: $reason")
+                            else Log.w(TAG, "Meta Portal name not verified: $reason")
+                        }) {
+                        portalNameStatus = "Failed: accessibility unavailable"
+                        Log.w(TAG, "Meta Portal name not verified: accessibility unavailable")
+                    }
+                }
+            }
         }
     }
 
@@ -1300,15 +1334,16 @@ class PaneldService : Service() {
     private fun observeManagementControllers(privilege: PrivilegedRouteObservation): ManagementControllerObservation {
         val persistedAdb = controls.adb.isPersisted()
         return ManagementControllerObservation(
-            cpuTier = controls.cpu.currentTier(allowRootFallback = privilege.directSuReady),
-            cpuGovernorsAvailable = controls.cpu.available(allowRootFallback = privilege.directSuReady),
+            cpuTier = controls.cpu.currentTier(),
+            cpuGovernorsAvailable = controls.cpu.available(),
             networkAdbPersisted = persistedAdb,
             // A persisted intent is reported by whether adbd really listens: its own property writes
             // would otherwise read as active while vendor init or an adbd restart has dropped TCP.
-            networkAdbActive = if (persistedAdb) controls.adb.listenerState(allowRootCrossCheck = privilege.directSuReady)
-                else controls.adb.activeState(allowRootCrossCheck = privilege.directSuReady),
-            zigbee = controls.zigbee.observe(includeRole = true, directSuReady = privilege.directSuReady),
-            relayCount = controls.relay.count(allowRootProbe = privilege.directSuReady),
+            networkAdbActive = if (io.panelassistant.android.control.ManagedNetworkAdb.managed) false
+                else if (persistedAdb) controls.adb.listenerState()
+                else controls.adb.activeState(),
+            zigbee = controls.zigbee.observe(includeRole = true),
+            relayCount = controls.relay.count(),
             buttonLedCount = controls.relay.ledCount(),
         )
     }
@@ -1333,7 +1368,7 @@ class PaneldService : Service() {
     /** Fresh controller values for direct equality, config export and concurrency checks. Direct POST
      * planning also consumes the transient CPU tier, so a full payload cannot reapply an unchanged tier. */
     private fun currentConfigLiveValues(): Map<String, String> = mapOf(
-        "cpu_governor" to (controls.cpu.currentTier(allowRootFallback = false) ?: "Auto"),
+        "cpu_governor" to (controls.cpu.currentTier() ?: "Auto"),
         "network_adb" to controls.adb.isPersisted().toString(),
         "zigbee_router" to config.zigbeeRouterEnabled.toString(),
     )
@@ -1410,6 +1445,9 @@ class PaneldService : Service() {
             "Audio playback" to voiceAudio.audio.snapshot().statusText(),
         )
         appDatabase?.let { extras["App database"] = it }
+        if (io.panelassistant.android.input.PortalStartupOverlayDismissal.supportsProfile(profile.id)) {
+            extras["Meta Portal name"] = portalNameStatus
+        }
         // Rolling 24-hour Wi-Fi outage count — present only once the window holds an episode or
         // dropped evidence, so a stable panel (or an Ethernet panel) never carries a zero row.
         wifiOutageStatusText(wifiOutages)?.let { extras["Wi-Fi stability"] = it }
@@ -1480,7 +1518,7 @@ class PaneldService : Service() {
      *  (the Configure form/schema + the dashboard's read-only values card). */
     private fun capabilitiesSnapshot(): Capabilities {
         val privilege = observeTypedShellCapability(
-            directSuProbe = Su::available,
+            directSuProbe = Su::observedUsable,
             helperRootProbe = HelperClient::available,
         )
         return capabilitiesSnapshot(
@@ -1507,7 +1545,7 @@ class PaneldService : Service() {
         val cost = FeatureCosts.registry.span(FeatureCostOperation.CAPABILITY_SNAPSHOT)
         return try {
             val wifi = wifiDiagnostics.snapshot(
-                WifiDiagnosticDemand(ssid = true, rssi = true, privilegedRoute = directSuReady),
+                WifiDiagnosticDemand(ssid = true, rssi = true),
             )
             val wifiAvailable = wifi.availability()
             Capabilities(
@@ -1533,8 +1571,8 @@ class PaneldService : Service() {
                 hasNativeNavbar = config.hasNativeNavbar,
                 hasAndroidStatusBar = config.hasAndroidStatusBar,
                 cpuGovernors = controllers?.cpuGovernorsAvailable ?: controls.cpu.available(),
-                // AdbController.available() is exactly Su.available(); reuse this snapshot's one root
-                // authority probe rather than opening another shell transaction.
+                // Network ADB is switched through su: offer it while su is known to work, from this
+                // snapshot's privilege view rather than another root call.
                 networkAdb = directSuReady,
                 zigbeePresent = controllers?.let {
                     zigbeeCapabilityPresent(
@@ -1689,6 +1727,13 @@ class PaneldService : Service() {
             )
             // Learning resolves the HA instance identity through this runtime. Start mDNS before either
             // the initial learner sync or a borrowed renderer commit can notify the learner of a target.
+            handBackUnfinishedSetupHome(config.setupEverCompleted, controls.tame::observeDefaultHome, profile.tameVendorCandidates) {
+                io.panelassistant.android.control.handBackHomeController(
+                    config, controls.tame,
+                    { controls.system.setHomeActivity(it, restoringHome = true) },
+                    packageName, clearDesiredState = { true },
+                ).handBack(it)
+            }?.let { Log.i(TAG, "unfinished setup HOME restoration: $it") }
             val rendererResult = prepareEntityLearningStartup(
                 startMdns = activeRuntime.mdns::start,
                 reconcileRenderer = {
@@ -1718,6 +1763,8 @@ class PaneldService : Service() {
             displayPower.applyKeepAwake()
             io.panelassistant.android.http.PerfReader.start(scope, packageName, rendererTargetSnapshot())
             server.start()
+            // Discovery starts before renderer preparation; refresh a provisional SRV if binding moved it.
+            activeRuntime.mdns.ensureStarted()
             // Startup always reconciles both additions and removals from durable desired state against
             // the write-ahead overlay ownership markers. This completes work handed off by profile restart.
             server.requestTameReconcile()
@@ -2033,6 +2080,7 @@ class PaneldService : Service() {
      * every controller exists; normal destruction has already initialized all of them.
      */
     private fun closeServiceAdmissions() {
+        portalNameAccessibility.cancelPortalRename()
         approvalPrompt?.close()
         proximityWizard?.close()
         voiceAudio.closeAdmission()
@@ -2043,6 +2091,7 @@ class PaneldService : Service() {
 
     override fun onDestroy() {
         teardownBoundary.markStopping()
+        portalNameAccessibility.cancelPortalRename()
         controls.closeUsbDebuggingFeedback()
         notifications.releaseForeground()
         portalStartupOverlayDismissal?.close()
@@ -2669,4 +2718,19 @@ internal fun <T : Any> requestLocalObservation(
 ) {
     val observed = runtime.observe() ?: return
     core(observed.value).requestLocalObservation { runtime.isCurrent(observed) }
+}
+
+/**
+ * A setup that never completed must not leave the panel app holding HOME: at startup, while the panel app
+ * is the observed HOME, HOME goes back to the recorded previous HOME with the profile's vendor packages as
+ * known candidates. Null when the gate does not apply; HOME is only observed for an unfinished setup.
+ */
+internal fun <T> handBackUnfinishedSetupHome(
+    setupEverCompleted: Boolean,
+    observeDefaultHome: () -> String?,
+    vendorCandidates: List<io.panelassistant.android.device.TameCandidate>,
+    handBack: (Set<String>) -> T,
+): T? {
+    if (setupEverCompleted || !AppIdentity.isPanelApp(observeDefaultHome().orEmpty())) return null
+    return handBack(vendorCandidates.map { it.pkg }.toSet())
 }

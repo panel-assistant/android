@@ -9,6 +9,26 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LocalApprovalBrokerTest {
+    @Test fun deferredConsumptionRequiresTheOriginalLiveApprovedExactRecord() {
+        var now = 0L
+        val broker = ApprovalBroker({ now }, ttlMs = 1000)
+        val operation = SensitiveOperation.LOCAL_ADB_MAINTENANCE
+        val (_, id) = broker.request(operation, "panel_assistant", "session:script", "maintenance", consumeApproved = false)
+        assertFalse(broker.consume(id, operation, "panel_assistant", "session:script"))
+        assertTrue(broker.approve(id))
+        assertFalse(broker.consume(id, operation, "other", "session:script"))
+        assertFalse(broker.consume(id, SensitiveOperation.DEVICE_REBOOT, "panel_assistant", "session:script"))
+        assertFalse(broker.consume(id, operation, "panel_assistant", "other-script"))
+        now = 1000
+        assertFalse(broker.consume(id, operation, "panel_assistant", "session:script"))
+        val (_, replacement) = broker.request(operation, "panel_assistant", "session:script", "maintenance", consumeApproved = false)
+        assertTrue(broker.approve(replacement))
+        assertFalse(broker.consume(id, operation, "panel_assistant", "session:script"))
+        assertTrue(broker.consume(replacement, operation, "panel_assistant", "session:script"))
+        assertFalse(broker.consume(replacement, operation, "panel_assistant", "session:script"))
+        assertTrue(broker.pending().isEmpty())
+    }
+
     @Test
     fun approvalIsBoundToExactPeerPayloadAndConsumedOnce() {
         var now = 1_000L

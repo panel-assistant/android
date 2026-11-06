@@ -1,5 +1,7 @@
 package io.panelassistant.android.control
 
+import io.panelassistant.android.setupEverCompleted
+
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
@@ -50,6 +52,7 @@ class TameController(
         reassert = ::reassertTame,
         restore = ::restoreOwned,
         clearAbsent = ::clearAbsentMarker,
+        allowTaming = { io.panelassistant.android.Config(context).setupEverCompleted },
     )
 
     /** Reconcile desired state against the existing write-ahead overlay restoration records. */
@@ -404,6 +407,9 @@ class TameController(
     /** Observe which package currently owns the home role, for the hand-back readback. */
     internal fun observeDefaultHome(): String? = currentDefaultHome()
 
+    internal fun observeDefaultHomeComponent(): String? =
+        io.panelassistant.android.platform.AndroidSystemEnv(context).defaultHome()?.component
+
     /** Write-ahead-own [pkg], then force-stop + disable boot-relaunch + deny its overlay permission. */
     private fun reassertTame(pkg: String): Boolean {
         val key = TameStatePolicy.markerKey(pkg)
@@ -433,6 +439,7 @@ class TameController(
         // or strand the panel. The dashboard app is re-asserted as home by ensureDashboardHome later.
         val wasDefaultHome = pkg == currentDefaultHome()
         if (wasDefaultHome) {
+            if (!io.panelassistant.android.platform.AndroidSystemEnv(context).preservePreviousHome()) return false
             val comp = AppIdentity.component(context.packageName, ".AdminLauncherActivity")
             val set = privileged("SETHOME $comp", "cmd package set-home-activity $comp")
             val observed = currentDefaultHome()

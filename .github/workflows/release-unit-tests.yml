@@ -11,9 +11,10 @@ on:
 permissions:
   contents: read
 
+# Explicit trials and nightly runs retain independent results.
 concurrency:
-  group: release-unit-tests-${{ github.ref }}
-  cancel-in-progress: true
+  group: release-unit-tests-${{ github.event_name }}-${{ github.ref }}-${{ github.run_id }}
+  cancel-in-progress: false
 
 jobs:
   release-unit-tests:

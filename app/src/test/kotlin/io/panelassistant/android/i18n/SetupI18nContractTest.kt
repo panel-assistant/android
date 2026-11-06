@@ -10,7 +10,8 @@ import io.panelassistant.android.testsupport.PageTransportOperations
 /** Contracts the bounded translated surface of the guided Setup wizard. */
 class SetupI18nContractTest {
     private val assets = File("src/main/assets")
-    private val setupJs = File(assets, "setup.js").readText()
+    // The built-in dashboard names are shared with Configure and live in i18n.js (HaDashboardTitles).
+    private val setupJs = File(assets, "setup.js").readText() + "\n" + File(assets, "i18n.js").readText()
     // Source-text reason: whole-file scans of HTTP Kotlin sources and setup.js for literal setup.* catalogue keys and their English fallbacks (translation catalogue contract).
     private val serverSource = httpCatalogueSources()
     private val sourceJson = JSONObject(File(assets, "i18n/en.json").readText())

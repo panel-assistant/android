@@ -229,6 +229,18 @@ class SetupRoutesHttpTest {
         }
     }
 
+    @Test fun `attestation cannot complete first setup before its unanswered questions`() = withSetup { fixture ->
+        fixture.config.setDashboardPackage("builtin")
+        fixture.config.setupIdentityConfirmed = true
+        fixture.config.setupHomeDashboardChosen = false
+        fixture.config.setHaConnection("http://initial.example", "fixture-token")
+        testApplication {
+            application { fixture.mount(this) }
+            assertEquals(HttpStatusCode.OK, client.post("/api/v1/setup/attest").status)
+            assertFalse(fixture.config.setupEverCompleted)
+        }
+    }
+
     @Test fun `render attestation completes the journey only for its current endpoint`() = withSetup { fixture ->
         fixture.config.setHaConnection("http://initial.example", "fixture-token")
         testApplication {
@@ -265,7 +277,56 @@ class SetupRoutesHttpTest {
         }
     }
 
-    private fun withSetup(block: (PaneldServerHttpFixture) -> Unit) {
+    @Test fun `a builtin panel below the engine floor is told its engine, the floor and its model's update steps`() =
+        withSetup(webView = PanelInfo.WebViewStatus("com.android.webview 83.0.4103.120", tooOld = true, engineMajor = 83)) { fixture ->
+            fixture.config.setDashboardPackage(SystemController.BUILTIN_DASHBOARD)
+            fixture.config.setupIdentityConfirmed = true
+            testApplication {
+                application { fixture.mount(this) }
+                val state = JSONObject(client.get("/api/v1/setup").bodyAsText())
+                assertEquals("ha_url", state.getString("next"))
+                val webView = state.getJSONObject("webview")
+                assertEquals(83, webView.getInt("found"))
+                assertEquals(PanelHealth.MIN_CHROMIUM, webView.getInt("needed"))
+                assertEquals("Tuya TPA10", webView.getString("model"))
+                assertFalse(webView.getBoolean("play"))
+                assertEquals("https://panel-assistant.io/go/docs?page=hardware/tpa10#webview-update-this-first", webView.getString("steps"))
+            }
+        }
+
+    @Test fun `a panel of unknown model below the engine floor is sent to the update guide, unnamed`() =
+        withSetup(
+            webView = PanelInfo.WebViewStatus("com.android.webview 107.0.5304.105", tooOld = true, engineMajor = 107),
+            profileId = "generic",
+        ) { fixture ->
+            fixture.config.setDashboardPackage(SystemController.BUILTIN_DASHBOARD)
+            fixture.config.setupIdentityConfirmed = true
+            testApplication {
+                application { fixture.mount(this) }
+                val webView = JSONObject(client.get("/api/v1/setup").bodyAsText()).getJSONObject("webview")
+                assertEquals(107, webView.getInt("found"))
+                assertEquals("", webView.getString("model"))
+                assertEquals("https://panel-assistant.io/go/update-webview", webView.getString("steps"))
+            }
+        }
+
+    @Test fun `a builtin panel with a current engine goes on to the Home Assistant address without engine facts`() =
+        withSetup(webView = PanelInfo.WebViewStatus("com.android.webview 138.0.7204.63", tooOld = false, engineMajor = 138)) { fixture ->
+            fixture.config.setDashboardPackage(SystemController.BUILTIN_DASHBOARD)
+            fixture.config.setupIdentityConfirmed = true
+            testApplication {
+                application { fixture.mount(this) }
+                val state = JSONObject(client.get("/api/v1/setup").bodyAsText())
+                assertEquals("ha_url", state.getString("next"))
+                assertFalse(state.has("webview"))
+            }
+        }
+
+    private fun withSetup(
+        webView: PanelInfo.WebViewStatus = PanelInfo.WebViewStatus("unknown", tooOld = false),
+        profileId: String = "tpa10",
+        block: (PaneldServerHttpFixture) -> Unit,
+    ) {
         PaneldServerHttpFixture().use { fixture ->
             fixture.config.setDashboardPackage("com.example.dashboard")
             fixture.config.setRaw(requireNotNull(SettingsRegistry.spec("friendly_name")), "Contract panel")
@@ -290,6 +351,8 @@ class SetupRoutesHttpTest {
             ) { _, method, _ ->
                 when (method.name) {
                     "getSoc", "getRecommendedWebView" -> null
+                    "getId" -> profileId
+                    "getDisplayName" -> if (profileId == "generic") "Unknown panel" else "Tuya TPA10"
                     else -> error("Unexpected profile read: ${method.name}")
                 }
             } as DeviceProfile
@@ -307,7 +370,7 @@ class SetupRoutesHttpTest {
             }
             field("setupState", SetupState(
                 fixture.config, system, learning, profile, context, { 0 },
-                { DiscoveryResult() }, { false },
+                { DiscoveryResult() }, { webView },
                 { system.resolveDashboard(fixture.config.dashboardPackage) == SystemController.BUILTIN_DASHBOARD },
                 kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Job().apply { cancel() }),
                 io.panelassistant.android.util.RendererPreparationCoordinator(

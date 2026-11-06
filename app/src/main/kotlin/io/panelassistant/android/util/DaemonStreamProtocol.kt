@@ -1,7 +1,6 @@
 package io.panelassistant.android.util
 
 import io.panelassistant.android.platform.DaemonStreamResult
-import java.io.BufferedReader
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.concurrent.atomic.AtomicBoolean
@@ -12,12 +11,12 @@ internal object DaemonStreamProtocol {
         command: String,
         openSource: () -> InputStream,
         expectedBytes: Long,
-        replies: BufferedReader,
+        replies: InputStream,
         output: OutputStream,
         shutdownOutput: () -> Unit,
     ): DaemonStreamResult {
         output.apply { write((command + "\n").toByteArray()); flush() }
-        return when (val first = replies.readLine()?.trim()) {
+        return when (val first = HelperSocketProtocol.readReply(replies)) {
             null -> DaemonStreamResult.Indeterminate
             "ERR" -> DaemonStreamResult.Unsupported
             "READY" -> {
@@ -27,7 +26,7 @@ internal object DaemonStreamProtocol {
                 }
                 output.flush()
                 shutdownOutput()
-                replies.readLine()?.trim()
+                HelperSocketProtocol.readReply(replies)
                     ?.let(DaemonStreamResult::Reply)
                     ?: DaemonStreamResult.Indeterminate
             }

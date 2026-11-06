@@ -1,5 +1,8 @@
 package io.panelassistant.android.util
 
+import io.panelassistant.android.logship.LogCapture
+import io.panelassistant.android.control.FakeRootShell
+import io.panelassistant.android.metrics.OsMetricSource
 import io.panelassistant.android.platform.DaemonLongResult
 import io.panelassistant.android.platform.DaemonStreamResult
 import java.io.ByteArrayInputStream
@@ -8,6 +11,9 @@ import java.io.IOException
 import java.util.Collections
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -18,6 +24,96 @@ import org.junit.Test
 
 class HelperClientIdentityTest {
     @get:org.junit.Rule val temporary = org.junit.rules.TemporaryFolder()
+
+    @Test
+    fun governorReadsUseTypedVersionAdmissionOnTheirOperationConnection() {
+        val first = FakeGeneration(
+            version = HelperBootstrapReply.Line("HELPER version=1.5.0 proto=1.5"),
+            bytesReplies = mapOf("GOVREAD CURRENT" to "GOVREAD Vendor_1.fast-2\n".toByteArray()),
+        )
+        val transport = FakeHelperTransport(first)
+        first.afterVersion = { transport.generation = FakeGeneration(
+            version = HelperBootstrapReply.Line("HELPER version=2.0.0 proto=2.5"),
+        ) }
+        val client = IdentityAdmittingHelperClient(transport)
+
+        assertEquals("Vendor_1.fast-2", client.cpuGovernor())
+        val read = transport.byteCommands.single()
+        assertEquals("GOVREAD CURRENT", read.command)
+        assertEquals(4104L, read.maxBytes)
+        assertEquals(transport.bootstrapCommands.single().session, read.session)
+        assertEquals(first.id, read.generation)
+        assertNull(client.cpuAvailableGovernors()) // Replacement is admitted afresh, never on old proof.
+        assertEquals(1, transport.byteCommands.size)
+        assertEquals(2, transport.closedSessions.size)
+    }
+
+    @Test
+    fun governorReadsAcceptForwardMinorAndPreserveAvailableOrderAtTheRawBound() {
+        val payload = (listOf("z".repeat(63)) + List(63) { "a".repeat(63) }).joinToString(" ")
+        val transport = FakeHelperTransport(FakeGeneration(
+            version = HelperBootstrapReply.Line("HELPER version=1.9.0 proto=1.9"),
+            bytesReplies = mapOf("GOVREAD AVAILABLE" to "GOVREAD $payload\n".toByteArray()),
+        ))
+        assertEquals(payload.split(' '), IdentityAdmittingHelperClient(transport).cpuAvailableGovernors())
+        assertEquals(4095, payload.length)
+    }
+
+    @Test
+    fun malformedGovernorRepliesAreUnavailableInsteadOfRootFallback() {
+        val oversizedPayload = (List(63) { "a".repeat(63) } + listOf("b".repeat(31), "c".repeat(32))).joinToString(" ")
+        val malformed = listOf(
+            null, "ERR\n", "", "GOVREAD \n", "GOVREAD a", "GOVREAD a\nextra\n",
+            "GOVREAD a\r\n", "GOVREAD a\tbad\n", "GOVREAD a\u0000\n", "GOVREAD véndor\n",
+            "GOVREAD  a\n", "GOVREAD a \n", "GOVREAD a  b\n", "GOVREAD /path\n",
+            "GOVREAD ${"a".repeat(64)}\n", "GOVREAD $oversizedPayload\n",
+        )
+        for (reply in malformed) {
+            val transport = FakeHelperTransport(FakeGeneration(
+                version = HelperBootstrapReply.Line("HELPER version=1.5.0 proto=1.5"),
+                bytesReplies = mapOf("GOVREAD CURRENT" to reply?.toByteArray(), "GOVREAD AVAILABLE" to reply?.toByteArray()),
+            ))
+            assertGovernorsUnavailableWithoutRoot(IdentityAdmittingHelperClient(transport))
+        }
+        val multiple = FakeHelperTransport(FakeGeneration(
+            version = HelperBootstrapReply.Line("HELPER version=1.5.0 proto=1.5"),
+            bytesReplies = mapOf("GOVREAD CURRENT" to "GOVREAD a b\n".toByteArray()),
+        ))
+        assertNull(IdentityAdmittingHelperClient(multiple).cpuGovernor())
+    }
+
+    @Test
+    fun missingOldUnverifiedOrRefusedHelpersNeverReceiveGovernorReadsOrTriggerRoot() {
+        val versions = listOf(
+            HelperBootstrapReply.Missing, HelperBootstrapReply.Malformed, HelperBootstrapReply.Line("ERR"),
+            HelperBootstrapReply.Line("HELPER version=1.4.0 proto=1.4"),
+            HelperBootstrapReply.Line("HELPER version=2.5.0 proto=2.5"),
+            HelperBootstrapReply.Line("HELPER version=1.5.0 proto=1.5 extra=bad extra=duplicate"),
+        )
+        for (version in versions) {
+            val transport = FakeHelperTransport(FakeGeneration(version = version))
+            assertGovernorsUnavailableWithoutRoot(IdentityAdmittingHelperClient(transport))
+            assertTrue(transport.byteCommands.isEmpty())
+            assertTrue(transport.bootstrapCommands.all { it.command == "VERSION" })
+            assertEquals(12, transport.closedSessions.size) // one connection per read, no raw reconnect
+        }
+        assertGovernorsUnavailableWithoutRoot(IdentityAdmittingHelperClient(object : HelperCommandTransport {
+            override fun open(): HelperCommandSession? = null
+        }))
+    }
+
+    private fun assertGovernorsUnavailableWithoutRoot(client: IdentityAdmittingHelperClient) {
+        val root = FakeRootShell(outputs = mapOf("scaling_governor" to "performance", "scaling_available_governors" to "performance powersave"))
+        val source = OsMetricSource(daemon = client, root = root, directRead = { null })
+        repeat(6) {
+            assertNull(source.cpuGovernor())
+            assertNull(source.cpuAvailableGovernors())
+        }
+        assertTrue(root.outputRan.isEmpty())
+        assertTrue(root.isolatedOutputRan.isEmpty())
+        assertTrue(root.ran.isEmpty())
+        assertEquals(0, root.availabilityChecks)
+    }
 
     @Test
     fun policyRevokedDuringVersionOrPingPreparationBlocksStreamSubmission() {
@@ -91,13 +187,78 @@ class HelperClientIdentityTest {
             }
 
             assertEquals(InstallOutcome.Succeeded,
-                HelperInstallTransaction(IdentityAdmittingHelperClient(transport)).install(source, directory, gate))
+                HelperInstallTransaction(IdentityAdmittingHelperClient(transport)).install(source, directory, beforeSubmit = gate))
             assertFalse(admitted)
             assertEquals(1, transport.fileCommands.size)
             assertTrue(transport.longCommands.isEmpty())
             assertFalse(source.exists())
             assertTrue(directory.listFiles().orEmpty().isEmpty())
         }
+    }
+
+    private fun systemCapture(client: IdentityAdmittingHelperClient, suStarts: AtomicInteger) = LogCapture.system(
+        CoroutineScope(Dispatchers.IO),
+        helperLines = { error("no stream in a backlog test") },
+        helperDump = client::logcatDump,
+        processStarter = { suStarts.incrementAndGet(); error("su must not start for the system backlog") },
+    )
+
+    @Test
+    fun systemCaptureBacklogComesFromHelperDumpWithoutSu() {
+        val dump = "OK\n[ 1790592713.123  123: 456 E/AndroidRuntime ]\n" +
+            "java.lang.IllegalStateException: password=hunter2secret\\x0A    at Example.first(Example.kt:12)\n\n" +
+            "[ 1790592713.124  123: 456 I/Example ]\nrecovered\n\n[ 1790592713.125  1: 2 I/Cut ]\npart"
+        val transport = FakeHelperTransport(FakeGeneration(
+            version = HelperBootstrapReply.Line("HELPER version=1.4.0 proto=1.4"),
+            bytesReplies = mapOf("LOGCATDUMP 300" to dump.toByteArray()),
+        ))
+        val suStarts = AtomicInteger()
+        val capture = systemCapture(IdentityAdmittingHelperClient(transport, nowNs = { 0L }), suStarts)
+        try {
+            assertEquals(
+                listOf(
+                    "[ 1790592713.123  123: 456 E/AndroidRuntime ]\n" +
+                        "java.lang.IllegalStateException: password=***\n    at Example.first(Example.kt:12)",
+                    "[ 1790592713.124  123: 456 I/Example ]\nrecovered",
+                ),
+                capture.initialBacklog(),
+            )
+            assertEquals(0, suStarts.get())
+            assertEquals(listOf("LOGCATDUMP 300"), transport.byteCommands.map { it.command })
+            assertEquals(transport.bootstrapCommands.single().session, transport.byteCommands.single().session)
+        } finally {
+            capture.close()
+        }
+    }
+
+    @Test
+    fun systemCaptureBacklogIsEmptyFromAPreDumpHelperWithoutSu() {
+        for (version in listOf("HELPER version=1.3.1 proto=1.3", "HELPER version=2.0.0 proto=2.4", "ERR")) {
+            val transport = FakeHelperTransport(FakeGeneration(
+                version = HelperBootstrapReply.Line(version),
+                bytesReplies = mapOf("LOGCATDUMP 300" to "OK\n[ 1.000 1: 2 I/X ]\nleak\n\n".toByteArray()),
+            ))
+            val suStarts = AtomicInteger()
+            val capture = systemCapture(IdentityAdmittingHelperClient(transport, nowNs = { 0L }), suStarts)
+            try {
+                assertEquals(emptyList(), capture.initialBacklog(), version)
+                assertEquals(0, suStarts.get(), version)
+                assertTrue(transport.byteCommands.isEmpty(), version)
+            } finally {
+                capture.close()
+            }
+        }
+    }
+
+    @Test
+    fun logcatDumpRefusalYieldsNoBacklog() {
+        val transport = FakeHelperTransport(FakeGeneration(
+            version = HelperBootstrapReply.Line("HELPER version=1.4.0 proto=1.4"),
+            bytesReplies = mapOf("LOGCATDUMP 300" to "ERR\n".toByteArray()),
+        ))
+        assertEquals(emptyList(), IdentityAdmittingHelperClient(transport, nowNs = { 0L }).logcatDump(300))
+        assertEquals(emptyList(), IdentityAdmittingHelperClient(transport, nowNs = { 0L }).logcatDump(1001))
+        assertEquals(1, transport.byteCommands.size)
     }
 
     @Test
@@ -608,6 +769,7 @@ private data class FakeGeneration(
     val ping: HelperBootstrapReply = HelperBootstrapReply.Line("OK"),
     val companionCaps: HelperBootstrapReply = HelperBootstrapReply.Line("COMPANIONCAPS 1 BACKUP RESTORE STATUS JOURNAL"),
     val lineReply: String? = "OK",
+    val bytesReplies: Map<String, ByteArray?> = emptyMap(),
     val lineReplies: Map<String, String?> = emptyMap(),
     val streamReply: DaemonStreamResult = DaemonStreamResult.Reply("OK"),
 ) {
@@ -666,7 +828,7 @@ private class FakeHelperTransport(initial: FakeGeneration = FakeGeneration()) : 
 
             override fun sendBytes(cmd: String, maxBytes: Long): ByteArray? {
                 byteCommands += RecordedBytes(session, snapshot.id, cmd, maxBytes)
-                return byteArrayOf(1, 2, 3)
+                return snapshot.bytesReplies.getOrElse(cmd) { byteArrayOf(1, 2, 3) }
             }
 
             override fun readLogcatLine(): String? = null

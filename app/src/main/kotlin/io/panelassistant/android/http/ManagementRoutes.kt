@@ -13,7 +13,7 @@ import kotlinx.coroutines.withContext
 /** Passive diagnostics and status share the existing active-read guard for explicit refreshes. */
 internal fun Route.managementRoutes(
     diagnostics: () -> String,
-    status: (StorageHealthSnapshot, String?, Boolean) -> String,
+    status: (StorageHealthSnapshot, String?, Boolean, Boolean) -> String,
     admitActiveRead: suspend (OpCall) -> Boolean,
     refreshUpdates: suspend () -> Unit,
     refreshStorage: suspend () -> StorageHealthSnapshot?,
@@ -32,6 +32,7 @@ internal fun Route.managementRoutes(
     get("/status") {
         val updateRefreshRequested = call.request.queryParameters["refresh"] == "1"
         val homeProofRequested = call.request.queryParameters["home_proof"] == "1"
+        val setupForegroundRequested = call.request.queryParameters["setup_foreground"] == "1"
         val observationNonce = call.request.queryParameters["database_observation_nonce"]
         val refreshRequested = updateRefreshRequested || observationNonce != null
         if (refreshRequested && !admitActiveRead(call)) return@get
@@ -53,6 +54,7 @@ internal fun Route.managementRoutes(
                     statusStorage.snapshot,
                     databaseObservationProof(refreshRequested, observationNonce, statusStorage),
                     homeProofRequested,
+                    setupForegroundRequested,
                 )
             },
             ContentType.Application.Json,

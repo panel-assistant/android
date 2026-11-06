@@ -53,4 +53,7 @@ const helper_app_package *helper_app_package_for(enum helper_caller caller);
 // verb's target is the app's own package.
 int helper_known_package(const char *package);
 
+// Only ENOENT at both canonical addresses proves removal. Permission/IO errors retain the helper.
+int helper_app_data_absent(void);
+
 #endif

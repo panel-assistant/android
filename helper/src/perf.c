@@ -1,5 +1,8 @@
 #include "perf.h"
 #include "util.h"
+#include "sysexec.h"
+
+#include <inttypes.h>
 
 #include <ctype.h>
 #include <dirent.h>
@@ -8,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -218,4 +222,87 @@ void cmd_perfdump(conn_ctx *ctx, const char *args) {
         closedir(td);
     }
     reply(fd, "@END\n");
+}
+
+#define GFX_CAPTURE_BYTES (128u * 1024u)
+
+// HWUI's summary counters are cumulative. Only one complete primary summary is authoritative.
+static int gfx_unsigned(const char **text, uint64_t limit, uint64_t *value) {
+    const char *p = *text;
+    if (*p < '0' || *p > '9' || (*p == '0' && p[1] >= '0' && p[1] <= '9')) return 0;
+    uint64_t n = 0;
+    do {
+        unsigned digit = (unsigned)(*p++ - '0');
+        if (n > (limit - digit) / 10u) return 0;
+        n = n * 10u + digit;
+    } while (*p >= '0' && *p <= '9');
+    *text = p; *value = n; return 1;
+}
+static int gfx_failure(const char *line) {
+    static const char *const prefixes[] = { "Error", "Exception", "SecurityException",
+        "java.lang.", "Permission denial", "Permission denied", "Can't find service",
+        "Can't bind", "Service not found", "Failed", "No process found", NULL };
+    for (unsigned i = 0; prefixes[i]; i++)
+        if (!strncasecmp(line, prefixes[i], strlen(prefixes[i]))) return 1;
+    return 0;
+}
+static int gfx_summary(char *raw, const char *package, uint64_t *since, uint64_t *total, uint64_t *janky) {
+    unsigned stage = 0, processes = 0;
+    char *line = raw;
+    while (*line) {
+        char *next = strchr(line, '\n');
+        if (!next) return 0;
+        *next++ = 0;
+        while (*line == ' ' || *line == '\t') line++;
+        if (gfx_failure(line)) return 0;
+        if (!strncmp(line, "** Graphics info", 16)) {
+            const char *p = line;
+            static const char prefix[] = "** Graphics info for pid ";
+            if (++processes != 1 || stage || strncmp(p, prefix, sizeof prefix - 1)) return 0;
+            p += sizeof prefix - 1;
+            uint64_t pid;
+            if (!gfx_unsigned(&p, INT32_MAX, &pid) || !pid) return 0;
+            char suffix[128];
+            snprintf(suffix, sizeof suffix, " [%s] **", package);
+            if (strcmp(p, suffix)) return 0;
+        } else if (!strncmp(line, "Stats since:", 12)) {
+            const char *p = line + 12;
+            if (stage != 0 || *p++ != ' ' || !gfx_unsigned(&p, UINT64_MAX, since) || strcmp(p, "ns")) return 0;
+            stage = 1;
+        } else if (!strncmp(line, "Total frames rendered:", 22)) {
+            const char *p = line + 22;
+            if (stage != 1 || *p++ != ' ' || !gfx_unsigned(&p, UINT32_MAX, total) || *p) return 0;
+            stage = 2;
+        } else if (!strncmp(line, "Janky frames:", 13)) {
+            const char *p = line + 13;
+            uint64_t percent;
+            if (stage != 2 || *p++ != ' ' || !gfx_unsigned(&p, UINT32_MAX, janky) ||
+                strncmp(p, " (", 2)) return 0;
+            p += 2;
+            if (!gfx_unsigned(&p, 100, &percent) || *p++ != '.' ||
+                p[0] < '0' || p[0] > '9' || p[1] < '0' || p[1] > '9' || strcmp(p + 2, "%)")) return 0;
+            stage = 3;
+        }
+        line = next;
+    }
+    return processes == 1 && stage == 3 && *janky <= *total;
+}
+void cmd_gfxinfo(conn_ctx *ctx, const char *args) {
+    const helper_app_package *entry = helper_app_package_for(ctx->caller);
+    if (strcmp(args, "SELF") || !entry) { reply(ctx->fd, "ERR\n"); return; }
+    char *raw = malloc(GFX_CAPTURE_BYTES + 1);
+    if (!raw) { reply(ctx->fd, "ERR\n"); return; }
+    size_t used = 0;
+    if (sysexec_capture_gfxinfo(entry->package, raw, GFX_CAPTURE_BYTES + 1, &used) != 0 ||
+        !used || used > GFX_CAPTURE_BYTES || memchr(raw, 0, used) || raw[used-1] != '\n') {
+        free(raw); reply(ctx->fd, "ERR\n"); return;
+    }
+    raw[used] = 0;
+    uint64_t since = 0, total = 0, janky = 0;
+    if (!gfx_summary(raw, entry->package, &since, &total, &janky)) {
+        free(raw); reply(ctx->fd, "ERR\n"); return;
+    }
+    char out[128];
+    snprintf(out, sizeof out, "GFXINFO SINCE=%" PRIu64 " TOTAL=%" PRIu64 " JANKY=%" PRIu64 "\n", since, total, janky);
+    free(raw); reply(ctx->fd, out);
 }

@@ -589,13 +589,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** The built-in dashboard, through the HOME intent while it lives in the HOME task: an explicit start
-     *  would open a second one in this activity's task. */
-    private fun builtinDashboardIntent(): Intent {
-        val env = AndroidSystemEnv(this)
-        return if (SystemController(env).builtinInHomeTask()) env.dashboardHomeIntent()
-        else Intent(this, DashboardActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    }
 
     private fun dashboardRecoveryState(): PanelStatus.DashboardRecoveryState =
         PanelStatus.dashboardRecoveryState(

@@ -4,6 +4,8 @@
     <string name="proximity_wizard_wave_twice_hint">Dwa szybkie machnięcia, a potem odsuń rękę.</string>
     <string name="proximity_wizard_normal_position">Wróć do swojej zwykłej pozycji</string>
     <string name="proximity_wizard_hands_down">Trzymaj ręce opuszczone.</string>
+    <string name="proximity_wizard_presence_refused_hint">Czujnik nie wykrywa niezawodnie, że tu stoisz, więc obecność pozostaje wyłączona. Trzymaj ręce opuszczone.</string>
+    <string name="proximity_wizard_speech_wave_baseline_refused">Czujnik nie był w stanie niezawodnie wykryć, że stoisz tam, skąd zwykle korzystasz z panelu, więc wykrywanie obecności pozostanie wyłączone. Zostań na miejscu i trzymaj ręce opuszczone. Teraz zamiast tego przetestuję machnięcie ręką.</string>
     <string name="proximity_wizard_review_wave_only">Obecność niedostępna.\nMachnięcie zweryfikowane.</string>
     <string name="proximity_wizard_review_neither">Nie zweryfikowano ani obecności, ani machnięcia. Twoje poprzednie ustawienia zostaną zachowane.</string>
     <string name="proximity_wizard_saved_wave_only">Ustawienia machnięcia zapisane.\nWykrywanie obecności jest niedostępne.</string>

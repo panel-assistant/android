@@ -33,9 +33,13 @@ internal class TameDesiredStateReconciler(
     private val reassert: (String) -> Boolean,
     private val restore: (TameOwnedMarker) -> Boolean,
     private val clearAbsent: (TameOwnedMarker) -> Boolean,
+    private val allowTaming: () -> Boolean = { true },
 ) {
-    fun reconcile(desired: Set<String>, stopping: () -> Boolean = { false }): TameReconcileResult {
+    fun reconcile(requested: Set<String>, stopping: () -> Boolean = { false }): TameReconcileResult {
         if (stopping()) return TameReconcileResult(0, retryableFailure = false)
+        // Incomplete first setup remains uninstallable. Previously owned packages are still restored;
+        // durable selections stay saved so the first completed pass can apply them. Repairs stay eligible.
+        val desired = requested.takeIf { allowTaming() }.orEmpty()
         val owned = when (val snapshot = readOwned()) {
             is TameOwnedMarkers.Ready -> snapshot.byPackage
             is TameOwnedMarkers.Overflow,

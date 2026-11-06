@@ -299,12 +299,12 @@
     request.title = joined ? cfg.i18nText("configure.zigbee.already_joined", "This Zigbee router is already joined.")
       : !enabled ? cfg.i18nText("configure.zigbee.enable_first", "Turn on the Zigbee router switch and save first.")
       : coolingDown ? cfg.i18nText("configure.zigbee.recent_request", "A join request was sent recently.")
-      : cfg.i18nText("configure.zigbee.request_help", "Request Repeater mode while coordinator permit-join is open.");
+      : cfg.i18nText("configure.zigbee.request_help", "Request Repeater mode while Permit join is enabled on your coordinator.");
     request.onclick = function () { requestJoin(request); };
     return cfg.el("div", { class: "frow", id: "cfg-zigbee_join" }, [
       cfg.el("div", { class: "flabel" }, [
         cfg.el("span", { text: cfg.i18nText("configure.zigbee.join_network", "Join Zigbee network") }),
-        cfg.el("small", { text: cfg.i18nText("configure.zigbee.join_help", "Open permit-join on your coordinator, then request Repeater mode.") }),
+        cfg.el("small", { text: cfg.i18nText("configure.zigbee.join_help", "Enable Permit join on your coordinator, then request Repeater mode.") }),
       ]),
       cfg.el("div", { class: "fctl" }, [request]),
     ]);
@@ -421,7 +421,7 @@
     return cfg.el("div", { class: "frow frow-action voice-wake-word-download" }, [
       cfg.el("div", { class: "flabel" }, [
         title,
-        cfg.el("small", { text: cfg.i18nText("configure.voice.download_help", "Models trained and published by others. Check who made it and its licence before downloading.") }),
+        cfg.el("small", { text: cfg.i18nText("configure.voice.download_help", "Models trained and published by others. Check who made them and their licences before downloading.") }),
         cfg.el("small", { class: "voice-wake-word-download-terms" }, [
           cfg.el("span", { text: cfg.i18nText("configure.voice.download_author", "By {author}", { author: String(picked.author || "") }) + " · " }),
           cfg.el("a", {

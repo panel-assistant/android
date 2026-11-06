@@ -6,11 +6,25 @@ import io.panelassistant.android.BuildConfig
 import io.panelassistant.android.platform.Daemon
 import io.panelassistant.android.platform.DaemonLongResult
 import io.panelassistant.android.platform.DaemonStreamResult
+import io.panelassistant.android.platform.HelperGfxInfo
+import io.panelassistant.android.platform.HelperCdpState
+import io.panelassistant.android.platform.HelperGpioState
+import io.panelassistant.android.platform.HelperRelayClass
+import io.panelassistant.android.platform.HelperAdbState
+import io.panelassistant.android.platform.HelperWifiStatus
+import io.panelassistant.android.platform.HelperZigbeeHealth
+import io.panelassistant.android.platform.HelperZigbeeProcess
+import io.panelassistant.android.platform.HelperZigbeeState
 import java.io.BufferedInputStream
+import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.InputStream
 import java.io.IOException
+import java.net.SocketTimeoutException
 import java.nio.charset.StandardCharsets
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
+import org.json.JSONObject
 
 const val SUPPORTED_HELPER_PROTOCOL_MAJOR = 1
 
@@ -71,6 +85,89 @@ private fun classifyHelperIdentity(reply: String): HelperIdentityStatus {
     } else {
         HelperIdentityStatus.Incompatible(identity, HelperIdentityIssue.UNSUPPORTED_PROTOCOL)
     }
+}
+
+private const val GOVREAD_PROTOCOL_MINOR = 5
+private const val MAX_GOVERNOR_PAYLOAD_BYTES = 4095
+private const val MAX_GOVREAD_REPLY_BYTES = MAX_GOVERNOR_PAYLOAD_BYTES + 9L // prefix plus LF
+private val GOVERNOR_TOKEN = Regex("[A-Za-z0-9_.-]{1,63}")
+
+private fun parseGovernorReply(reply: ByteArray?, single: Boolean): List<String>? {
+    if (reply == null || reply.size > MAX_GOVREAD_REPLY_BYTES || reply.isEmpty()) return null
+    if (reply.last() != '\n'.code.toByte() || reply.dropLast(1).any { (it.toInt() and 0xff) !in 0x20..0x7e }) return null
+    val line = String(reply, 0, reply.size - 1, StandardCharsets.US_ASCII)
+    if (!line.startsWith("GOVREAD ")) return null
+    val payload = line.removePrefix("GOVREAD ")
+    if (payload.length > MAX_GOVERNOR_PAYLOAD_BYTES) return null
+    val tokens = payload.split(' ')
+    return tokens.takeIf { (!single || it.size == 1) && it.all(GOVERNOR_TOKEN::matches) }
+}
+
+private val ZIGBEE_STATE_FIELDS = listOf(
+    "managed", "guard", "run", "binary", "broker", "package_marker", "running", "guard_running", "package",
+)
+private val ZIGBEE_HEALTH_FIELDS = ZIGBEE_STATE_FIELDS + listOf(
+    "gateway_pid", "gateway_start", "gateway_jiffies", "guard_pid", "guard_start", "guard_jiffies",
+    "total_jiffies", "recursive", "netinfo",
+)
+private val ZIGBEE_FILES = listOf("run_guard_process.sh", "guard_process.sh", "run.sh", "zgateway", "mosquitto", "package_version")
+private val UNSIGNED_DECIMAL = Regex("0|[1-9][0-9]*")
+
+private fun zigbeeFrame(bytes: ByteArray?, command: String, fields: List<String>, maxBytes: Int): Map<String, String>? {
+    bytes ?: return null
+    if (bytes.size > maxBytes || bytes.isEmpty() || bytes.last() != 10.toByte() ||
+        bytes.any { (it.toInt() and 255) != 10 && (it.toInt() and 255) !in 32..126 }
+    ) return null
+    val lines = String(bytes, StandardCharsets.US_ASCII).removeSuffix("\n").split('\n')
+    if (lines.size != fields.size + 2 || lines.first() != "$command 1" || lines.last() != "END") return null
+    return fields.mapIndexed { index, key ->
+        val line = lines[index + 1]
+        if (!line.startsWith("$key=")) return null
+        key to line.removePrefix("$key=")
+    }.toMap()
+}
+
+private fun zigbeeFlag(value: String?): Boolean? = when (value) { "0" -> false; "1" -> true; else -> null }
+private fun zigbeeNumber(value: String): Long? = value.takeIf(UNSIGNED_DECIMAL::matches)?.toLongOrNull()
+
+private fun zigbeeHex(value: String, maxBytes: Int, allowControls: Boolean = false): String? {
+    if (value.length > maxBytes * 2 || value.length % 2 != 0 || value.any { it !in '0'..'9' && it !in 'a'..'f' }) return null
+    val bytes = ByteArray(value.length / 2) { value.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
+    val decoded = runCatching {
+        StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes)).toString()
+    }.getOrNull() ?: return null
+    return decoded.takeIf { allowControls || it.none(Char::isISOControl) }
+}
+
+private fun parseZigbeeState(fields: Map<String, String>): HelperZigbeeState? {
+    val flags = ZIGBEE_STATE_FIELDS.take(8).map { zigbeeFlag(fields[it]) ?: return null }
+    val version = zigbeeHex(fields.getValue("package"), 120) ?: return null
+    return HelperZigbeeState(ZIGBEE_FILES.filterIndexed { index, _ -> flags[index] }.toSet(), flags[6], flags[7], version.trim().ifEmpty { null })
+}
+
+private fun parseZigbeeHealth(bytes: ByteArray?): HelperZigbeeHealth? {
+    val fields = zigbeeFrame(bytes, "ZIGBEEHEALTH", ZIGBEE_HEALTH_FIELDS, 9216) ?: return null
+    val state = parseZigbeeState(fields) ?: return null
+    fun process(prefix: String): HelperZigbeeProcess? {
+        val pid = zigbeeNumber(fields.getValue("${prefix}_pid"))?.takeIf { it in 1..Int.MAX_VALUE.toLong() } ?: return null
+        val start = zigbeeNumber(fields.getValue("${prefix}_start")) ?: return null
+        val jiffies = zigbeeNumber(fields.getValue("${prefix}_jiffies")) ?: return null
+        return HelperZigbeeProcess(pid.toInt(), start, jiffies)
+    }
+    fun absent(prefix: String) = listOf("pid", "start", "jiffies").all { fields["${prefix}_$it"] == "-" }
+    val gateway = process("gateway")
+    val guard = process("guard")
+    if (gateway == null && !absent("gateway") || guard == null && !absent("guard") ||
+        state.running != (gateway != null) || state.guardRunning != (guard != null) ||
+        gateway != null && guard != null && gateway.pid == guard.pid
+    ) return null
+    val total = zigbeeNumber(fields.getValue("total_jiffies")) ?: return null
+    val recursive = zigbeeFlag(fields["recursive"]) ?: return null
+    val netinfo = fields.getValue("netinfo").let {
+        if (it == "-") null else zigbeeHex(it, 4096, allowControls = true) ?: return null
+    }
+    return HelperZigbeeHealth(state, gateway, guard, total, recursive, netinfo)
 }
 
 private const val HELPER_BOOTSTRAP_TIMEOUT_MS = 1_000L
@@ -157,12 +254,31 @@ internal fun readHelperBootstrapLine(
     }
 }
 
+/** Install the remaining write timeout before either identity request can block. */
+internal fun exchangeHelperBootstrap(
+    command: String, input: InputStream, output: java.io.OutputStream,
+    setTimeoutMs: (Int) -> Unit, deadline: MonotonicDeadline,
+): HelperBootstrapReply = try {
+    require(command == "VERSION" || command == "PING" || command == "COMPANIONCAPS" || command == "BUILDID")
+    val remaining = deadline.remainingMs()
+    if (remaining <= 0L) HelperBootstrapReply.Missing else {
+        setTimeoutMs(remaining.toInt())
+        output.write((command + "\n").toByteArray(StandardCharsets.US_ASCII))
+        output.flush()
+        readHelperBootstrapLine(input, setTimeoutMs, deadline)
+    }
+} catch (_: Exception) {
+    HelperBootstrapReply.Missing
+}
+
 internal interface HelperCommandSession : AutoCloseable {
     fun bootstrap(command: String, deadline: MonotonicDeadline): HelperBootstrapReply
     fun send(cmd: String): String?
     fun sendLong(cmd: String, timeoutMs: Long): DaemonLongResult
     fun sendFile(cmd: String, source: File, timeoutMs: Long): DaemonStreamResult
     fun sendBytes(cmd: String, maxBytes: Long): ByteArray?
+    fun sendBytes(cmd: String, maxBytes: Long, deadline: MonotonicDeadline): ByteArray? =
+        if (deadline.remainingMs() > 0L) sendBytes(cmd, maxBytes) else null
     fun readLogcatLine(): String?
     fun backupCompanion(
         packageName: String,
@@ -192,6 +308,8 @@ internal sealed interface HelperLogcatOpenResult {
 
 internal interface HelperCommandTransport {
     fun open(): HelperCommandSession?
+    fun open(deadline: MonotonicDeadline): HelperCommandSession? =
+        if (deadline.remainingMs() > 0L) open() else null
 }
 
 private data class HelperIdentityProbe(
@@ -242,6 +360,176 @@ internal class IdentityAdmittingHelperClient(
             override fun readLine(): String? = session.readLogcatLine()
             override fun close() = session.close()
         })
+    }
+
+    /**
+     * Raw long-format backlog lines from `LOGCATDUMP` (blank lines separate entries). Only a
+     * compatible helper at protocol 1.4 or later is asked; an older helper, a refusal or a failed
+     * exchange yields no backlog. There is no root fallback.
+     */
+    fun logcatDump(lines: Int): List<String> {
+        if (lines !in 1..LOGCAT_DUMP_MAX_LINES) return emptyList()
+        val session = transport.open() ?: return emptyList()
+        return session.use {
+            val status = probeIdentity(it, newDeadline()).status
+            if (status !is HelperIdentityStatus.Compatible ||
+                status.identity.protocolMinor < LOGCAT_DUMP_PROTOCOL_MINOR
+            ) return emptyList()
+            val bytes = it.sendBytes("LOGCATDUMP $lines", LOGCAT_DUMP_MAX_REPLY_BYTES) ?: return emptyList()
+            val reader = HelperLogcatLineReader(ByteArrayInputStream(bytes))
+            if (runCatching { reader.readLine() }.getOrNull() != "OK") return emptyList()
+            buildList {
+                // A cap or deadline can cut the final line; the reader refuses that partial tail.
+                while (true) add(runCatching { reader.readLine() }.getOrNull() ?: break)
+            }
+        }
+    }
+
+    override fun cpuGovernor(): String? = readGovernors("CURRENT", single = true)?.single()
+
+    override fun cpuAvailableGovernors(): List<String>? = readGovernors("AVAILABLE", single = false)
+
+    private fun readGovernors(selector: String, single: Boolean): List<String>? {
+        val session = transport.open() ?: return null
+        return session.use {
+            // GOVREAD has no legacy/raw path: this identity belongs to the socket carrying the read.
+            val version = it.bootstrap("VERSION", newDeadline()) as? HelperBootstrapReply.Line ?: return null
+            val identity = parseHelperIdentity(version.value) ?: return null
+            if (identity.protocolMajor != SUPPORTED_HELPER_PROTOCOL_MAJOR || identity.protocolMinor < GOVREAD_PROTOCOL_MINOR) return null
+            parseGovernorReply(it.sendBytes("GOVREAD $selector", MAX_GOVREAD_REPLY_BYTES), single)
+        }
+    }
+
+    override fun zigbeeState(): HelperZigbeeState? =
+        zigbeeFrame(readVersioned("ZIGBEESTATE", 6, 512), "ZIGBEESTATE", ZIGBEE_STATE_FIELDS, 512)?.let(::parseZigbeeState)
+
+    override fun zigbeeHealth(): HelperZigbeeHealth? = parseZigbeeHealth(readVersioned("ZIGBEEHEALTH", 7, 9216))
+
+    override fun zigbeeRole(): String? {
+        val bytes = readVersioned("ZIGBEEROLE", 8, 8204) ?: return null
+        if (bytes.isEmpty() || bytes.size > 8204 || bytes.last() != 10.toByte() ||
+            bytes.dropLast(1).any { (it.toInt() and 255) !in 32..126 }
+        ) return null
+        val line = String(bytes, 0, bytes.size - 1, StandardCharsets.US_ASCII)
+        if (!line.startsWith("ZIGBEEROLE ")) return null
+        val raw = zigbeeHex(line.removePrefix("ZIGBEEROLE "), 4096, allowControls = true) ?: return null
+        return runCatching {
+            (JSONObject(raw.trim()).opt("role") as? String)
+                ?.takeIf { it.isNotEmpty() && it.length <= 64 && it.none(Char::isISOControl) }
+        }.getOrNull()
+    }
+
+    override fun wifiStatus(): HelperWifiStatus? {
+        val bytes = readVersioned("WIFISTATUS", 9, 80) ?: return null
+        if (bytes.isEmpty() || bytes.size > 80 || bytes.last() != 10.toByte() ||
+            bytes.dropLast(1).any { (it.toInt() and 255) !in 32..126 }
+        ) return null
+        val line = String(bytes, 0, bytes.size - 1, StandardCharsets.US_ASCII)
+        val match = Regex("SSID=([0-9a-f]+|-) RSSI=(0|-[1-9][0-9]{0,2}|-)").matchEntire(line) ?: return null
+        val ssid = match.groupValues[1].let { if (it == "-") null else zigbeeHex(it, 32)?.takeIf(String::isNotEmpty) ?: return null }
+        val rssi = match.groupValues[2].let { if (it == "-") null else it.toIntOrNull()?.takeIf { value -> value in -126..0 } ?: return null }
+        return HelperWifiStatus(ssid, rssi)
+    }
+
+    override fun adbState(): HelperAdbState? {
+        val bytes = readVersioned("ADBSTATE", 10, 17) ?: return null
+        if (bytes.size != 17) return null
+        val match = Regex("PROPS=([01?]) LISTEN=([01?])\\n").matchEntire(String(bytes, StandardCharsets.US_ASCII)) ?: return null
+        fun state(value: String): Boolean? = when (value) { "1" -> true; "0" -> false; else -> null }
+        return HelperAdbState(state(match.groupValues[1]), state(match.groupValues[2]))
+    }
+
+    override fun cdpState(): HelperCdpState? {
+        val bytes = readVersioned("CDPSTATE", 13, 17, 5_000L) ?: return null
+        return when (String(bytes, StandardCharsets.US_ASCII)) {
+            "CDPSTATE PRESENT\n" -> HelperCdpState.PRESENT
+            "CDPSTATE ABSENT\n" -> HelperCdpState.ABSENT
+            "CDPSTATE UNKNOWN\n" -> HelperCdpState.UNKNOWN
+            else -> null
+        }
+    }
+
+    override fun supportsAdbRecoveryEnsure(): Boolean = adbRecoveryEnsure(submit = false)
+
+    override fun ensureAdbRecovery(): Boolean = adbRecoveryEnsure(submit = true)
+
+    /** No generic/raw admission: the action must carry its own version and exact bundled identity. */
+    private fun adbRecoveryEnsure(submit: Boolean): Boolean = runCatching {
+        val deadline = MonotonicDeadline(if (submit) 30_000L else bootstrapTimeoutMs, nowNs)
+        val session = transport.open(deadline) ?: return false
+        session.use {
+            // VERSION and BUILDID together share the shorter admission allowance.
+            val admission = deadline.cappedTo(bootstrapTimeoutMs)
+            if (admission.remainingMs() == 0L) return false
+            val version = it.bootstrap("VERSION", admission) as? HelperBootstrapReply.Line ?: return false
+            val identity = parseHelperIdentity(version.value) ?: return false
+            if (identity.protocolMajor != SUPPORTED_HELPER_PROTOCOL_MAJOR || identity.protocolMinor < 15) return false
+            if (admission.remainingMs() == 0L) return false
+            val build = it.bootstrap("BUILDID", admission) as? HelperBootstrapReply.Line ?: return false
+            if (!helperBuildIdentitySupported(build.value, BuildConfig.HELPER_BUILD_ID) || admission.remainingMs() == 0L) return false
+            if (!submit) true else {
+                val reply = it.sendBytes("ADBRECOVERYENSURE", 32, deadline)
+                deadline.remainingMs() > 0L && reply?.contentEquals("ADBRECOVERYENSURE READY\n".toByteArray(StandardCharsets.US_ASCII)) == true
+            }
+        }
+    }.getOrDefault(false)
+
+    override fun gfxInfo(): HelperGfxInfo? {
+        val bytes = readVersioned("GFXINFO SELF", 14, 128, 5_000L) ?: return null
+        if (bytes.size > 128) return null
+        val decimal = "(0|[1-9][0-9]{0,19})"
+        val match = Regex("GFXINFO SINCE=$decimal TOTAL=$decimal JANKY=$decimal\\n")
+            .matchEntire(String(bytes, StandardCharsets.US_ASCII)) ?: return null
+        val since = match.groupValues[1]
+        // Keep the unsigned epoch as a token: only equality, never signed arithmetic, is needed.
+        if (since.length == 20 && since > "18446744073709551615") return null
+        val total = match.groupValues[2].toLongOrNull()?.takeIf { it <= 4_294_967_295L } ?: return null
+        val janky = match.groupValues[3].toLongOrNull()?.takeIf { it <= total } ?: return null
+        return HelperGfxInfo(since, total, janky)
+    }
+
+    override fun relayCount(relayClass: HelperRelayClass): Int? {
+        val line = relayLine(readVersioned("RELAYREAD ${relayClass.name} COUNT", 11, 64, 5_000L)) ?: return null
+        val match = Regex("RELAYREAD ${relayClass.name} COUNT=(0|[1-9][0-9]?|\\?)").matchEntire(line) ?: return null
+        return match.groupValues[1].toIntOrNull()?.takeIf { it in 0..16 }
+    }
+
+    override fun relayRead(relayClass: HelperRelayClass, relay: Int): Boolean? {
+        if (relay !in 1..16) return null
+        val line = relayLine(readVersioned("RELAYREAD ${relayClass.name} $relay", 11, 64, 5_000L)) ?: return null
+        val match = Regex("RELAYREAD ${relayClass.name} RELAY=$relay VALUE=([01?])").matchEntire(line) ?: return null
+        return relayFlag(match.groupValues[1])
+    }
+
+    override fun gpioRead(pin: Int, timeoutMs: Long): HelperGpioState? {
+        if (pin !in 0..65535 || timeoutMs <= 0L) return null
+        val line = relayLine(readVersioned("GPIOREAD $pin", 12, 64, timeoutMs.coerceAtMost(1_500L))) ?: return null
+        val match = Regex("GPIOREAD $pin VALUE=([01?]) PREPARED=([01?])").matchEntire(line) ?: return null
+        return HelperGpioState(relayFlag(match.groupValues[1]), relayFlag(match.groupValues[2]))
+    }
+
+    private fun relayLine(bytes: ByteArray?): String? {
+        if (bytes == null || bytes.isEmpty() || bytes.size > 64 || bytes.last() != 10.toByte() ||
+            bytes.dropLast(1).any { (it.toInt() and 255) !in 32..126 }
+        ) return null
+        return String(bytes, 0, bytes.size - 1, StandardCharsets.US_ASCII)
+    }
+
+    private fun relayFlag(value: String): Boolean? = when (value) { "1" -> true; "0" -> false; else -> null }
+
+    private fun readVersioned(command: String, minimumMinor: Int, maxBytes: Long, timeoutMs: Long? = null): ByteArray? {
+        val deadline = timeoutMs?.let { MonotonicDeadline(it, nowNs) }
+        val session = (if (deadline == null) transport.open() else transport.open(deadline)) ?: return null
+        return session.use {
+            val bootstrapDeadline = deadline?.cappedTo(bootstrapTimeoutMs) ?: newDeadline()
+            if (bootstrapDeadline.remainingMs() == 0L) return null
+            val version = it.bootstrap("VERSION", bootstrapDeadline) as? HelperBootstrapReply.Line ?: return null
+            val identity = parseHelperIdentity(version.value) ?: return null
+            if (identity.protocolMajor != SUPPORTED_HELPER_PROTOCOL_MAJOR || identity.protocolMinor < minimumMinor) return null
+            if (deadline == null) it.sendBytes(command, maxBytes) else {
+                it.sendBytes(command, maxBytes, deadline)?.takeIf { deadline.remainingMs() > 0L }
+            }
+        }
     }
 
     override fun available(): Boolean = execute(null) { it.send("PING") } == "OK"
@@ -371,6 +659,9 @@ object HelperClient : Daemon by admittedHelperClient {
     /** Opens a closeable raw system log stream on the authenticated helper socket. */
     internal fun openLogcat(): HelperLogcatOpenResult = admittedHelperClient.openLogcat()
 
+    /** Bounded system-log backlog for a viewer opening; empty from a helper older than protocol 1.4. */
+    internal fun logcatDump(lines: Int): List<String> = admittedHelperClient.logcatDump(lines)
+
     /**
      * Read-only bootstrap probe for provisioning and diagnostics. Ordinary operations repeat this
      * probe on their own connection; a deployed pre-VERSION helper remains reachable but unverified.
@@ -419,19 +710,39 @@ private const val SOCK = "hapaneld-helper" // matches helper/src/main.c
 
 private val admittedHelperClient = IdentityAdmittingHelperClient(
     LocalSocketHelperTransport(
-        connect = { openRootAbstractSocket(SOCK) },
+        connect = { deadline -> openRootAbstractSocket(SOCK, deadline) },
         tag = "ha-paneld/helper",
     ),
 )
 
-private class LocalSocketHelperTransport(
-    private val connect: () -> LocalSocket,
+/** Logs "daemon not reachable" on a reachability change only: the first failure, then again after a success. */
+internal class HelperReachabilityLog(
     private val tag: String,
+    private val sink: (String, String) -> Unit = { t, m -> Log.d(t, m) },
+) {
+    private var unreachable = false
+
+    @Synchronized fun failed(message: String?) {
+        if (unreachable) return
+        unreachable = true
+        sink(tag, "daemon not reachable ($message)")
+    }
+
+    @Synchronized fun succeeded() { unreachable = false }
+}
+
+internal class LocalSocketHelperTransport(
+    private val connect: (MonotonicDeadline?) -> LocalSocket,
+    private val tag: String,
+    private val reachability: HelperReachabilityLog = HelperReachabilityLog(tag),
 ) : HelperCommandTransport {
-    override fun open(): HelperCommandSession? = try {
-        LocalSocketHelperSession(connect(), tag)
+    override fun open(): HelperCommandSession? = openSocket(null)
+    override fun open(deadline: MonotonicDeadline): HelperCommandSession? = openSocket(deadline)
+
+    private fun openSocket(deadline: MonotonicDeadline?): HelperCommandSession? = try {
+        LocalSocketHelperSession(connect(deadline), tag, reachability).also { reachability.succeeded() }
     } catch (e: Exception) {
-        Log.d(tag, "daemon not reachable (${e.message})")
+        reachability.failed(e.message)
         null
     }
 }
@@ -439,24 +750,20 @@ private class LocalSocketHelperTransport(
 private class LocalSocketHelperSession(
     private val socket: LocalSocket,
     private val tag: String,
+    private val reachability: HelperReachabilityLog,
 ) : HelperCommandSession {
     private val input = socket.inputStream
     private val output = socket.outputStream
     private val logcatReader = HelperLogcatLineReader(BufferedInputStream(input, 4096))
 
-    override fun bootstrap(command: String, deadline: MonotonicDeadline): HelperBootstrapReply = try {
-        require(command == "VERSION" || command == "PING" || command == "COMPANIONCAPS")
-        output.apply { write((command + "\n").toByteArray(StandardCharsets.US_ASCII)); flush() }
-        readHelperBootstrapLine(input, { socket.soTimeout = it }, deadline)
-    } catch (_: Exception) {
-        HelperBootstrapReply.Missing
-    }
+    override fun bootstrap(command: String, deadline: MonotonicDeadline): HelperBootstrapReply =
+        exchangeHelperBootstrap(command, input, output, { socket.soTimeout = it }, deadline)
 
     override fun send(cmd: String): String? = try {
         socket.soTimeout = SHORT_TIMEOUT_MS
-        HelperSocketProtocol.sendLine(cmd, input, output)
+        HelperSocketProtocol.sendLine(cmd, input, output).also { reachability.succeeded() }
     } catch (e: Exception) {
-        Log.d(tag, "daemon not reachable (${e.message})")
+        reachability.failed(e.message)
         null
     }
 
@@ -509,6 +816,17 @@ private class LocalSocketHelperSession(
         )
     } catch (e: Exception) {
         Log.d(tag, "daemon bytes failed (${e.message})")
+        null
+    }
+
+    override fun sendBytes(cmd: String, maxBytes: Long, deadline: MonotonicDeadline): ByteArray? = try {
+        HelperSocketProtocol.sendBytes(cmd, input, output, socket::shutdownOutput, maxBytes) {
+            val remaining = deadline.remainingMs()
+            if (remaining == 0L) throw SocketTimeoutException("helper reply deadline expired")
+            socket.soTimeout = remaining.asSocketTimeout()
+        }
+    } catch (e: Exception) {
+        Log.d(tag, "daemon timed bytes failed (${e.message})")
         null
     }
 
@@ -575,6 +893,9 @@ private class LocalSocketHelperSession(
 private const val COMPANION_CAPABILITY_VERSION = "COMPANIONCAPS 1 BACKUP RESTORE STATUS JOURNAL"
 private const val MAX_LOGCAT_LINE_BYTES = 8192
 private const val LOGCAT_READ_TIMEOUT_MS = 1_000
+private const val LOGCAT_DUMP_PROTOCOL_MINOR = 4
+private const val LOGCAT_DUMP_MAX_LINES = 1_000
+private const val LOGCAT_DUMP_MAX_REPLY_BYTES = 3L + 256L * 1024L // "OK\n" + the helper's byte cap
 
 /** Keeps a partial source line across read timeouts so cancellation cannot split an entry. */
 internal class HelperLogcatLineReader(private val input: InputStream) {

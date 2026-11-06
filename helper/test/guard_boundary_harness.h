@@ -201,6 +201,7 @@ static void exec_from_canonical_helper(void) {
         perror("prepare canonical helper test executable");
         exit(2);
     }
+    for (int fd = 3; fd < 1024; fd++) (void)close(fd);
     char *const canonical_argv[] = { (char *)HELPER_LIVE, NULL };
     execv(HELPER_LIVE, canonical_argv);
     perror("exec canonical helper test executable");

@@ -57,9 +57,9 @@
     <string name="approval_op_device_reboot">Reiniciar el panel</string>
     <string name="approval_op_companion_repair">Reparar la configuración de Companion</string>
     <string name="approval_op_dashboard_storage_clear">Borrar los datos de navegación del panel de control</string>
-    <string name="approval_op_display_configuration">Cambiar el tamaño de la pantalla</string>
+    <string name="approval_op_display_configuration">Cambiar la escala de visualización</string>
     <string name="approval_op_power_configuration">Cambiar las protecciones de seguridad de alimentación del panel</string>
-    <string name="approval_op_power_safety_ack">Ocultar una precaución concreta de seguridad de alimentación</string>
+    <string name="approval_op_power_safety_ack">Ocultar una advertencia concreta sobre la seguridad de la alimentación eléctrica</string>
     <string name="approval_op_guard_db">Avanzar la recuperación de la base de datos</string>
     <string name="approval_op_camera_enable">Activar la cámara del panel</string>
 
@@ -68,7 +68,7 @@
     <string name="panel_not_set_up">Este panel aún no está configurado.</string>
     <string name="panel_not_set_up_hint">Escanea el código con tu teléfono; tardarás unos dos minutos. También puedes tocar %1$s para hacerlo en esta pantalla.</string>
     <string name="browser_engine_too_old">El motor del navegador de este panel es demasiado antiguo.</string>
-    <string name="browser_engine_too_old_hint">Los paneles de control de Home Assistant necesitan uno más reciente. Corrígelo en la página de configuración desde un navegador.</string>
+    <string name="browser_engine_too_old_hint">La configuración puede terminarse igualmente, pero los paneles de control de Home Assistant necesitan uno más reciente. La página de configuración en un navegador explica cómo actualizarlo.</string>
     <string name="choose_dashboard_app">Elige una aplicación de panel de control.</string>
     <string name="continue_setup_browser">Continúa en la página de configuración desde un navegador.</string>
     <string name="connected_next_ha_address">Conectado. Siguiente paso: la dirección de Home Assistant.</string>
@@ -212,4 +212,5 @@
     <string name="listening_on_port">Escuchando en :%1$d</string>
     <string name="degraded_profile_startup">Degradado · falló el inicio del perfil</string>
     <string name="degraded_startup">Degradado · falló el inicio</string>
+    <string name="approval_op_local_adb">Ejecutar mantenimiento del panel</string>
 </resources>

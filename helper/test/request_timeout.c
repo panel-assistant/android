@@ -30,6 +30,7 @@ void conn_release(void) {}
 int conn_admit(void) { return 0; }
 int guard_maintenance_init(void) { return 0; }
 int guard_maintenance_replacement_safe(void) { return 0; }
+int guard_maintenance_retire_uninstalled(void) { return -1; }
 int guard_maintenance_replacement_parent_grant(char nonce[65]) { (void)nonce; return -1; }
 int guard_maintenance_replacement_export_lease(void) { return -1; }
 int guard_maintenance_replacement_parent_abort(const char nonce[65]) { (void)nonce; return -1; }
@@ -40,6 +41,7 @@ int guard_maintenance_replacement_supervisor_adopt_app(const char nonce[65]) {
 int guard_maintenance_replacement_worker_commit_app(const char nonce[65]) {
     (void)nonce; return -1;
 }
+int guard_maintenance_reconcile_stale_replacement(void) { return -1; }
 int guard_maintenance_replacement_startup_reconcile_app(char nonce[65]) {
     (void)nonce; return 0;
 }

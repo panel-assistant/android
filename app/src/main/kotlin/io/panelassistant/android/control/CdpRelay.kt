@@ -6,6 +6,9 @@ import android.util.Log
 import io.panelassistant.android.Config
 import io.panelassistant.android.RendererResolver
 import io.panelassistant.android.util.AndroidInput
+import io.panelassistant.android.util.HelperClient
+import io.panelassistant.android.platform.HelperCdpState
+import io.panelassistant.android.platform.Daemon
 import java.io.File
 import java.net.ConnectException
 import java.net.InetSocketAddress
@@ -27,10 +30,16 @@ internal class RelayProcessState(
     /** UNKNOWN is exposed as running so a failed root/proc read can never hide an orphan. */
     @Synchronized fun running(): Boolean = probe() != RelayExposureState.ABSENT
 
-    @Synchronized fun stop(terminate: () -> Unit): Boolean {
+    /** Strict proof never uses the weaker display probe or attempts termination. */
+    @Synchronized fun proveAbsent(): Boolean = stopProbe() == RelayExposureState.ABSENT
+
+    @Synchronized fun stop(terminate: () -> Unit): Boolean = stop(terminate, stopProbe)
+
+    private fun stop(terminate: () -> Unit, strictProbe: () -> RelayExposureState): Boolean {
+        if (strictProbe() == RelayExposureState.ABSENT) return true
         terminate()
         repeat(STOP_VERIFY_ATTEMPTS) { attempt ->
-            when (stopProbe()) {
+            when (strictProbe()) {
                 RelayExposureState.ABSENT -> return true
                 RelayExposureState.UNKNOWN -> return false
                 RelayExposureState.PRESENT -> if (attempt + 1 < STOP_VERIFY_ATTEMPTS) {
@@ -39,6 +48,27 @@ internal class RelayProcessState(
             }
         }
         return false
+    }
+
+    /** Explicit lifecycle recovery alone may use a purpose-specific structural no-root exception. */
+    @Synchronized fun stopForRecovery(
+        rootKnownUnusable: () -> Boolean,
+        noRootAbsent: () -> Boolean,
+        terminate: () -> Unit,
+    ): Boolean {
+        var observedPresent = false
+        fun observe(): RelayExposureState = stopProbe().also {
+            if (it == RelayExposureState.PRESENT) observedPresent = true
+        }
+        when (observe()) {
+            RelayExposureState.ABSENT -> return true
+            RelayExposureState.UNKNOWN -> if (rootKnownUnusable()) return noRootAbsent()
+            RelayExposureState.PRESENT -> Unit
+        }
+        if (stop(terminate, ::observe)) return true
+        // An explicitly requested stop can discover structural su failure for the first time.
+        // Failed termination cannot erase positive evidence from any read in this invocation.
+        return observe() == RelayExposureState.UNKNOWN && !observedPresent && rootKnownUnusable() && noRootAbsent()
     }
 
     companion object {
@@ -73,13 +103,17 @@ object CdpRelay {
 
     private val process = RelayProcessState(
         probe = ::probeStatusExposure,
-        // Status may truthfully fall back to the fixed TCP listener on a non-root panel. A privileged
-        // stop has a stronger contract: both the process table and listener table must be readable and
-        // absent, so a failed root probe can never be mistaken for successful termination.
+        // Display can fall back to loopback, but security and stop verification require the helper's
+        // complete process/listener observation. UNKNOWN must never authorize either.
         stopProbe = ::probeExposure,
     )
 
     val running: Boolean @Synchronized get() = process.running()
+
+    /** Fresh passive security proof; does not query su, terminate processes or change the epoch. */
+    internal fun proveAbsent(): Boolean = RemoteDebugSecurityTransitionGate.withLock {
+        synchronized(this) { process.proveAbsent() }
+    }
 
     /** Resolve only the configured renderer's WebView socket. Picking the first global socket can
      * expose another app's DevTools endpoint when multiple debuggable WebViews are running. */
@@ -133,44 +167,18 @@ object CdpRelay {
      * formerly rooted panel to restart after root disappears and repeated loopback probes refuse. */
     internal fun stopAndVerifyForProcessExit(): Boolean = RemoteDebugSecurityTransitionGate.mutate {
         synchronized(this) {
-            if (Su.availableIsolated()) {
-                stopLocked()
-            } else {
-                noRootRelayInactiveForProcessExit(
-                    buildList {
-                        repeat(NO_ROOT_LISTENER_PROBES) { attempt ->
-                            add(probeLocalListener())
-                            if (attempt + 1 < NO_ROOT_LISTENER_PROBES) {
-                                Thread.sleep(NO_ROOT_LISTENER_PROBE_DELAY_MS)
-                            }
-                        }
-                    },
-                )
-            }
+            process.stopForRecovery(
+                rootKnownUnusable = Su::rootKnownUnusable,
+                noRootAbsent = { noRootRelayInactiveForProcessExit(listenerProbes()) },
+                terminate = ::terminateRelay,
+            )
         }
     }
 
     /** Guard DB has already committed an exact physical-approval epoch into its sentinel. From that
      * point shutdown may only prove relay absence; attempting a new stop would mutate that epoch after
      * approval. Any present/unknown exposure fails the clean handoff instead. */
-    internal fun proveAbsentForGuardDbHandoff(): Boolean = RemoteDebugSecurityTransitionGate.withLock {
-        synchronized(this) {
-            if (Su.availableIsolated()) {
-                probeExposure() == RelayExposureState.ABSENT
-            } else {
-                noRootRelayInactiveForProcessExit(
-                    buildList {
-                        repeat(NO_ROOT_LISTENER_PROBES) { attempt ->
-                            add(probeLocalListener())
-                            if (attempt + 1 < NO_ROOT_LISTENER_PROBES) {
-                                Thread.sleep(NO_ROOT_LISTENER_PROBE_DELAY_MS)
-                            }
-                        }
-                    },
-                )
-            }
-        }
-    }
+    internal fun proveAbsentForGuardDbHandoff(): Boolean = proveAbsent()
 
     /** Keep verified relay absence and the security-mode commit in one lifecycle critical section. */
     internal fun stopAndVerifyThen(
@@ -178,30 +186,19 @@ object CdpRelay {
         action: () -> Boolean,
     ): VerifiedRelayTransition = RemoteDebugSecurityTransitionGate.mutate {
         synchronized(this) {
-            val verifiedAbsent = if (Su.availableIsolated()) {
-                stopLocked()
-            } else {
-            // A never-rooted panel cannot have launched this root-owned relay. Do not require root merely
-            // to enable Hardened there, but retain two independent facts: no prior extraction attempt in
-            // this app data and repeated connection-refused results from the relay's fixed loopback port.
-            noRootRelayAbsent(
-                priorRelayArtifact = File(ctx.filesDir, "cdprelay").exists(),
-                listenerProbes = buildList {
-                    repeat(NO_ROOT_LISTENER_PROBES) { attempt ->
-                        add(probeLocalListener())
-                        if (attempt + 1 < NO_ROOT_LISTENER_PROBES) {
-                            Thread.sleep(NO_ROOT_LISTENER_PROBE_DELAY_MS)
-                        }
-                    }
-                },
+            val verifiedAbsent = process.stopForRecovery(
+                rootKnownUnusable = Su::rootKnownUnusable,
+                noRootAbsent = { noRootRelayAbsent(File(ctx.filesDir, "cdprelay").exists(), listenerProbes()) },
+                terminate = ::terminateRelay,
             )
-            }
             if (!verifiedAbsent) return@mutate VerifiedRelayTransition.VERIFICATION_FAILED
             if (action()) VerifiedRelayTransition.APPLIED else VerifiedRelayTransition.ACTION_FAILED
         }
     }
 
-    private fun stopLocked(): Boolean = process.stop {
+    private fun stopLocked(): Boolean = process.stop(::terminateRelay)
+
+    private fun terminateRelay() {
         // pkill returns non-zero when there was nothing to kill. That is not failure; the bounded
         // process/listener probe below is the authority. SIGKILL also closes a wedged relay promptly.
         Su.runOutputIsolatedBounded(
@@ -211,13 +208,14 @@ object CdpRelay {
         )
     }
 
-    private fun probeExposure(): RelayExposureState = relayExposureState(
-        Su.runOutputIsolatedBounded(
-            relayProbeCommand(),
-            maxBytes = MAX_RELAY_PROBE_BYTES,
-            timeoutMs = RELAY_PROBE_TIMEOUT_MS,
-        ),
-    )
+    private fun probeExposure(): RelayExposureState = cdpExposureState(HelperClient)
+
+    private fun listenerProbes(): List<LocalRelayListenerState> = buildList {
+        repeat(NO_ROOT_LISTENER_PROBES) { attempt ->
+            add(probeLocalListener())
+            if (attempt + 1 < NO_ROOT_LISTENER_PROBES) Thread.sleep(NO_ROOT_LISTENER_PROBE_DELAY_MS)
+        }
+    }
 
     private fun probeStatusExposure(): RelayExposureState {
         val privileged = probeExposure()
@@ -261,22 +259,7 @@ object CdpRelay {
             .distinct()
             .singleOrNull()
 
-    internal fun relayProbeCommand(): String =
-        "found=0; for comm in /proc/[0-9]*/comm; do " +
-            // A fork per process can exhaust the bounded probe before it reaches the listener tables.
-            // A process disappearing during the scan is harmless; an unreadable live entry is not proof.
-            "[ -e \"\$comm\" ] || continue; " +
-            "IFS= read -r process_name < \"\$comm\" 2>/dev/null || " +
-            "{ [ ! -e \"\$comm\" ] && continue; exit 1; }; " +
-            "[ \"\$process_name\" = cdprelay ] && found=1 && break; done; " +
-            "echo process=\$found; echo tcp_begin; " +
-            "[ -r /proc/net/tcp ] || exit 1; cat /proc/net/tcp || exit 1; " +
-            "if [ -e /proc/net/tcp6 ]; then [ -r /proc/net/tcp6 ] || exit 1; " +
-            "cat /proc/net/tcp6 || exit 1; fi; echo tcp_end"
-
-    private const val MAX_RELAY_PROBE_BYTES = 64 * 1024L
     private const val MAX_RELAY_STOP_BYTES = 32L
-    private const val RELAY_PROBE_TIMEOUT_MS = 2_000L
     private const val RELAY_STOP_TIMEOUT_MS = 2_000L
     private const val LOCAL_CONNECT_TIMEOUT_MS = 200
     private const val NO_ROOT_LISTENER_PROBES = 2
@@ -307,31 +290,9 @@ internal fun relayStatusExposure(
     else -> RelayExposureState.UNKNOWN
 }
 
-/** Parse one bounded root snapshot of both the process table and kernel TCP listener tables. */
-internal fun relayExposureState(output: String?): RelayExposureState {
-    val text = output ?: return RelayExposureState.UNKNOWN
-    val lines = text.lineSequence().map(String::trim).toList()
-    val processLine = lines.singleOrNull { it.startsWith("process=") }
-        ?: return RelayExposureState.UNKNOWN
-    val processPresent = when (processLine) {
-        "process=1" -> true
-        "process=0" -> false
-        else -> return RelayExposureState.UNKNOWN
-    }
-    val tcpStart = lines.indexOf("tcp_begin")
-    val tcpEnd = lines.indexOf("tcp_end")
-    if (tcpStart < 0 || tcpEnd <= tcpStart) return RelayExposureState.UNKNOWN
-
-    var listenerPresent = false
-    for (line in lines.subList(tcpStart + 1, tcpEnd)) {
-        if (line.isEmpty() || line.startsWith("sl")) continue
-        val fields = line.split(Regex("\\s+"))
-        if (fields.size < 4) return RelayExposureState.UNKNOWN
-        val port = fields[1].substringAfterLast(':', missingDelimiterValue = "")
-            .toIntOrNull(16) ?: return RelayExposureState.UNKNOWN
-        if (fields[3].equals("0A", ignoreCase = true) && port == CdpRelay.PORT) {
-            listenerPresent = true
-        }
-    }
-    return if (processPresent || listenerPresent) RelayExposureState.PRESENT else RelayExposureState.ABSENT
+/** Keep unavailable transport distinct from the helper's only authoritative negative. */
+internal fun cdpExposureState(daemon: Daemon): RelayExposureState = when (daemon.cdpState()) {
+    HelperCdpState.PRESENT -> RelayExposureState.PRESENT
+    HelperCdpState.ABSENT -> RelayExposureState.ABSENT
+    HelperCdpState.UNKNOWN, null -> RelayExposureState.UNKNOWN
 }

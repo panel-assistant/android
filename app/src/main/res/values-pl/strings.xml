@@ -26,7 +26,7 @@
     <string name="unable_stop_remote_debugging">Nie można zatrzymać zdalnego debugowania</string>
     <string name="unable_stop_remote_debugging_detail">Tryb Hardened nie został włączony, ponieważ panel nie mógł potwierdzić, że przekaźnik LAN DevTools i jego proces nasłuchujący zostały zatrzymane. Uruchom ponownie panel, a potem spróbuj jeszcze raz.</string>
     <string name="unable_stop_remote_adb">Nie można zatrzymać zdalnego ADB</string>
-    <string name="unable_stop_remote_adb_detail">Tryb Hardened nie został włączony, ponieważ Panel Assistant nie mógł trwale wyczyścić i zweryfikować całego należącego do niego stanu sieciowego ADB (klasycznego/TLS). Wyłączanie pozostaje w toku, więc zostanie ponowione przy uruchomieniu; sprawdź Opcje programisty, a potem spróbuj jeszcze raz.</string>
+    <string name="unable_stop_remote_adb_detail">Tryb Hardened nie został włączony, ponieważ Panel Assistant nie mógł trwale wyczyścić i zweryfikować całego należącego do niego stanu sieciowego ADB (klasycznego/TLS). Operacja wyłączania nadal ma status oczekujący, więc zostanie ponowiona przy uruchomieniu; sprawdź Opcje programisty, a potem spróbuj jeszcze raz.</string>
     <string name="unable_verify_remote_adb">Nie można zweryfikować zdalnego ADB</string>
     <string name="unable_verify_remote_adb_detail">Tryb Hardened nie został włączony, ponieważ panel nie mógł potwierdzić, że klasyczne sieciowe ADB i debugowanie bezprzewodowe Androida są wyłączone. Wyłącz obie ścieżki zdalnego sterowania w opcjach programisty Androida, a potem spróbuj jeszcze raz.</string>
     <string name="turn_off_remote_adb_first">Najpierw wyłącz zdalne ADB</string>
@@ -42,7 +42,7 @@
     <string name="approval_op_apk_fetch">Pobierz APK z linku</string>
     <string name="approval_op_backup_export">Eksportuj kopię zapasową panelu</string>
     <string name="approval_op_secret_export">Eksportuj ustawienia wraz z danymi poufnymi</string>
-    <string name="approval_op_wake_word_import">Importuj model słowa wybudzającego</string>
+    <string name="approval_op_wake_word_import">Importuj model słowa aktywującego</string>
     <string name="approval_op_config_import">Importuj ustawienia panelu</string>
     <string name="approval_op_backup_restore">Przywróć kopię zapasową panelu</string>
     <string name="approval_op_package_uninstall">Odinstaluj aplikację</string>
@@ -65,7 +65,7 @@
     <string name="panel_not_set_up">Ten panel nie został jeszcze skonfigurowany.</string>
     <string name="panel_not_set_up_hint">Zeskanuj kod telefonem – zajmie to około dwóch minut. Albo dotknij %1$s, aby zrobić to na tym ekranie.</string>
     <string name="browser_engine_too_old">Silnik przeglądarki tego panelu jest zbyt stary.</string>
-    <string name="browser_engine_too_old_hint">Pulpity Home Assistant wymagają nowszego silnika. Napraw to na stronie konfiguracji w przeglądarce.</string>
+    <string name="browser_engine_too_old_hint">Konfigurację można dokończyć, ale pulpity Home Assistant wymagają nowszego silnika. Strona konfiguracji w przeglądarce pokazuje, jak go zaktualizować.</string>
     <string name="choose_dashboard_app">Wybierz aplikację do pulpitu.</string>
     <string name="continue_setup_browser">Kontynuuj na stronie konfiguracji w przeglądarce.</string>
     <string name="connected_next_ha_address">Połączono. Dalej: adres Home Assistant.</string>
@@ -191,7 +191,7 @@
     <string name="storage_pressure_body">Obciążenie pamięci lub plików bazy danych jest krytyczne%1$s. Otwórz Panel Assistant i sprawdź wolne miejsce oraz przyrost WAL przed zmianą konfiguracji.</string>
     <string name="database_attention_title">Baza danych panelu wymaga uwagi</string>
     <string name="database_during_suffix">" podczas %1$s"</string>
-    <string name="database_full_body">Zapis do bazy danych panelu%1$s nie powiódł się, ponieważ pamięć była pełna. Otwórz Panel Assistant; odzyskiwanie nie zostało jeszcze zweryfikowane.</string>
+    <string name="database_full_body">Zapis do bazy danych panelu%1$s nie powiódł się, gdy pamięć masowa była pełna. Otwórz Panel Assistant; odzyskiwanie nie zostało jeszcze zweryfikowane.</string>
     <string name="database_io_body">Baza danych panelu zgłosiła błąd operacji wejścia/wyjścia na dysku%1$s. Otwórz Panel Assistant; spróbuj ponownie dopiero po usunięciu przyczyny.</string>
     <string name="database_corruption_body">Baza danych panelu nie przeszła kontroli integralności%1$s. Zachowaj ją i otwórz diagnostykę Panel Assistant przed kolejnymi zapisami.</string>
     <string name="database_busy_body">Baza danych panelu pozostała zajęta lub zablokowana%1$s. Otwórz diagnostykę Panel Assistant i poczekaj na czysty wynik kontroli przed ponowną próbą.</string>
@@ -202,4 +202,5 @@
     <string name="listening_on_port">Nasłuchiwanie na :%1$d</string>
     <string name="degraded_profile_startup">Ograniczona funkcjonalność · nie udało się uruchomić profilu</string>
     <string name="degraded_startup">Ograniczona funkcjonalność · nie udało się uruchomić</string>
+    <string name="approval_op_local_adb">Uruchom konserwację panelu</string>
 </resources>

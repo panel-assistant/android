@@ -25,12 +25,14 @@ class ScreenControllerTest {
     private val wakeTap = FakeWakeTap()  // canArm=true by default: overlay available, so real screen-off runs
 
     private fun controller(
-        blPower: String? = null,          // bl_power read result: "4"=off, "0"=on, null=unreadable
+        blPower: String? = null,          // helper BLPOWER read: "4"=off, "0"=on, null=no helper answer
         suRuns: Boolean = true,           // does the su bl_power write succeed
         daemon: Map<String, String> = emptyMap(),
     ): Pair<ScreenController, FakeRootShell> {
-        val root = FakeRootShell(outputs = blPower?.let { mapOf("bl_power" to it) } ?: emptyMap(), runResult = suRuns)
-        return ScreenController(backlight, power, root, FakeDaemon(daemon), wakeTap, ScreenOff.DAEMON_BLPOWER) to root
+        // su could read bl_power too; the controller must never ask it (repeated reads are helper-only).
+        val root = FakeRootShell(outputs = mapOf("bl_power" to "4"), runResult = suRuns)
+        val replies = blPower?.let { mapOf("BLPOWER" to it) + daemon } ?: daemon
+        return ScreenController(backlight, power, root, FakeDaemon(replies), wakeTap, ScreenOff.DAEMON_BLPOWER) to root
     }
 
     private fun assertRendererWakeAfter(sc: ScreenController, physicalWakeComplete: () -> Boolean) {
@@ -62,11 +64,14 @@ class ScreenControllerTest {
         assertTrue(controller(blPower = "4", daemon = mapOf("BLPOWER" to "0")).first.looksDark())
     }
 
-    @Test fun daemonBlPowerUnavailableFallsBackToRootThenBrightness() {
+    @Test fun daemonBlPowerUnavailableFallsBackToBrightnessNeverRoot() {
         backlight.level = 120
-        assertTrue(controller(blPower = "4", daemon = mapOf("BLPOWER" to "ERR")).first.looksDark())
+        val (lit, litRoot) = controller(daemon = mapOf("BLPOWER" to "ERR"))
+        assertFalse(lit.looksDark())
         backlight.level = 0
-        assertTrue(controller(blPower = null, daemon = mapOf("BLPOWER" to "ERR")).first.looksDark())
+        val (dark, darkRoot) = controller(daemon = mapOf("BLPOWER" to "ERR"))
+        assertTrue(dark.looksDark())
+        assertTrue(litRoot.outputRan.isEmpty() && darkRoot.outputRan.isEmpty())
     }
 
     @Test fun daemonBlPowerExternalChangeIsObservedWithoutACommand() {
@@ -497,15 +502,16 @@ class ScreenControllerTest {
         assertTrue(backlight.calls.contains("raw:0"))
     }
 
-    @Test fun suRouteIsAttemptedBeforeDaemonFallback() {
+    @Test fun suBlPowerRouteAsksTheHelperBeforeSu() {
         val root = FakeRootShell(runResult = true)
         val daemon = FakeDaemon(mapOf("SCREEN OFF" to "OK"))
         val sc = ScreenController(backlight, power, root, daemon, wakeTap, ScreenOff.SU_BLPOWER)
 
         sc.sleep()
 
-        assertTrue(root.ran.any { it.contains("bl_power") })
-        assertTrue(daemon.sent.isEmpty())
+        assertTrue(root.ran.isEmpty())
+        assertEquals(ScreenOff.DAEMON_BLPOWER, sc.routeSelection().selected)
+        assertEquals(ScreenController.REASON_HELPER_BEFORE_SU, sc.routeSelection().reason)
     }
 
     // --- declared vs. selected route (Issue #138) ------------------------------------------------
@@ -592,20 +598,18 @@ class ScreenControllerTest {
         assertTrue(selection.reason.contains("fell back"))
     }
 
-    /** The mirror case: root access arrives after the panel has already fallen back once, and the next
-     *  sleep must pick the declared route back up rather than sticking with the earlier fallback. */
-    @Test fun routeSelectionUpdatesWhenABetterRouteAppearsAfterRootIsGranted() {
-        val root = FakeRootShell(runResult = false) // su initially unavailable
-        val daemon = FakeDaemon(mapOf("SCREEN OFF" to "OK", "SCREEN ON" to "OK"))
-        val sc = ScreenController(backlight, power, root, daemon, wakeTap, ScreenOff.SU_BLPOWER)
+    /** The mirror case on an su-blpower profile: the helper disappears after it served one off, and the
+     *  next sleep reaches the declared su route rather than sticking with the earlier selection. */
+    @Test fun routeSelectionReturnsToTheDeclaredSuRouteWhenTheHelperDisappears() {
+        val replies = mutableMapOf("SCREEN OFF" to "OK", "SCREEN ON" to "OK")
+        val root = FakeRootShell(runResult = true)
+        val sc = ScreenController(backlight, power, root, FakeDaemon(replies), wakeTap, ScreenOff.SU_BLPOWER)
 
         sc.sleep()
-        val first = sc.routeSelection()
-        assertEquals(ScreenOff.DAEMON_BLPOWER, first.selected)
-        assertTrue(first.reason.contains("fell back"))
+        assertEquals(ScreenOff.DAEMON_BLPOWER, sc.routeSelection().selected)
         sc.wake()
 
-        root.runResult = true // root is granted before the next sleep
+        replies.clear() // no helper reachable before the next sleep
         sc.sleep()
         val second = sc.routeSelection()
 

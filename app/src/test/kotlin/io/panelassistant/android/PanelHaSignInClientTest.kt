@@ -16,13 +16,13 @@ import java.lang.reflect.Proxy
 class PanelHaSignInClientTest {
     private val retries = mutableListOf<Long>()
     private var unreachable = 0
-    private val client = PanelHaSignInClient(HA, object : PanelHaSignInClient.Host {
+    private val client = PanelHaSignInClient(HA, 8889, object : PanelHaSignInClient.Host {
         override fun isCurrent(view: WebView) = true
         override fun retryLater(view: WebView, delayMs: Long) { retries += delayMs }
         override fun showUnreachable() { unreachable++ }
         override fun onSignedIn(view: WebView) = error("no sign-in completes here")
     })
-    private val start = panelHaOAuthStartUrl(HA)
+    private val start = panelHaOAuthStartUrl(HA, 8889)
     private val page = RecordingWebView(start)
     private val mainFrame = Proxy.newProxyInstance(
         WebResourceRequest::class.java.classLoader,
@@ -36,6 +36,16 @@ class PanelHaSignInClientTest {
     }
 
     private fun cleanLoad() = client.onPageFinished(page, start)
+
+    @Test fun onlyTheCurrentPortCallbackCanInspectSignInCompletion() {
+        for (port in listOf(":8888", ":8890", "")) {
+            client.onPageFinished(page, "http://127.0.0.1$port/api/v1/ha/oauth/callback?state=s&code=c")
+        }
+        assertEquals("other local servers cannot complete this sign-in", emptyList<String>(), page.calls)
+
+        client.onPageFinished(page, "http://127.0.0.1:8889/api/v1/ha/oauth/callback?state=s&code=c")
+        assertEquals(listOf("evaluateJavascript"), page.calls)
+    }
 
     @Test fun hiccupsWithAWorkingPageBetweenThemDoNotAddUp() {
         repeat(4) { failedLoad() }

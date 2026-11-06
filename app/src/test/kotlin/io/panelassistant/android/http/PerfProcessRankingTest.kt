@@ -1,6 +1,7 @@
 package io.panelassistant.android.http
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PerfProcessRankingTest {
@@ -8,18 +9,94 @@ class PerfProcessRankingTest {
         val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Unconfined)
         try {
             PerfReader.stop()
-            PerfReader.startForTest(scope, rootAvailable = { false }, elapsedRealtime = { 1L }, pause = { kotlinx.coroutines.awaitCancellation() })
+            PerfReader.startForTest(scope, perfDump = { null }, elapsedRealtime = { 1L }, pause = { kotlinx.coroutines.awaitCancellation() })
             val publish = PerfReader::class.java.getDeclaredMethod("publishTop", java.lang.Long.TYPE,
-                Map::class.java, Map::class.java, Map::class.java, java.lang.Long.TYPE, java.lang.Boolean.TYPE).apply { isAccessible = true }
+                Map::class.java, Map::class.java, Map::class.java, java.lang.Long.TYPE).apply { isAccessible = true }
             val name = "worker\t\"<\\name"
             val generation = PerfReader.lifecycleGeneration()
-            publish.invoke(PerfReader, generation, mapOf(12345 to 10L), mapOf(12345 to 256L), mapOf(12345 to name), 100L, false)
-            publish.invoke(PerfReader, generation, mapOf(12345 to 20L), mapOf(12345 to 256L), mapOf(12345 to name), 200L, false)
+            publish.invoke(PerfReader, generation, mapOf(12345 to 10L), mapOf(12345 to 256L), mapOf(12345 to name), 100L)
+            publish.invoke(PerfReader, generation, mapOf(12345 to 20L), mapOf(12345 to 256L), mapOf(12345 to name), 200L)
             val payload = PerfReader.json()
             val json = org.json.JSONObject(payload)
             assertEquals(name, json.getJSONArray("top").getJSONObject(0).getString("name"))
             assertEquals(name, json.getJSONArray("topRam").getJSONObject(0).getString("name"))
             org.junit.Assert.assertFalse("JSON strings must escape control characters", payload.any { it.code < 32 })
+        } finally {
+            PerfReader.stop()
+            scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
+        }
+    }
+
+    /** One top sample per call, driven through the real publication path; names are the helper's. */
+    private class Sampler(private val generation: Long) {
+        private val publish = PerfReader::class.java.getDeclaredMethod("publishTop", java.lang.Long.TYPE,
+            Map::class.java, Map::class.java, Map::class.java, java.lang.Long.TYPE)
+            .apply { isAccessible = true }
+        private var total = 0L
+
+        /** [procs] maps pid to (comm, jiffies); every process holds 256 resident pages. */
+        fun sample(vararg procs: Pair<Int, Pair<String, Long>>) {
+            total += 1_000L
+            val map = procs.toMap()
+            publish.invoke(PerfReader, generation, map.mapValues { it.value.second },
+                map.mapValues { 256L }, map.mapValues { it.value.first }, total)
+        }
+    }
+
+    private fun workload(names: List<String>) = names.filterNot { it.startsWith("sampling probes") }
+
+    private fun names(key: String): List<String> {
+        val rows = org.json.JSONObject(PerfReader.json()).optJSONArray(key) ?: return emptyList()
+        return workload((0 until rows.length()).map { rows.getJSONObject(it).getString("name") })
+    }
+
+    @Test fun aReusedPidNeverInheritsTheDeadProcessCpuBaseline() {
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Unconfined)
+        try {
+            PerfReader.stop()
+            PerfReader.startForTest(scope, perfDump = { null }, elapsedRealtime = { 1L },
+                pause = { kotlinx.coroutines.awaitCancellation() })
+            val s = Sampler(PerfReader.lifecycleGeneration())
+
+            s.sample(100 to ("com.old.app" to 10L), 200 to ("com.steady.app" to 10L), 300 to ("com.gone.app" to 10L))
+            assertEquals(listOf("com.gone.app", "com.old.app", "com.steady.app"), names("topRam").sorted())
+            s.sample(100 to ("com.old.app" to 20L), 200 to ("com.steady.app" to 30L), 300 to ("com.gone.app" to 15L))
+            assertEquals(listOf("com.steady.app", "com.old.app", "com.gone.app"), names("top"))
+
+            // pid 100 is reused by a different process (different name) with a higher counter, and pid 300 exits.
+            s.sample(100 to ("com.new.app" to 500L), 200 to ("com.steady.app" to 50L))
+            assertEquals("the new process is named afresh", listOf("com.new.app", "com.steady.app"), names("topRam").sorted())
+            assertEquals("the dead process's baseline is not charged to the new one", listOf("com.steady.app"), names("top"))
+            assertEquals(listOf("com.steady.app"), workload(PerfReader.topNames()))
+
+            // The new process ranks from its own baseline on the next interval.
+            s.sample(100 to ("com.new.app" to 540L), 200 to ("com.steady.app" to 60L))
+            assertEquals(listOf("com.new.app", "com.steady.app"), names("top"))
+            assertEquals(listOf("com.new.app", "com.steady.app"), workload(PerfReader.topNames()))
+        } finally {
+            PerfReader.stop()
+            scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
+        }
+    }
+
+    @Test fun aKernelWorkerKeepsItsCpuDeltaWhenItsWorkqueueSuffixFlips() {
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Unconfined)
+        try {
+            PerfReader.stop()
+            PerfReader.startForTest(scope, perfDump = { null }, elapsedRealtime = { 1L },
+                pause = { kotlinx.coroutines.awaitCancellation() })
+            val s = Sampler(PerfReader.lifecycleGeneration())
+
+            // Linux 4.18+ shows a kernel worker's current workqueue after '+' (busy) or '-' (idle).
+            s.sample(400 to ("kworker/u8:2+events_unbound" to 10L), 200 to ("com.steady.app" to 10L))
+            s.sample(400 to ("kworker/u8:2-events_unbound" to 110L), 200 to ("com.steady.app" to 20L))
+            assertEquals("the same busy worker is still ranked", listOf("kworker/u8:2-events_unbound", "com.steady.app"), names("top"))
+            s.sample(400 to ("kworker/u8:2+events_unbound" to 210L), 200 to ("com.steady.app" to 30L))
+            assertEquals(listOf("kworker/u8:2+events_unbound", "com.steady.app"), names("top"))
+
+            // A different worker on the reused pid is still a different process.
+            s.sample(400 to ("kworker/u8:3+events_unbound" to 900L), 200 to ("com.steady.app" to 40L))
+            assertEquals(listOf("com.steady.app"), names("top"))
         } finally {
             PerfReader.stop()
             scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()

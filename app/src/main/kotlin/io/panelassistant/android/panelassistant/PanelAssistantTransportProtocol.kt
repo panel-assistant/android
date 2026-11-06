@@ -13,6 +13,7 @@ internal data class PanelAssistantHelloIdentity(
     val did: String?,
     val appVersion: String,
     val appVersionCode: Int,
+    val httpPort: Int = io.panelassistant.android.Config.DEFAULT_PORT,
 )
 
 /** Session-only authority for admitting panel-app candidates. Never persisted while PA is offline. */
@@ -37,6 +38,8 @@ internal data class PanelAssistantSession(
     val entryId: String? = null,
     /** Approximate visible-state total; older integrations omit this advisory field. */
     val expectedEntityCount: Int? = null,
+    /** Session-only source minimum priorities; absent unless `logs` was granted. */
+    val logs: Map<String, Int>? = null,
 ) {
     /** The session token is a bearer for this session's requests; keep it out of logs. */
     override fun toString(): String =
@@ -140,11 +143,13 @@ internal object PanelAssistantTransportProtocol {
     const val PROTOCOL_MAX = 5
     const val COMMAND_HELLO = "panel_assistant/hello"
     const val COMMAND_REPORT_STATE = "panel_assistant/report_state"
+    const val COMMAND_REPORT_LOG = "panel_assistant/report_log"
     const val COMMAND_COMMAND_RESULT = "panel_assistant/command_result"
     const val COMMAND_RESTART_NOTICE = "panel_assistant/restart_notice"
     const val COMMAND_REPORT_EVENT = "panel_assistant/report_event"
 
     const val CAPABILITY_STATE = "state"
+    const val CAPABILITY_LOGS = "logs"
     const val CAPABILITY_COMMANDS = "commands"
     const val CAPABILITY_APPROVAL = "approval"
 
@@ -166,6 +171,7 @@ internal object PanelAssistantTransportProtocol {
      * ([PanelAssistantManagement]) rather than by opening a connection back to it.
      */
     const val CAPABILITY_MANAGEMENT = "management"
+    const val CAPABILITY_LOCAL_ADB = "local_adb"
     /**
      * Protocol section 20.4: the panel sends a relayed subscription's updates as `panel_assistant/ui_update`,
      * which a Panel Assistant granting it registers.
@@ -192,6 +198,11 @@ internal object PanelAssistantTransportProtocol {
     const val MANAGE_SETTINGS = "settings"
     /** Read the Area from Home Assistant again now; it carries no value, the panel keeps its own rule. */
     const val MANAGE_HA_AREA_REFRESH = "ha_area.refresh"
+    /**
+     * Give HOME back before removal: the one command Panel Assistant may send through the dispatcher's table,
+     * where `POST /api/v1/hand-back-home` registers it under this name.
+     */
+    const val MANAGE_HAND_BACK_HOME = "hand_back_home"
 
     const val OUTCOME_APPLIED = "applied"
     const val OUTCOME_SUPERSEDED = "superseded"
@@ -236,10 +247,12 @@ internal object PanelAssistantTransportProtocol {
             CAPABILITY_MEDIA,
             CAPABILITY_VOICE_STREAM_SESSION,
             CAPABILITY_MANAGEMENT,
+            CAPABILITY_LOCAL_ADB,
             CAPABILITY_UI_SUBSCRIBE,
             CAPABILITY_UI_BUNDLE,
             CAPABILITY_REST_RETIRED,
             CAPABILITY_UNKNOWN_STATE,
+            CAPABILITY_LOGS,
         )
 
     /**
@@ -248,7 +261,7 @@ internal object PanelAssistantTransportProtocol {
      * text, so a change to the handshake vocabulary changes the digest the integration records.
      */
     internal const val CANONICAL_CONTRACT: String =
-        """{"protocol":{"min":5,"max":5},"commands":["panel_assistant/hello","panel_assistant/report_state","panel_assistant/command_result","panel_assistant/restart_notice","panel_assistant/voice_configuration","panel_assistant/voice_run","panel_assistant/voice_played","panel_assistant/voice_stream_frame","panel_assistant/voice_stream_stop","panel_assistant/ui_update"],"capabilities":["state","commands","approval","voice","media","voice_stream_session","management","ui_subscribe","ui_bundle","rest_retired","unknown_state"]}"""
+        """{"protocol":{"min":5,"max":5},"commands":["panel_assistant/hello","panel_assistant/report_state","panel_assistant/command_result","panel_assistant/restart_notice","panel_assistant/voice_configuration","panel_assistant/voice_run","panel_assistant/voice_played","panel_assistant/voice_stream_frame","panel_assistant/voice_stream_stop","panel_assistant/ui_update","panel_assistant/report_log"],"capabilities":["state","commands","approval","voice","media","voice_stream_session","management","local_adb","ui_subscribe","ui_bundle","rest_retired","unknown_state","logs"]}"""
 
     val CONTRACT_DIGEST: String = MessageDigest.getInstance("SHA-256")
         .digest(CANONICAL_CONTRACT.toByteArray(Charsets.UTF_8))
@@ -273,18 +286,22 @@ internal object PanelAssistantTransportProtocol {
         addresses: List<String> = emptyList(),
         /** The panel's Sendspin client id, sent exactly when [capabilities] offers `voice_stream_session`. */
         voiceStreamClientId: String? = null,
+        logs: JSONObject? = null,
     ): String = JSONObject()
         .put("id", id)
         .put("type", COMMAND_HELLO)
         .put("protocol", JSONObject().put("min", PROTOCOL_MIN).put("max", PROTOCOL_MAX))
         .put("did", identity.did ?: JSONObject.NULL)
+        .put("http_port", identity.httpPort)
         .put(
             "app",
-            JSONObject().put("version", identity.appVersion).put("version_code", identity.appVersionCode),
+            JSONObject().put("version", identity.appVersion).put("version_code", identity.appVersionCode)
+                .apply { if (CAPABILITY_LOGS in capabilities) put("package", io.panelassistant.android.BuildConfig.APPLICATION_ID) },
         )
         .put("contract_digest", CONTRACT_DIGEST)
         .put("capabilities", JSONArray(capabilities))
         .put("channels", JSONArray(channels.map { it.toJson() }))
+        .apply { if (logs != null && CAPABILITY_LOGS in capabilities) put("logs", logs) }
         .apply { if (addresses.isNotEmpty()) put("addresses", JSONArray(addresses)) }
         // An explicit statement that these channels cannot be served here, so the integration removes their
         // entities; a channel merely absent from both lists changes nothing. Omitted when empty.
@@ -440,8 +457,23 @@ internal object PanelAssistantTransportProtocol {
                 updatePolicy(result, protocol),
                 voiceStream,
                 (result.opt("entry_id") as? String)?.takeIf(ENTRY_ID::matches),
-                (result.opt("expected_entity_count") as? Int)?.takeIf { it > 0 }),
+                (result.opt("expected_entity_count") as? Int)?.takeIf { it > 0 },
+                if (CAPABILITY_LOGS in capabilities) logsGrant(result.optJSONObject("logs")) else null),
         )
+    }
+
+    private fun logsGrant(grant: JSONObject?): Map<String, Int> {
+        val sources = grant?.optJSONObject("sources")
+            ?: throw PanelAssistantProtocolException("hello result grants logs without usable sources")
+        val parsed = LinkedHashMap<String, Int>()
+        for (source in sources.keys()) {
+            val priority = sources.opt(source) as? Int
+            if (source !in setOf("app", "system") || priority == null || priority !in 2..7) {
+                throw PanelAssistantProtocolException("hello log source grant is malformed")
+            }
+            parsed[source] = priority
+        }
+        return parsed
     }
 
     private fun voiceStreamGrant(grant: JSONObject?): PanelAssistantVoiceStreamGrant? {

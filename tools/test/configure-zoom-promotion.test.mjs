@@ -1,7 +1,7 @@
 // Renderer zoom on the Configure page, in both engines. The server promotes zoom (first in its group,
 // basic tier, sizing help) only where display sizing is unavailable; this checks the page renders that
 // schema with zoom leading the Built-in renderer card on the basic view, and leaves the privileged
-// schema exactly as before: zoom last, advanced-only, with the Display Sizing recommendation.
+// schema exactly as before: zoom last, advanced-only, with the Display sizing recommendation.
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
@@ -140,7 +140,7 @@ for (const engine of engines) {
     await p.evaluate(() => window.cfgTab(true));
     const rows = await card(p);
     assert.equal(rows.at(-1).id, 'cfg-dashboard_zoom');
-    assert.match(rows.at(-1).help, /^Browser zoom\. Recommend use Display Sizing for better results$/);
+    assert.match(rows.at(-1).help, /^Browser zoom\. We recommend using Display sizing for better results$/);
   });
 }
 

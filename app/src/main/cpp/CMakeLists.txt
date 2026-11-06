@@ -6,6 +6,9 @@ project(hapaneld_native C CXX)
 # Produces libhapaneld_led.so, loaded by hardware/NativeLed.kt via System.loadLibrary("hapaneld_led").
 add_library(hapaneld_led SHARED led_jni.c)
 
+# Linux flock shared by the app's handback and the installer's rootless HOME setup.
+add_library(hapaneld_home SHARED home_lock_jni.c)
+
 find_library(log-lib log)
 target_link_libraries(hapaneld_led ${log-lib})
 

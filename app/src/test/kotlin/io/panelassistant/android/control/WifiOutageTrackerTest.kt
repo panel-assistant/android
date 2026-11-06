@@ -117,9 +117,13 @@ class WifiOutageTrackerTest {
         clock.advance(4_000L)
         t.onDefaultAvailable(NET_B)
         clock.advance(300L)
-        t.onTransportChanged(NET_A, false)            // the replacement was Ethernet/VPN, not Wi-Fi
+        t.onTransportChanged(NET_B, false)            // the replacement was Ethernet/VPN, not Wi-Fi
         assertEquals(0, t.counts().last24h)
         assertEquals(0, store.saves)           // and nothing false was ever persisted
+        // A later capability change cannot resurrect the episode already discarded for Ethernet.
+        t.onTransportChanged(NET_B, true)
+        assertEquals(0, t.counts().last24h)
+        assertEquals(0, store.saves)
     }
 
     @Test fun lossWhileARecoveryIsUnresolvedDiscardsTheUnattributableEpisode() {

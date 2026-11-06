@@ -19,7 +19,7 @@ import io.panelassistant.android.util.HelperClient
  * Each tier maps to a kernel governor via [DeviceProfile.cpuGovernors] — Auto differs by SoC (schedutil
  * on rk3566/rk3576, interactive on PX30) — and falls back to resolving from the runtime-available list
  * when the profile has no mapping. Governors are **read** through the shared [PanelMetrics] reader (the
- * cpufreq sysfs is world-readable, so its direct→su strategy reads directly on every panel); the *write*
+ * source tries cpufreq sysfs directly, then the fixed helper read verb); the *write*
  * needs root. [DeviceProfile.appCanSu] orders the live attempts: su first on known su-reachable panels,
  * helper first on sandbox-walled panels. A failed preferred route always falls through to the other.
  */

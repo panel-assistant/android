@@ -114,6 +114,8 @@ internal class ServiceComponentOperations(
         UpdateChecker.restoreTargets(config().softwareUpdateTargets.second)
         InstallProgress.observer = softwareProgressObserver
         UpdateChecker.onChecked = softwareCatalogObserver
+        // Likewise a restore an earlier process left unfinished: report it, never resume it.
+        io.panelassistant.android.http.RestoreJournal { context.filesDir }.reportInterrupted()
     }
 
     fun detachSoftwareUpdateObservers() {

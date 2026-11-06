@@ -1,5 +1,6 @@
 package io.panelassistant.android
 
+import io.panelassistant.android.dashboard.RendererEntityHold
 import android.content.Intent
 import io.panelassistant.android.dashboard.EntityBootstrapProblem
 import io.panelassistant.android.dashboard.EntityFilterProtocol
@@ -303,19 +304,19 @@ internal fun entityFilterQuestionPending(
     haUrl.isNotBlank() &&
     (haToken.isNotBlank() || haRefreshToken.isNotBlank())
 
-internal fun panelHaOAuthStartUrl(haUrl: String): String =
-    "http://127.0.0.1:8888/api/v1/ha/oauth/panel-start?ha_url=${URLEncoder.encode(haUrl.trim().trimEnd('/'), "UTF-8")}"
+internal fun panelHaOAuthStartUrl(haUrl: String, httpPort: Int): String =
+    "http://127.0.0.1:$httpPort/api/v1/ha/oauth/panel-start?ha_url=${URLEncoder.encode(haUrl.trim().trimEnd('/'), "UTF-8")}"
 
-internal fun panelHaOAuthNavigationAllowed(configuredUrl: String, candidateUrl: String): Boolean =
-    dashboardNavigationAllowed(configuredUrl, candidateUrl) || isPanelHaOAuthCallback(candidateUrl)
+internal fun panelHaOAuthNavigationAllowed(configuredUrl: String, candidateUrl: String, httpPort: Int): Boolean =
+    dashboardNavigationAllowed(configuredUrl, candidateUrl) || isPanelHaOAuthCallback(candidateUrl, httpPort)
 
-internal fun isPanelHaOAuthCallback(candidateUrl: String): Boolean = runCatching {
+internal fun isPanelHaOAuthCallback(candidateUrl: String, httpPort: Int): Boolean = runCatching {
     val uri = URI(candidateUrl.trim())
     val scheme = uri.scheme?.lowercase() ?: return@runCatching false
     val host = uri.host?.lowercase() ?: return@runCatching false
     scheme == "http" &&
         host in setOf("127.0.0.1", "localhost") &&
-        (uri.port == -1 || uri.port == 8888) &&
+        uri.port == httpPort &&
         uri.path == HA_OAUTH_CALLBACK_PATH
 }.getOrDefault(false)
 
@@ -877,20 +878,18 @@ internal enum class EntityBootstrapWatchdogAction {
     RESYNC,
     /** Ask Home Assistant whether the held dashboard changed, without resyncing the catalogue. */
     PROBE,
-    /** Stop impersonating progress: present the problem screen with its retry and disable actions. */
-    PRESENT_PROBLEM,
 }
 
 /**
  * The entity-bootstrap watchdog as a clock-injected state machine.
  *
- * The hold is structurally forbidden from being terminal, but the recovery it offers must match the
- * reason for the hold. A scan that has not answered, or failed, is repaired by resyncing; the commonest
+ * The recovery a hold offers must match its reason; how long the dashboard may stay behind it is not
+ * the watchdog's to decide, but a separate time limit's ([RendererEntityHold]), and this ladder keeps
+ * running behind a dashboard released past it. A scan that has not answered, or failed, is repaired by resyncing; the commonest
  * cause is Home Assistant not being up yet, so the resync keeps being offered on a widening interval.
  * A scan that HAS answered and is blocked only on a person's decision about a flagged dashboard rule is
  * a different state: no resync can supply that decision, and one panel performed 794 full catalogue
- * resyncs over 2.75 days against exactly this hold. In that state the watchdog never resyncs and never
- * gives up; it asks Home Assistant, on a much wider cadence, whether the dashboard itself changed, which
+ * resyncs over 2.75 days against exactly this hold. In that state the watchdog never resyncs; it asks Home Assistant, on a much wider cadence, whether the dashboard itself changed, which
  * is the only external input that can change the answer without anybody at the panel.
  *
  * Every transition between the two states rebases the clocks, so the sync a late approval starts is
@@ -900,14 +899,12 @@ internal enum class EntityBootstrapWatchdogAction {
 internal class EntityBootstrapWatchdog(
     private val retryMs: Long,
     private val retryCeilingMs: Long,
-    private val problemMs: Long,
     private val probeMs: Long,
     private val probeCeilingMs: Long,
 ) {
     init {
         require(retryMs in 1..retryCeilingMs)
         require(probeMs in 1..probeCeilingMs)
-        require(problemMs > 0L)
     }
 
     private var holdSinceMs = 0L
@@ -923,9 +920,6 @@ internal class EntityBootstrapWatchdog(
     var probes = 0
         private set
 
-    /** Past the give-up deadline the hold presents as a problem so the retry and disable actions appear. */
-    var gaveUp = false
-        private set
 
     /** True while the only thing holding the renderer is an unanswered decision about flagged rules. */
     val heldOnDecision: Boolean get() = decisionHeld
@@ -968,10 +962,6 @@ internal class EntityBootstrapWatchdog(
             nextRetryMs = nowMs + entityBootstrapRetryDelayMs(resyncs, retryMs, retryCeilingMs)
             return EntityBootstrapWatchdogAction.RESYNC
         }
-        if (heldMs > problemMs && !gaveUp) {
-            gaveUp = true
-            return EntityBootstrapWatchdogAction.PRESENT_PROBLEM
-        }
         return EntityBootstrapWatchdogAction.IDLE
     }
 
@@ -982,6 +972,5 @@ internal class EntityBootstrapWatchdog(
         nextProbeMs = if (nowMs == 0L) 0L else nowMs + probeMs
         resyncs = 0
         probes = 0
-        gaveUp = false
     }
 }

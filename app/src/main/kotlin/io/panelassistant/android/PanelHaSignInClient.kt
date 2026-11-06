@@ -11,7 +11,7 @@ import android.webkit.WebViewClient
  * [haUrl], hands over once the callback reports success, and retries a failed page load quietly before
  * giving the panel's verdict after [LOAD_RETRIES_MAX] failures in a row.
  */
-internal class PanelHaSignInClient(private val haUrl: String, private val host: Host) : WebViewClient() {
+internal class PanelHaSignInClient(private val haUrl: String, private val httpPort: Int, private val host: Host) : WebViewClient() {
     interface Host {
         /** Whether [view] is still the activity's current sign-in WebView. */
         fun isCurrent(view: WebView): Boolean
@@ -34,7 +34,7 @@ internal class PanelHaSignInClient(private val haUrl: String, private val host: 
 
     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
         if (!host.isCurrent(view)) return true
-        return !panelHaOAuthNavigationAllowed(haUrl, request.url.toString())
+        return !panelHaOAuthNavigationAllowed(haUrl, request.url.toString(), httpPort)
     }
 
     override fun onPageFinished(view: WebView, url: String) {
@@ -43,7 +43,7 @@ internal class PanelHaSignInClient(private val haUrl: String, private val host: 
         // sign-in, whose verdict would throw away what the person had typed.
         if (!loadFailed) loadRetries = 0
         loadFailed = false
-        if (!isPanelHaOAuthCallback(url)) return
+        if (!isPanelHaOAuthCallback(url, httpPort)) return
         view.evaluateJavascript("document.body&&document.body.dataset?document.body.dataset.haOauthStatus:\"\"") { result ->
             if (host.isCurrent(view) && result?.trim('"') == "success") host.onSignedIn(view)
         }

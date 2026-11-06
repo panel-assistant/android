@@ -81,12 +81,17 @@ class MdnsPeerTest {
     @Test fun peersJsonEmptyListIsEmptyArray() = assertEquals("[]", peersJson(emptyList()))
 
     @Test fun peersJsonResolvedPeerCarriesIpAndDerivedUrl() {
-        val json = peersJson(listOf(peer("gamma_ha_paneld", name = "Gamma", ip = "10.0.0.7", ver = "0.8.6")))
-        assertEquals(
-            """[{"panel_id":"gamma_ha_paneld","name":"Gamma","ip":"10.0.0.7","port":8888,""" +
-                """"url":"http://10.0.0.7:8888/","version":"0.8.6","self":false}]""",
-            json,
-        )
+        val json = peersJson(listOf(peer("gamma_ha_paneld", name = "Gamma", ip = "192.0.2.7", ver = "0.8.6")))
+        val peers = org.json.JSONArray(json)
+        assertEquals(1, peers.length())
+        val resolved = peers.getJSONObject(0)
+        assertEquals("gamma_ha_paneld", resolved.get("panel_id"))
+        assertEquals("Gamma", resolved.get("name"))
+        assertEquals("192.0.2.7", resolved.get("ip"))
+        assertEquals(8888, resolved.get("port"))
+        assertEquals("http://192.0.2.7:8888/", resolved.get("url"))
+        assertEquals("0.8.6", resolved.get("version"))
+        assertEquals(false, resolved.get("self"))
     }
 
     @Test fun peersJsonUnresolvedIpEmitsLiteralNullForIpAndUrl() {

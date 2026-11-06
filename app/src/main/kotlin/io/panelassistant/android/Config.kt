@@ -106,6 +106,26 @@ class Config private constructor(
 ) {
     enum class SecurityMode { RELAXED, HARDENED }
 
+    // Captured before startup migrations materialise defaults. Missing custody on an existing
+    // installation cannot reconstruct what older versions changed in the vendor.
+    private val vendorBrightnessFreshInstall by lazy { prefs.all.isEmpty() }
+
+    // The previous-HOME receiver can write configuration before the service starts.
+    internal fun initializeVendorBrightnessCustody() = synchronized(io.panelassistant.android.platform.LocalRpcVendorScreen.CUSTODY_LOCK) {
+        if (!prefs.contains("device_local_vendor_brightness_custody")) {
+            vendorBrightnessCustody().write(if (vendorBrightnessFreshInstall) "pending" else "unknown")
+        }
+    }
+
+    internal fun vendorBrightnessCustody(): io.panelassistant.android.platform.VendorBrightnessCustody =
+        object : io.panelassistant.android.platform.VendorBrightnessCustody {
+            override fun read(): String? = prefs.getString("device_local_vendor_brightness_custody", null)
+            override fun write(value: String): Boolean = durableCommit {
+                putString("device_local_vendor_brightness_custody", value)
+            }
+            override val freshInstall: Boolean get() = vendorBrightnessFreshInstall
+        }
+
     private val wakeOnWaveEpoch = AtomicLong()
     internal val haOAuthAttemptEpoch = AtomicLong()
     @Volatile private var logShipAbsentProtocolFallback: String? = null
@@ -116,7 +136,9 @@ class Config private constructor(
         AppState.preferences(context, "profile-calibration"),
         AppState.preferences(context, "power-safety-acknowledgement"),
         context.applicationContext.resources,
-    )
+    ) {
+        initializeVendorBrightnessCustody()
+    }
 
     /** JVM-test seam; identity defaults that consult Android settings require the production constructor. */
     internal constructor(prefs: SharedPreferences) : this(prefs, null, prefs, prefs, null)
@@ -145,7 +167,7 @@ class Config private constructor(
      */
     internal fun migrateLogShipTcpDefault() = synchronized(CONFIG_LOCK) {
         if (prefs.getBoolean(LOG_SHIP_TCP_DEFAULT_MIGRATION_PREF, false)) return@synchronized
-        val preExisting = prefs.all.isNotEmpty()
+        val preExisting = prefs.all.keys.any { it != "device_local_vendor_brightness_custody" }
         val preserveUdp = preExisting && !prefs.contains("log_ship_protocol")
         // Establish process truth before attempting durability. A failed SQLite/preferences commit must
         // not silently retarget this running upgraded panel to TCP while the absent marker waits to retry.
@@ -162,7 +184,24 @@ class Config private constructor(
         Unit
     }
 
-    val httpPort: Int get() = prefs.getInt("http_port", DEFAULT_PORT)
+    var httpPort: Int
+        get() = prefs.getInt("http_port", DEFAULT_PORT)
+        internal set(value) {
+            require(value in 1024..65535)
+            check(prefs.edit().putInt("http_port", value).commit()) { "HTTP port did not persist" }
+        }
+
+    /**
+     * A port asked for through `/api/v1/config`, tried first the next time the HTTP server starts and then
+     * cleared. [httpPort] stays the port actually listening until then, so nothing reads a port that does
+     * not answer yet.
+     */
+    val httpPortRequest: Int?
+        get() = prefs.getInt(HTTP_PORT_REQUEST_PREF, 0).takeIf { it in 1024..65535 }
+
+    internal fun setHttpPortRequest(value: Int?) {
+        edit { if (value == null) remove(HTTP_PORT_REQUEST_PREF) else putInt(HTTP_PORT_REQUEST_PREF, value) }
+    }
 
     /**
      * Device-local control-plane posture. This key deliberately lives outside SettingsRegistry, so a
@@ -508,9 +547,12 @@ class Config private constructor(
     }
 
     /** Hand-back: drop the tame blocklist and the launcher choice in one durable write; false publishes neither. */
-    internal fun clearHandBackDesiredState(): Boolean = applyBatch {
-        setTameVendorPackages("")
-        setLauncherPackage("")
+    internal fun clearHandBackDesiredState(): Boolean = withHomeCustody {
+        applyBatch {
+            edit { putBoolean("device_local_home_takeover_pending", false) }
+            setTameVendorPackages("")
+            setLauncherPackage("")
+        }
     }
 
     /**
@@ -1542,13 +1584,10 @@ class Config private constructor(
                 ed.putString(SettingsRegistry.ADDRESS_FAMILY_KEY, it)
             }
         }
-        // Schema 16 turns Home Assistant navigation hiding off for new panels only. A store that booted a
-        // build with the setting and never chose was showing it on, and an update must not change that; a
-        // fresh store (the schema-1 sentinel) or one from before the setting gets the new default.
-        if (from >= SettingsRegistry.FIRST_SCHEMA_WITH_NATIVE_KIOSK && from < 16 &&
-            !prefs.contains(SettingsRegistry.NATIVE_KIOSK_KEY)
-        ) {
-            ed.putBoolean(SettingsRegistry.NATIVE_KIOSK_KEY, true)
+        // Schema 17 shows Home Assistant navigation once on every panel, including explicit hidden choices.
+        // Persist the reset with its schema marker; choices made afterwards must survive later updates.
+        if (from < 17) {
+            ed.putBoolean(SettingsRegistry.NATIVE_KIOSK_KEY, false)
         }
         // A schema-3 live store may have relied on the old true fallbacks without ever materializing
         // them. Preserve that upgrade behavior, while fresh schema-1 stores receive schema-4 defaults.
@@ -1635,6 +1674,7 @@ class Config private constructor(
             "prox_sensitivity",
         )
         const val DEFAULT_PORT = 8888
+        const val HTTP_PORT_REQUEST_PREF = "http_port_request"
         const val VERSION = BuildConfig.VERSION_NAME
         const val MDNS_SERVICE_TYPE = "_ha-paneld._tcp.local."
     }

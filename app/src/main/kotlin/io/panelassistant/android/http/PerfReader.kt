@@ -3,21 +3,19 @@ package io.panelassistant.android.http
 import io.panelassistant.android.RendererResolver
 import io.panelassistant.android.RendererTarget
 import io.panelassistant.android.control.BuiltinDashboard
-import io.panelassistant.android.control.Su
 import io.panelassistant.android.dashboard.EntityFilterTelemetry
 import io.panelassistant.android.dashboard.DashboardTelemetry
 import io.panelassistant.android.dashboard.EntityLearningRuntime
 import io.panelassistant.android.metrics.MetricParse
 import io.panelassistant.android.metrics.MetricRegistry
 import io.panelassistant.android.metrics.MetricSample
+import io.panelassistant.android.metrics.OsMetricSource
 import io.panelassistant.android.metrics.PanelMetrics
 import io.panelassistant.android.metrics.PerfDump
 import io.panelassistant.android.metrics.RamRingSink
-import io.panelassistant.android.metrics.FeatureCostOperation
-import io.panelassistant.android.metrics.FeatureCostOutcome
-import io.panelassistant.android.metrics.FeatureCosts
+import io.panelassistant.android.platform.HelperGfxInfo
+import io.panelassistant.android.util.HelperClient
 import io.panelassistant.android.util.Json
-import io.panelassistant.android.util.AndroidInput
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -34,9 +32,12 @@ import org.json.JSONObject
  * load and the series survives page reloads (cleared when the service-owned sampler stops).
  *
  * The heavy per-process metrics that only this page needs — top-5 by CPU/RAM and dashboard render jank — stay
- * PerfReader-local (their deltas + su cadence are not shared with Diagnostics). On sandbox panels those
- * come free from the shared reader's PERFDUMP (exposed as [io.panelassistant.android.metrics.Snapshot.dump]),
- * so no second dump is fetched; on rooted panels they're separate `su` calls spread across ticks.
+ * PerfReader-local (their deltas and cadence are not shared with Diagnostics). Both come from the helper's
+ * PERFDUMP: free from the shared reader's dump when it fetched one this tick (exposed as
+ * [io.panelassistant.android.metrics.Snapshot.dump]), otherwise one dump of PerfReader's own on the ticks that
+ * need it. They are repeated reads while the page is open, so they never use su; with no helper they are
+ * unavailable. Built-in rendering also uses fixed SELF GFXINFO counters for an optional interval jank
+ * percentage, without resetting HWUI counters or inferring an interval percentile.
  *
  * CPU % is a delta the reader computes (so the first tick has no value). GPU is Rockchip Mali devfreq load
  * ("<load>@<freq>Hz"); absent on panels without it.
@@ -70,7 +71,7 @@ object PerfReader {
     @Volatile private var topRamJson = "null"
     // The active dashboard renderer identity, an immutable snapshot the service resolves off the sampling
     // path (no PackageManager here) and installs under generation admission / updates at the applied-
-    // config boundary / clears on stop. One value carries both the gfxinfo/label attribution package
+    // config boundary / clears on stop. One value carries both the label attribution package
     // ([RendererResolver.attributionOf], built-in → our own package) AND whether the renderer is the
     // built-in WebView (gates the TTI + reload self-measurement, which a foreign Companion can't report).
     // Captured exactly once per diagnostic operation so a projection can't straddle a reconfigure.
@@ -78,13 +79,16 @@ object PerfReader {
     @Volatile private var renderJson = "null"
     private val stutterHist = ArrayDeque<Int>()   // CrRendererMain %-of-one-core per render window
     private var prevRenderJiffies = HashMap<Int, Long>() // renderer pid -> CrRendererMain utime+stime
+    private var prevGfx: Pair<RendererIdentity, HelperGfxInfo>? = null
     private var prevRenderAt = 0L
-    private var rootOk = false
     private var tickCount = 0
     private var prevTopTotal = 0L                 // /proc/stat aggregate jiffies at last top sample
     private var prevProc = HashMap<Int, Long>()   // pid -> utime+stime jiffies at last top sample
+    private var prevComm = HashMap<Int, String>() // pid -> comm at last top sample, to spot a reused pid
     private var prevSelf = 0L                     // own jiffies incl. reaped children at last top sample
-    private val nameCache = HashMap<Int, String>() // pid -> cmdline (fetched once; pids recycle rarely)
+    // Fetches a helper PERFDUMP for a tick whose shared snapshot carried none; tests install a fake.
+    @Volatile private var helperDump: () -> PerfDump? = ::fetchHelperDump
+    @Volatile private var helperGfx: () -> HelperGfxInfo? = { HelperClient.gfxInfo() }
 
     // Page-view gate. Instrumentation is the tool, not a tax: it must not be the panel's biggest CPU
     // consumer 24/7. So sampling runs only while the info page has been fetched within [ACTIVE_MS];
@@ -108,19 +112,21 @@ object PerfReader {
         scope = scope,
         ownPackage = ownPackage,
         initialTarget = initialTarget,
-        rootAvailable = { Su.availableIsolated() },
+        perfDump = ::fetchHelperDump,
+        gfxInfo = { HelperClient.gfxInfo() },
         elapsedRealtime = { android.os.SystemClock.elapsedRealtime() },
         pause = { delay(it) },
     )
 
     internal fun startForTest(
         scope: CoroutineScope,
-        rootAvailable: () -> Boolean,
+        perfDump: () -> PerfDump?,
         elapsedRealtime: () -> Long,
         pause: suspend (Long) -> Unit,
         ownPackage: String = "",
         initialTarget: RendererTarget? = null,
-    ) = startOwned(scope, ownPackage, initialTarget, rootAvailable, elapsedRealtime, pause)
+        gfxInfo: () -> HelperGfxInfo? = { null },
+    ) = startOwned(scope, ownPackage, initialTarget, perfDump, gfxInfo, elapsedRealtime, pause)
 
     /** Update the renderer-target snapshot at the applied-configuration boundary. Generation-guarded so a
      *  call before start or after stop is a no-op — a dead/rejected generation can never publish. */
@@ -138,13 +144,16 @@ object PerfReader {
         scope: CoroutineScope,
         ownPackage: String,
         initialTarget: RendererTarget?,
-        rootAvailable: () -> Boolean,
+        perfDump: () -> PerfDump?,
+        gfxInfo: () -> HelperGfxInfo?,
         elapsedRealtime: () -> Long,
         pause: suspend (Long) -> Unit,
     ) {
         val runGeneration = synchronized(lifecycleLock) {
             if (generation != 0L) return
             resetStateLocked()
+            helperDump = perfDump
+            helperGfx = gfxInfo
             (++nextGeneration).also {
                 generation = it
                 // Install the identity snapshot as part of admission, so a rejected duplicate start
@@ -153,16 +162,10 @@ object PerfReader {
             }
         }
         val candidate = scope.launch {
-            var rootProbed = false
             while (isActive && isCurrent(runGeneration)) {
                 val now = elapsedRealtime()
                 if (withinActiveWindow(now, lastAccessAt)) {
-                    if (!rootProbed) {
-                        val available = runCatching(rootAvailable).getOrDefault(false)
-                        ifCurrent(runGeneration) { rootOk = available } ?: return@launch
-                        rootProbed = true
-                    }
-                    runCatching { tick(runGeneration) }
+                    runCatching { tick(runGeneration, now) }
                 } else {
                     ifCurrent(runGeneration) { resetLocalBaselines() }
                 }
@@ -195,9 +198,10 @@ object PerfReader {
     /** Caller holds [lifecycleLock], so a terminal reset cannot interleave with a generation mutation. */
     private fun resetStateLocked() {
         lastAccessAt = 0L
-        rootOk = false
         tickCount = 0
         rendererIdentity = RendererIdentity()
+        helperDump = ::fetchHelperDump
+        helperGfx = { HelperClient.gfxInfo() }
         resetLocalBaselines()
         synchronized(lock) {
             sink.clear()
@@ -226,9 +230,13 @@ object PerfReader {
      *  in [PanelMetrics] and is deliberately NOT reset here (a stale prev just yields one valid
      *  longer-window CPU% on the next read, never a bogus delta). */
     private fun resetLocalBaselines() {
+        prevGfx = null
+        resetPerfDumpBaselines()
+    }
+
+    private fun resetPerfDumpBaselines() {
         prevTopTotal = 0L; prevSelf = 0L
-        prevProc = HashMap(); prevRenderJiffies = HashMap(); prevRenderAt = 0L
-        nameCache.clear()
+        prevProc = HashMap(); prevComm = HashMap(); prevRenderJiffies = HashMap(); prevRenderAt = 0L
     }
 
     /** Latest sample + history FIFO + top-5 procs + render jank, as JSON, for `GET /perf`. */
@@ -298,9 +306,7 @@ object PerfReader {
     /**
      * Advance the per-renderer jiffy-delta baseline from the current CrRendererMain jiffies and return the
      * busiest main-thread %-of-one-core over the interval, or -1.0 when there's no prior baseline / no
-     * renderer (first sample or nothing running). Shared by the direct-su [sampleRender] and the daemon
-     * [sampleRenderDump] consumers — same delta shape, each keeping its OWN sampling cadence. The caller
-     * holds the generation guard, so mutating [prevRenderJiffies]/[prevRenderAt] here is safe.
+     * renderer (first sample or nothing running), for [sampleRenderDump]. The caller holds the generation guard, so mutating [prevRenderJiffies]/[prevRenderAt] here is safe.
      */
     private fun advanceRenderDelta(cur: Map<Int, Long>, now: Long): Double {
         var mainPct = -1.0
@@ -319,107 +325,6 @@ object PerfReader {
     /** The single "no Chromium renderer" render payload (first sample or nothing running). Read under
      *  [lock] by the caller, since [stutterHist] is shared state. */
     private fun noRendererJson(): String = "{\"status\":\"no-renderer\",\"hist\":${stutterHist.toList()}}"
-
-    /**
-     * Dashboard responsiveness. PRIMARY = the WebView renderer's main-thread CPU (`CrRendererMain`,
-     * via /proc/<renderer>/task/<tid>/stat) as %-of-one-core: this is the thread the HA frontend
-     * processes the WebSocket state firehose on, so it saturates (~100%) when event handling falls
-     * behind *even with zero rendering* — the common no-video overload that `dumpsys gfxinfo` jank
-     * misses entirely. gfxinfo jank is kept as a SECONDARY "rendering load" field (only meaningful with
-     * video/animation, e.g. a camera card). Needs root. HZ assumed 100 (Android default).
-     */
-    private fun sampleRender(runGeneration: Long) {
-        val identity = rendererIdentity
-        // Primary: busiest CrRendererMain %-of-one-core across WebView renderer processes (covers a
-        // Companion *or* a browser dashboard). One su call emits "<pid> <stat>" per renderer main thread.
-        // Shell `read` builtins instead of a `cat` per thread: the old form forked ~2 processes per
-        // renderer thread every sample — dozens of execs on a slow SoC — for what a redirect does free.
-        val cmd = "ps -A -o PID,NAME 2>/dev/null | grep -i sandboxe | while read pid name; do " +
-            "for t in /proc/\$pid/task/*; do IFS= read -r c < \$t/comm 2>/dev/null || continue; " +
-            "if [ \"\$c\" = CrRendererMain ]; then IFS= read -r s < \$t/stat 2>/dev/null && echo \"\$pid \$s\"; fi; done; done; true"
-        val out = rootDiagnostic(cmd, 2L * 1024L * 1024L)
-        val now = android.os.SystemClock.elapsedRealtime()
-        val parsed = HashMap<Int, Long>()
-        if (out != null) for (line in out.lineSequence()) {
-            val sp = line.indexOf(' ')
-            if (sp <= 0) continue
-            val pid = line.substring(0, sp).trim().toIntOrNull() ?: continue
-            val rest = MetricParse.statFieldsAfterComm(line.substring(sp + 1)) ?: continue // utime=11,stime=12
-            val ut = rest.getOrNull(11)?.toLongOrNull() ?: continue
-            val st = rest.getOrNull(12)?.toLongOrNull() ?: 0
-            parsed[pid] = ut + st
-        }
-        val mainPct = ifCurrent(runGeneration) { advanceRenderDelta(parsed, now) } ?: return
-        if (mainPct < 0) { // first sample, or no Chromium renderer running
-            ifCurrent(runGeneration) {
-                synchronized(lock) { renderJson = noRendererJson() }
-            }
-            return
-        }
-        val pct1 = Math.round(mainPct.coerceIn(0.0, 100.0) * 10) / 10.0
-        val verdict = if (pct1 < 50) "smooth" else if (pct1 < 85) "occasional" else "janky"
-
-        // Secondary: gfxinfo jank (rendering load — only meaningful with video/animation). Optional.
-        var jankFields = ""
-        val pkg = RendererResolver.attributionOf(identity.target, identity.ownPackage)
-            .takeIf(AndroidInput::isPackage).orEmpty()
-        if (pkg.isNotEmpty()) {
-            val g = rootDiagnostic(
-                "dumpsys gfxinfo $pkg; dumpsys gfxinfo $pkg reset >/dev/null 2>&1; true",
-                1L * 1024L * 1024L,
-            )
-            if (g != null) {
-                val tot = Regex("""Total frames rendered:\s*(\d+)""").find(g)?.groupValues?.get(1)?.toLongOrNull() ?: 0
-                if (tot > 0) {
-                    val janky = Regex("""Janky frames:\s*(\d+)""").find(g)?.groupValues?.get(1)?.toLongOrNull() ?: 0
-                    val p99 = Regex("""99th percentile:\s*(\d+)ms""").find(g)?.groupValues?.get(1)?.toIntOrNull() ?: 0
-                    jankFields = ",\"jankPct\":${Math.round(janky * 1000.0 / tot) / 10.0},\"p99\":$p99"
-                }
-            }
-        }
-        ifCurrent(runGeneration) {
-            synchronized(lock) {
-                push(stutterHist, Math.round(pct1).toInt())
-                renderJson = "{\"pkg\":\"${pkg.ifBlank { "dashboard" }}\",\"mainPct\":$pct1,\"verdict\":\"$verdict\"" +
-                    jankFields + ",\"hist\":${stutterHist.toList()}}"
-            }
-        }
-    }
-
-    /**
-     * Top-5 processes by CPU, computed from `/proc/[pid]/stat` deltas over the sample interval (what
-     * `top` does) — `dumpsys cpuinfo` was tried first but returns a cached snapshot that only the
-     * system refreshes (minutes apart), so it never advances. Needs root to read other pids' stat
-     * (`/proc` is `hidepid`). CPU is expressed as % of total capacity (sums to <=100 across procs,
-     * consistent with the overall CPU figure). Full names come from `/proc/<pid>/cmdline`.
-     */
-    private fun sampleTop(runGeneration: Long) {
-        // `; true` so a vanished-pid `cat` (non-zero) doesn't null the whole capture.
-        val out = rootDiagnostic(
-            "cat /proc/stat; echo @@; cat /proc/[0-9]*/stat 2>/dev/null; true",
-            4L * 1024L * 1024L,
-        ) ?: return
-        val parts = out.split("@@")
-        if (parts.size < 2) return
-        val cpuLine = parts[0].lineSequence().firstOrNull { it.startsWith("cpu ") } ?: return
-        val total = cpuLine.trim().split(Regex("\\s+")).drop(1).mapNotNull { it.toLongOrNull() }.sum()
-
-        val cur = HashMap<Int, Long>()
-        val rssPages = HashMap<Int, Long>()
-        val comm = HashMap<Int, String>()
-        for (line in parts[1].lineSequence()) {
-            val lp = line.indexOf('('); val rp = line.lastIndexOf(')')
-            if (lp <= 0 || rp < lp) continue
-            val pid = line.substring(0, lp).trim().toIntOrNull() ?: continue
-            val rest = MetricParse.statFieldsAfterComm(line) ?: continue // utime=rest[11], stime=rest[12]
-            val utime = rest.getOrNull(11)?.toLongOrNull() ?: continue
-            val stime = rest.getOrNull(12)?.toLongOrNull() ?: continue
-            cur[pid] = utime + stime
-            rest.getOrNull(21)?.toLongOrNull()?.takeIf { it >= 0L }?.let { rssPages[pid] = it }
-            comm[pid] = line.substring(lp + 1, rp)
-        }
-        publishTop(runGeneration, cur, rssPages, comm, total, resolveFullNames = true)
-    }
 
     internal fun rankCpuProcesses(
         current: Map<Int, Long>,
@@ -464,7 +369,6 @@ object PerfReader {
         rssPages: Map<Int, Long>,
         comm: Map<Int, String>,
         total: Long,
-        resolveFullNames: Boolean,
     ) {
         val identity = rendererIdentity
         val myPid = android.os.Process.myPid()
@@ -473,30 +377,28 @@ object PerfReader {
         var cpuRanked = emptyList<Pair<Int, Long>>()
         var ramRanked = emptyList<Pair<Int, Long>>()
         var probePct: Double? = null
-        var missing = emptyList<Int>()
         ifCurrent(runGeneration) {
             dTotal = total - prevTopTotal
-            cpuRanked = if (prevTopTotal != 0L && dTotal > 0) rankCpuProcesses(cur, prevProc) else emptyList()
+            // A pid that vanished or changed comm since the last sample is a different process: give it no
+            // interval delta against the dead process's counter.
+            val sameProcess = { pid: Int -> comm[pid]?.let(::stableComm) == prevComm[pid]?.let(::stableComm) }
+            cpuRanked = if (prevTopTotal != 0L && dTotal > 0) {
+                rankCpuProcesses(cur.filterKeys(sameProcess), prevProc)
+            } else emptyList()
             ramRanked = rankRamProcesses(rssPages)
             probePct = if (kidsNow != null && prevSelf > 0L && dTotal > 0) {
                 Math.round((kidsNow - prevSelf) * 1000.0 / dTotal) / 10.0
             } else null
             prevTopTotal = total
             prevProc = HashMap(cur)
-            kidsNow?.let { prevSelf = it }
-            if (resolveFullNames) {
-                missing = (cpuRanked.asSequence() + ramRanked.asSequence())
-                    .map { it.first }.distinct().filter { it !in nameCache }.toList()
-            }
+            prevComm = HashMap(comm)
+            if (kidsNow != null) prevSelf = kidsNow
         } ?: return
 
-        // Full cmdlines only for ranked pids we haven't resolved before — usually zero extra su calls.
-        val resolvedNames = if (missing.isEmpty()) emptyMap() else fullNames(missing)
         ifCurrent(runGeneration) {
-            resolvedNames.forEach { (pid, name) -> nameCache[pid] = name }
             val attributionPkg = RendererResolver.attributionOf(identity.target, identity.ownPackage)
             fun processName(pid: Int): String {
-                var name = trimProcName(nameCache[pid] ?: comm[pid] ?: pid.toString())
+                var name = trimProcName(comm[pid] ?: pid.toString())
                 if (pid == myPid) name = if (attributionPkg == name) "built-in dashboard (Panel Assistant)" else "$name (this app)"
                 return name
             }
@@ -528,36 +430,13 @@ object PerfReader {
         return cu + cs
     }
 
-    /** Full process names from `/proc/<pid>/cmdline` (comm is truncated to 16 chars) for the top pids. */
-    private fun fullNames(pids: List<Int>): Map<Int, String> {
-        if (pids.isEmpty()) return emptyMap()
-        val cmd = "for p in ${pids.joinToString(" ")}; do printf '%s\\t' \"\$p\"; " +
-            "cat /proc/\$p/cmdline 2>/dev/null; printf '\\n'; done; true"
-        val out = rootDiagnostic(cmd, 256L * 1024L) ?: return emptyMap()
-        val map = HashMap<Int, String>()
-        for (line in out.lineSequence()) {
-            val tab = line.indexOf('\t'); if (tab <= 0) continue
-            val pid = line.substring(0, tab).trim().toIntOrNull() ?: continue
-            val name = line.substring(tab + 1).replace('\u0000', ' ').trim().substringBefore(' ')
-            if (name.isNotEmpty()) map[pid] = name
-        }
-        return map
-    }
-
-    private fun rootDiagnostic(command: String, maxBytes: Long): String? {
-        val cost = FeatureCosts.registry.span(FeatureCostOperation.PERF_ROOT_DIAGNOSTICS)
-        return try {
-            val output = Su.runOutputIsolatedBounded(command, maxBytes)
-            // Proc/dumpsys output is ASCII; character count is the byte workload without another array.
-            cost.work(units = 1, bytes = output?.length?.toLong() ?: 0L)
-            if (output == null) cost.outcome(FeatureCostOutcome.FAILURE)
-            output
-        } catch (error: Exception) {
-            cost.outcome(FeatureCostOutcome.FAILURE)
-            null
-        } finally {
-            cost.close()
-        }
+    /** Since Linux 4.18 a kernel worker's comm carries its current workqueue after a '+' (busy) or '-'
+     *  (idle), e.g. `kworker/u8:2+events_unbound`. Drop that suffix so the same worker still matches itself
+     *  when it flips between samples. */
+    private fun stableComm(comm: String): String {
+        if (!comm.startsWith("kworker/")) return comm
+        val cut = comm.indexOfAny(charArrayOf('+', '-'), startIndex = "kworker/".length)
+        return if (cut < 0) comm else comm.substring(0, cut)
     }
 
     /** Shorten Android "package:process:classname" cmdlines to just the package component — the extra
@@ -570,7 +449,11 @@ object PerfReader {
         while (q.size > MAX) q.removeFirst()
     }
 
-    // --- daemon-sourced top/render (sandbox panels), from the shared reader's PERFDUMP ---------------
+    // --- helper-sourced top/render, from a PERFDUMP ------------------------------------------------
+
+    private val helperSource by lazy { OsMetricSource() }
+
+    private fun fetchHelperDump(): PerfDump? = helperSource.perfDump()?.let(MetricParse::parsePerfDump)
 
     /** Top-5 by CPU/RAM from the daemon's process table (name is supplied by the helper). */
     private fun sampleTopDump(runGeneration: Long, dump: PerfDump) {
@@ -583,49 +466,67 @@ object PerfReader {
             process.rssPages?.let { rssPages[process.pid] = it }
             comm[process.pid] = process.name
         }
-        publishTop(runGeneration, cur, rssPages, comm, total, resolveFullNames = false)
+        publishTop(runGeneration, cur, rssPages, comm, total)
     }
 
-    /** Dashboard responsiveness from the daemon's CrRendererMain thread jiffies (primary metric; the
-     *  gfxinfo secondary needs dumpsys/su, so it's omitted on sandbox panels). */
-    private fun sampleRenderDump(runGeneration: Long, dump: PerfDump) {
-        val now = android.os.SystemClock.elapsedRealtime()
-        val mainPct = ifCurrent(runGeneration) { advanceRenderDelta(dump.rend, now) } ?: return
-        if (mainPct < 0) {
-            ifCurrent(runGeneration) {
-                synchronized(lock) { renderJson = noRendererJson() }
+    /** Cumulative HWUI counts only form an interval within one reset epoch and renderer identity. */
+    private fun advanceGfx(identity: RendererIdentity, current: HelperGfxInfo?): Double? {
+        val previous = prevGfx
+        prevGfx = current?.let { identity to it }
+        if (current == null || previous == null || previous.first !== identity) return null
+        val old = previous.second
+        if (current.since != old.since || current.total < old.total || current.janky < old.janky) return null
+        val frames = current.total - old.total
+        val janky = current.janky - old.janky
+        if (frames <= 0L || janky > frames) return null
+        return Math.round(janky * 1000.0 / frames) / 10.0
+    }
+
+    /** Read callbacks run outside the lifecycle lock. Admit both baselines and publication together. */
+    private fun sampleRenderDump(
+        runGeneration: Long, dump: PerfDump?, now: Long, identity: RendererIdentity, gfx: HelperGfxInfo?,
+    ) = synchronized(lifecycleLock) {
+        if (generation != runGeneration || rendererIdentity !== identity) return@synchronized
+        // Seed on the first cycle, before the CPU delta's first-sample early return.
+        val jankPct = advanceGfx(identity, gfx)
+        if (dump == null) {
+            resetPerfDumpBaselines()
+            synchronized(lock) {
+                topJson = "null"; topRamJson = "null"; renderJson = "null"; stutterHist.clear()
             }
-            return
+            return@synchronized
+        }
+        val mainPct = advanceRenderDelta(dump.rend, now)
+        if (mainPct < 0) {
+            synchronized(lock) { renderJson = noRendererJson() }
+            return@synchronized
         }
         val pct1 = Math.round(mainPct.coerceIn(0.0, 100.0) * 10) / 10.0
         val verdict = if (pct1 < 50) "smooth" else if (pct1 < 85) "occasional" else "janky"
-        ifCurrent(runGeneration) {
-            synchronized(lock) {
-                push(stutterHist, Math.round(pct1).toInt())
-                renderJson = "{\"pkg\":\"dashboard\",\"mainPct\":$pct1,\"verdict\":\"$verdict\",\"hist\":${stutterHist.toList()}}"
-            }
+        synchronized(lock) {
+            push(stutterHist, Math.round(pct1).toInt())
+            val jank = jankPct?.let { ",\"jankPct\":$it" } ?: ""
+            renderJson = "{\"pkg\":\"dashboard\",\"mainPct\":$pct1,\"verdict\":\"$verdict\",\"hist\":${stutterHist.toList()}$jank}"
         }
     }
 
-    private fun tick(runGeneration: Long) {
+    private fun tick(runGeneration: Long, now: Long) {
         val snap = PanelMetrics.shared.systemSnapshot()
         if (!isCurrent(runGeneration)) return
-        // Top-5 + render jank (PerfReader-only, spread across ticks). Prefer the shared reader's PERFDUMP
-        // tables when it fetched a dump this tick (sandbox panels); else the direct su path on rooted panels.
-        val dump = snap.dump
-        // ~10s cadence for the heavy per-process samplers (was ~6s): they fork su probes and parse
-        // every process's stat, which on a slow SoC was itself a visible slice of panel CPU. The 2s
-        // chart above is untouched — only top-5/render slow down.
-        val runState = ifCurrent(runGeneration) { tickCount % 5 to rootOk } ?: return
-        when {
-            dump != null -> when (runState.first) {
-                0 -> runCatching { sampleTopDump(runGeneration, dump) }
-                2 -> runCatching { sampleRenderDump(runGeneration, dump) }
-            }
-            runState.second -> when (runState.first) { // spread the su calls across ticks (~10s each)
-                0 -> runCatching { sampleTop(runGeneration) }
-                2 -> runCatching { sampleRender(runGeneration) }
-            }
+        // Top-5 + render jank (PerfReader-only) from ONE helper PERFDUMP per ~10s cycle: the shared
+        // reader's when it fetched one this tick, else one of our own. The dump reads every process's
+        // stat, which on a slow SoC is itself a visible slice of panel CPU, so the 2s chart above is
+        // untouched and only top-5/render run at this cadence. Never su: with no helper they stay null.
+        val phase = ifCurrent(runGeneration) { tickCount % 5 } ?: return
+        if (phase == 0) {
+            val identity = rendererIdentity
+            val fetch = helperDump
+            val fetchGfx = helperGfx
+            val dump = snap.dump ?: runCatching(fetch).getOrNull()
+            // SELF is meaningful only for our built-in renderer; a foreign target never borrows it.
+            val gfx = if (identity.target is RendererTarget.Builtin) runCatching(fetchGfx).getOrNull() else null
+            if (dump != null) runCatching { sampleTopDump(runGeneration, dump) }
+            sampleRenderDump(runGeneration, dump, now, identity, gfx)
         }
         ifCurrent(runGeneration) { tickCount++ } ?: return
 

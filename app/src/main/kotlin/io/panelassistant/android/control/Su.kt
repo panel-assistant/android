@@ -1,6 +1,7 @@
 package io.panelassistant.android.control
 
 import android.util.Log
+import io.panelassistant.android.kernelBootIdentity
 import io.panelassistant.android.platform.RootRunOutcome
 import io.panelassistant.android.platform.RootShell
 import io.panelassistant.android.util.BoundedStreams
@@ -275,6 +276,9 @@ private fun errorNumber(error: Exception): String? =
 object Su : RootShell by productionSu {
     fun availableIsolated(timeoutMs: Long = CMD_TIMEOUT_MS): Boolean = productionSu.availableIsolated(timeoutMs)
     fun availableCachedIsolated(): Boolean = productionSu.availableCachedIsolated()
+    fun rootKnownUnusable(): Boolean = productionSu.rootKnownUnusable()
+    fun installBootHistory(directory: File) = productionSu.installBootHistory(directory)
+    fun rootLostSinceBoot(): Boolean = productionSu.rootLostSinceBoot()
     fun runLong(cmd: String, timeoutMs: Long): Boolean = productionSu.runLong(cmd, timeoutMs)
     fun runWithStdinLong(cmd: String, input: File, timeoutMs: Long): String? =
         productionSu.runWithStdinLong(cmd, input, timeoutMs)
@@ -338,17 +342,18 @@ internal class SuShell(
      * re-probes). Null when no dialect works. This is the one home for the sticky-form and exhaustion
      * invariant that the one-shot entry points previously re-implemented inline.
      */
-    private fun <T : Any> overForms(attempt: (Int) -> T?): T? {
+    private fun <T : Any> overForms(rootSucceeded: (T) -> Boolean = { true }, attempt: (Int) -> T?): T? {
         SuFormPolicy.firstAccepted(formState.current(), attempt)
-            ?.let { recordFormSuccess(it.form); return it.value }
+            ?.let { recordFormSuccess(it.form, rootSucceeded = rootSucceeded(it.value)); return it.value }
         formState.recordExhaustion()
         return null
     }
 
-    private fun recordFormSuccess(form: Int) {
+    private fun recordFormSuccess(form: Int, startedAt: Long? = null, rootSucceeded: Boolean = true) {
         val firstProof = !formState.working()
         formState.recordSuccess(form)
         if (firstProof) availabilityCache.invalidate()
+        if (rootSucceeded) noteAnswering(true, startedAt)
     }
 
     /** Run [cmd] as root, waiting for completion. Returns true on exit 0. */
@@ -363,7 +368,8 @@ internal class SuShell(
     @Synchronized
     override fun runSingleAttempt(cmd: String, timeoutMs: Long): Boolean {
         val form = workingForm() ?: return false
-        return runBounded("run-single", argvOneShot(form, cmd), timeoutMs) { it.waitFor() } == 0
+        return (runBounded("run-single", argvOneShot(form, cmd), timeoutMs) { it.waitFor() } == 0)
+            .also { if (it) noteAnswering(true) }
     }
 
     @Synchronized
@@ -409,6 +415,7 @@ internal class SuShell(
         val startedAt = nowMs()
         val started = java.util.concurrent.atomic.AtomicBoolean(false)
         val exit = runBounded("run-windowed", argvOneShot(form, cmd), windowMs) { started.set(true); it.waitFor() }
+        if (exit == 0) noteAnswering(true)
         if (exit == null && !started.get()) return null
         (windowMs - (nowMs() - startedAt)).takeIf { it > 0L }?.let(sleepMs)
         return exit?.let { "exit $it" } ?: "timed out"
@@ -433,6 +440,7 @@ internal class SuShell(
      * synchronized persistent control shell, so a slow perf probe cannot add seconds of latency to a
      * navbar/screen/hardware command. Both possible `su` dialects share one [timeoutMs] deadline. */
     override fun runOutputIsolatedBounded(cmd: String, maxBytes: Long, timeoutMs: Long): String? {
+        val startedAt = answerStamp()
         val deadline = MonotonicDeadline(timeoutMs)
         val selected = SuFormPolicy.firstSuccessfulWithin(formState.current(), deadline) { candidate, sharedDeadline ->
             runBounded("isolated-out", argvOneShot(candidate, cmd), sharedDeadline) { p ->
@@ -441,24 +449,70 @@ internal class SuShell(
             }
         }
         if (selected != null) {
-            recordFormSuccess(selected.form)
+            recordFormSuccess(selected.form, startedAt)
             return selected.value
         }
         formState.recordExhaustion()
         return null
     }
 
-    fun availableIsolated(timeoutMs: Long = CMD_TIMEOUT_MS): Boolean =
-        runOutputIsolatedBounded("true", 1L, timeoutMs) != null
+    fun availableIsolated(timeoutMs: Long = CMD_TIMEOUT_MS): Boolean {
+        val startedAt = answerStamp()
+        return (runOutputIsolatedBounded("true", 1L, timeoutMs) != null)
+            .also { if (!it) noteAnswering(false, startedAt) }
+    }
 
-    override fun available(): Boolean = run("true")
+    @Synchronized
+    override fun available(): Boolean {
+        val startedAt = answerStamp()
+        // rootAnswering may already have recorded the same denial through the shared cache. Do not
+        // treat that nested result as an obsolete probe and invalidate its fresh negative cache.
+        return run("true").also { if (!it && lastAnswer != false) noteAnswering(false, startedAt) }
+    }
 
-    // Every render-time root gate and privileged-route observation share one bounded, single-flight
-    // probe here rather than each layer (formerly the HTTP server) wrapping [availableIsolated] in its
-    // own TTL cache. The bounded window avoids repeated expensive probes while allowing readiness changes
-    // to be observed; isolated so the probe never waits behind the synchronized persistent control shell.
-    private val availabilityCache = newAvailabilityCache(nowMs = nowMs, probe = { availableIsolated().also(::noteAnswering) })
+    @Volatile private var bootHistory: SuBootHistory? = null
+
+    /** Installed before Android creates components; does not launch su or open the database. */
+    fun installBootHistory(directory: File, bootIdentity: () -> String? = ::kernelBootIdentity) {
+        bootHistory = SuBootHistory(directory, bootIdentity)
+    }
+
+    /** Passive: unknown availability or an unreadable boot marker cannot establish lost root. */
+    fun rootLostSinceBoot(): Boolean = lastAnswer == false && bootHistory?.answeredThisBoot == true
+
+    /**
+     * Whether an earlier launch proved root structurally unusable ([SuExecFailureCache]): no `su` binary, or
+     * one this app may not execute. Answers from the cache alone, never starting `su`, so a caller on a
+     * latency-sensitive path (the Panel Assistant hello) can ask it. False until a launch has failed that way.
+     */
+    fun rootKnownUnusable(): Boolean = execFailureCache.shouldSkipExec()
+
+    /**
+     * Whether su works, as far as this process has already seen, without starting `su`: no launch has
+     * proved root structurally unusable, a real root action has proved a su dialect, and the last time
+     * su was checked it answered. Status, snapshots, capability gates and renderers ask this instead of
+     * probing, so a status poll never starts a root process. A real su action refreshes it: the
+     * start-up helper check and permission repair prove root on a rooted panel, a run that finds a dead
+     * shell re-probes through [rootAnswering], and any later success clears a negative.
+     *
+     * Not synchronized, so a status read never waits behind a command on the persistent shell.
+     */
+    // A stale true (su died since the last real call) only leaves a capability advertised; the action
+    // behind it runs su, finds it gone through [rootAnswering], and records the loss.
+    override fun observedUsable(): Boolean =
+        !execFailureCache.shouldSkipExec() && formState.working() && lastAnswer == true
+
+    // The lost-root gate in [rootAnswering] and the rare actions that are about to use su anyway (an
+    // uninstall, an install route check) share one bounded, single-flight probe. Passive surfaces must
+    // not call it: they read [observedUsable]. Isolated so the probe never waits behind the
+    // synchronized persistent control shell.
+    private val availabilityCache: Cached<Boolean> = newAvailabilityCache(nowMs = nowMs, probe = {
+        availableIsolated()
+    })
     @Volatile private var lastAnswer: Boolean? = null
+    /** Bumped by every recorded outcome, so a slow probe that started earlier cannot overwrite a newer one. */
+    private val answerLock = Any()
+    private var answerStampValue = 0L
 
     internal fun newAvailabilityCache(
         ttlMs: Long = AVAILABILITY_TTL_MS,
@@ -466,17 +520,18 @@ internal class SuShell(
         probe: () -> Boolean = ::availableIsolated,
     ): Cached<Boolean> = Cached(ttlMs, nowMs, probe)
 
-    /** Cached [availableIsolated]: at most one root probe per TTL window, single-flight across callers. */
+    /** Cached [availableIsolated]: at most one root probe per TTL window, single-flight across callers.
+     *  Starts `su` on expiry, so only for an action about to use root; status reads use [observedUsable]. */
     fun availableCachedIsolated(): Boolean = availabilityCache.get()
 
     /**
      * Whether a [run]/[runOutput] call may start `su` at all. Until this process has proven a su dialect
      * (boot before the root manager is up, a rootless panel), every call tries, as it always did. Once
      * one is proven, an open persistent shell is proof of root; without one, the shared probe above
-     * answers, at most once per TTL. A panel whose SuperSU daemon died after that (`su` starts, exits 1,
-     * prints nothing) otherwise opened a shell, logged a stack and forked a one-shot on every call: about
-     * 540 times an hour from the state loop alone on one panel. Now it costs one `su true` a minute, and
-     * the first probe that answers again lets the next call reopen the shell.
+     * answers, at most once per TTL while root actions are requested. A panel whose SuperSU daemon
+     * died after that (`su` starts, exits 1, prints nothing) otherwise opened a shell, logged a stack
+     * and forked a one-shot on every call. Passive reads never reach this gate; the next requested root
+     * action can prove su again and reopen the shell.
      */
     private fun rootAnswering(): Boolean {
         if (!formState.working() || shell?.process?.isAlive == true) return true
@@ -485,13 +540,26 @@ internal class SuShell(
         return false
     }
 
-    /** One line when proven root stops answering and one when it answers again. */
-    private fun noteAnswering(answering: Boolean) {
+    private fun answerStamp(): Long = synchronized(answerLock) { answerStampValue }
+
+    /**
+     * Record whether su answered, and log one line when proven root stops answering and one when it
+     * answers again. [startedAt] is the stamp a probe read before it ran: when another outcome was
+     * recorded meanwhile, this older result is dropped rather than overwriting the newer one.
+     */
+    private fun noteAnswering(answering: Boolean, startedAt: Long? = null): Unit = synchronized(answerLock) {
+        if (startedAt != null && startedAt != answerStampValue) {
+            availabilityCache.invalidate() // A stale probe must not leave a fresh cached denial either.
+            return@synchronized
+        }
+        answerStampValue++
         val previous = lastAnswer
         lastAnswer = answering
+        if (answering) bootHistory?.recordAnswer()
         if (previous != false && !answering && formState.working()) {
-            Log.w(TAG, "su does not answer; root-only operations are skipped and su is re-checked every minute")
+            Log.w(TAG, "su does not answer; root-only operations are skipped until su is proven again")
         } else if (previous == false && answering) {
+            availabilityCache.invalidate()
             Log.i(TAG, "su answers again; root-only operations resume")
         }
     }
@@ -505,6 +573,7 @@ internal class SuShell(
         val sh = ensureShell() ?: return null
         return try {
             sh.io.submit(Callable { transact(sh, cmd) }).get(CMD_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                .also { if (it.second == 0) noteAnswering(true) }
         } catch (e: Exception) {
             // timeout / EOF / broken pipe / desync — drop the shell; the caller falls back to one-shot.
             Log.d(TAG, "persistent shell transact failed; falling back to one-shot", e)
@@ -644,7 +713,7 @@ internal class SuShell(
     private data class StdinResult(val stdout: String, val exitCode: Int)
 
     private fun runWithStdinLongResult(cmd: String, input: java.io.File, timeoutMs: Long): StdinResult? =
-        overForms { f ->
+        overForms<StdinResult>(rootSucceeded = { it.exitCode == 0 }) { f ->
             runBounded("stdin-long", argvOneShot(f, cmd), timeoutMs) { p ->
                 val feeder = Thread {
                     runCatching { p.outputStream.use { os -> input.inputStream().use { it.copyTo(os) } } }

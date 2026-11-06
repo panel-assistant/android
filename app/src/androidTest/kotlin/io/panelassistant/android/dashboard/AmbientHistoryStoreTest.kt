@@ -15,10 +15,15 @@ import org.junit.runner.RunWith
 @CoreInstrumentation
 @RunWith(AndroidJUnit4::class)
 class AmbientHistoryStoreTest {
-    private val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+    private val context = HistoricalCatalogFixture.isolatedContext(
+        ApplicationProvider.getApplicationContext<android.content.Context>(), "ambient-history",
+    )
 
     @Before fun cleanBefore() {
         context.deleteDatabase(EntityCatalogStore.DATABASE_NAME)
+        val database = context.getDatabasePath(EntityCatalogStore.DATABASE_NAME)
+        val leaked = listOf("", "-wal", "-shm", "-journal").map { java.io.File(database.path + it) }.filter { it.exists() }
+        org.junit.Assert.assertTrue("database files survived deleteDatabase: $leaked", leaked.isEmpty())
     }
 
     @After fun cleanAfter() {

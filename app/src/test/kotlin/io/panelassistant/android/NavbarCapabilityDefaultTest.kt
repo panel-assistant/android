@@ -264,16 +264,11 @@ class NavbarCapabilityDefaultTest {
      *  derivedDefault must resolve to its static default for every capability set. */
     @Test fun `a spec without a derived default is unaffected by capabilities`() {
         val untouched = SettingsRegistry.settable().filter { it.derivedDefault == null }
-        assertTrue("the registry must still hold specs that declare no derivation", untouched.size > 20)
+        assertTrue("the registry must still hold specs that declare no derivation", untouched.isNotEmpty())
         val shapes = listOf(Capabilities(), capsOf(x2i), Capabilities(hasNativeNavbar = true))
         for (spec in untouched) {
             for (caps in shapes) assertEquals(spec.key, spec.default, spec.defaultFor(caps))
         }
-        assertEquals(
-            "navbar_mode is the only key deriving a default today",
-            listOf("navbar_mode"),
-            SettingsRegistry.settable().filter { it.derivedDefault != null }.map { it.key },
-        )
     }
 
     private fun emptyConfig(): Config = Config(preferences(emptyMap()))

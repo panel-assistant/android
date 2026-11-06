@@ -77,7 +77,7 @@ class NoticeRowsHttpTest {
                         POWER,
                         "action_needed" to "Zigbee gateway is runaway",
                         AUTH,
-                        "action_needed" to "Built-in renderer stopped retrying after repeated WebView failures. Update or repair System WebView, then use Reload dashboard from the panel navbar or Dashboard tab.",
+                        "action_needed" to esc(englishCatalogue.get("runtime.renderer_recovery.builtin")),
                         "warning" to esc(formattedString(englishCatalogue, "dashboard.banner.zoom.title", "zoom" to "125")),
                         WEBVIEW,
                         TERMUX,
@@ -160,6 +160,68 @@ class NoticeRowsHttpTest {
         }
     }
 
+    /** The WebView-too-old warning links this panel model's update steps on all three surfaces — the
+     *  Dashboard banner, the Install tab notice and the status warning — never the hardware index. */
+    @Test fun `webview too old warnings link the panel model's update steps`() {
+        val expected = mapOf(
+            "tpa10" to "https://panel-assistant.io/go/docs?page=hardware/tpa10#webview-update-this-first",
+            "shelly-wall-display" to "https://panel-assistant.io/go/docs?page=hardware/shelly-wall-display#webview",
+            "nspanel-pro" to "https://panel-assistant.io/go/update-webview",
+        )
+        val finding = HealthAudit.Finding(HealthAudit.Kind.WEBVIEW_OLD, "Chrome 60")
+        val title = englishCatalogue.get("dashboard.banner.webview_old.title")
+        expected.forEach { (profileId, url) ->
+            val link = """<a href="$url" target="_blank" rel="noopener">"""
+            PaneldServerHttpFixture().use { fixture ->
+                fixture.enablePages()
+                fixture.enableWarmDashboard()
+                val webViewOld = PageHealth.Inputs(PanelInfo.WebViewStatus("Chrome 60", tooOld = true), hasRenderer = true, homeAssistantConfigured = true)
+                val banners = fixture.advisories(io.panelassistant.android.PanelStatus.DashboardRecoveryState.NONE, profileId)
+                    .render(fixture.snapshot("disabled", densityBase = 160), webViewOld, englishCatalogue)
+                val banner = banners.split("""<div class="notice" """).single { it.contains(esc(title)) }
+                assertWebViewLink("$profileId dashboard", banner, link)
+                assertFalse("$profileId dashboard keeps developer small print: $banner", banner.contains("<small>"))
+                val install = installWarning(finding, canInstallCompanion = false, strings = englishCatalogue) { profileId }
+                assertWebViewLink("$profileId install", install, link)
+                val status = statusWarnings(fixture, listOf(finding), profileId).single { it.contains("System WebView is too old") }
+                assertWebViewLink("$profileId status", status, link)
+            }
+        }
+    }
+
+    private fun assertWebViewLink(surface: String, html: String, link: String) {
+        assertFalse("$surface links the hardware index: $html", html.contains("hardware/readme"))
+        assertTrue("$surface lacks $link: $html", html.contains(link))
+    }
+
+    /** GET /api/v1/status's warnings for [findings], composed by the production status projection. */
+    private fun statusWarnings(fixture: PaneldServerHttpFixture, findings: List<HealthAudit.Finding>, profileId: String): List<String> {
+        val power = io.panelassistant.android.control.PowerSafetyAdvisory(
+            io.panelassistant.android.control.PowerSafetyAssessment(
+                io.panelassistant.android.control.PowerRiskLevel.SAFE,
+                io.panelassistant.android.control.PowerSafetyObservation(true, true, false, false, true, 60_000, true, 1, 1, false, true, "none"),
+                emptyList(), "safe", "none",
+            ),
+            io.panelassistant.android.control.PowerRepairCapability.APP_ONLY,
+            io.panelassistant.android.control.PowerSafetyAdvisoryAction.NONE, null, false,
+        )
+        val json = JSONObject(
+            managementStatusJson(
+                fixture.config, fixture.snapshot("disabled", densityBase = 160), io.panelassistant.android.control.CompanionDb.ServerObservation.EMPTY, power,
+                null, HealthAudit.storage(StorageHealthSnapshot.UNCHECKED),
+                StatusHealth(emptyList(), findings, { io.panelassistant.android.PanelStatus.DashboardRecoveryState.NONE }, { null to null }, { null }),
+                renderer = { io.panelassistant.android.RendererAdmissionPresentation.of(io.panelassistant.android.RendererMode.NONE, "", "auto", null, 0, 0, null, 0) },
+                camera = { io.panelassistant.android.camera.CameraPresentation.absent() },
+                databaseObservationNonce = null,
+                permissions = { emptyMap() },
+                english = englishCatalogue,
+                profileId = { profileId },
+            ),
+        )
+        val warnings = json.getJSONArray("warnings")
+        return (0 until warnings.length()).map { warnings.getString(it) }
+    }
+
     @Test fun `status without warnings still carries an empty severity list`() {
         PaneldServerHttpFixture().use { fixture ->
             fixture.useManagementStatus {}
@@ -188,7 +250,10 @@ class NoticeRowsHttpTest {
 
     /** The production class over the fixture's real Config, sensors, observations and setup state; lambdas
      *  stand in for the probes so every row can be lit at once. */
-    private fun PaneldServerHttpFixture.advisories(recovery: io.panelassistant.android.PanelStatus.DashboardRecoveryState): DashboardAdvisories {
+    private fun PaneldServerHttpFixture.advisories(
+        recovery: io.panelassistant.android.PanelStatus.DashboardRecoveryState,
+        profileId: String = "generic",
+    ): DashboardAdvisories {
         fun <T> field(name: String): T = PaneldServer::class.java.getDeclaredField(name).run {
             isAccessible = true
             @Suppress("UNCHECKED_CAST") (get(server) as T)
@@ -221,6 +286,7 @@ class NoticeRowsHttpTest {
             radioStatus = { ZigbeeHealthSnapshot(state = ZigbeeHealthState.RUNAWAY, joined = false) },
             dashboardRecoveryState = { recovery },
             appSizingReady = { true },
+            profileId = { profileId },
         )
     }
 

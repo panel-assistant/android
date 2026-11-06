@@ -43,16 +43,24 @@ class AmbientThemeConsentTest {
                 liveSettingAuthority = { error("unused") }, haLinks = { error("unused") },
                 sensors = { error("unused") }, sensorsReady = { false }, controls = { controls },
             )
+            val reconcile = ServiceDisplay::class.java.getDeclaredMethod("reconcileAmbientTheme").apply { isAccessible = true }
             rig.config.setDashboardAmbientDark(true)
-            repeat(2) {
-                ServiceDisplay::class.java.getDeclaredMethod("reconcileAmbientTheme").apply { isAccessible = true }.invoke(display)
-            }
+            repeat(2) { reconcile.invoke(display) }
             assertEquals("one launch per resolution", listOf(start), daemon.sent)
             assertFalse("room light is not retry consent", BuiltinDashboard.consumeReloadRequest())
             assertEquals("", BuiltinDashboard.consumeReloadReason())
             assertTrue(BuiltinDashboard.authLatched)
             assertTrue(HaCredentialManager.resolve(rig.config).rejected)
             assertEquals("no repeated refused token request", 1, ha.requests.get())
+
+            // Once the page carries the verdict the request is spent, so a page that later drifts
+            // from it (a relaunch baked another scheme) is rebuilt again.
+            BuiltinDashboard.setAppliedThemeSignature(rig.owner, rig.config.dashboardThemeEffective)
+            reconcile.invoke(display)
+            assertEquals("a page that carries the verdict is left alone", listOf(start), daemon.sent)
+            BuiltinDashboard.setAppliedThemeSignature(rig.owner, DashboardTheme.LIGHT)
+            reconcile.invoke(display)
+            assertEquals("a page that drifted from the verdict is rebuilt again", listOf(start, start), daemon.sent)
         } finally {
             BuiltinDashboard.consumeSupersededReload()
             HaCredentialManager.forgetRefusal()

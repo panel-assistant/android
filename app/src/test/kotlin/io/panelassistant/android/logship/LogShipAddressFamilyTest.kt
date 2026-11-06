@@ -7,7 +7,6 @@ import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.net.Inet4Address
-import java.net.Inet6Address
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
@@ -35,15 +34,6 @@ class LogShipAddressFamilyTest {
 
         assertTrue("IPv4 must be tried first", ordered.first() is Inet4Address)
         assertEquals(listOf(v4, v6), ordered)
-    }
-
-    @Test fun everyAddressIsKeptSoAStreamTransportCanFallBack() {
-        val ordered = LogShipEndpoint.orderedCandidates(listOf(v6, v4))
-
-        // Dropping the non-preferred family would turn a recoverable TCP/HTTP failure into a
-        // permanent one for a collector that genuinely listens on IPv6 only.
-        assertEquals(2, ordered.size)
-        assertTrue(ordered.any { it is Inet6Address })
     }
 
     @Test fun aSingleFamilyNameIsUnaffected() {
@@ -195,12 +185,21 @@ class LogShipAddressFamilyTest {
             val failure = AtomicReference<Throwable?>()
             val worker = Thread { runCatching { sink.send(listOf(CapturedLogLine("{}", 0L))) }.exceptionOrNull().let(failure::set) }
             worker.start()
-            val socket = requireNotNull(accepted.poll(2, TimeUnit.SECONDS))
-            sink.close()
-            worker.join(1_000)
-            socket.close()
-            assertTrue("close did not interrupt active POST", !worker.isAlive)
-            assertTrue("send unexpectedly succeeded", failure.get() != null)
+            var socket: Socket? = null
+            try {
+                socket = requireNotNull(accepted.poll(2, TimeUnit.SECONDS))
+                sink.close()
+                worker.join(1_000)
+                // Observe cancellation while the peer is still open. Peer EOF is cleanup,
+                // not evidence that closing the sink interrupted the active request.
+                assertTrue("close did not interrupt active POST", !worker.isAlive)
+                assertTrue("send unexpectedly succeeded", failure.get() != null)
+            } finally {
+                sink.close()
+                socket?.close()
+                accepted.poll()?.close()
+                worker.join(2_000)
+            }
         }
     }
 

@@ -11,7 +11,7 @@
     <string name="notice_hero_version_check">Versionsprüfung</string>
     <string name="notice_hero_finding_dashboards">Dashboards suchen</string>
     <string name="notice_hero_upgrade_ha">HA aktualisieren</string>
-    <string name="notice_hero_ancient_webview">Uralt-Webview</string>
+    <string name="notice_hero_ancient_webview">Uralt-WebView</string>
     <string name="notice_hero_filter_failed">Filter fehlgeschlagen</string>
     <string name="notice_hero_filter_refused">Filter abgelehnt</string>
     <string name="notice_hero_reading">Lesen</string>

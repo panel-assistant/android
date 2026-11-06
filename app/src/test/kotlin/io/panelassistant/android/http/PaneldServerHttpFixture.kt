@@ -113,6 +113,20 @@ internal class PaneldServerHttpFixture(
         field("stubBlobs", StubBlobs())
         field("config", config)
         field("scope", scope)
+        field("webViewUpdate\$delegate", lazy {
+            io.panelassistant.android.util.WebViewUpdate(scope, { null }, object : io.panelassistant.android.util.WebViewUpdateIo {
+                override val directory: File = this@PaneldServerHttpFixture.directory
+                override fun observe() = io.panelassistant.android.util.WebViewObservation(
+                    "generic", 27, emptySet(), "fixture-process", 1, 0, null, null, null, emptySet(), null, null, null, "none",
+                )
+                override fun inspect(file: File): io.panelassistant.android.util.WebViewApk? = error("Unexpected WebView inspection")
+                override fun readReceipt(): org.json.JSONObject? = null
+                override fun writeReceipt(receipt: org.json.JSONObject) = error("Unexpected WebView mutation")
+                override fun download(spec: io.panelassistant.android.device.WebViewSpec, destination: File): Boolean = error("Unexpected WebView download")
+                override fun installedMatches(spec: io.panelassistant.android.device.WebViewSpec): Boolean = false
+                override suspend fun install(file: File, beforeSubmit: () -> io.panelassistant.android.util.InstallOutcome.Failure?): io.panelassistant.android.util.InstallOutcome = error("Unexpected WebView installation")
+            })
+        })
         field("system", allocate(io.panelassistant.android.control.SystemController::class.java))
         field("clearStorageGate", clearStorageGate)
         field("onRepairCompanionUrl", { _: () -> io.panelassistant.android.util.InstallOperationResult -> repairCompanionUrl() })
@@ -364,7 +378,7 @@ internal class PaneldServerHttpFixture(
             config, system,
             allocate(io.panelassistant.android.dashboard.EntityLearningManager::class.java),
             profile, context, { 0 },
-            { io.panelassistant.android.DiscoveryResult() }, { false },
+            { io.panelassistant.android.DiscoveryResult() }, { PanelInfo.WebViewStatus("unknown", tooOld = false) },
             { system.resolveDashboard(config.dashboardPackage) == io.panelassistant.android.control.SystemController.BUILTIN_DASHBOARD },
             scope, io.panelassistant.android.util.RendererPreparationCoordinator(
                 builtinPackage = "builtin", state = { error("Unexpected renderer preparation") },

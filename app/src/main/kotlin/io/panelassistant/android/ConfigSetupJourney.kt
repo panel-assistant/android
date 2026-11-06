@@ -155,6 +155,25 @@ var Config.setupEverCompleted: Boolean
         Unit
     }
 
+/** A connected renderer is proof, but cannot answer the first-run questions for its owner. */
+internal fun Config.recordBuiltinSetupCompletion() {
+    val inputs = io.panelassistant.android.http.SetupJourney.Inputs(
+        identityConfirmed = setupIdentityConfirmed,
+        panelId = panelId,
+        renderer = io.panelassistant.android.http.SetupJourney.RendererChoice.Builtin,
+        haUrl = haUrl,
+        haCredentialed = haToken.isNotBlank() || haRefreshToken.isNotBlank(),
+        haOAuthInFlight = false,
+        homeDashboardChosen = setupHomeDashboardChosen,
+        entityFilterAnswered = setupEntityFilterAnswered,
+        proof = io.panelassistant.android.http.SetupJourney.RenderProof(
+            source = io.panelassistant.android.http.SetupJourney.ProofSource.BUILTIN_FRONTEND_CONNECTED,
+            certain = true,
+        ),
+    )
+    if (io.panelassistant.android.http.SetupJourney.evaluate(inputs).complete) setupEverCompleted = true
+}
+
 var Config.setupRenderAttestation: String
     get() = prefs.getString(SETUP_RENDER_ATTESTED_PREF, "") ?: ""
     set(value) = synchronized(CONFIG_LOCK) {
@@ -168,4 +187,4 @@ private const val SETUP_HOME_DASHBOARD_CHOSEN_PREF = "device_local_setup_home_da
 private const val SETUP_QUESTION_MIGRATION_PREF = "device_local_setup_questions_migrated_v1"
 private const val SETUP_HOME_DASHBOARD_MIGRATION_PREF = "device_local_setup_home_dashboard_migrated_v2"
 private const val SETUP_RENDER_ATTESTED_PREF = "device_local_setup_render_attested"
-private const val SETUP_EVER_COMPLETED_PREF = "device_local_setup_ever_completed"
+internal const val SETUP_EVER_COMPLETED_PREF = "device_local_setup_ever_completed"

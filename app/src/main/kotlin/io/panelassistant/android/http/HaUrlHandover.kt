@@ -10,14 +10,21 @@ package io.panelassistant.android.http
  * there and unreachable here. The panel is the only party that can settle that, so it asks before it
  * accepts, and the wizard shows a correction rather than a blank question when the answer is no.
  *
- * **Why the expected status is 401 and a 200 is a failure.** The probe is an unauthenticated
- * `GET {base}/api/`. Home Assistant answers that with `401: Unauthorized`, measured against a live
- * instance rather than assumed. A 200 from that path without a token is therefore not a weaker
- * success: it means something that is *not* Home Assistant is answering — a captive portal, a
- * permissive reverse proxy, or an unrelated server on a reused address. Accepting it would rebuild
- * exactly the false confidence that [PaneldServer.probeLogSinkJson] was changed to remove, where a
- * bare TCP connect succeeded against any listening socket and "Connected" asserted a working
- * endpoint on evidence that could not distinguish one.
+ * **Why the probe is `GET {base}/auth/providers` and never `/api/`.** Home Assistant answers an
+ * unauthenticated `/api/` with 401, and its HTTP ban middleware turns every 401 into a "Login attempt
+ * failed" notification naming the sender and a strike towards an IP ban. A check that relied on that
+ * 401 raised a false security alarm on every install. `/auth/providers` is the unauthenticated endpoint
+ * Home Assistant's own login page reads first: measured against a live instance, it answers 200
+ * `application/json` with an object holding a `providers` array, and nothing on that path reports a
+ * failed login.
+ *
+ * **Why a 200 alone is still a failure.** A captive portal, a permissive reverse proxy or an
+ * unrelated server on a reused address answers 200 to any path. So the answer must be 200, JSON, and
+ * shaped like Home Assistant's provider list; anything else means something that is *not* Home
+ * Assistant holds the address. Accepting a bare 200 would rebuild exactly the false confidence that
+ * [PaneldServer.probeLogSinkJson] was changed to remove, where a bare TCP connect succeeded against
+ * any listening socket and "Connected" asserted a working endpoint on evidence that could not
+ * distinguish one.
  *
  * Pure and Android-free so it runs on the plain JVM unit-test classpath; the socket work itself lives
  * at the Android edge and hands its status or its exception back here to be classified.
@@ -58,11 +65,11 @@ object HaUrlHandover {
         val verified: Boolean get() = this == VERIFIED
     }
 
-    /** Path probed on the handed-over origin. */
-    const val PROBE_PATH: String = "api/"
+    /** Path probed on the handed-over origin: unauthenticated, and never answered 401 by Home Assistant. */
+    const val PROBE_PATH: String = "auth/providers"
 
-    /** The status an unauthenticated Home Assistant returns for [PROBE_PATH]. */
-    const val HOME_ASSISTANT_STATUS: Int = 401
+    /** Home Assistant's provider list is about a hundred bytes; anything far larger is not it. */
+    const val MAX_BODY_BYTES: Int = 16 * 1024
 
     /** Bounded like every other panel-side probe: this runs inside a config POST, not in the background. */
     const val CONNECT_TIMEOUT_MS: Int = 4_000
@@ -82,9 +89,19 @@ object HaUrlHandover {
         return trimmed.trimEnd('/') + "/" + PROBE_PATH
     }
 
-    /** Classify a status the handed-over address actually returned. */
-    fun classifyStatus(status: Int): Outcome =
-        if (status == HOME_ASSISTANT_STATUS) Outcome.VERIFIED else Outcome.NOT_HOME_ASSISTANT
+    /** Whether a response is worth reading: only a 200 JSON reply can be Home Assistant's. */
+    fun mayBeHomeAssistant(status: Int, contentType: String?): Boolean =
+        status == 200 && contentType.orEmpty().trim().lowercase().startsWith("application/json")
+
+    /**
+     * Classify what the handed-over address answered. [body] is read only when [mayBeHomeAssistant]
+     * held, and is null otherwise or when it could not be read within [MAX_BODY_BYTES].
+     */
+    fun classifyResponse(status: Int, contentType: String?, body: String?): Outcome {
+        if (!mayBeHomeAssistant(status, contentType) || body == null) return Outcome.NOT_HOME_ASSISTANT
+        val providers = runCatching { org.json.JSONObject(body).optJSONArray("providers") }.getOrNull()
+        return if (providers != null) Outcome.VERIFIED else Outcome.NOT_HOME_ASSISTANT
+    }
 
     /**
      * Classify a failure to get any status at all.

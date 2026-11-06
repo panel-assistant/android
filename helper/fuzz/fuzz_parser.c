@@ -3,9 +3,10 @@
 // It links the REAL capability + transport modules (helper/src/*.c, the same set the daemon ships —
 // see the Makefile's CORE_SRCS) together with test/sysexec_stub.c, so every byte of the parsing path
 // runs under the sanitizers while the only host-effecting calls (system/popen/thread-spawn/reboot,
-// all funnelled through sysexec) are neutralised at the LINK layer — no per-call macro stubbing.
+// funnelled through sysexec) are neutralised at the LINK layer. The separate zero-argument
+// recovery publisher is also link-wrapped, so its valid command cannot publish or fork here.
 //
-// It has no semantic oracle and is not independent validation. It can detect sanitizer-visible faults
+// Apart from the fixed ENSURE rejection check below, it has no semantic oracle and is not independent validation. It can detect sanitizer-visible faults
 // in paths reached by its corpus and deterministic pseudo-random byte streams. Peer authentication,
 // real host effects, process lifetime, and concurrent connection behaviour are outside this harness.
 //
@@ -28,6 +29,7 @@
 #include "server.h"
 #include "input.h"
 #include "gpio.h"
+#include "sysexec_stub.h"
 
 static int devnull;
 
@@ -76,6 +78,16 @@ int main(int argc, char **argv) {
     signal(SIGPIPE, SIG_IGN);
     devnull = open("/dev/null", O_WRONLY);
     reset_state();
+    // The real server and dispatch must reject caller paths before reaching the wrapped publisher.
+    const char *invalid_ensure = "ADBRECOVERYENSURE /tmp/helper\n";
+    int ensure_calls = sysexec_stub_count_ensure();
+    run_serve((const uint8_t *)invalid_ensure, strlen(invalid_ensure));
+    run_handle((const uint8_t *)invalid_ensure, strlen(invalid_ensure));
+    if (sysexec_stub_count_ensure() != ensure_calls) {
+        fputs("FAIL: ENSURE arguments reached the recovery publisher\n", stderr); return 1;
+    }
+    sysexec_stub_add_popen("dumpsys gfxinfo io.panelassistant.android",
+        "** Graphics info for pid 42 [io.panelassistant.android] **\nStats since: 1ns\nTotal frames rendered: 2\nJanky frames: 1 (50.00%)\n", 0);
 
     // 1) hand-crafted adversarial corpus (each fed to BOTH server_serve() and dispatch()).
     const char *corpus[] = {
@@ -102,11 +114,24 @@ int main(int argc, char **argv) {
         "GPIOV1\n", "GPIOV1 extra\n", "GPIORESET\n",
         "GPIOWATCH 0\n", "GPIOWATCH 65535\n", "GPIOWATCH 65536\n",
         "GPIOWATCH -1\n", "GPIOWATCH 1 trailing\n", "GPIOSUBSCRIBE\n",
+        "LOGCATDUMP\n", "LOGCATDUMP 300\n", "LOGCATDUMP 0\n", "LOGCATDUMP 1001\n", "LOGCATDUMP abc\n",
+        "LOGCATDUMP 300 x\n", "LOGCATDUMP -1\n", "LOGCATDUMP 99999999999999999999\n",
         "REBOOT\n", "REBOOTNOW\n",
         "DENSITY\n", "DENSITY 240\n", "DENSITY reset\n", "DENSITY 99999999999999\n",
         "DENSITY ../../x\n", "DENSITY -1\n",
         "FONTSCALE\n", "FONTSCALE 1.15\n", "FONTSCALE reset\n", "FONTSCALE 1.2.3\n",
         "FONTSCALE -1\n", "FONTSCALE 1.0;reboot\n", "FONTSCALE .........\n",
+        "GOVREAD CURRENT\n", "GOVREAD AVAILABLE\n", "GOVREAD\n", "GOVREAD current\n",
+        "GOVREAD CURRENT extra\n", "GOVREAD /proc/self/status\n", "GOVREAD CURRENT;reboot\n",
+        "RELAYREAD RELAY COUNT\n", "RELAYREAD ST_RELAY 1\n", "RELAYREAD STRELAY 16\n",
+        "RELAYREAD RELAY 0\n", "RELAYREAD /sys/class/relay COUNT\n", "RELAYREAD RELAY 01\n",
+        "GPIOREAD 0\n", "GPIOREAD 65535\n", "GPIOREAD 65536\n", "GPIOREAD 01\n", "GPIOREAD 1 extra\n",
+        "ADBRECOVERYENSURE\n", "ADBRECOVERYENSURE extra\n", "GFXINFO SELF\n", "GFXINFO\n", "GFXINFO io.panelassistant.android\n", "GFXINFO SELF reset\n",
+        "CDPSTATE\n", "CDPSTATE x\n", "CDPSTATE /proc\n", "CDPSTATE ;reboot\n",
+        "ADBSTATE\n", "ADBSTATE x\n", "ADBSTATE /proc/net/tcp\n", "ADBSTATE ;reboot\n",
+        "WIFISTATUS\n", "WIFISTATUS x\n", "WIFISTATUS ;reboot\n",
+        "ZIGBEESTATE\n", "ZIGBEEHEALTH\n", "ZIGBEEROLE\n",
+        "ZIGBEESTATE x\n", "ZIGBEEHEALTH /proc\n", "ZIGBEEROLE ;reboot\n",
         "GOV schedutil\n", "GOV \n", "GOV PERF;reboot\n", "GOV performance\n",
         "STOP com.eWeLinkControlPanel\n", "STOP com.android.systemui\n", "STOP\n", "STOP ../../x\n",
         "DISABLE com.eWeLinkControlPanel\n", "DISABLE android\n", "DISABLE\n",
@@ -143,8 +168,8 @@ int main(int argc, char **argv) {
 
     // 2) length-boundary lines around MAX_LINE for every verb.
     size_t lens[] = { MAX_LINE - 1, MAX_LINE, MAX_LINE + 1, 4096, 65536 };
-    const char *verbs[] = { "RGB ", "BTN ", "RELOAD ", "START ", "WATCH /dev/input/", "GPIOWATCH ",
-                            "DENSITY ", "FONTSCALE ", "GOV ", "SCREEN ",
+    const char *verbs[] = { "RGB ", "BTN ", "RELOAD ", "START ", "WATCH /dev/input/", "GPIOWATCH ", "LOGCATDUMP ",
+                            "DENSITY ", "FONTSCALE ", "GOV ", "GOVREAD ", "WIFISTATUS ", "ADBSTATE ", "GFXINFO ", "CDPSTATE ", "RELAYREAD ", "GPIOREAD ", "ZIGBEESTATE ", "ZIGBEEHEALTH ", "ZIGBEEROLE ", "SCREEN ",
                             "STOP ", "DISABLE ", "ENABLE ", "OVERLAY ", "" };
     for (size_t li = 0; li < sizeof lens / sizeof lens[0]; li++)
         for (size_t vi = 0; vi < sizeof verbs / sizeof verbs[0]; vi++) {

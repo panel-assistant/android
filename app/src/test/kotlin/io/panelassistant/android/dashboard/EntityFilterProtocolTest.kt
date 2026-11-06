@@ -77,45 +77,8 @@ class EntityFilterProtocolTest {
         )
     }
 
-    @Test fun documentScriptTargetsOnlyTheHaApiSocketAndPreservesNativeShape() {
-        val script = EntityFilterProtocol.documentStartScript("https://ha.example", ids)
-        assertTrue(script.contains("if(window.top&&window.top!==window)return"))
-        assertTrue(script.contains("targetWsOrigins=[\"wss://ha.example\"]"))
-        assertTrue(script.contains("targetWsOrigins.includes(u.origin)"))
-        assertTrue(script.contains("targetWsPath=\"/api/websocket\""))
-        assertTrue(script.contains("u.pathname===targetWsPath"))
-        assertTrue(script.contains("entityIds=[\"light.alpha\",\"sensor.temperature\"]"))
-        assertTrue(script.contains("emptySubscriptionEntityId=\"${EntityFilterProtocol.EMPTY_SUBSCRIPTION_ENTITY_ID}\""))
-        assertFalse(script.contains("127.0.0.1"))
-        assertTrue(script.contains("FilteredWebSocket.prototype=Native.prototype"))
-    }
 
-    @Test fun documentScriptAcceptsThePermittedUpgradedSocketOrigin() {
-        val script = EntityFilterProtocol.documentStartScript(
-            "http://ha.example",
-            ids,
-            linkedSetOf("http://ha.example", "https://ha.example"),
-        )
 
-        assertTrue(script.contains("targetWsOrigins=[\"ws://ha.example\",\"wss://ha.example\"]"))
-        assertTrue(script.contains("targetWsOrigins.includes(u.origin)"))
-    }
-
-    @Test fun trafficObserverTargetsTheSameExactSocketWithoutEmbeddingEntityContent() {
-        val script = EntityFilterProtocol.trafficObserverDocumentStartScript(
-            "http://ha.example/prefix",
-            linkedSetOf("http://ha.example", "https://ha.example"),
-        )
-
-        assertTrue(script.contains("targetWsOrigins=[\"ws://ha.example\",\"wss://ha.example\"]"))
-        assertTrue(script.contains("targetWsPath=\"/prefix/api/websocket\""))
-        assertTrue(script.contains("type:'entityFilterTrafficMetrics',payload:payload"))
-        assertTrue(script.contains("frames=0,payloadBytes=0,entityUpdates=0"))
-        assertTrue(script.contains("PerformanceObserver"))
-        assertTrue(script.contains("message.event.r"))
-        assertFalse(script.contains("light.alpha"))
-        assertFalse(script.contains("sensor.temperature"))
-    }
 
     @Test fun trafficObserverCountsOnlyFixedCardinalityStateTrafficWithFilterEnabled() {
         Node.assumeAvailable()
@@ -275,6 +238,27 @@ class EntityFilterProtocolTest {
         """.trimIndent()
         val (code, output) = Node.run(stdin = harness)
         assertEquals(output, 0, code)
+
+        // Home Assistant treats entity_ids: [] as no filter, so an empty allow-list must
+        // subscribe to the sentinel id instead of the full state stream.
+        val empty = """
+            global.window=globalThis;
+            global.location={href:'https://ha.example/dashboard'};
+            global.haPaneldV2={postMessage(){}};
+            function Native(url){this.url=String(url);this.sent=[];}
+            Native.prototype.send=function(data){this.sent.push(data);};
+            global.WebSocket=Native;
+            ${EntityFilterProtocol.documentStartScript("https://ha.example", emptyList())}
+            const primary=new WebSocket('wss://ha.example/api/websocket');
+            primary.send('{"id":7,"type":"subscribe_entities"}');
+            process.stdout.write(JSON.stringify(JSON.parse(primary.sent[0]).entity_ids));
+        """.trimIndent()
+        val (emptyCode, emptyOutput) = Node.run(stdin = empty)
+        assertEquals(emptyOutput, 0, emptyCode)
+        assertEquals(
+            "[${JSONObject.quote(EntityFilterProtocol.EMPTY_SUBSCRIPTION_ENTITY_ID)}]",
+            emptyOutput.trim(),
+        )
     }
 
     @Test fun filterHashIsOrderIndependentAndChangesWithMembership() {

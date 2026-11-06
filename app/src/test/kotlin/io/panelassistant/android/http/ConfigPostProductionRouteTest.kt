@@ -20,6 +20,8 @@ import io.panelassistant.android.control.SystemController
 import io.panelassistant.android.haToken
 import io.panelassistant.android.haUrl
 import io.panelassistant.android.haRefreshToken
+import io.panelassistant.android.haAuthSnapshot
+import io.panelassistant.android.stableOwner
 import io.panelassistant.android.setHaRefreshToken
 import io.panelassistant.android.persistence.SqliteStatePreferences
 import io.panelassistant.android.persistence.StateMutation
@@ -62,6 +64,11 @@ import java.nio.file.Files
 import java.sql.Connection
 import java.sql.DriverManager
 import java.util.concurrent.Executors
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
 import org.json.JSONArray
 import org.junit.Test
@@ -107,6 +114,25 @@ class ConfigPostProductionRouteTest {
                     assertTrue(refused.bodyAsText().startsWith("ui_language: must be one of "))
                     assertEquals(language, config.uiLanguage, "a refusal must preserve the saved language")
                 }
+            }
+        }
+
+    @Test fun `saving the interface language over the route hands the locale change to the main thread`() =
+        withFullReadServer { _, fixture ->
+            val posted = java.util.concurrent.CopyOnWriteArrayList<Runnable>()
+            val original = io.panelassistant.android.NativeLocale.mainThreadPoster
+            io.panelassistant.android.NativeLocale.mainThreadPoster = { posted += it }
+            try {
+                testApplication {
+                    application { fixture.mount(this) }
+                    val saved = client.submitForm("/api/v1/config", Parameters.build { append("ui_language", "de") }) {
+                        accept(ContentType.Application.Json)
+                    }
+                    assertEquals(HttpStatusCode.OK, saved.status)
+                }
+                assertEquals(1, posted.size, "the locale change must be posted, not applied on the request thread")
+            } finally {
+                io.panelassistant.android.NativeLocale.mainThreadPoster = original
             }
         }
 
@@ -951,6 +977,87 @@ class ConfigPostProductionRouteTest {
                 LocalApprovalBroker.instance.clear()
             }
         }
+
+    @Test fun `a concurrent successful save makes the older config POST return conflict without effects`() =
+        assertConcurrentConfigConflict(
+            staleValues = mapOf("friendly_name" to "Older edit", "home_dashboard" to "/lovelace/older"),
+            winningValues = mapOf("friendly_name" to "Newer edit"),
+        )
+
+    @Test fun `a concurrent brightness range save refuses an older now invalid range without effects`() =
+        assertConcurrentConfigConflict(
+            staleValues = mapOf("auto_brightness_minimum_percent" to "50"),
+            winningValues = mapOf("auto_brightness_maximum_percent" to "40"),
+        )
+
+    private fun assertConcurrentConfigConflict(
+        staleValues: Map<String, String>,
+        winningValues: Map<String, String>,
+    ) = withRouteConfig { config, persistence, server, live ->
+        assertTrue(config.applyBatch {
+            config.setAutoBrightnessMinimumPercent(10)
+            config.setAutoBrightnessMaximumPercent(100)
+        })
+        val validating = CompletableDeferred<Unit>()
+        val resumeValidation = CompletableDeferred<Unit>()
+        setField(server, "autoBrightnessHttpApi", object : AutoBrightnessHttpApi by AutoBrightnessHttpApi.UNAVAILABLE {
+            override suspend fun validateHaSource(entityId: String): AutoBrightnessHttpValidation {
+                val owner = config.haAuthSnapshot().stableOwner()
+                validating.complete(Unit)
+                resumeValidation.await()
+                return AutoBrightnessHttpValidation(AutoBrightnessHttpAction.ok(), owner)
+            }
+        })
+        testApplication {
+            application {
+                routing { route("/api/v1") { with(server) { installDirectConfigPostRoute { Capabilities() } } } }
+            }
+            suspend fun save(values: Map<String, String>) = client.submitForm(
+                "/api/v1/config", Parameters.build { values.forEach { (key, value) -> append(key, value) } },
+            ) { accept(ContentType.Application.Json) }
+            coroutineScope {
+                // Source validation is a real suspending admission boundary, before the mutation ticket.
+                // Hold only that external answer while another HTTP caller commits a newer baseline.
+                val stale = async { save(staleValues + ("auto_brightness_ha_entity" to "sensor.ambient_light")) }
+                try {
+                    withTimeout(10_000) { validating.await() }
+                    val winner = save(winningValues)
+                    assertEquals(HttpStatusCode.OK, winner.status, winner.bodyAsText())
+                    assertEquals("saved", JSONObject(winner.bodyAsText()).getString("status"))
+                    val saved = persistence.initialize()
+                    winningValues.forEach { (key, value) ->
+                        assertEquals(value, config.getRaw(requireNotNull(SettingsRegistry.spec(key))))
+                    }
+                    live.clear()
+                    persistence.written.clear()
+                    resumeValidation.complete(Unit)
+
+                    val refused = withTimeout(10_000) { stale.await() }
+                    val text = refused.bodyAsText()
+                    assertEquals(HttpStatusCode.Conflict, refused.status, text)
+                    val body = JSONObject(text)
+                    assertEquals("configuration-stale", body.getString("status"), text)
+                    for (name in listOf("applied", "pending", "rejected")) {
+                        assertEquals(0, body.getJSONArray(name).length(), text)
+                    }
+                    assertEquals(saved, persistence.initialize(), "refusal must preserve the newer durable settings")
+                    assertTrue(persistence.written.isEmpty(), "a stale request must write no settings")
+                    assertTrue(live.isEmpty(), "a stale request must dispatch no live or reconfiguration effects")
+
+                    val ticket = requireNotNull(InstallProgress.start("fixture")) {
+                        "the refused request must release its mutation ticket"
+                    }
+                    InstallProgress.finish(ticket, "fixture complete")
+                    val retry = save(mapOf("friendly_name" to "Fresh retry"))
+                    assertEquals(HttpStatusCode.OK, retry.status, retry.bodyAsText())
+                    assertEquals("Fresh retry", persistence.initialize()["friendly_name"])
+                } finally {
+                    resumeValidation.complete(Unit)
+                    stale.cancelAndJoin()
+                }
+            }
+        }
+    }
 
     @Test fun `failed production config commit reports failure and leaves SQLite and live effects unchanged`() =
         withRouteConfig { config, persistence, server, live ->

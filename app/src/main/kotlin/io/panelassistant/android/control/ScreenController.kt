@@ -66,8 +66,9 @@ class ConfigDisplacedScreenTimeout(private val config: io.panelassistant.android
  * Screen on/off — vendor-free with one serialized transition owner.
  *
  * The active profile selects helper, direct `su`, keyevent, screen-timeout, device-admin or
- * brightness-zero as the preferred route. The two bl_power routes may fall through to each other and
- * then brightness when unavailable; screen-timeout falls through to device-admin and then the visible
+ * brightness-zero as the preferred route. Both bl_power routes ask the helper first and use `su` only
+ * when no helper answers at all (a helper refusal degrades to brightness, never to `su`), and read
+ * `bl_power` from the helper only, so repeated observation never starts a root shell; screen-timeout falls through to device-admin and then the visible
  * dim; an explicit brightness-zero profile never probes a privileged actuator.
  *
  * Whether a screen-off that goes through the keyguard (`DevicePolicyManager.lockNow()`, or any route
@@ -163,6 +164,7 @@ class ScreenController(
     // stale screen-off can never strand the panel dark, but a deliberate "screen off" still stays off.
     @Volatile private var intendedOff = false
     @Volatile private var appliedOffRoute: ScreenOff? = null
+    private var startupSuBlPowerReadUsed = false  // guarded by this monitor (adoptInheritedDark)
     // Durable report of the last off, kept across wake unlike [appliedOffRoute] above (which exists
     // only while intentionally off). [routeSelection] reads these two directly rather than probing.
     @Volatile private var lastSelectedRoute: ScreenOff? = null
@@ -247,7 +249,11 @@ class ScreenController(
             return if (power == 0) effective() else true
         }
         return when (route) {
-            ScreenOff.DAEMON_BLPOWER, ScreenOff.SU_BLPOWER -> observedBlPower()?.let(::fromPower) ?: effective()
+            // Without a bl_power reading, a zero level is still dark; a positive one proves nothing while
+            // this controller holds the backlight powered down, so it is unknown rather than lit. Treating it
+            // as lit would let the state tick adopt a false wake and disarm the touch wake on a dark panel.
+            ScreenOff.DAEMON_BLPOWER, ScreenOff.SU_BLPOWER -> observedBlPower()?.let(::fromPower)
+                ?: effective().takeUnless { it == false && holdsBlPowerOff() }
             // Android's own interactivity IS this route's screen state; there is no backlight node to
             // read and no third "unknown" answer to give.
             ScreenOff.KEYEVENT, ScreenOff.SCREEN_TIMEOUT, ScreenOff.DEVICE_ADMIN -> !power.isInteractive()
@@ -274,16 +280,29 @@ class ScreenController(
         }
     }
 
+    // Helper only on both bl_power routes: this read repeats every state tick, never-blank check and
+    // reconcile, and repeated root reads never use su (maintainer rule, 2026-11-05). No answer is unknown.
     private fun observedBlPower(): Int? = when (route) {
-        ScreenOff.DAEMON_BLPOWER -> daemon.send("BLPOWER")?.trim()?.toIntOrNull()
-            ?.takeIf { it in 0..4 }
-            ?: root.runOutput(blPowerRead())?.trim()?.toIntOrNull()?.takeIf { it in 0..4 }
-        ScreenOff.SU_BLPOWER -> root.runOutput(blPowerRead())?.trim()?.toIntOrNull()
-            ?.takeIf { it in 0..4 }
-            ?: daemon.send("BLPOWER")?.trim()?.toIntOrNull()?.takeIf { it in 0..4 }
+        ScreenOff.DAEMON_BLPOWER, ScreenOff.SU_BLPOWER ->
+            daemon.send("BLPOWER")?.trim()?.toIntOrNull()?.takeIf { it in 0..4 }
         ScreenOff.KEYEVENT, ScreenOff.SCREEN_TIMEOUT, ScreenOff.DEVICE_ADMIN, ScreenOff.BRIGHTNESS_ZERO,
         ScreenOff.VENDOR_RPC -> null
     }
+
+    /** Startup adoption's darkness check. Without a helper `BLPOWER` answer, a positive level cannot rule
+     *  out a backlight a replaced process powered down through su, so one su read of `bl_power` is made,
+     *  once per process: rare by construction, and never on a tick. */
+    private fun inheritedDark(): Boolean {
+        if (observedBlPower() == null && !startupSuBlPowerReadUsed) {
+            startupSuBlPowerReadUsed = true
+            val power = root.runOutput(blPowerRead())?.trim()?.toIntOrNull()?.takeIf { it in 0..4 }
+            if (power != null && power != 0) return true
+        }
+        return observedDark() == true
+    }
+
+    private fun holdsBlPowerOff(): Boolean =
+        intendedOff && appliedOffRoute.let { it == ScreenOff.DAEMON_BLPOWER || it == ScreenOff.SU_BLPOWER }
 
     /** Cautious boolean used by the never-blank watchdog: unknown is not grounds to alter hardware. */
     fun looksDark(): Boolean = observedDark() == true
@@ -326,7 +345,7 @@ class ScreenController(
     fun adoptInheritedDark(automatic: Boolean): AutomaticOffEpoch? {
         if (route != ScreenOff.DAEMON_BLPOWER && route != ScreenOff.SU_BLPOWER) return null
         if (intendedOff || admissionClosed.get() || !wakeTap.canArm() || !power.isInteractive()) return null
-        if (observedDark() != true) return null
+        if (!inheritedDark()) return null
         val epoch = sleepInternal(automatic)
         // A refused or degraded off would leave a dark backlight marked intended with no way back.
         if (appliedOffRoute != ScreenOff.DAEMON_BLPOWER && appliedOffRoute != ScreenOff.SU_BLPOWER) {
@@ -358,6 +377,7 @@ class ScreenController(
 
     private fun sleepInternal(automatic: Boolean): AutomaticOffEpoch? {
         var androidSleepRefusal: String? = null
+        var helperRefusedOff = false
         if (admissionClosed.get() || synchronized(visibleHolds) { visibleHolds.isNotEmpty() } || (automatic && intendedOff)) return null
         intendedOffGeneration = stateGeneration.incrementAndGet()
         automaticOffGeneration = if (automatic) intendedOffGeneration else 0L
@@ -399,17 +419,17 @@ class ScreenController(
         // on panels that clamp a minimum, so it does NOT freeze; the cost there is a page running all night,
         // with no quiet memory reload, nightly entity-learning maintenance or wake-media check.
         val poweredOff = when (route) {
-            ScreenOff.DAEMON_BLPOWER -> when {
-                daemon.send("SCREEN OFF") == "OK" -> ScreenOff.DAEMON_BLPOWER to REASON_DECLARED
-                root.run(blPower(false)) -> ScreenOff.SU_BLPOWER to
-                    "the declared helper daemon route was unavailable; fell back to su bl_power"
-                else -> null
-            }
-            ScreenOff.SU_BLPOWER -> when {
-                root.run(blPower(false)) -> ScreenOff.SU_BLPOWER to REASON_DECLARED
-                daemon.send("SCREEN OFF") == "OK" -> ScreenOff.DAEMON_BLPOWER to
-                    "the declared su bl_power route was unavailable; fell back to the helper daemon"
-                else -> null
+            // Both bl_power routes ask the helper first and use su only when no helper answers at all.
+            // A helper that answered and refused is not overridden by su: it degrades to the floor below.
+            ScreenOff.DAEMON_BLPOWER, ScreenOff.SU_BLPOWER -> when (daemon.send("SCREEN OFF")) {
+                "OK" -> ScreenOff.DAEMON_BLPOWER to
+                    if (route == ScreenOff.DAEMON_BLPOWER) REASON_DECLARED else REASON_HELPER_BEFORE_SU
+                null -> if (root.run(blPower(false))) {
+                    ScreenOff.SU_BLPOWER to
+                        if (route == ScreenOff.SU_BLPOWER) REASON_DECLARED else
+                            "the declared helper daemon route was unavailable; fell back to su bl_power"
+                } else null
+                else -> { helperRefusedOff = true; null }
             }
             ScreenOff.KEYEVENT -> if (sleepByKeyevent()) ScreenOff.KEYEVENT to REASON_DECLARED else null
             ScreenOff.SCREEN_TIMEOUT -> when (val slept = sleepAndroid(REASON_DECLARED)) {
@@ -464,7 +484,11 @@ class ScreenController(
             if (route == ScreenOff.BRIGHTNESS_ZERO) {
                 REASON_BRIGHTNESS_ZERO_NEVER_PROBES
             } else {
-                "neither su bl_power nor the helper daemon was available; degraded to a brightness-only off"
+                if (helperRefusedOff) {
+                    "the helper daemon refused the bl_power off; degraded to a brightness-only off"
+                } else {
+                    "neither su bl_power nor the helper daemon was available; degraded to a brightness-only off"
+                }
             },
         )
         Log.d(TAG, "screen -> off (brightness fallback; saved=$savedLevel)")
@@ -646,23 +670,17 @@ class ScreenController(
         val wakingRoute = appliedOffRoute ?: route
         appliedOffRoute = null
         when (wakingRoute) {
-            ScreenOff.DAEMON_BLPOWER -> {
-                if (daemon.send("SCREEN ON") == "OK") {
+            ScreenOff.DAEMON_BLPOWER, ScreenOff.SU_BLPOWER -> {
+                val helper = daemon.send("SCREEN ON")
+                if (helper == "OK") {
                     completeWake("screen -> on (daemon bl_power)")
                     return
                 }
-                if (root.run(blPower(true))) {
-                    completeWake("screen -> on (su bl_power fallback)")
-                    return
-                }
-            }
-            ScreenOff.SU_BLPOWER -> {
+                // Wake is event-driven, so su may follow any reply short of OK, whoever applied the off: a
+                // helper refusal must not leave a backlight dark that this app powered down (never-blank).
+                // Without su this simply fails through to the brightness restore below.
                 if (root.run(blPower(true))) {
                     completeWake("screen -> on (su bl_power)")
-                    return
-                }
-                if (daemon.send("SCREEN ON") == "OK") {
-                    completeWake("screen -> on (daemon bl_power fallback)")
                     return
                 }
             }
@@ -1001,12 +1019,15 @@ class ScreenController(
             "[ -n \"\$d\" ]&&echo $v >\${d}bl_power"
     }
 
+    // Fork-free: shell builtins only. Used once per process by [inheritedDark].
     private fun blPowerRead(): String =
-        "d=\$(ls -d /sys/class/backlight/*/ 2>/dev/null|head -1);cat \${d}bl_power 2>/dev/null"
+        "for d in /sys/class/backlight/*/;do read v <\${d}bl_power&&echo \$v;break;done"
 
     companion object {
         private const val TAG = "ha-paneld/screen"
         internal const val REASON_DECLARED = "matches the declared route"
+        internal const val REASON_HELPER_BEFORE_SU =
+            "the helper daemon answered; su bl_power is used only when no helper is reachable"
         internal const val REASON_BRIGHTNESS_ZERO_NEVER_PROBES =
             "matches the declared route; brightness-zero never probes su or the helper daemon"
         internal const val REASON_CANCELLED_BY_TOUCH =

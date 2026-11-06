@@ -91,6 +91,8 @@ int guard_maintenance_install_begin(void);
 void guard_maintenance_install_end(void);
 /* Root-side helper replacement admission. Returns 0 only for a locked, truly empty namespace. */
 int guard_maintenance_replacement_safe(void);
+// Supervisor only, with its worker/executor reaped. Returns zero only after owned files retire.
+int guard_maintenance_retire_uninstalled(void);
 int guard_maintenance_replacement_parent_grant(char nonce[65]);
 int guard_maintenance_replacement_export_lease(void);
 int guard_maintenance_replacement_parent_abort(const char nonce[65]);
@@ -98,6 +100,9 @@ int guard_maintenance_replacement_stage_app(const char nonce[65]);
 int guard_maintenance_replacement_supervisor_adopt_app(const char nonce[65]);
 int guard_maintenance_replacement_worker_commit_app(const char nonce[65]);
 int guard_maintenance_replacement_startup_reconcile_app(char nonce[65]);
+/* Fixed root bootstrap only. Abort an exact orphaned pre-swap transaction, preserving both
+ * helper binaries. Returns 1 reconciled, 0 truly empty, -1 HOLD; never resumes or launches. */
+int guard_maintenance_reconcile_stale_replacement(void);
 
 enum guard_test_fault {
     GUARD_TEST_FAULT_NONE = 0,
@@ -152,6 +157,8 @@ enum guard_test_fault {
     GUARD_TEST_FAULT_REPLACEMENT_STAGE_FILE_SYNC,
     GUARD_TEST_FAULT_REPLACEMENT_STAGE_DIR_SYNC,
     GUARD_TEST_FAULT_REPLACEMENT_ABORT_AFTER_PREVIOUS,
+    GUARD_TEST_FAULT_STALE_REPLACEMENT_UNLINK,
+    GUARD_TEST_FAULT_STALE_REPLACEMENT_DIR_SYNC,
     GUARD_TEST_FAULT_CANCEL_AFTER_ARTIFACT,
     GUARD_TEST_FAULT_CANCEL_AFTER_DRAFT,
     GUARD_TEST_FAULT_RETIRE_AFTER_A,

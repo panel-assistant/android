@@ -10,6 +10,7 @@ import io.panelassistant.android.panelassistant.PanelAssistantCommandResult
 import io.panelassistant.android.testsupport.PanelRuntimeRig
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -26,58 +27,52 @@ import org.junit.Test
  */
 internal class TouchSoundExternalSupersessionTest : PanelRuntimeRig() {
 
-    /** The inversion itself, end to end on the real authority. */
+    /** An older HTTP request cannot replay over newer intent committed by the real dispatcher. */
     @Test fun anUnavailableExternalChangeStillRetiresTheOlderQueuedValue() {
-        val config = FakeConfig()
         val authority = LiveSettingAuthority(setOf(KEY))
+        val rig = rig(onExternalSettingApplied = { authority.discard(it); true })
+        try {
+            rig.start()
+            val http = authority.applyOrQueueOutcome(KEY, "false", null) { _, value, _ ->
+                assertTrue(rig.config.commitTouchSound(value.toBoolean()))
+                LiveSettingApplyResult.UNAVAILABLE
+            }
+            assertEquals(LiveSettingRequestOutcome.FAILED_PENDING, http)
+            assertFalse(rig.config.touchSound)
+            assertEquals(mapOf(KEY to "false"), authority.pendingSnapshot())
 
-        // A user turned touch sound off from the panel. WRITE_SETTINGS is refused, so the value is
-        // durable and queued rather than applied.
-        val http = authority.applyOrQueueOutcome(KEY, "false", null) { _, value, _ ->
-            config.commit(value)
-            LiveSettingApplyResult.UNAVAILABLE
-        }
-        assertEquals(LiveSettingRequestOutcome.FAILED_PENDING, http)
-        assertEquals("false", config.value)
-        assertEquals(mapOf(KEY to "false"), authority.pendingSnapshot())
+            val result = submitNative(rig, KEY, "ON")
+            assertTrue("$result", result is PanelAssistantCommandResult.Failed)
+            assertTrue("the newer external intent must be durable", rig.config.touchSound)
+            assertTrue("the stale queued value survived", authority.pendingSnapshot().isEmpty())
 
-        // Home Assistant then turns it on. The handler commits first and the actuation fails.
-        val committed = dispatchExternal(config, actuation = ControlApplyOutcome.UNAVAILABLE, value = "true")
-        assertEquals(KEY, committed)
-        assertEquals("true", config.value)
-
-        // The failure path must still retire the older queued value.
-        supersededKeyAfterFailedDispatch(commandKey = KEY, committedKey = committed)
-            ?.let { assertTrue(authority.discard(it)) }
-        assertTrue("the stale queued value survived", authority.pendingSnapshot().isEmpty())
-
-        // And a restart must not be able to put it back.
-        authority.replay { _, value, _ -> config.commit(value); LiveSettingApplyResult.APPLIED }
-        assertEquals("the older HTTP value was replayed over the newer external one", "true", config.value)
+            authority.replay { _, value, _ ->
+                assertTrue(rig.config.commitTouchSound(value.toBoolean()))
+                LiveSettingApplyResult.APPLIED
+            }
+            assertTrue("startup replay replaced the newer intent", rig.config.touchSound)
+        } finally { rig.close() }
     }
 
-    /**
-     * The other half of the rule, and the one that keeps it honest: a command that threw *before*
-     * committing anything must leave the queued HTTP value exactly where it was. An unauthorized or
-     * refused external command is not a newer truth.
-     */
+    /** A refused command has no new durable intent and must leave the older request pending. */
     @Test fun aCommandThatCommittedNothingLeavesTheQueuedValueAlone() {
-        val config = FakeConfig()
         val authority = LiveSettingAuthority(setOf(KEY))
+        val rig = rig(onExternalSettingApplied = { authority.discard(it); true })
+        try {
+            rig.start()
+            authority.applyOrQueueOutcome(KEY, "false", null) { _, value, _ ->
+                assertTrue(rig.config.commitTouchSound(value.toBoolean()))
+                LiveSettingApplyResult.UNAVAILABLE
+            }
+            assertEquals(mapOf(KEY to "false"), authority.pendingSnapshot())
 
-        authority.applyOrQueueOutcome(KEY, "false", null) { _, value, _ ->
-            config.commit(value)
-            LiveSettingApplyResult.UNAVAILABLE
-        }
-        assertEquals(mapOf(KEY to "false"), authority.pendingSnapshot())
-
-        // Refused before the commit: nothing durable moved.
-        val committed = dispatchExternal(config, actuation = null, value = "true")
-        assertNull(committed)
-        assertEquals("false", config.value)
-
-        assertNull(supersededKeyAfterFailedDispatch(commandKey = KEY, committedKey = committed))
-        assertEquals(mapOf(KEY to "false"), authority.pendingSnapshot())
+            assertEquals(
+                PanelAssistantCommandResult.Refused(PanelAssistantCommandProcessor.CODE_INVALID_VALUE),
+                submitNative(rig, KEY, io.panelassistant.android.panelassistant.CommandValue.Text("maybe")),
+            )
+            assertFalse(rig.config.touchSound)
+            assertEquals(mapOf(KEY to "false"), authority.pendingSnapshot())
+        } finally { rig.close() }
     }
 
     /** A key committed by an earlier dispatch cannot retire a value the current command never named. */
@@ -107,26 +102,6 @@ internal class TouchSoundExternalSupersessionTest : PanelRuntimeRig() {
             )
             assertTrue(superseded.isEmpty())
         } finally { rig.close() }
-    }
-
-    private fun dispatchExternal(
-        config: FakeConfig,
-        actuation: ControlApplyOutcome?,
-        value: String,
-    ): String? {
-        // Mirrors handleTouchSound: refuse before committing, or commit, mark, then actuate.
-        if (actuation == null) return null
-        config.commit(value)
-        val committed = KEY
-        if (!actuation.applied) return committed
-        return committed
-    }
-
-    private class FakeConfig {
-        var value: String = "true"
-        fun commit(next: String) {
-            value = next
-        }
     }
 
     private companion object {

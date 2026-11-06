@@ -23,6 +23,16 @@ interface AccessibilityActions {
 
     /** Whether Android's screensaver (a dream) is in front now. False when the service cannot tell. */
     fun dreamShowing(): Boolean = false
+
+    /** Start Meta's normal name editor. Acceptance is not vendor save success; [onFinished] reports
+     * persisted native readback or a failure. Authentication is always left to Meta and the owner. */
+    fun renamePortal(name: String, onFinished: (Boolean, String) -> Unit): Boolean = false
+
+    /** A bounded, explicit rename owns the vendor administration surface. */
+    fun portalRenameActive(): Boolean = false
+
+    /** Withdraw pending native UI work when its service owner stops. */
+    fun cancelPortalRename() = Unit
 }
 
 /**

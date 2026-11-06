@@ -10,12 +10,12 @@ on:
     - cron: "41 6 * * 2"
   workflow_dispatch:
 
-# A push supersedes the run before it, so group by ref and let the newer run
-# cancel the older one. Keying a push on its own run id gave every push a group
-# of one, so superseded runs kept burning minutes to no purpose.
+# Branch and PR updates supersede their predecessors. Main checks belong to a
+# commit, so later pushes cannot evict a release cut even while it is pending.
+# Tags, manual trials and schedules each retain their own independent run.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.sha || (github.event_name == 'pull_request' || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/'))) && 'latest' || github.run_id }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 # Findings are reported through GitHub code scanning. The release workflow requires a successful
 # check for every language and refuses publication while a code-scanning alert remains open.
@@ -99,3 +99,5 @@ jobs:
         uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           category: /language:${{ matrix.language }}
+          upload: ${{ vars.CI_REHEARSAL == 'true' && 'never' || 'always' }}
+          upload-database: ${{ vars.CI_REHEARSAL != 'true' }}

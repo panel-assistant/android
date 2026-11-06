@@ -4,7 +4,6 @@ import android.content.ContextWrapper
 import io.panelassistant.android.MdnsResponderTestSupport.LOOPBACK
 import io.panelassistant.android.MdnsResponderTestSupport.RUN
 import io.panelassistant.android.MdnsResponderTestSupport.browse
-import io.panelassistant.android.MdnsResponderTestSupport.readOnlyPreferences
 import io.panelassistant.android.util.MonotonicDeadline
 import java.net.InetAddress
 import java.util.concurrent.TimeUnit
@@ -19,14 +18,15 @@ import org.junit.Test
  * JmDNS browser. One test per class, so the slow responder tests spread across test forks.
  */
 class MdnsAdvertiserResponderTest {
-    @Test fun ipv4OnlyAdvertiserPublishesRecordsAndReportsCompleteRetirement() {
+    @Test fun ipv4OnlyAdvertiserPublishesRecordsAndReportsCompleteRetirement() =
+        io.panelassistant.android.http.PaneldListenerPortTest.withDefaultPortLock {
         var locksHeld = 0
+        val rig = io.panelassistant.android.http.PaneldServerHttpFixture()
         val advertiser = MdnsAdvertiser(
             context = ContextWrapper(null),
-            config = Config(readOnlyPreferences()),
+            config = rig.config,
             runtimePanelId = "responder-test-panel-$RUN",
             runtimeFriendlyName = "Responder Test Panel",
-            runtimeHttpPort = 8888,
             acquireMulticastLock = {
                 locksHeld++
                 { locksHeld-- }
@@ -34,8 +34,15 @@ class MdnsAdvertiserResponderTest {
             discoveryId = { "responder-test-did" },
         )
         val browser = JmDNS.create(InetAddress.getByName(LOOPBACK), "responder-test-browser")
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+        val holder = java.net.ServerSocket().apply { bind(java.net.InetSocketAddress(LOOPBACK, 8888)) }
+        val listener = io.panelassistant.android.http.PaneldListener(scope, { rig.config.httpPort }, { true }, onBound = { rig.config.httpPort = it }) {}
         try {
             advertiser.start(LOOPBACK)
+            assertEquals(8888, browse(browser)!!.port)
+            listener.start {}
+            assertTrue(rig.config.httpPort in 1024..32767 && rig.config.httpPort != 8888)
+            advertiser.ensureStarted()
             assertTrue(advertiser.health().advertising)
             assertEquals(1, locksHeld)
 
@@ -43,7 +50,7 @@ class MdnsAdvertiserResponderTest {
             assertNotNull("the advertisement never reached the browser", service)
             assertEquals(listOf(LOOPBACK), service!!.inet4Addresses.map { it.hostAddress })
             assertTrue(service.inet6Addresses.isEmpty())
-            assertEquals(8888, service.port)
+            assertEquals(rig.config.httpPort, service.port)
             assertEquals("Responder Test Panel", service.getPropertyString("name"))
             assertEquals("responder-test-did", service.getPropertyString("did"))
             assertEquals(
@@ -56,6 +63,10 @@ class MdnsAdvertiserResponderTest {
         } finally {
             advertiser.stop()
             browser.close()
+            listener.stop()
+            holder.close()
+            scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
+            rig.close()
         }
         assertEquals("stop must release the multicast lock", 0, locksHeld)
     }

@@ -186,7 +186,7 @@ internal class ServiceDisplay(
                 config().ownedBacklightLevel,
             ),
         )
-        vendorScreen = profile().vendorService?.let { io.panelassistant.android.platform.LocalRpcVendorScreen(it.port) }
+        vendorScreen = profile().vendorService?.let { io.panelassistant.android.platform.LocalRpcVendorScreen(it.port, config().vendorBrightnessCustody()) }
             ?: io.panelassistant.android.platform.NoVendorScreen
         screen = ScreenController(
             brightness,

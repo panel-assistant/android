@@ -17,13 +17,12 @@ on:
 permissions:
   contents: read
 
-# Do not key a push on its own run id. That gives every push a concurrency group of
-# one, so nothing supersedes anything: abandoned runs continue against a commit that
-# is no longer the tip and contend for the self-hosted machine with the run that
-# replaced them. Group by ref and cancel in progress.
+# Branch and PR updates supersede their predecessors. Main checks belong to a
+# commit, so later pushes cannot evict a release cut even while it is pending.
+# Tags, manual trials and schedules each retain their own independent run.
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.sha || (github.event_name == 'pull_request' || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/'))) && 'latest' || github.run_id }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   # The Android build runs on the project's self-hosted runner when one is online: a single ten-core
@@ -187,6 +186,9 @@ jobs:
           npm run check
           npm test
           npm run sbom
+
+      - name: Test the log-shipping receiver
+        run: node --test tools/logship-receiver/receiver.test.mjs
 
       - name: Set up JDK 17
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0

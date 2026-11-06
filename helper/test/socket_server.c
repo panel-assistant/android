@@ -1,4 +1,6 @@
 #include <errno.h>
+#include <fcntl.h>
+#include <stdarg.h>
 #include <signal.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -15,6 +17,48 @@
 #include "screen.h"
 #include "server.h"
 #include "sysexec_stub.h"
+
+// Host-only redirection keeps production GOVREAD paths fixed while socket clients supply files.
+int __real_open(const char *path, int flags, ...);
+int __wrap_open(const char *path, int flags, ...) {
+    // Host tests must never change any real CPU's governor, even when sysfs is writable.
+    const char suffix[] = "/cpufreq/scaling_governor";
+    size_t path_size = strlen(path);
+    if ((flags & O_ACCMODE) != O_RDONLY &&
+        strncmp(path, "/sys/devices/system/cpu/", 24) == 0 &&
+        path_size >= sizeof suffix - 1 && strcmp(path + path_size - (sizeof suffix - 1), suffix) == 0) {
+        errno = EACCES;
+        return -1;
+    }
+    const char *fixture = NULL;
+    int governor = 0;
+    if (strcmp(path, "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor") == 0) {
+        governor = 1;
+        fixture = getenv("HAPANELD_TEST_GOV_CURRENT");
+    } else if (strcmp(path, "/sys/devices/system/cpu/cpu0/cpufreq/scaling_available_governors") == 0) {
+        governor = 1;
+        fixture = getenv("HAPANELD_TEST_GOV_AVAILABLE");
+    }
+    if (!strcmp(path, "/proc/net/tcp") || !strcmp(path, "/proc/net/tcp6")) {
+        fixture = getenv(!strcmp(path, "/proc/net/tcp") ? "HAPANELD_TEST_ADB_TCP" : "HAPANELD_TEST_ADB_TCP6");
+        if (!fixture || !*fixture || (flags & O_ACCMODE) != O_RDONLY) { errno = EACCES; return -1; }
+        return __real_open(fixture, flags);
+    }
+    if (governor) {
+        if (!fixture || !*fixture || (flags & O_ACCMODE) != O_RDONLY) { errno = EACCES; return -1; }
+        return __real_open(fixture, flags);
+    }
+    int needs_mode = (flags & O_CREAT) != 0;
+#ifdef O_TMPFILE
+    needs_mode = needs_mode || (flags & O_TMPFILE) == O_TMPFILE;
+#endif
+    if (!needs_mode) return __real_open(path, flags);
+    va_list ap;
+    va_start(ap, flags);
+    mode_t mode = (mode_t)va_arg(ap, int);
+    va_end(ap);
+    return __real_open(path, flags, mode);
+}
 
 static volatile sig_atomic_t running = 1;
 static int listener = -1;
@@ -35,6 +79,23 @@ int main(int argc, char **argv) {
 
     sysexec_stub_reset();
     sysexec_stub_add_popen("screencap -p", "PNG\nfixture\n", 0);
+    const char *role = getenv("HAPANELD_TEST_ZIGBEE_ROLE");
+    if (role) sysexec_stub_add_popen("mosquitto_sub", role, 0);
+    const char *gfx = getenv("HAPANELD_TEST_GFXINFO");
+    if (gfx) sysexec_stub_add_popen("dumpsys gfxinfo io.panelassistant.android", gfx, 0);
+    const char *wifi = getenv("HAPANELD_TEST_WIFI_STATUS");
+    if (wifi) sysexec_stub_add_popen("cmd wifi status", wifi, 0);
+    static const char *const adb_names[] = { "service.adb.listen_addrs", "service.adb.tcp.port",
+        "persist.adb.tcp.port", "service.adb.tls.port", "persist.adb.tls_server.enable" };
+    for (unsigned i = 0; i < 5; i++) {
+        char key[40], command[100];
+        snprintf(key, sizeof key, "HAPANELD_TEST_ADB_PROP_%u", i);
+        const char *value = getenv(key);
+        if (value) {
+            snprintf(command, sizeof command, "getprop %s", adb_names[i]);
+            sysexec_stub_add_popen(command, value, 0);
+        }
+    }
     if (guard_maintenance_init() != 0) return 5;
     input_init();
     gpio_init();

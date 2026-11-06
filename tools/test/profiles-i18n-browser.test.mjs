@@ -13,29 +13,6 @@ const englishCatalogue = fileURLToPath(new URL('../../app/src/main/assets/i18n/e
 const chrome = process.env.CHROME || '/usr/bin/chromium';
 const browserTest = existsSync(chrome) ? test : test.skip;
 
-function objectFreezeBody(source, name) {
-  const marker = `var ${name} = Object.freeze({`;
-  const start = source.indexOf(marker);
-  assert.notEqual(start, -1, `${name} declaration is missing`);
-  let depth = 1;
-  let quote = '';
-  let escaped = false;
-  const bodyStart = start + marker.length;
-  for (let index = bodyStart; index < source.length; index += 1) {
-    const char = source[index];
-    if (quote) {
-      if (escaped) escaped = false;
-      else if (char === '\\') escaped = true;
-      else if (char === quote) quote = '';
-      continue;
-    }
-    if (char === '"' || char === "'") quote = char;
-    else if (char === '{') depth += 1;
-    else if (char === '}' && --depth === 0) return source.slice(bodyStart, index);
-  }
-  assert.fail(`${name} declaration is unterminated`);
-}
-
 function json(body, status = 200) {
   return { status, type: 'application/json', body: JSON.stringify(body) };
 }
@@ -51,7 +28,7 @@ function profile(overrides = {}) {
 }
 
 function html(translations, withHelper = true, editorProbe = false, locale = 'zh-Hans', realEditor = false) {
-  const editor = editorProbe ? `<script>window.__editorValue='';window.ProfileCodeEditor={create:()=>({getValue:()=>window.__editorValue,setValue:(value)=>{window.__editorValue=value;},setReadOnly:()=>{},setSchema:(fields)=>{window.__schema=fields;},setDiagnostics:()=>{},focus:()=>{}})};</script>` : '';
+  const editor = editorProbe ? `<script>window.__editorValue='';window.ProfileCodeEditor={create:(_host,options)=>{window.__editorPhrases=options.phrases;return {getValue:()=>window.__editorValue,setValue:(value)=>{window.__editorValue=value;},setReadOnly:()=>{},setSchema:(fields)=>{window.__schema=fields;},setDiagnostics:()=>{},focus:()=>{}}}};</script>` : '';
   const ids = ['profile-select','profile-use-draft','profile-status','profile-new','profile-edit','profile-fork','profile-import','profile-export','profile-validate','profile-compare','savebtn','profile-activate','profile-auto','profile-rollback','profile-delete','profile-draft','profile-modal-cancel','profile-modal-confirm'];
   const controls = ids.map((id) => id === 'profile-select' ? `<select id="${id}"></select>` : id === 'profile-import' ? `<input id="${id}" type="file">` : `<button id="${id}">${id}</button>`).join('');
   return `<!doctype html><html lang="${locale}"><head><meta charset="utf-8">${i18nBridge({ locale, strings: withHelper ? translations : {} })}</head><body><div class="wrap"><div class="profile-toolbar">${controls}</div><div class="profile-workspace"><section id="profile-editor"><div class="profile-editor-head"></div></section><section class="profile-inspector"><div class="profile-inspector-head"></div><div class="profile-inspector-body"><div id="profile-editor-meta"></div><div id="profile-badges"></div><div id="profile-links"></div><div id="profile-catalog-issues"></div><div id="profile-issues"></div><div id="profile-diff"></div><div id="profile-report"></div></div></section></div></div><div id="profile-modal" hidden><h2 id="profile-modal-title"></h2><pre id="profile-modal-detail"></pre></div>${editor}${realEditor ? '<script src="/codemirror.js"></script>' : ''}<script src="/profiles.js"></script></body></html>`;
@@ -95,29 +72,23 @@ async function rig(t, { translations = {}, withHelper = true, editorProbe = fals
   return { page, requests };
 }
 
-test('Profiles maps the complete live CodeMirror phrase vocabulary to finite catalogue keys', async () => {
-  const [source, bundle, catalogue] = await Promise.all([
-    readFile(asset, 'utf8'),
-    readFile(editorBundle, 'utf8'),
-    readFile(englishCatalogue, 'utf8').then(JSON.parse),
-  ]);
-  // The pinned bundle also contains Folded lines, Unfolded lines and to, but the wrapper installs
-  // neither foldKeymap nor direct fold commands, so those announcement phrases are unreachable.
+browserTest('Profiles passes the complete CodeMirror phrase vocabulary to the editor', async t => {
+  // These are lookup identities in the shipped editor's public phrase option.
   const expected = [
     'Find', 'Replace', 'next', 'previous', 'all', 'match case', 'regexp', 'by word', 'replace',
     'replace all', 'replaced match on line $', 'replaced $ matches', 'close', 'Go to line', 'go',
     'Control character', 'folded code', 'Fold line', 'Unfold line', 'unfold',
     'Diagnostics', 'No diagnostics', 'Selection deleted', 'Completions', 'current match', 'on line',
   ];
-  const body = source.substring(source.indexOf('function editorPhrases()'), source.indexOf('\n  }', source.indexOf('function editorPhrases()')) + 4);
-  const bindings = [...body.matchAll(/"([^"]+)": t\("(profiles\.editor\.codemirror\.[a-z_]+)", "([^"]+)"\)/g)]
-    .map((match) => ({ phrase: match[1], key: match[2], fallback: match[3] }));
-  assert.deepEqual(bindings.map(({ phrase }) => phrase), expected);
-  assert.equal(new Set(bindings.map(({ key }) => key)).size, expected.length, 'each phrase owns one catalogue key');
-  for (const { phrase, key, fallback } of bindings) {
-    assert.equal(fallback, phrase, `${key} must retain CodeMirror's English lookup identity as its fallback`);
-    assert.equal(catalogue.strings[key].text, phrase, `${key} must be authoritative for the phrase identity`);
-    assert.ok(bundle.includes(JSON.stringify(phrase)), `${phrase} is not emitted by the pinned bundle`);
+  const catalogue = JSON.parse(await readFile(englishCatalogue, 'utf8')).strings;
+  const records = Object.entries(catalogue).filter(([key]) => key.startsWith('profiles.editor.codemirror.'));
+  const translations = Object.fromEntries(records.map(([key]) => [key, `localized:${key}`]));
+  const localized = Object.fromEntries(records.map(([key, record]) => [record.text, translations[key]]));
+  assert.deepEqual(Object.keys(localized).sort(), [...expected].sort());
+  for (const translated of [true, false]) {
+    const { page } = await rig(t, { editorProbe: true, translations: translated ? translations : {} });
+    assert.deepEqual(await page.evaluate(() => window.__editorPhrases),
+      translated ? localized : Object.fromEntries(expected.map(phrase => [phrase, phrase])));
   }
 });
 
@@ -308,7 +279,7 @@ browserTest('Profiles localizes only closed schema descriptions and preserves de
   ]);
 });
 
-browserTest('Profiles schema localization map is the exact closed 13-field projection', async (t) => {
+browserTest('Profiles localizes known schema descriptions and preserves unknown fields', async (t) => {
   const schemaKeys = {
     'metadata.maturity': 'profiles.schema.description.metadata_maturity',
     'match.any[].all[].field': 'profiles.schema.description.match_field',
@@ -323,10 +294,6 @@ browserTest('Profiles schema localization map is the exact closed 13-field proje
     'provisioning.packages[].importance': 'profiles.schema.description.package_importance',
     'provisioning.recipes[].id': 'profiles.schema.description.recipe_id',
   };
-  const source = await readFile(asset, 'utf8');
-  const actual = Object.fromEntries([...objectFreezeBody(source, 'SCHEMA_DESCRIPTION_KEYS')
-    .matchAll(/"([^"]+)"\s*:\s*"([^"]+)"/g)].map((match) => [match[1], match[2]]));
-  assert.deepEqual(actual, schemaKeys);
   const translations = Object.fromEntries(Object.values(schemaKeys).map((key) => [key, `localized:${key}`]));
   const fields = Object.keys(schemaKeys).map((path) => ({ path, type: 'enum', description: `raw:${path}`, enum_values: ['x'] }));
   fields.push({ path: 'future.enum', type: 'enum', description: 'future exact', enum_values: ['future'] });

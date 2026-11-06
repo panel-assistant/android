@@ -1,9 +1,14 @@
 package io.panelassistant.android.http
 
 import io.panelassistant.android.control.resolveTouchSoundIntent
-import java.io.File
+import io.panelassistant.android.control.ControlApplyOutcome
+import io.panelassistant.android.control.TouchSoundHardware
+import io.panelassistant.android.control.TouchSoundState
+import io.panelassistant.android.panelassistant.PanelAssistantCommandResult
+import io.panelassistant.android.state.StateConverger.Observation
+import io.panelassistant.android.testsupport.PanelRuntimeRig
+import java.util.concurrent.CopyOnWriteArrayList
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -12,14 +17,10 @@ import org.junit.Test
  *
  * That single invariant is what removes the phantom: if no reporting surface can move without the user,
  * an unrelated save posts back exactly what the panel holds, `planDirectConfigMutation` finds nothing
- * changed for the key, and nothing can be journalled for it. The first two cases prove the invariant and
- * prove it can fail; the rest hold the Android-coupled seams that carry it, which have no JVM harness.
+ * changed for the key, and nothing can be journalled for it. The change-plan cases hold those save shapes;
+ * the last two drive the state core and external command dispatcher through the runtime rig.
  */
-class TouchSoundDriftContractTest {
-    // Source-text reason: the state channel and remote handler need the Android service to construct.
-    private fun source(path: String): String =
-        File("src/main/kotlin/io/panelassistant/android/$path").readText()
-
+internal class TouchSoundDriftContractTest : PanelRuntimeRig() {
     @Test fun firmwareDriftUnderAnUnrelatedSaveCannotSynthesizeATouchSoundEdit() {
         // Settled at an earlier boot: the user switched touch sound off.
         val intent = false
@@ -85,26 +86,52 @@ class TouchSoundDriftContractTest {
     }
 
     @Test fun theStatePublishedToHomeAssistantIsThePersistedIntent() {
-        val core = source("PanelStateCore.kt")
+        val hardware = TouchHardware()
+        val rig = rig(touchSoundHardware = hardware, configure = { it.commitTouchSound(false) })
+        try {
+            val reported = CopyOnWriteArrayList<Observation>()
+            rig.core.addStateSink { key, value -> if (key == "touch_sound") reported += value }
 
-        assertTrue(core.contains("""channel("touch_sound") { known(if (config.touchSound) "ON" else "OFF") }"""))
-        assertFalse(core.contains("touchSound.isEnabled()"))
+            // Firmware has enabled sounds despite the durable OFF intent.
+            hardware.effects = 1
+            rig.core.reconcile("touch_sound")
+            drainStatePump()
+
+            assertEquals(Observation.Known("OFF"), reported.lastOrNull())
+        } finally { rig.close() }
     }
 
-    /**
-     * Home Assistant reaches `handleTouchSound` without passing through the HTTP authority, so if it only
-     * moved the controller the state channel would publish the old value straight back and flip the
-     * switch in Home Assistant. Persist first, exactly like every other live setting.
-     */
-    @Test fun anExternallyOriginatedChangePersistsIntentBeforeItActuates() {
-        val commands = source("PanelCommandDispatcher.kt")
-        val handler = commands.substring(
-            commands.indexOf("override fun handleTouchSound(on: Boolean)"),
-            commands.indexOf("override fun handleWatchdog(on: Boolean)"),
-        )
+    @Test fun anExternallyOriginatedChangePersistsAndPublishesTheNewIntent() {
+        val hardware = TouchHardware()
+        val rig = rig(touchSoundHardware = hardware, configure = { it.commitTouchSound(false) })
+        try {
+            rig.start()
+            val reported = CopyOnWriteArrayList<Observation>()
+            rig.core.addStateSink { key, value -> if (key == "touch_sound") reported += value }
 
-        assertTrue(handler.contains("config.commitTouchSound(on)"))
-        assertTrue(handler.indexOf("config.commitTouchSound(on)") < handler.indexOf("touchSound.apply(on)"))
-        assertTrue(handler.contains("""core.reconcile("touch_sound")"""))
+            assertEquals(PanelAssistantCommandResult.Applied, submitNative(rig, "touch_sound", "ON"))
+            drainStatePump()
+
+            assertTrue("external intent is durable", rig.config.touchSound)
+            assertEquals("external intent reaches the hardware", 1, hardware.effects)
+            assertEquals(Observation.Known("ON"), reported.lastOrNull())
+        } finally { rig.close() }
+    }
+
+    private class TouchHardware : TouchSoundHardware {
+        @Volatile var effects = 0
+        override fun capture() = TouchSoundState(effects)
+        override fun enable(): ControlApplyOutcome {
+            effects = 1
+            return ControlApplyOutcome.APPLIED
+        }
+        override fun restore(state: TouchSoundState): ControlApplyOutcome {
+            effects = state.effectsSetting ?: 0
+            return ControlApplyOutcome.APPLIED
+        }
+        override fun disableConservatively(): ControlApplyOutcome {
+            effects = 0
+            return ControlApplyOutcome.APPLIED
+        }
     }
 }

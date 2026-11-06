@@ -13,32 +13,6 @@ const catalogueDir = fileURLToPath(new URL('../../app/src/main/assets/i18n/', im
 const chrome = process.env.CHROME || '/usr/bin/chromium';
 const browserTest = existsSync(chrome) ? test : test.skip;
 
-function objectLiteral(source, name) {
-  const marker = `var ${name} = Object.freeze(`;
-  const start = source.indexOf(marker);
-  assert.notEqual(start, -1, `${name} declaration is missing`);
-  const bodyStart = start + marker.length;
-  let depth = 0, quote = '', escaped = false;
-  for (let index = bodyStart; index < source.length; index += 1) {
-    const char = source[index];
-    if (quote) {
-      if (escaped) escaped = false;
-      else if (char === '\\') escaped = true;
-      else if (char === quote) quote = '';
-      continue;
-    }
-    if (char === '"' || char === "'") quote = char;
-    else if (char === '{' || char === '[') depth += 1;
-    else if (char === '}' || char === ']') depth -= 1;
-    else if (char === ')' && depth === 0) return source.slice(bodyStart, index);
-  }
-  assert.fail(`${name} declaration is unterminated`);
-}
-
-function frozenObject(source, name) {
-  return Function(`"use strict";return (${objectLiteral(source, name)});`)();
-}
-
 async function realCatalogueProjection(locale, prefixes) {
   const source = JSON.parse(await readFile(`${catalogueDir}/en.json`, 'utf8'));
   const target = JSON.parse(await readFile(`${catalogueDir}/${locale}.json`, 'utf8'));
@@ -63,14 +37,42 @@ const samples = Object.freeze({
   attempts: '2', reason_code: 'no-response',
 });
 
+// Cases come from the published English catalogue, independently of install.js's private tables.
+// These ten protocol codes intentionally reuse a different catalogue family or a plural selector.
+async function presentationCases() {
+  const catalogue = JSON.parse(await readFile(`${catalogueDir}/en.json`, 'utf8')).strings;
+  const aliases = {
+    'restore-completed-with-state': ['install.restore.state_values.one', 'install.restore.state_values.other'],
+    'destructive-operation-in-progress': ['profiles.result.destructive-operation-in-progress'],
+    'profile-restart-unavailable': ['profiles.result.profile-restart-unavailable'],
+    'profile-activation-abort-persist-failed': ['profiles.result.profile-activation-abort-persist-failed'],
+    'companion-urls-repaired': ['install.companion.urls_repaired.one', 'install.companion.urls_repaired.other'],
+    'status-companion-url-missing': ['install.status.companion_url_missing.one', 'install.status.companion_url_missing.other'],
+    'status-mdns-not-running': ['runtime.mdns.not_running'],
+    'status-mdns-stale-address': ['runtime.mdns.stale_address'],
+    'status-mdns-unresponsive': ['runtime.mdns.unresponsive.one', 'runtime.mdns.unresponsive.other'],
+    'status-mdns-recovering': ['runtime.mdns.recovering'],
+  };
+  const codes = Object.fromEntries(Object.keys(catalogue).filter(key => key.startsWith('install.presentation.'))
+    .map(key => [key.slice('install.presentation.'.length).replaceAll('_', '-'), [key]]));
+  Object.assign(codes, aliases);
+  return Object.entries(codes).map(([code, keys]) => {
+    const names = new Set(keys.flatMap(key => catalogue[key].placeholders.map(name => name.slice(1, -1))));
+    if (code === 'operation-working') names.add('owner');
+    if (['status-storage-warning', 'status-storage-critical', 'status-storage-database-failure'].includes(code)) {
+      for (const name of ['usable_bytes', 'total_bytes', 'used_percent', 'database_bytes', 'wal_bytes']) names.add(name);
+    }
+    for (const name of names) assert.ok(Object.hasOwn(samples, name), `${code}: sample for ${name}`);
+    return { code, keys, params: Object.fromEntries([...names].map(name => [name, samples[name]])) };
+  });
+}
+
 async function rig(t, options = {}) {
   const source = await readFile(asset, 'utf8');
-  const presentations = frozenObject(source, 'PRESENTATIONS');
-  const params = frozenObject(source, 'PARAMS');
+  const cases = await presentationCases();
   const strings = {};
   const languages = {};
-  for (const [code, spec] of Object.entries(presentations)) {
-    const keys = typeof spec === 'string' ? [spec] : [spec.one, spec.other];
+  for (const { code, keys } of cases) {
     for (const key of keys) {
       strings[key] = `LOC:${code}:${Object.keys(samples).map((name) => `{${name}}`).join('|')}`;
       languages[key] = 'zh-Hans';
@@ -78,7 +80,7 @@ async function rig(t, options = {}) {
   }
   Object.assign(strings, options.extraStrings || {});
   Object.keys(options.extraStrings || {}).forEach((key) => { languages[key] = 'zh-Hans'; });
-  if (options.untranslated) delete languages[typeof presentations[options.untranslated] === 'string' ? presentations[options.untranslated] : presentations[options.untranslated].other];
+  if (options.untranslated) for (const key of cases.find(item => item.code === options.untranslated).keys) delete languages[key];
   const projection = options.projection || { locale: 'zh-Hans', strings, languages };
   const projectedLocale = projection.locale;
   const status = options.status || { warnings: [], warning_presentations: [] };
@@ -101,7 +103,7 @@ async function rig(t, options = {}) {
   browser = await (options.engine === 'WebKit' ? webkit.launch({ headless: true }) : chromium.launch({ executablePath: chrome, headless: true }));
   const page = await browser.newPage();
   await page.goto(`http://127.0.0.1:${server.address().port}/${options.query || ''}`, { waitUntil: 'domcontentloaded' });
-  return { page, presentations, params };
+  return { page, cases };
 }
 
 browserTest('Version picker explains unavailable releases and keeps permitted choices usable', async (t) => {
@@ -216,13 +218,10 @@ browserTest('Install localizes closed wire tokens from the real German catalogue
   assert.doesNotMatch(restore, /rollback_failed/);
 });
 
-browserTest('Install accepts every frozen presentation code with its exact parameter shape', async (t) => {
-  const { page, presentations, params } = await rig(t);
-  const cases = Object.keys(presentations).map((code) => {
-    const rule = params[code] || {};
-    return { code, params: Object.fromEntries([...(rule.required || []), ...(rule.optional || [])].map((name) => [name, samples[name]])) };
-  });
-  const outcomes = await page.evaluate((items) => items.map((envelope) => window.HaPaneldInstallPresentation.present(envelope, `RAW:${envelope.code}`)), cases);
+browserTest('Install accepts every published presentation code with its catalogue parameter shape', async (t) => {
+  const { page, cases } = await rig(t);
+  assert.equal(cases.length, 115, 'the published protocol vocabulary is nonempty and complete');
+  const outcomes = await page.evaluate((items) => items.map((envelope) => window.HaPaneldInstallPresentation.present(envelope, `RAW:${envelope.code}`)), cases.map(({ code, params }) => ({ code, params })));
   outcomes.forEach((outcome, index) => {
     assert.equal(outcome.fallback, false, `${cases[index].code} unexpectedly fell back`);
     assert.match(outcome.text, new RegExp(`^LOC:${cases[index].code}:`));
@@ -252,7 +251,7 @@ browserTest('Install substitutes exact visible names for closed component parame
   }, 'fallback').text));
   assert.deepEqual(outcomes, [
     'Update Panel Assistant: 1 to 2 at https://example.invalid/release',
-    'Update HA Companion: 1 to 2 at https://example.invalid/release',
+    'Update Home Assistant Companion: 1 to 2 at https://example.invalid/release',
     'Update System WebView: 1 to 2 at https://example.invalid/release',
     'Update APK: 1 to 2 at https://example.invalid/release',
   ]);
@@ -410,23 +409,131 @@ browserTest('Install APK and uninstall results localize their controlled summary
   assert.equal(await page.locator('#uninst-msg i').count(), 0, 'raw uninstall evidence must remain inert text');
 });
 
-browserTest('Install protected-form success keeps the supported explicit language in its card redirect', async (t) => {
-  const route = (_request, response, url) => {
-    if (url.pathname !== '/api/v1/display/density') return false;
-    response.writeHead(200, { 'content-type': 'application/json' });
-    response.end(JSON.stringify({ ok: true, message: 'Applied.' })); return true;
-  };
-  for (const locale of ['zh-Hans', 'cs', 'pt-BR']) {
+browserTest('Install APK progress shows panel confirmation instructions and keeps generic running fallbacks', async (t) => {
+  const hostile = '<img src=x onerror=window.__apkOwned=1>';
+  const statuses = [
+    { running: true, message: 'Tap Install on the panel to finish the update', presentation: { code: 'install-awaiting-confirmation', params: { component: 'apk' } } },
+    { running: true, message: hostile, presentation: { code: 'install-awaiting-confirmation', params: { component: 'apk', unexpected: hostile } } },
+    { running: true, message: hostile, presentation: { code: 'unknown-running-code', params: {} } },
+    { running: true, message: hostile },
+    { running: false, message: hostile, presentation: { code: 'managed-install-committed', params: { component: 'apk', version: '1.2.3' } } },
+  ];
+  for (const engine of ['Chromium', 'WebKit']) {
+    let current = 0, commits = 0, reads = 0;
     const { page } = await rig(t, {
-      route,
-      query: `?lang=${locale}`,
-      html: '<form action="/api/v1/display/density"><button id="density-submit" type="submit">Apply</button></form>',
+      engine,
+      route(_request, response, url) {
+        if (url.pathname === '/api/v1/install/apk/commit') {
+          commits++; response.writeHead(200, { 'content-type': 'application/json' }); response.end('{"status":"started"}'); return true;
+        }
+        if (url.pathname !== '/api/v1/install/status') return false;
+        reads++; response.writeHead(200, { 'content-type': 'application/json' }); response.end(JSON.stringify(statuses[current])); return true;
+      },
+      extraStrings: { 'install.presentation.install_awaiting_confirmation': 'LOC confirm {component} on the panel', 'install.apk.dynamic.installing': 'LOC installing', 'install.apk.dynamic.result_label': 'LOC result:' },
+      html: '<div id="apk-msg"></div><div id="apk-preview"><button id="install" data-token="token" onclick="apkInstall(this)">Install</button><button id="discard">Discard</button></div>',
     });
-    await page.click('#density-submit');
-    await page.waitForURL((url) => url.pathname === '/install' && url.searchParams.get('lang') === locale && url.hash === '#cfg-display', { timeout: 3_000 });
-    assert.equal(new URL(page.url()).searchParams.get('lang'), locale);
+    for (current = 0; current < statuses.length; current++) {
+      const nextStatus = page.waitForResponse(response => new URL(response.url()).pathname === '/api/v1/install/status');
+      if (current === 0) await page.click('#install');
+      await (await nextStatus).finished();
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      const text = await page.locator('#apk-msg').textContent();
+      if (current === 0) assert.equal(text, 'LOC confirm APK on the panel', engine + ': pending system confirmation must tell the operator what to do');
+      else if (statuses[current].running) assert.equal(text, 'LOC installing', engine + ': invalid or absent running presentation keeps the localized generic fallback');
+      else assert.match(text, /^LOC result: LOC:managed-install-committed:/);
+      assert.equal(await page.locator('#apk-msg').getAttribute('lang'), null);
+      assert.equal(await page.locator('#apk-msg img').count(), 0);
+      assert.equal(await page.evaluate(() => typeof window.__apkOwned), 'undefined');
+      assert.equal(await page.locator('#install').isDisabled(), true);
+      assert.equal(await page.locator('#discard').isDisabled(), true);
+    }
+    assert.equal(commits, 1, engine + ': progress does not repeat the admitted install');
+    assert.equal(reads, statuses.length);
   }
 });
+
+for (const engine of ['Chromium', 'WebKit']) for (const [endpoint, fragment, fieldsHtml] of [
+  ['/api/v1/display/density', '#cfg-display', '<input name="density" value="240"><button name="action" value="reset">Reset</button>'],
+  ['/api/v1/tame', '#cfg-tame', '<input name="pkg" value="io.example.vendor"><input type="hidden" name="action" value="tame"><button>Tame</button>'],
+]) {
+  browserTest(`Install protected-form ${endpoint} success keeps the supported explicit language in ${engine}`, async (t) => {
+    const route = (_request, response, url) => {
+      if (url.pathname !== endpoint) return false;
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ ok: true, message: 'Applied.' })); return true;
+    };
+    for (const locale of ['zh-Hans', 'cs', 'pt-BR']) {
+      await t.test(locale, async (t) => {
+        const { page } = await rig(t, {
+          engine, route, query: `?lang=${locale}`,
+          html: `<form action="${endpoint}" method="post">${fieldsHtml}</form>`,
+        });
+        await page.locator('form button').click();
+        await page.waitForURL((url) => url.pathname === '/install' && url.searchParams.get('lang') === locale && url.hash === fragment, { timeout: 3_000 });
+        assert.equal(new URL(page.url()).searchParams.get('lang'), locale);
+      });
+    }
+  });
+}
+
+for (const engine of ['Chromium', 'WebKit']) for (const [endpoint, fields] of [
+  ['/api/v1/display/density', { density: '240', font: '1', action: 'reset' }],
+  ['/api/v1/tame', { pkg: 'io.example.vendor', action: 'tame' }],
+]) {
+  browserTest(`Protected forms ${endpoint} localize failures and preserve approval guidance in ${engine}`, async (t) => {
+    for (const locale of ['de', 'es', 'fr', 'it', 'nl', 'pl', 'uk', 'cs', 'pt-BR', 'zh-Hans']) {
+      await t.test(locale, async (t) => {
+        const projection = await realCatalogueProjection(locale, ['install.']);
+        const { page } = await rig(t, {
+          engine, projection, query: `?lang=${locale}`,
+          html: '<form action="/api/v1/display/density" method="post"><input name="density" value="240"><input name="font" value="1"><button name="action" value="reset">Reset</button></form>' +
+            '<form action="/api/v1/tame" method="post"><input name="pkg" value="io.example.vendor"><input type="hidden" name="action" value="tame"><button>Tame</button></form>',
+        });
+        await page.evaluate(() => document.body.setAttribute('data-hardened', ''));
+        const form = page.locator(`form[action="${endpoint}"]`), button = form.locator('button');
+        const note = form.locator('.protected-form-result');
+        const diagnostic = '<img src=x onerror=window.__formOwned=1> exact failure';
+        for (const [kind, status, body, expected] of [
+          ['network', 0, null, engine === 'WebKit' ? 'Load failed' : 'Failed to fetch'],
+          ['rejected', 500, { message: diagnostic }, diagnostic],
+          ['challenge', 202, { error: 'approval-required' }, projection.strings['install.progress.approval_retry']],
+        ]) {
+          const requests = [];
+          let answer;
+          await page.route(`**${endpoint}`, async (route) => {
+            requests.push({ method: route.request().method(), fields: Object.fromEntries(new URLSearchParams(route.request().postData())) });
+            await new Promise((resolve) => { answer = resolve; });
+            if (kind === 'network') await route.abort('failed');
+            else await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+          });
+          await button.click();
+          assert.equal(await button.isDisabled(), true, `${locale}/${kind}: submission is held`);
+          assert.equal(await note.textContent(), projection.strings['install.approval.waiting']);
+          assert.ok(answer, 'the actual HTTP request reached the route');
+          answer();
+          await button.waitFor({ state: 'visible' });
+          await page.waitForFunction((action) => !document.querySelector(`form[action="${action}"] button`).disabled, endpoint);
+          if (kind === 'network' || kind === 'rejected') {
+            assert.equal(await note.locator('[lang="en"]').count(), 1, 'a failure keeps its exact diagnostic separate from localized framing');
+            assert.equal(await note.locator('span').first().textContent(), projection.strings['install.backup.dynamic.form_failed']);
+            assert.equal(await note.locator('[lang="en"]').textContent(), expected);
+            assert.equal(await note.getAttribute('lang'), null);
+            assert.equal(await note.locator('img').count(), 0);
+            assert.equal(await page.evaluate(() => window.__formOwned), undefined);
+          } else {
+            assert.equal(await note.textContent(), expected, `${locale}/${kind}: keep localized approval guidance`);
+            assert.equal(await note.locator('[lang="en"]').count(), 0);
+          }
+          // Check for an immediate retry or navigation after the failed submission.
+          await page.waitForTimeout(120);
+          assert.deepEqual(requests, [{ method: 'POST', fields }]);
+          assert.equal(new URL(page.url()).pathname, '/');
+          await page.unroute(`**${endpoint}`);
+        }
+      });
+    }
+  });
+}
 
 browserTest('Install Backup, Export and Import failures localize prefixes and isolate exact diagnostics', async (t) => {
   const route = (_request, response, url) => {
@@ -470,6 +577,117 @@ browserTest('Install Backup, Export and Import failures localize prefixes and is
     export: typeof window.__exportOwned,
     import: typeof window.__importOwned,
   })), { backup: 'undefined', export: 'undefined', import: 'undefined' });
+});
+
+browserTest('Install Backup failures preserve controlled evidence and allow a later archive download', async (t) => {
+  const hostile = '<img src=x onerror=window.__backupOwned=1>';
+  const failures = [
+    { status: 507, body: { ok: false, error: 'backup-staging-retained', message: 'Sensitive temporary backup data could not be removed. Check panel storage, then retry; no backup was downloaded.', presentation: { code: 'backup-staging-retained', params: {} } }, code: 'backup-staging-retained' },
+    { status: 413, body: { ok: false, error: 'companion-backup-too-large', presentation: { code: 'backup-companion-too-large', params: {} } }, code: 'backup-companion-too-large' },
+    { status: 507, body: { message: hostile, presentation: { code: 'backup-staging-retained', params: { unexpected: hostile } } } },
+    { status: 507, body: { message: hostile, presentation: { code: 'unknown-backup-code', params: {} } } },
+    { status: 422, body: { error: hostile } },
+  ];
+  for (const engine of ['Chromium', 'WebKit']) {
+    let requests = 0, downloads = 0;
+    const { page } = await rig(t, {
+      engine,
+      route(_request, response, url) {
+        if (url.pathname !== '/api/v1/backup') return false;
+        const failure = failures[requests++];
+        if (failure) {
+          response.writeHead(failure.status, { 'content-type': 'application/json' });
+          response.end(JSON.stringify(failure.body));
+        } else {
+          response.writeHead(200, { 'content-type': 'application/octet-stream' }); response.end('backup archive');
+        }
+        return true;
+      },
+      extraStrings: { 'install.backup.dynamic.backup_failed_prefix': 'LOC backup failed:', 'install.backup.dynamic.downloaded_encrypted': 'LOC downloaded' },
+      html: '<input id="bk-pw" value="secret"><input id="bk-plain" type="checkbox"><input id="bk-comp" type="checkbox"><button id="backup" onclick="doBackup(this)">Backup</button><div id="bk-msg"></div>',
+    });
+    page.on('download', () => { downloads++; });
+    await page.evaluate(() => {
+      window.__archiveUrls = 0;
+      const create = URL.createObjectURL.bind(URL);
+      URL.createObjectURL = blob => { window.__archiveUrls++; return create(blob); };
+    });
+    for (const failure of failures) {
+      await page.click('#backup');
+      await page.waitForFunction(() => !document.getElementById('backup').disabled);
+      const actual = await page.locator('#bk-msg').textContent();
+      if (failure.code) {
+        assert.ok(actual.startsWith('LOC backup failed: LOC:' + failure.code + ':'), engine + ': controlled backup failure: ' + actual);
+        assert.equal(await page.locator('#bk-msg [lang="en"]').count(), 0);
+      } else {
+        assert.equal(actual, 'LOC backup failed: ' + hostile);
+        assert.equal(await page.locator('#bk-msg [lang="en"]').textContent(), hostile);
+      }
+      assert.equal(await page.locator('#bk-msg img').count(), 0);
+      assert.equal(await page.evaluate(() => typeof window.__backupOwned), 'undefined');
+      assert.equal(downloads, 0, engine + ': failed backup must not download');
+      assert.equal(await page.evaluate(() => window.__archiveUrls), 0, engine + ': failed backup must not create an archive URL');
+    }
+    const downloadEvent = page.waitForEvent('download');
+    await page.click('#backup');
+    const download = await downloadEvent;
+    assert.ok(download.suggestedFilename().endsWith('.hpb'));
+    await page.waitForFunction(() => !document.getElementById('backup').disabled);
+    assert.equal(await page.locator('#bk-msg').textContent(), 'LOC downloaded');
+    assert.equal(downloads, 1);
+    assert.equal(await page.evaluate(() => window.__archiveUrls), 1);
+    assert.equal(requests, failures.length + 1);
+  }
+});
+
+browserTest('Install Restore confirms show preflight refusals after a fresh preview without starting work', async (t) => {
+  const hostile = '<img src=x onerror=window.__restoreOwned=1>';
+  const failures = [
+    { passphrase: '', body: { ok: false, error: 'this bundle is encrypted — enter its passphrase', presentation: { code: 'restore-passphrase-required', params: {} } }, code: 'restore-passphrase-required' },
+    { passphrase: 'wrong', body: { ok: false, error: 'wrong passphrase or corrupt bundle', presentation: { code: 'restore-passphrase-or-bundle-invalid', params: {} } }, code: 'restore-passphrase-or-bundle-invalid' },
+    { passphrase: 'wrong', body: { ok: false, error: hostile, presentation: { code: 'restore-passphrase-required', params: { unexpected: hostile } } } },
+    { passphrase: 'wrong', body: { ok: false, error: hostile } },
+  ];
+  for (const engine of ['Chromium', 'WebKit']) {
+    const starts = [], polls = [];
+    let previews = 0;
+    const { page } = await rig(t, {
+      engine,
+      route(request, response, url) {
+        if (url.pathname === '/api/v1/install/status') { polls.push(url.pathname); response.writeHead(200, { 'content-type': 'application/json' }); response.end('{}'); return true; }
+        if (url.pathname !== '/api/v1/restore') return false;
+        request.resume();
+        const preview = url.searchParams.get('dry_run') === '1';
+        if (preview) previews++;
+        const body = preview ? { ok: true, panel_id: 'test panel', config_keys: 1, companion_files: 0 } : failures[starts.length].body;
+        if (!preview) starts.push(request.headers['x-backup-passphrase'] || '');
+        response.writeHead(preview ? 200 : 400, { 'content-type': 'application/json' }); response.end(JSON.stringify(body)); return true;
+      },
+      html: '<input id="rs-pw" value="correct"><input id="rs-file" type="file" onchange="restorePick(this)"><div id="rs-preview"></div><div id="bk-msg"></div>',
+    });
+    await page.locator('#rs-file').setInputFiles({ name: 'panel.hpb', mimeType: 'application/octet-stream', buffer: Buffer.from('sealed backup fixture') });
+    await page.locator('#rs-preview button').waitFor();
+    page.once('dialog', dialog => dialog.dismiss());
+    await page.locator('#rs-preview button').click();
+    assert.deepEqual(starts, [], engine + ': cancelled confirmation sends nothing');
+    page.on('dialog', dialog => dialog.accept());
+    for (const failure of failures) {
+      await page.locator('#rs-pw').fill(failure.passphrase);
+      if (previews === 1) assert.equal(await page.locator('#rs-preview button').count(), 0, engine + ': changing the passphrase invalidates confirmation');
+      await page.locator('#rs-file').setInputFiles({ name: 'panel.hpb', mimeType: 'application/octet-stream', buffer: Buffer.from('sealed backup fixture') });
+      await page.locator('#rs-preview button').waitFor();
+      await page.locator('#rs-preview button').click();
+      await page.waitForFunction(() => !document.querySelector('#rs-preview button').disabled);
+      const actual = await page.locator('#bk-msg').textContent();
+      if (failure.code) assert.ok(actual.startsWith('LOC:' + failure.code + ':'), engine + ': controlled restore refusal: ' + actual);
+      else assert.equal(actual, 'Could not start: error');
+      assert.equal(await page.locator('#bk-msg img').count(), 0);
+      assert.equal(await page.evaluate(() => typeof window.__restoreOwned), 'undefined');
+    }
+    assert.equal(previews, failures.length + 1);
+    assert.deepEqual(starts, failures.map(failure => failure.passphrase));
+    assert.deepEqual(polls, [], engine + ': preflight refusals never poll or apply a restore');
+  }
 });
 
 browserTest('Install power-safety alerts localize repair and acknowledgement states', async (t) => {

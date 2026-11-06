@@ -5,6 +5,8 @@ import io.panelassistant.android.device.ScreenOff
 import io.panelassistant.android.device.profile.BundledProfileFixtures
 import io.panelassistant.android.panelassistant.CommandValue
 import io.panelassistant.android.panelassistant.PanelAssistantCommandResult
+import io.panelassistant.android.platform.Daemon
+import io.panelassistant.android.platform.DaemonLongResult
 import io.panelassistant.android.platform.RootShell
 import io.panelassistant.android.testsupport.PanelRuntimeRig
 import org.json.JSONObject
@@ -33,14 +35,29 @@ internal class ScreenOffVendorBrightnessTest : PanelRuntimeRig() {
         override fun runBytes(cmd: String): ByteArray? = null
     }
 
+    /** The root helper over the same node: `SCREEN OFF|ON` power it, `BLPOWER` reads it. */
+    private class BlPowerHelper(private val node: BlPowerShell) : Daemon {
+        override fun available() = true
+        override fun send(cmd: String): String? = when (cmd) {
+            "SCREEN OFF" -> { node.blPower = 4; "OK" }
+            "SCREEN ON" -> { node.blPower = 0; "OK" }
+            "BLPOWER" -> "${node.blPower}"
+            else -> null
+        }
+        override fun sendLong(cmd: String, timeoutMs: Long): DaemonLongResult =
+            send(cmd)?.let(DaemonLongResult::Reply) ?: DaemonLongResult.NotSubmitted
+        override fun sendBytes(cmd: String): ByteArray? = null
+    }
+
     private class Outcome(val published: List<String>, val intendedOff: Boolean, val blPower: Int)
 
     /** Switch the screen off from Home Assistant, let a sync tick see it dark, then let the vendor
      *  service write a level and run the next tick. */
-    private fun offThenVendorWrite(route: ScreenOff): Outcome {
+    private fun offThenVendorWrite(route: ScreenOff, helper: Boolean = true): Outcome {
         val backlight = FakeBacklight(160)
         val shell = BlPowerShell()
-        val rig = rig(screenOff = route, screenBacklight = backlight, screenRoot = shell)
+        val daemon: Daemon = if (helper) BlPowerHelper(shell) else io.panelassistant.android.control.FakeDaemon()
+        val rig = rig(screenOff = route, screenBacklight = backlight, screenRoot = shell, screenDaemon = daemon)
         val states = CopyOnWriteArrayList<String>()
         try {
             rig.core.addStateSink { channel, observation ->
@@ -52,7 +69,7 @@ internal class ScreenOffVendorBrightnessTest : PanelRuntimeRig() {
             assertEquals(PanelAssistantCommandResult.Applied, submitNative(rig, "screen", CommandValue.Light(false)))
             rig.core.requestLocalObservation { true }
             drainStatePump()
-            assertEquals("Home Assistant's off was published", "OFF", states.last())
+            if (helper) assertEquals("Home Assistant's off was published", "OFF", states.last())
             backlight.level = 165
             rig.core.requestLocalObservation { true }
             drainStatePump()
@@ -64,6 +81,16 @@ internal class ScreenOffVendorBrightnessTest : PanelRuntimeRig() {
         val route = BundledProfileFixtures.bundled.single { it.profile().id == "s9e" }.profile().screenOff
         val outcome = offThenVendorWrite(route)
         assertEquals("the switch never flips back on", "OFF", outcome.published.last())
+        assertTrue("the off is still owned", outcome.intendedOff)
+        assertEquals("backlight stays powered down", 4, outcome.blPower)
+    }
+
+    /** Without a helper su powers the backlight down, and repeated reads never use su, so the state is
+     *  unknown while it is off: never a false ON, and the off and its touch wake are kept. */
+    @Test fun withoutAHelperTheS9eOffIsUnknownRatherThanFlippedBackOn() {
+        val route = BundledProfileFixtures.bundled.single { it.profile().id == "s9e" }.profile().screenOff
+        val outcome = offThenVendorWrite(route, helper = false)
+        assertFalse("never published ON while powered down", "ON" in outcome.published)
         assertTrue("the off is still owned", outcome.intendedOff)
         assertEquals("backlight stays powered down", 4, outcome.blPower)
     }

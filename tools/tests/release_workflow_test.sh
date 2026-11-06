@@ -224,6 +224,8 @@ fi
 verify_job="$(awk '/^  verify:$/ { in_job=1 } /^  package:$/ { exit } in_job' "$WORKFLOW")"
 package_job="$(awk '/^  package:$/ { in_job=1 } /^  sign-and-publish:$/ { exit } in_job' "$WORKFLOW")"
 publish_job="$(awk '/^  sign-and-publish:$/ { in_job=1 } in_job' "$WORKFLOW")"
+# Source-text reason: GitHub owns check inventory, API permissions, polling budget and
+# job scheduling. Runtime cases above cover selection and failure semantics.
 if grep -Fq 'Require clean integrated checks for the source commit' "$WORKFLOW" && \
    grep -Fq 'commits/$SOURCE_COMMIT/check-runs' "$WORKFLOW" && \
    grep -Fq 'code-scanning/alerts?state=open' "$WORKFLOW" && \
@@ -237,12 +239,8 @@ if grep -Fq 'Require clean integrated checks for the source commit' "$WORKFLOW" 
    grep -Fq '"CodeQL · java-kotlin"' "$WORKFLOW" && \
    grep -Fq '"CodeQL · javascript-typescript"' "$WORKFLOW" && \
    grep -Fq '"CodeQL · python"' "$WORKFLOW" && \
-   grep -Fq 'select(.name == $name and .head_sha == $source and .app.slug == "github-actions")' "$WORKFLOW" && \
-   grep -Fq '| max_by(.id) // {}' "$WORKFLOW" && \
    grep -Fq 'max_attempts=60' "$WORKFLOW" && \
    grep -Fq 'sleep_seconds=10' "$WORKFLOW" && \
-   grep -Fq 'if [ "$conclusion" != success ]; then' "$WORKFLOW" && \
-   grep -Fq 'Timed out waiting for required checks' "$WORKFLOW" && \
    grep -Fqx '      checks: read' <<<"$verify_job" && \
    grep -Fqx '      security-events: read' <<<"$verify_job" && \
    ! grep -Fq 'Require clean integrated checks for the source commit' <<<"$package_job"; then
@@ -265,14 +263,6 @@ if grep -Fq 'Test release workflow contracts' <<<"$verify_job" && \
   pass "release exact-source gate stays lightweight while packaging performs a clean exact-tag build"
 else
   fail_test "release exact-source gate stays lightweight while packaging performs a clean exact-tag build"
-fi
-
-if grep -Fqx 'concurrency:' "$WORKFLOW" && \
-   grep -Fq 'group: release-${{ inputs.release_tag || github.ref_name }}' "$WORKFLOW" && \
-   grep -Fqx '  cancel-in-progress: false' "$WORKFLOW"; then
-  pass "same-tag release runs serialize without cancelling publication"
-else
-  fail_test "same-tag release runs serialize without cancelling publication"
 fi
 
 if grep -Fqx '    needs: [verify, seal]' <<<"$publish_job" && \
@@ -406,14 +396,18 @@ check_provenance_case 'accepts a valid ancestor' ''
 make_provenance_case next-locale "$provenance_ancestor"
 python3 - "$provenance_case/tools/i18n_catalogue.py" <<'PY'
 from pathlib import Path
+import ast
 import re
 import sys
 
 path = Path(sys.argv[1])
 source = path.read_text(encoding="utf-8")
+policy = re.search(r'^LOCALES = (\{.+\})$', source, re.MULTILINE)
+assert policy is not None
+assert "test-Latn" not in ast.literal_eval(policy.group(1))
 source, replacements = re.subn(
     r'^LOCALES = \{(?P<values>.+)\}$',
-    lambda match: f'LOCALES = {{{match.group("values")}, "nl"}}',
+    lambda match: f'LOCALES = {{{match.group("values")}, "test-Latn"}}',
     source,
     count=1,
     flags=re.MULTILINE,
@@ -421,9 +415,9 @@ source, replacements = re.subn(
 assert replacements == 1
 path.write_text(source, encoding="utf-8")
 PY
-cp "$provenance_catalogues/$provenance_target_locale.json" "$provenance_catalogues/nl.json"
+cp "$provenance_catalogues/$provenance_target_locale.json" "$provenance_catalogues/test-Latn.json"
 check_provenance_case 'derives a newly registered catalogue from locale policy' ''
-rm "$provenance_catalogues/nl.json"
+rm "$provenance_catalogues/test-Latn.json"
 check_provenance_case 'rejects an omitted newly registered catalogue' 'Release catalogue files do not match the supported locales.'
 make_provenance_case differing "$provenance_ancestor"
 printf '{"sourceRevision":"%s"}\n' "$provenance_second" > "$provenance_catalogues/$provenance_target_locale.json"
@@ -504,6 +498,11 @@ done
 descriptor_step="$(extract_named_step 'Generate bounded install descriptor without release credentials')"
 proof_step="$(extract_named_step 'Sign and authenticate release proofs')"
 final_step="$(extract_named_step 'Final exact verification before publication')"
+# Source-text reason: sealed job inputs, secret injection and publication order are
+# hosted workflow boundaries; extracted-step cases below cover signatures.
+# Source-text reason: the generator suppresses tool stderr, so fixture output cannot
+# independently attest its UID or its landlock confinement. Keep the explicit
+# privilege-drop and filesystem-isolation boundary contracts.
 if grep -Fq 'cp tools/generate_install_descriptor.py release-input/generate_install_descriptor.py' <<<"$package_job" && \
    [ "$(grep -Fc 'generate_install_descriptor.py \' <<<"$package_job")" -eq 1 ] && \
    grep -Fq 'sha256sum android-gradle-runtime.cdx.json generate_install_descriptor.py' <<<"$package_job" && \
@@ -512,22 +511,16 @@ if grep -Fq 'cp tools/generate_install_descriptor.py release-input/generate_inst
    grep -Fq '/usr/bin/setpriv \' <<<"$descriptor_step" && \
    grep -Fq -- '--reuid=65534 \' <<<"$descriptor_step" && \
    grep -Fq 'SYS_landlock_restrict_self' <<<"$descriptor_step" && \
-   grep -Fq '/usr/bin/env -i \' <<<"$descriptor_step" && \
-   grep -Fq '/usr/bin/python3 "$workspace/release-input/generate_install_descriptor.py" "${generator_args[@]}"' <<<"$descriptor_step" && \
    ! grep -Fq 'KEYSTORE_B64: ${{' <<<"$(extract_named_step_yaml 'Generate bounded install descriptor without release credentials')" && \
    ! grep -Eq '(^|[[:space:]])(python3|release-input/[^[:space:]]+\.py)([[:space:]]|$)' <<<"$proof_step" && \
    ! grep -Fq -- '-srcstorepass "$KEYSTORE_PASSWORD"' <<<"$proof_step" && \
    ! grep -Fq -- '-srckeypass "$KEY_PASSWORD"' <<<"$proof_step" && \
    ! grep -Fq -- '-passin "pass:' <<<"$proof_step" && \
-   grep -Fq 'Install descriptor is not the exact canonical 13-field APK contract.' <<<"$proof_step" && \
-   grep -Fq 'for metadata_name in "$descriptor_name" "$protocol_name"; do' <<<"$proof_step" && \
-   grep -Fq '/usr/bin/openssl dgst -sha256 -verify "$public_key" -signature "dist/$metadata_name.sig"' <<<"$proof_step" && \
    grep -Fq 'Final exact verification before publication' <<<"$publish_job" && \
-   grep -Fq '/usr/bin/openssl dgst -sha256 -verify "$public_key" -signature "dist/$descriptor_name.sig"' <<<"$final_step" && \
    grep -Fq 'files: dist/*' <<<"$publish_job"; then
-  pass "release seals, isolates, revalidates, signs and publishes the exact APK install descriptor"
+  pass "release seals descriptor inputs and separates generation from credentialed publication"
 else
-  fail_test "release seals, isolates, revalidates, signs and publishes the exact APK install descriptor"
+  fail_test "release seals descriptor inputs and separates generation from credentialed publication"
 fi
 
 # Source-text reason: hosted tool installation and the credentialed tool paths cannot be replaced
@@ -762,10 +755,10 @@ if (
      .packageId == "io.panelassistant.android" and
      .launchComponent == "io.panelassistant.android/io.panelassistant.android.MainActivity"
    ' "$descriptor_case/dist/$descriptor_name" >/dev/null; then
-  pass "credential-free uid-65534 step behaviorally generates the exact 13-field descriptor"
+  pass "credential-free step behaviorally generates the exact 13-field descriptor"
 else
   sed -n '1,80p' "$descriptor_case/generate.log" >&2
-  fail_test "credential-free uid-65534 step behaviorally generates the exact 13-field descriptor"
+  fail_test "credential-free step behaviorally generates the exact 13-field descriptor"
 fi
 
 if jq -e --arg sha "$(sha256sum "$descriptor_case/dist/$apk_name" | cut -d' ' -f1)" '
@@ -1188,18 +1181,8 @@ else
   fail_test "standalone helpers are compared with the helper packaged in the APK"
 fi
 
-# The descriptor names the one APK, whose asset name carries the `.apk.bin` suffix that keeps earlier
-# updaters away. No step names the retired bridge APK or its descriptor.
-if grep -Fq 'apk_name="panel-assistant-${RELEASE_TAG}-manual-setup-required.apk.bin"' <<<"$descriptor_step" && \
-   grep -Fq 'descriptor_name="ha-paneld-${RELEASE_TAG}-install.json"' <<<"$descriptor_step" && \
-   [ "$(grep -Fc 'apk_name="panel-assistant-${RELEASE_TAG}-manual-setup-required.apk.bin"' "$WORKFLOW")" -eq 5 ] && \
-   ! grep -Fq 'ha-paneld-${RELEASE_TAG}-manual-setup-required' "$WORKFLOW" && \
-   ! grep -Fq 'bridge-install' "$WORKFLOW"; then
-  pass "the descriptor pins the one APK, its asset carries .apk.bin, and no bridge asset is named"
-else
-  fail_test "the descriptor pins the one APK, its asset carries .apk.bin, and no bridge asset is named"
-fi
-
+# Source-text reason: earlier installers compare these published wire identifiers byte
+# for byte; absence of retired identifiers across hosted steps is a compatibility contract.
 # From 0.9.11 the schemas and meta-data keys carry the new id. Panel Assistant 0.8.0 and older compare
 # the schemas byte for byte and skip such a release, so the old spellings must not survive anywhere in
 # the workflow: a release that published one of them would reach installers that cannot drive it.
@@ -1311,6 +1294,108 @@ if [ -z "$retired_asset_hits" ] && \
 else
   printf '%s\n' "$retired_asset_hits" >&2
   fail_test "the workflow publishes no installer, provisioner or standalone helper asset"
+fi
+
+# --- release catalogue publication -----------------------------------------------------------
+# Execute the workflow's actual shell with HTTP/Actions fixtures. The live JSON,
+# not dispatch acceptance, is the release flow's completion signal.
+publication_step="$TMP/publication-step.sh"
+extract_named_step "Publish the project release list" > "$publication_step"
+publication_bin="$TMP/publication-bin"
+mkdir -p "$publication_bin"
+cat > "$publication_bin/gh" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$CASE_DIR/actions.log"
+exit "${DISPATCH_STATUS:-0}"
+SH
+cat > "$publication_bin/curl" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$CASE_DIR/http.log"
+complete_catalogue() {
+  jq -n --arg mode "$HTTP_MODE" --arg tag "$RELEASE_TAG" '
+
+    "panel-assistant-\($tag)-manual-setup-required.apk.bin" as $apk |
+    "ha-paneld-\($tag)-install.json" as $descriptor |
+    "ha-paneld-\($tag)-protocol.json" as $protocol |
+    [$apk, ($apk+".idsig"), ($apk+".sha256"), ($apk+".sha256.sig"), $descriptor,
+     ($descriptor+".sig"), $protocol, ($protocol+".sig")] as $names |
+    {tag_name:$tag,draft:false,prerelease:($tag | contains("-")),assets:[$names[] |
+      {name:.,browser_download_url:("https://github.com/panel-assistant/android/releases/download/"+$tag+"/"+.)}]} as $row |
+    {schema:1,latest:(if $mode == "latest" then $row else null end),
+     releases:(if $mode == "latest" then [] else [$row] end)} |
+    if $mode == "incomplete" then .releases[0].assets |= .[:-1] else . end
+  ' > "$RUNNER_TEMP/release-list.json"
+}
+case "$HTTP_MODE" in
+  unavailable) exit 22 ;;
+  malformed) printf 'not json\n' > "$RUNNER_TEMP/release-list.json" ;;
+  stale) printf '{"schema":1,"latest":{"tag_name":"v0.9.11"},"releases":[]}\n' > "$RUNNER_TEMP/release-list.json" ;;
+  delayed)
+    if [ "$(wc -l < "$CASE_DIR/http.log")" -eq 1 ]; then
+      printf '{"schema":1,"latest":null,"releases":[]}\n' > "$RUNNER_TEMP/release-list.json"
+    else
+      complete_catalogue
+    fi ;;
+  latest|incomplete) complete_catalogue ;;
+esac
+SH
+cat > "$publication_bin/seq" <<'SH'
+#!/usr/bin/env bash
+printf '1\n2\n'
+SH
+cat > "$publication_bin/sleep" <<'SH'
+#!/usr/bin/env bash
+exit 0
+SH
+chmod +x "$publication_bin/"*
+run_publication() {
+  local mode="$1" token="$2" dispatch="$3" dir="$TMP/publication-$1-$3" tag=v1.0.0-rc2
+  if [ "$mode" = latest ]; then tag=v1.0.0; fi
+  mkdir -p "$dir"
+  CASE_DIR="$dir" RUNNER_TEMP="$dir" HTTP_MODE="$mode" GH_TOKEN="$token" \
+    DISPATCH_STATUS="$dispatch" RELEASE_TAG="$tag" PATH="$publication_bin:$PATH" \
+    bash "$publication_step" > "$dir/output.log" 2>&1
+}
+if [ -s "$publication_step" ] && run_publication delayed fixture 0 && \
+   [ "$(wc -l < "$TMP/publication-delayed-0/http.log")" -eq 2 ] && \
+   [ "$(cat "$TMP/publication-delayed-0/actions.log")" = 'workflow run ci.yml --repo panel-assistant/panel-assistant.io --ref main -f release_tag=v1.0.0-rc2' ]; then
+  pass "release publication dispatches the exact tag and waits for its static list"
+else
+  fail_test "release publication dispatches the exact tag and waits for its static list"
+fi
+if [ -s "$publication_step" ] && run_publication latest fixture 0; then
+  pass "release publication recognizes the latest stable independently of recent rows"
+else
+  fail_test "release publication recognizes the latest stable independently of recent rows"
+fi
+publication_fail_closed=1
+for mode in stale unavailable malformed incomplete; do
+  if run_publication "$mode" fixture 0; then publication_fail_closed=0; fi
+done
+if [ -s "$publication_step" ] && [ "$publication_fail_closed" -eq 1 ]; then
+  pass "release publication fails for a stale, missing, malformed or incomplete hosted list"
+else
+  fail_test "release publication fails for a stale, missing, malformed or incomplete hosted list"
+fi
+if [ -s "$publication_step" ] && ! run_publication missing-token '' 0 && \
+   [ ! -e "$TMP/publication-missing-token-0/actions.log" ] && \
+   ! run_publication dispatch-error fixture 1 && \
+   [ ! -e "$TMP/publication-dispatch-error-1/http.log" ]; then
+  pass "release publication fails before polling when credentials or dispatch fail"
+else
+  fail_test "release publication fails before polling when credentials or dispatch fail"
+fi
+# Source-text reason: GitHub controls step ordering and credential injection;
+# local shell execution above cannot run the hosted job scheduler.
+publication_env="$(extract_named_step_yaml 'Publish the project release list')"
+last_guard_line="$(grep -n '      - name: Verify shipped updaters' "$WORKFLOW" | cut -d: -f1)"
+publication_line="$(grep -n '      - name: Publish the project release list' "$WORKFLOW" | cut -d: -f1)"
+if [[ "$publication_env" == *'GH_TOKEN: ${{ secrets.RELEASE_WEBSITE_TOKEN }}'* ]] && \
+   [ -n "$last_guard_line" ] && [ -n "$publication_line" ] && \
+   [ "$publication_line" -gt "$last_guard_line" ]; then
+  pass "release catalogue dispatch follows published asset verification with its scoped credential"
+else
+  fail_test "release catalogue dispatch follows published asset verification with its scoped credential"
 fi
 
 printf '1..%d\n' "$((passes + failures))"

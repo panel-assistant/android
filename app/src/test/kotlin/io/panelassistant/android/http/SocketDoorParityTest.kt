@@ -5,6 +5,7 @@ import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.client.request.header
 import io.ktor.http.HttpHeaders
+import io.ktor.http.Url
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
 import io.ktor.websocket.Frame
@@ -17,7 +18,6 @@ import io.panelassistant.android.control.SystemController
 import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotEquals
 import org.junit.Test
 
 /**
@@ -56,7 +56,10 @@ class SocketDoorParityTest {
                     request("ha.oauth.start", JSONObject().put("ha_url", "http://ha.local:8123")) to
                         request("ha.oauth.start", JSONObject().put("ha_url", ""))
                 }
-                assertNotEquals(oauth.toString(), "invalid-panel-origin", oauth.optJSONObject("result")?.optString("error"))
+                assertEquals(oauth.toString(), "applied", oauth.getString("outcome"))
+                val authorization = Url(oauth.getJSONObject("result").getString("authorization_url"))
+                assertEquals("http://localhost:8888/", authorization.parameters["client_id"])
+                assertEquals("http://localhost:8888/api/v1/ha/oauth/callback", authorization.parameters["redirect_uri"])
                 assertEquals("invalid-ha-url", failed.getJSONObject("result").getString("error"))
                 assertEquals("the route's status travels with a failed answer", 400, failed.getInt("status"))
             }

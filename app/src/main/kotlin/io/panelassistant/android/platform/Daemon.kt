@@ -11,6 +11,36 @@ interface Daemon {
     /** True when the daemon answers `PING`. */
     fun available(): Boolean
 
+    /** Fixed cpu0 governor reads; unavailable on helpers without the versioned GOVREAD capability. */
+    fun cpuGovernor(): String? = null
+    fun cpuAvailableGovernors(): List<String>? = null
+
+    /** Fixed gateway observations; null means the helper could not prove a complete observation. */
+    fun zigbeeState(): HelperZigbeeState? = null
+    fun zigbeeHealth(): HelperZigbeeHealth? = null
+    fun zigbeeRole(): String? = null
+
+    /** Fixed current Wi-Fi status; null means unavailable or an unverified helper protocol. */
+    fun wifiStatus(): HelperWifiStatus? = null
+
+    /** Fixed ADB observations; unknown fields stay null and no root shell fallback is implied. */
+    fun adbState(): HelperAdbState? = null
+
+    /** Strict fixed CDP process/listener observation; unavailable never proves absence. */
+    fun cdpState(): HelperCdpState? = null
+
+    /** Ordinary-helper recovery bootstrap; admission is exact build + version on each carrying socket. */
+    fun supportsAdbRecoveryEnsure(): Boolean = false
+    fun ensureAdbRecovery(): Boolean = false
+
+    /** Fixed SELF graphics counters; unavailable never falls back to a root shell. */
+    fun gfxInfo(): HelperGfxInfo? = null
+
+    /** Fixed relay/GPIO observations; null means unknown, never an invitation to launch su. */
+    fun relayCount(relayClass: HelperRelayClass): Int? = null
+    fun relayRead(relayClass: HelperRelayClass, relay: Int): Boolean? = null
+    fun gpioRead(pin: Int, timeoutMs: Long = 1_500L): HelperGpioState? = null
+
     /** Send one command; return the exact printable reply line without its LF, or null if unreachable/malformed. */
     fun send(cmd: String): String?
 

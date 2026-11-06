@@ -773,21 +773,39 @@ class ConfigTransactionTest {
         assertEquals(false, prefs.values["dashboard_native_kiosk"])
     }
 
-    @Test fun anUpgradedPanelKeepsTheNativeKioskItWasShowing() {
-        // Schema 4 shipped the setting on by default; a store from before it never hid the navigation.
-        for ((schema, showing) in listOf(3 to false, 4 to true, 15 to true)) {
-            val prefs = fakePreferences(initial = mapOf("config_schema" to schema, "panel_id" to "existing-panel"))
-            val config = Config(prefs.instance)
+    @Test fun everyUpgradedPanelShowsHomeAssistantNavigationOnce() {
+        for (schema in listOf(1, 3, 4, 15, 16)) {
+            for (stored in listOf<Boolean?>(null, false, true)) {
+                val initial = mutableMapOf<String, Any>("config_schema" to schema, "panel_id" to "existing-panel")
+                if (stored != null) initial["dashboard_native_kiosk"] = stored
+                val prefs = fakePreferences(initial = initial)
 
-            assertTrue("migration from schema $schema", config.migrateLiveStore())
-            assertEquals("schema $schema", showing, config.dashboardNativeKiosk)
-            val committed = prefs.values.toMap()
-            assertTrue(Config(prefs.instance).migrateLiveStore())
-            assertEquals("a second startup must be a no-op", committed, prefs.values)
+                assertTrue("migration from schema $schema, stored $stored", Config(prefs.instance).migrateLiveStore())
+                assertFalse("schema $schema, stored $stored", Config(prefs.instance).dashboardNativeKiosk)
+                assertEquals("the reset is an explicit choice", false, prefs.values["dashboard_native_kiosk"])
+                assertEquals("existing-panel", Config(prefs.instance).panelId)
+            }
         }
-        val chosen = fakePreferences(initial = mapOf("config_schema" to 15, "dashboard_native_kiosk" to false))
-        assertTrue(Config(chosen.instance).migrateLiveStore())
-        assertFalse("an owner's explicit choice survives", Config(chosen.instance).dashboardNativeKiosk)
+    }
+
+    @Test fun navigationHiddenAfterTheResetSurvivesLaterUpdates() {
+        val prefs = fakePreferences(initial = mapOf("config_schema" to 16, "dashboard_native_kiosk" to true))
+        val config = Config(prefs.instance)
+        assertTrue(config.migrateLiveStore())
+        assertFalse("the update first restores navigation", config.dashboardNativeKiosk)
+        config.setRaw(requireNotNull(SettingsRegistry.spec("dashboard_native_kiosk")), "true")
+        // A later build sees this schema marker, so it must keep the new explicit choice.
+        assertEquals(17, prefs.values["config_schema"])
+        assertTrue(Config(prefs.instance).migrateLiveStore())
+        assertTrue(Config(prefs.instance).dashboardNativeKiosk)
+    }
+
+    @Test fun postResetSchemaKeepsAnOwnersHiddenNavigationChoice() {
+        for (schema in listOf(17, 18)) {
+            val prefs = fakePreferences(initial = mapOf("config_schema" to schema, "dashboard_native_kiosk" to true))
+            assertTrue(Config(prefs.instance).migrateLiveStore())
+            assertTrue("schema $schema keeps the later choice", Config(prefs.instance).dashboardNativeKiosk)
+        }
     }
 
     @Test fun autoSleepDefaultsOffAndPersistsBeforeRuntimeRefresh() {
@@ -2341,17 +2359,36 @@ class ConfigTransactionTest {
     }
 
     @Test fun credentialGroupsAreReadFromOneImmutablePreferenceSnapshot() {
-        val prefs = fakePreferences(initial = mapOf(
-            "ha_url" to "https://ha.local",
-            "ha_token" to "access",
-            "ha_refresh_token" to "refresh",
-            "ha_token_expiry" to 1234L,
-            "ha_client_id" to "client",
-        ))
+        val replacement = mapOf(
+            "ha_url" to "https://other.local",
+            "ha_token" to "other-access",
+            "ha_refresh_token" to "other-refresh",
+            "ha_token_expiry" to 5678L,
+            "ha_client_id" to "other-client",
+        )
+        var afterIndividualRead: () -> Unit = {}
+        val prefs = fakePreferences(
+            initial = mapOf(
+                "ha_url" to "https://ha.local",
+                "ha_token" to "access",
+                "ha_refresh_token" to "refresh",
+                "ha_token_expiry" to 1234L,
+                "ha_client_id" to "client",
+            ),
+            onGetString = { _, _ -> afterIndividualRead() },
+        )
         val config = Config(prefs.instance)
+        // A preference generation can change between separate reads. The authentication caller must
+        // receive one complete generation, never the first address paired with another account's token.
+        afterIndividualRead = { prefs.values.putAll(replacement) }
 
         assertEquals(
             HaAuthSnapshot("https://ha.local", "access", "refresh", 1234L, "client"),
+            config.haAuthSnapshot(),
+        )
+        prefs.values.putAll(replacement)
+        assertEquals(
+            HaAuthSnapshot("https://other.local", "other-access", "other-refresh", 5678L, "other-client"),
             config.haAuthSnapshot(),
         )
     }

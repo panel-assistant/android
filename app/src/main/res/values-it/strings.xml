@@ -68,7 +68,7 @@
     <string name="panel_not_set_up">Questo pannello non è ancora configurato.</string>
     <string name="panel_not_set_up_hint">Scansiona il codice con il telefono: richiede circa due minuti. In alternativa, tocca %1$s per farlo su questo schermo.</string>
     <string name="browser_engine_too_old">Il motore del browser di questo pannello è troppo vecchio.</string>
-    <string name="browser_engine_too_old_hint">Le plance di Home Assistant ne richiedono uno più recente. Risolvi il problema nella pagina di configurazione in un browser.</string>
+    <string name="browser_engine_too_old_hint">La configurazione può comunque essere completata, ma le plance di Home Assistant ne richiedono uno più recente. La pagina di configurazione in un browser spiega come aggiornarlo.</string>
     <string name="choose_dashboard_app">Scegli un’app per la plancia.</string>
     <string name="continue_setup_browser">Continua nella pagina di configurazione in un browser.</string>
     <string name="connected_next_ha_address">Connesso. Passaggio successivo: l’indirizzo di Home Assistant.</string>
@@ -212,4 +212,5 @@
     <string name="listening_on_port">In ascolto su :%1$d</string>
     <string name="degraded_profile_startup">Funzionamento degradato · avvio del profilo non riuscito</string>
     <string name="degraded_startup">Funzionamento degradato · avvio non riuscito</string>
+    <string name="approval_op_local_adb">Esegui manutenzione del pannello</string>
 </resources>

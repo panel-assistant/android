@@ -10,7 +10,6 @@ class SettingsRegistryPresentationTest {
         val spec = requireNotNull(SettingsRegistry.spec("ui_language"))
 
         assertEquals("System", spec.group)
-        assertEquals("Interface language", spec.label)
         assertEquals(SettingsRegistry.DEFAULT_UI_LANGUAGE, spec.default)
         assertEquals(SettingsRegistry.UI_LANGUAGES, spec.options)
         assertEquals(Tier.BASIC, spec.tier)
@@ -23,17 +22,10 @@ class SettingsRegistryPresentationTest {
         assertTrue("pt-BR" in spec.options)
         assertTrue(SettingValue.validate(spec, "pt") is Validation.Bad)
         assertTrue(SettingValue.validate(spec, "pt-PT") is Validation.Bad)
-        assertEquals(
-            "Language used by Panel Assistant's own interface.\n\n**Automatic** uses an explicit page override first. " +
-                "Configure setting labels and help can then follow the connected Home Assistant user's language; " +
-                "browser, device and English are the remaining fallbacks.",
-            spec.help,
-        )
     }
 
     @Test fun keepPanelResponsiveDefaultsOn() {
         val spec = SettingsRegistry.spec("keep_awake")!!
-        assertEquals("Keep panel responsive", spec.label)
         assertEquals("true", spec.default)
     }
 
@@ -43,12 +35,6 @@ class SettingsRegistryPresentationTest {
         assertEquals("false", spec.default)
         assertEquals(Tier.ADVANCED, spec.tier)
         assertFalse(spec.haExposedByDefault)
-        assertEquals(
-            "**Security risk:** keeps classic ADB listening on TCP port 5555 across boots and reconnects.\n\n" +
-                "Enable only during active maintenance on a trusted network. If ADB was enabled outside " +
-                "Panel Assistant, it must also be disabled there.",
-            spec.help,
-        )
     }
 
     @Test fun launcherHelpExplainsAutomaticAndEnforcedHomeModes() {
@@ -59,11 +45,6 @@ class SettingsRegistryPresentationTest {
     }
 
     @Test fun processAndSystemLogShippingRemainSeparateOptIns() {
-        assertEquals(
-            "Forward Panel Assistant's own process log — not the full system log — to a central sink " +
-                "(LAN-only, tokens and passwords redacted).",
-            SettingsRegistry.spec("log_ship_enabled")!!.help,
-        )
         val system = SettingsRegistry.spec("log_ship_system_enabled")!!
         assertEquals("false", system.default)
         assertTrue(system.help.contains("when Ship logs is on"))
@@ -84,7 +65,6 @@ class SettingsRegistryPresentationTest {
 
     @Test fun lastBootTimeRenamesPresentationWithoutChangingIdentity() {
         val spec = SettingsRegistry.spec("diag_boot")!!
-        assertEquals("Last boot time", spec.label)
         assertEquals("sensor", spec.ha!!.component)
         assertEquals("diag_boot", spec.ha!!.objectSuffix)
         assertEquals("timestamp", spec.ha!!.facts.deviceClass)

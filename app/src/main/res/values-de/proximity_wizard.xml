@@ -4,6 +4,8 @@
     <string name="proximity_wizard_wave_twice_hint">Zwei schnelle Handbewegungen, dann entfernen.</string>
     <string name="proximity_wizard_normal_position">Zur normalen Position zurückkehren</string>
     <string name="proximity_wizard_hands_down">Lass die Hände unten.</string>
+    <string name="proximity_wizard_presence_refused_hint">Der Sensor erkennt nicht zuverlässig, dass du hier stehst, daher bleibt die Anwesenheitserkennung aus. Lass die Hände unten.</string>
+    <string name="proximity_wizard_speech_wave_baseline_refused">Der Sensor konnte nicht zuverlässig erkennen, dass du dort stehst, wo du das Panel normalerweise bedienst, daher bleibt die Anwesenheitserkennung aus. Bleib, wo du bist, und lass die Hände unten. Als Nächstes teste ich stattdessen das Winken mit der Hand.</string>
     <string name="proximity_wizard_review_wave_only">Anwesenheit nicht verfügbar.\nWinken geprüft.</string>
     <string name="proximity_wizard_review_neither">Weder Anwesenheit noch Winken wurden bestätigt. Deine bisherigen Einstellungen bleiben erhalten.</string>
     <string name="proximity_wizard_saved_wave_only">Winkeinstellungen gespeichert.\nAnwesenheitserkennung ist nicht verfügbar.</string>

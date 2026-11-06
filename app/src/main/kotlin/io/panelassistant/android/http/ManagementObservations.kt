@@ -15,6 +15,7 @@ import io.panelassistant.android.util.ConfirmedSelfInstaller
 import io.panelassistant.android.util.GuardDbMaintenance
 import io.panelassistant.android.util.HelperClient
 import io.panelassistant.android.control.Su
+import io.panelassistant.android.platform.RootShell
 import io.panelassistant.android.util.bundledHelperIsCanonical
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -30,6 +31,9 @@ internal class ManagementObservations(
     private val isStopping: () -> Boolean,
     /** The snapshot and density caches' clock; a test freezes it so a seeded snapshot outlives a slow run. */
     nowMs: () -> Long = Cached.MONOTONIC_MS,
+    /** su as these status reads see it: only what root actions already observed, never a fresh probe. */
+    private val root: RootShell = Su,
+    private val helperRootProbe: () -> Boolean = HelperClient::available,
 ) {
     // The density trio is shared with the Configure tab's Display card (the bulk of ITS slow render).
     val densityCache = Cached(DENSITY_TTL_MS, nowMs) { density.observeSizing() }
@@ -58,8 +62,8 @@ internal class ManagementObservations(
     // stale-while-revalidate so an expired SQLite observation never blocks rendering.
     val companionServerCache: Cached<CompanionDb.ServerObservation> by lazy {
         Cached(COMPANION_URL_TTL_MS) {
-            val observed = if (Su.availableCachedIsolated()) {
-                CompanionDb.observeServers(appContext, Su)
+            val observed = if (root.observedUsable()) {
+                CompanionDb.observeServers(appContext, root)
             } else if (CompanionInstaller.installedPkg(appContext) == null) {
                 CompanionDb.ServerObservation.EMPTY
             } else {
@@ -69,17 +73,18 @@ internal class ManagementObservations(
         }
     }
 
+    /** Polled with every management snapshot (Panel Assistant status, dashboard, diagnostics), so it starts
+     *  no root process: su is the last outcome root actions observed, the helper answers PING. */
     fun privilegeObservation(): PrivilegedRouteObservation = observePrivilegedRoutes(
-        directSuProbe = { Su.availableCachedIsolated() },
-        helperRootProbe = HelperClient::available,
+        directSuProbe = root::observedUsable,
+        helperRootProbe = helperRootProbe,
     ).also { AccessDenialMemo.app.onCapabilitySignal(listOf(it.directSuReady, it.helperRootReady)) }
 
     val termuxBridgeCache = Cached(SNAP_TTL_MS) {
         TermuxBridgeProbe.collect(
             termuxUid = runCatching<Int?> { appContext.packageManager.getApplicationInfo("com.termux", 0).uid }
                 .recoverCatching { if (it is android.content.pm.PackageManager.NameNotFoundException) null else throw it },
-            routes = { privilegeObservation().let { it.directSuReady to it.helperRootReady } },
-            rootRun = Su::runOutputIsolatedBounded,
+            helperReady = { privilegeObservation().helperRootReady },
             helperRun = { HelperClient.sendBytes(it)?.toString(Charsets.UTF_8) },
         )
     }

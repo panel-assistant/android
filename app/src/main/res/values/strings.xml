@@ -70,7 +70,7 @@
     <string name="panel_not_set_up">This panel isn’t set up yet.</string>
     <string name="panel_not_set_up_hint">Scan the code with your phone — it takes about two minutes. Or tap %1$s to do it on this screen.</string>
     <string name="browser_engine_too_old">This panel’s browser engine is too old.</string>
-    <string name="browser_engine_too_old_hint">Home Assistant dashboards need a newer one. Fix it on the setup page in a browser.</string>
+    <string name="browser_engine_too_old_hint">Setup can still finish, but Home Assistant dashboards need a newer one. The setup page in a browser shows how to update it.</string>
     <string name="choose_dashboard_app">Choose a dashboard app.</string>
     <string name="continue_setup_browser">Continue on the setup page in a browser.</string>
     <string name="connected_next_ha_address">Connected. Next: the Home Assistant address.</string>
@@ -147,7 +147,7 @@
     <string name="home_assistant_could_not_open_detail">The panel’s web viewer would not start Home Assistant. The panel keeps trying. If it keeps failing, the web viewer needs updating or repairing; it is called Android System WebView, and reinstalling the same build repairs a damaged one.</string>
     <string name="skip_load_dashboard">Skip and load the dashboard now</string>
     <string name="skip_entity_filter_detail">Skipping loads every entity Home Assistant has, which is slower on this panel. You can turn filtering on later under Configure → Dashboard.</string>
-    <string name="optimized_subscription_unavailable">Optimized dashboard subscription unavailable</string>
+    <string name="optimized_subscription_unavailable">Optimised dashboard subscription unavailable</string>
     <string name="ha_refused_entity_scan">Home Assistant refused the entity scan</string>
     <string name="dashboard_scan_failed">Dashboard scan could not finish</string>
     <string name="entity_filter_hold_detail">%1$s Home Assistant has not been opened, because loading every entity would make this panel slow. Try again, or turn the entity filter off under Configure, in the Dashboard settings.</string>
@@ -214,4 +214,5 @@
     <string name="listening_on_port">Listening on :%1$d</string>
     <string name="degraded_profile_startup">Degraded · profile startup failed</string>
     <string name="degraded_startup">Degraded · startup failed</string>
+    <string name="approval_op_local_adb">Run panel maintenance</string>
 </resources>

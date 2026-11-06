@@ -1,5 +1,6 @@
 package io.panelassistant.android
 
+import io.panelassistant.android.dashboard.RendererEntityHold
 import io.panelassistant.android.util.HaTransportEvidence
 import io.panelassistant.android.util.HaTransportFault
 import org.json.JSONObject
@@ -41,6 +42,7 @@ class RendererAdmissionPresentationTest {
         processStart: Long = 0L,
         packageUpdatedAt: Long? = 1_000_000L,
         nowWall: Long = 1_100_000L,
+        entityHold: RendererEntityHold.Snapshot? = null,
     ) = RendererAdmissionPresentation.of(
         mode = mode,
         haUrl = haUrl,
@@ -50,6 +52,7 @@ class RendererAdmissionPresentationTest {
         processStartElapsedMs = processStart,
         packageUpdatedAtMs = packageUpdatedAt,
         nowWallMs = nowWall,
+        entityHold = entityHold,
     )
 
     private fun json(p: RendererAdmissionPresentation) = JSONObject(p.statusJson())
@@ -177,6 +180,29 @@ class RendererAdmissionPresentationTest {
         assertTrue(json(p).isNull("observed_age_ms"))
         assertTrue(p.diagnosticLine().contains("observed_age=never"))
         assertNotEquals("rendered", p.state.wire)
+    }
+
+    // --- the entity hold --------------------------------------------------------------------------
+
+    @Test fun anEntityHoldIsReportedSoAHeldPanelIsNotMistakenForASlowOne() {
+        val holding = json(present(record = null, entityHold = RendererEntityHold.Snapshot("learning", released = false, sinceMs = 1_000L)))
+        assertEquals("unobserved", holding.getString("state"))
+        assertEquals("learning", holding.getString("entity_hold"))
+        assertEquals("holding", holding.getString("entity_hold_state"))
+        assertEquals(60_000L, holding.getLong("entity_hold_age_ms"))
+
+        val released = json(present(
+            record(RendererAdmissionState.ADMITTED), connected = true,
+            entityHold = RendererEntityHold.Snapshot("scan_failed", released = true, sinceMs = 1_000L),
+        ))
+        assertEquals("a released hold renders, and still says why it is unfiltered", "rendered", released.getString("state"))
+        assertEquals("scan_failed", released.getString("entity_hold"))
+        assertEquals("released", released.getString("entity_hold_state"))
+
+        val none = json(present(record(RendererAdmissionState.ADMITTED), connected = true))
+        assertTrue(none.isNull("entity_hold"))
+        assertTrue(none.isNull("entity_hold_state"))
+        assertTrue(none.isNull("entity_hold_age_ms"))
     }
 
     @Test fun aCheckInFlightIsNotAnOutcome() {

@@ -15,8 +15,12 @@ class CompanionLoginBorrowTest {
         val rows = CompanionDb.parseLogins(out)
         assertEquals(2, rows.size)
         assertEquals("http://ha.local:8123", rows[0].url)          // internal preferred
+        assertEquals("RT1", rows[0].refreshToken)
+        assertEquals("AT1", rows[0].accessToken)
         assertEquals(1783670000L, rows[0].expirySec)
         assertEquals("https://two.example", rows[1].url)           // external fallback
+        assertEquals("RT2", rows[1].refreshToken)
+        assertEquals("", rows[1].accessToken)
         assertEquals(0L, rows[1].expirySec)                        // blank expiry tolerated
     }
 

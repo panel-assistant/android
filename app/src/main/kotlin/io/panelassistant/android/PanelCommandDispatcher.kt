@@ -163,6 +163,8 @@ internal class PanelCommandDispatcher(
     manageTable: ManageTable = ManageTable(),
     manageFamilies: Map<String, ManageFamily> = ManageFamilies.DEFAULT,
     approvalPollMs: Long = 1_000,
+    // Where a command's outcome lines go; a test passes its own to read them.
+    private val commandLog: CommandLog = CommandLog.Android,
 ) : LiveSettingHandlers, ManageDoor {
     enum class Kind { LATEST, ACTION }
 
@@ -346,7 +348,13 @@ internal class PanelCommandDispatcher(
             return null
         } catch (e: Exception) {
             cost.outcome(FeatureCostOutcome.FAILURE)
-            Log.w(TAG, "command ${origin.requestId.orEmpty()} from ${origin.approvalKey} failed on $channel", e)
+            if (e is SensitiveApprovalPendingException) {
+                // A command held for the panel's own approval card is waiting, not failing: one info line,
+                // without the stack. The requester is answered pending now and the final answer follows.
+                commandLog.info("command ${origin.requestId.orEmpty()} from ${origin.approvalKey} waits for approval ${e.approvalId} on the panel ($channel)")
+            } else {
+                commandLog.warn("command ${origin.requestId.orEmpty()} from ${origin.approvalKey} failed on $channel", e)
+            }
             // The handler may have made newer intent durable before failing to actuate it. Retire the
             // older queued HTTP value anyway — leaving it lets startup replay commit the stale value
             // over the newer one. Best-effort and logged: this is already the failure path, and a
@@ -655,7 +663,8 @@ internal class PanelCommandDispatcher(
     fun reconcileZigbeeBoot() {
         if (!core.capabilityShape.current().live.zigbee || !config.zigbeeRouterConfigured) return
         val want = config.zigbeeRouterEnabled
-        if (want == zigbee.running()) return // already in the desired state
+        val running = zigbee.running() ?: return // An unreadable gateway is never proof of OFF.
+        if (want == running) return // already in the desired state
         admitZigbee(want)
     }
 
@@ -683,7 +692,7 @@ internal class PanelCommandDispatcher(
                     // A newer runtime generation or command is already authoritative. Stop waiting and
                     // release the shared actuator so its latest desired state can run after this one.
                     if (!lifecycle.isOpen() || !zigbeeActuation.isCurrent(zigbeeLease) ||
-                        config.zigbeeRouterEnabled != desired || zigbee.running()
+                        config.zigbeeRouterEnabled != desired || zigbee.running() != false
                     ) break
                     Thread.sleep(5_000)
                 }

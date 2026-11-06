@@ -5,5 +5,6 @@
 
 void cmd_logcatcaps(conn_ctx *ctx, const char *args);
 void cmd_logcat(conn_ctx *ctx, const char *args);
+void cmd_logcatdump(conn_ctx *ctx, const char *args);
 
 #endif

@@ -61,6 +61,7 @@
       haAreaUserOverride: ["ha_area_user_override", function (v) { return v === true; }],
       applyPending: ["apply_pending", function (v) { return v || {}; }],
       applyStalled: ["apply_stalled", stalledMap],
+      networkAdbManaged: ["network_adb_managed", function (v) { return v === true; }],
       rendererPending: ["renderer_pending", stalledMap],
     };
     var changed = false;

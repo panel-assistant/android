@@ -265,16 +265,24 @@ class SetupJourneyTest {
         assertNull(SetupJourney.evaluate(state).next)
     }
 
-    @Test fun aTooOldBrowserEngineBlocksBeforeAnythingIsAskedOfHomeAssistant() {
-        // The failure this prevents: complete the whole journey — address, sign-in, filter — then discover the
-        // panel could never render. Raised at the renderer step so it comes before HA_URL and HA_CREDENTIALS.
-        val ancient = inputs(webViewTooOld = true, proof = RenderProof())
-        val j = SetupJourney.evaluate(ancient)
-        assertEquals(Stage.RENDERER, j.next)
-        assertEquals("webview_too_old", j.step(Stage.RENDERER).detail)
-        assertFalse(j.complete)
-
-
+    @Test fun anOldEngineAllowsConfigurationWithoutClaimingADashboardRendered() {
+        var state = inputs(webViewTooOld = true, haUrl = "", haCredentialed = false,
+            homeDashboardChosen = false, entityFilterAnswered = false, proof = RenderProof())
+        assertEquals(Stage.HA_URL, SetupJourney.evaluate(state).next)
+        state = state.copy(haUrl = "http://ha.local:8123")
+        assertEquals(Stage.HA_CREDENTIALS, SetupJourney.evaluate(state).next)
+        state = state.copy(haOAuthInFlight = true)
+        assertEquals(Stage.HA_CREDENTIALS, SetupJourney.evaluate(state).next)
+        state = state.copy(haCredentialed = true, haOAuthInFlight = false)
+        assertEquals(Stage.HOME_DASHBOARD, SetupJourney.evaluate(state).next)
+        state = state.copy(homeDashboardChosen = true)
+        assertEquals(Stage.ENTITY_FILTER, SetupJourney.evaluate(state).next)
+        val complete = SetupJourney.evaluate(state.copy(entityFilterAnswered = true))
+        assertTrue(complete.complete)
+        assertNull(complete.next)
+        assertEquals("webview_too_old", complete.step(Stage.RENDERER).detail)
+        assertEquals(Status.UNKNOWN, complete.step(Stage.RENDER_PROOF).status)
+        assertFalse(complete.step(Stage.RENDER_PROOF).blocking)
     }
 
     @Test fun aForeignRenderersEngineIsNotOursToDeclareBroken() {
@@ -391,7 +399,7 @@ class SetupJourneyTest {
                 ),
             ).needsUser,
         )
-        assertTrue("engine too old to render", SetupJourney.evaluate(inputs(webViewTooOld = true)).needsUser)
+        assertFalse("an old engine is advisory after configuration", SetupJourney.evaluate(inputs(webViewTooOld = true)).needsUser)
         // And a healthy proven panel needs nobody.
         assertFalse(SetupJourney.evaluate(inputs()).needsUser)
     }

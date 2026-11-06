@@ -57,9 +57,9 @@
     <string name="approval_op_device_reboot">Redémarrer le panneau</string>
     <string name="approval_op_companion_repair">Réparer la configuration de Companion</string>
     <string name="approval_op_dashboard_storage_clear">Effacer les données de navigation du tableau de bord</string>
-    <string name="approval_op_display_configuration">Modifier les dimensions d’affichage</string>
+    <string name="approval_op_display_configuration">Modifier l’échelle d’affichage</string>
     <string name="approval_op_power_configuration">Modifier les garde-fous de gestion de l’alimentation du panneau</string>
-    <string name="approval_op_power_safety_ack">Masquer un avertissement précis relatif à la gestion de l’alimentation</string>
+    <string name="approval_op_power_safety_ack">Masquer un avertissement précis concernant la sécurité de l’alimentation</string>
     <string name="approval_op_guard_db">Faire progresser la récupération de la base de données</string>
     <string name="approval_op_camera_enable">Activer la caméra du panneau</string>
 
@@ -68,7 +68,7 @@
     <string name="panel_not_set_up">Ce panneau n’est pas encore configuré.</string>
     <string name="panel_not_set_up_hint">Scannez le code avec votre téléphone — cela prend environ deux minutes. Vous pouvez aussi toucher %1$s pour le faire sur cet écran.</string>
     <string name="browser_engine_too_old">Le moteur de navigateur de ce panneau est trop ancien.</string>
-    <string name="browser_engine_too_old_hint">Les tableaux de bord Home Assistant en nécessitent un plus récent. Corrigez cela sur la page de configuration dans un navigateur.</string>
+    <string name="browser_engine_too_old_hint">La configuration peut quand même se terminer, mais les tableaux de bord Home Assistant en nécessitent un plus récent. La page de configuration dans un navigateur explique comment le mettre à jour.</string>
     <string name="choose_dashboard_app">Choisissez une application de tableau de bord.</string>
     <string name="continue_setup_browser">Continuez sur la page de configuration dans un navigateur.</string>
     <string name="connected_next_ha_address">Connexion établie. Étape suivante : l’adresse de Home Assistant.</string>
@@ -212,4 +212,5 @@
     <string name="listening_on_port">Écoute sur :%1$d</string>
     <string name="degraded_profile_startup">Dégradé · échec du démarrage du profil</string>
     <string name="degraded_startup">Dégradé · échec du démarrage</string>
+    <string name="approval_op_local_adb">Exécuter la maintenance du panneau</string>
 </resources>

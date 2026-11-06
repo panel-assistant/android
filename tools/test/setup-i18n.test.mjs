@@ -40,6 +40,16 @@ function journey(next, overrides = {}) {
   };
 }
 
+const WEBVIEW_STEPS = 'https://panel-assistant.io/go/update-webview';
+
+// A panel can continue configuration while the engine warning stays visible.
+function webViewJourney(webview = {}) {
+  return journey('ha_url', {
+    statuses: { renderer: { status: 'unknown', detail: 'webview_too_old' } },
+    webview: { found: 107, needed: 110, model: 'Sonoff NSPanel Pro', play: false, steps: WEBVIEW_STEPS, ...webview },
+  });
+}
+
 function json(body, status = 200) {
   return { status, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) };
 }
@@ -195,6 +205,25 @@ for (const [engine, browserType] of [['Chromium', chromium], ['WebKit', webkit]]
   });
 }
 
+for (const [engine, browserType] of [['Chromium', chromium], ['WebKit', webkit]]) {
+  const run = existsSync(browserType === chromium ? chrome : browserType.executablePath()) ? test : test.skip;
+  // The panel opens its own Home Assistant login as soon as it has an address, and that login counts as a
+  // pending sign-in. The status must say so instead of implying the user already started one.
+  run(`Setup sign-in status says the panel is showing its login before a route is chosen in ${engine}`, async (t) => {
+    const catalogue = JSON.parse(await readFile(new URL('../../app/src/main/assets/i18n/en.json', import.meta.url), 'utf8'));
+    const expected = 'The panel is showing a Home Assistant login. Sign in there, or use this browser.';
+    for (const withHelper of [true, false]) {
+      const rig = await openRig(t, {
+        initialJourney: journey('ha_credentials', { statuses: { ha_credentials: { status: 'in_flight' } } }),
+        locale: 'en', withHelper,
+        translations: Object.fromEntries(Object.entries(catalogue.strings).map(([key, record]) => [key, record.text])),
+      }, '/', browserType);
+      assert.equal(await rig.page.locator('#wiz-live').textContent(), expected, `${engine} helper=${withHelper}`);
+      assert.equal(rig.state.requests.filter((r) => r.method === 'POST').length, 0, 'no route was chosen');
+    }
+  });
+}
+
 async function reloadJourney(rig, nextJourney, path = '/?lang=zh-Hans') {
   rig.state.current = nextJourney;
   await rig.page.goto(rig.url + path, { waitUntil: 'domcontentloaded', timeout: 5_000 });
@@ -234,7 +263,17 @@ for (const [engine, browserType] of [['Chromium', chromium], ['WebKit', webkit]]
     await assertOverride(false);
     for (const width of [320, 1280]) {
       await rig.page.setViewportSize({ width, height: 900 });
-      assert.equal(await rig.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      // Wait for the resize to settle, then name whatever still reaches past the viewport, so a failure on
+      // a runner whose fonts or timing differ says which element is too wide.
+      const layout = await eventually(() => rig.page.evaluate(() => ({
+        inner: innerWidth,
+        scroll: document.documentElement.scrollWidth,
+        wide: [...document.querySelectorAll('body *')]
+          .filter((node) => node.getBoundingClientRect().right > innerWidth + 0.5)
+          .map((node) => `${node.tagName.toLowerCase()}${node.id ? '#' + node.id : ''}${node.className && typeof node.className === 'string' ? '.' + node.className.trim().split(/\s+/).join('.') : ''} right=${Math.round(node.getBoundingClientRect().right)}`)
+          .slice(0, 8),
+      })), (value) => value.inner === width && value.scroll <= value.inner);
+      assert.ok(layout.scroll <= layout.inner, `${engine} ${width}px: page is ${layout.scroll}px wide in a ${layout.inner}px viewport; too wide: ${layout.wide.join(', ') || 'none found'}`);
     }
     await selection.selectOption('Office');
     assert.equal(await rig.page.locator('#hd-area small').first().isVisible(), false);
@@ -618,11 +657,6 @@ browserTest('Setup preserves the active locale on every JavaScript-authored cros
   }));
   assert.equal(await rig.page.locator('#wiz-step a').getAttribute('href'), './?lang=zh-Hans');
 
-  await reloadJourney(rig, journey('renderer', {
-    statuses: { renderer: { status: 'blocked', detail: 'webview_too_old_unfixable' } },
-  }));
-  assert.equal(await rig.page.locator('#wiz-step a').getAttribute('href'), './?lang=zh-Hans');
-
   await reloadJourney(rig, completeJourney);
   const hrefs = await rig.page.locator('#wiz-step a').evaluateAll((links) => links.map((link) => link.getAttribute('href')));
   assert.deepEqual(hrefs, [
@@ -779,17 +813,47 @@ browserTest('Setup maps discovery codes to translated messages without translati
 
 for (const [engine, browserType] of [['Chromium', chromium], ['WebKit', webkit]]) {
   const run = existsSync(browserType === chromium ? chrome : browserType.executablePath()) ? test : test.skip;
-  run(`Setup keeps the old WebView warning without offering an engine installation in ${engine}`, async (t) => {
+  run(`Setup keeps an old engine advisory while configuration finishes in ${engine}`, async (t) => {
     const rig = await openRig(t, {
-      initialJourney: journey('renderer', {
-        statuses: { renderer: { status: 'blocked', detail: 'webview_too_old_fixable' } },
-      }),
+      initialJourney: webViewJourney(),
       translations: { 'setup.webview.title': '浏览器引擎需要更新' },
     }, '/', browserType);
-    assert.equal(await rig.page.locator('.card h2').textContent(), '浏览器引擎需要更新');
-    assert.equal(await rig.page.locator('button').count(), 0);
-    assert.equal(await rig.page.locator('.wiz-cta a').getAttribute('href'), './');
-    assert.equal(rig.state.requests.filter((request) => request.method === 'POST').length, 0);
+    await rig.page.locator('#wiz-ha_url').waitFor();
+    assert.match(await rig.page.locator('#wiz-step').textContent(), /浏览器引擎需要更新/);
+    assert.match(await rig.page.locator('#wiz-step').textContent(), /Chromium 107/);
+    const warning = rig.page.locator('#wiz-step .notice[data-severity="warning"]');
+    const steps = warning.locator('a');
+    assert.equal(await steps.count(), 1);
+    assert.equal(await steps.getAttribute('href'), WEBVIEW_STEPS);
+    assert.equal(await steps.getAttribute('target'), '_blank');
+    assert.equal(await steps.textContent(), 'Update steps for Sonoff NSPanel Pro');
+    assert.match(await warning.textContent(), /Keep this page open/);
+    assert.doesNotMatch(await warning.textContent(), /Google Play/);
+    // The warning names the component the guide, Home Assistant and the :8888 banner call WebView.
+    assert.match(await warning.innerText(), /browser engine \(Android System WebView\) has Chromium 107/);
+    rig.state.current = { ...webViewJourney(), complete: true, next: null };
+    await eventually(() => rig.page.locator('.card h2').textContent(), (text) => text.includes('set up'), 8_000);
+    const text = await rig.page.locator('#wiz-step').textContent();
+    assert.match(text, /浏览器引擎需要更新/);
+    assert.doesNotMatch(text, /Home Assistant is rendering|Dashboard confirmed by you/);
+    assert.equal(await rig.page.locator('a[href="/configure"]').count() > 0, true);
+    assert.equal(await warning.locator(`a[href="${WEBVIEW_STEPS}"]`).count(), 1);
+    // The finished screen has no Home Assistant address left to carry on to.
+    assert.doesNotMatch(await warning.textContent(), /Keep this page open/);
+  });
+
+  run(`Setup's engine warning shows the Play hint only for a Play-managed engine and no link without steps in ${engine}`, async (t) => {
+    const play = await openRig(t, { initialJourney: webViewJourney({ play: true, model: '' }) }, '/', browserType);
+    await play.page.locator('#wiz-ha_url').waitFor();
+    const playWarning = play.page.locator('#wiz-step .notice[data-severity="warning"]');
+    assert.match(await playWarning.textContent(), /through Google Play: on the panel, open the Play Store/);
+    assert.equal(await playWarning.locator('a').textContent(), 'WebView update steps');
+
+    const bare = await openRig(t, { initialJourney: webViewJourney({ steps: '' }) }, '/', browserType);
+    await bare.page.locator('#wiz-ha_url').waitFor();
+    const bareWarning = bare.page.locator('#wiz-step .notice[data-severity="warning"]');
+    assert.match(await bareWarning.textContent(), /Chromium 107/);
+    assert.equal(await bareWarning.locator('a').count(), 0);
   });
 }
 
@@ -802,7 +866,7 @@ for (const [engine, browserType] of [['Chromium', chromium], ['WebKit', webkit]]
       locale: 'en',
     }, '/', browserType);
     assert.deepEqual(await rig.page.locator('#wiz-dots li').allTextContents(),
-      ['Name', 'Server', 'HA sign-in', 'HA dash', 'Optimize']);
+      ['Name', 'Server', 'Sign-in', 'Dashboard', 'Optimise']);
     assert.doesNotMatch(await rig.page.locator('#wiz-step').textContent(), /MQTT|broker/i);
   });
 

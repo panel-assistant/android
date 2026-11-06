@@ -13,10 +13,36 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
+
+// Framework wrappers can wait indefinitely on Binder. Execution budgets leave cleanup headroom
+// below the app's 30-second control / 180-second install timeouts (install upload is separate).
+// Compound controls share one clock.
+#ifndef HAPANELD_FRAMEWORK_TIMEOUT_MS
+#define HAPANELD_FRAMEWORK_TIMEOUT_MS 25000U
+#endif
+#ifndef HAPANELD_INSTALL_TIMEOUT_MS
+#define HAPANELD_INSTALL_TIMEOUT_MS 150000U
+#endif
+
+static uint64_t framework_deadline(void) {
+    struct timespec now;
+    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) return 0;
+    return (uint64_t)now.tv_sec * 1000U + (uint64_t)now.tv_nsec / 1000000U +
+        HAPANELD_FRAMEWORK_TIMEOUT_MS;
+}
+
+static unsigned framework_remaining(uint64_t deadline) {
+    struct timespec now;
+    if (!deadline || clock_gettime(CLOCK_MONOTONIC, &now) != 0) return 0;
+    uint64_t current = (uint64_t)now.tv_sec * 1000U + (uint64_t)now.tv_nsec / 1000000U;
+    return current < deadline ? (unsigned)(deadline - current) : 0;
+}
 
 static int command_ok(int status) {
     return status == 0;
@@ -29,12 +55,13 @@ static int command_exited_with(int status, int code) {
 // Force-stop + relaunch a dashboard app (root via this daemon's su domain).
 static int reload_pkg(const char *pkg) {
     if (!valid_pkg(pkg)) return -1;
+    uint64_t deadline = framework_deadline();
     const char *const stop[] = { "am", "force-stop", pkg, NULL };
-    if (!command_ok(sysexec_run_argv("/system/bin/am", stop, 1))) return -1;
+    if (!command_ok(sysexec_run_argv_timeout("/system/bin/am", stop, 1, framework_remaining(deadline), NULL))) return -1;
     const char *const launch[] = {
         "monkey", "-p", pkg, "-c", "android.intent.category.LAUNCHER", "1", NULL
     };
-    return command_ok(sysexec_run_argv("/system/bin/monkey", launch, 1)) ? 0 : -1;
+    return command_ok(sysexec_run_argv_timeout("/system/bin/monkey", launch, 1, framework_remaining(deadline), NULL)) ? 0 : -1;
 }
 
 // Launch an activity by component (pkg/cls) via `am start` — root, so it's not subject to the
@@ -42,25 +69,25 @@ static int reload_pkg(const char *pkg) {
 static int start_component(const char *comp) {
     if (!valid_component(comp)) return -1;
     const char *const argv[] = { "am", "start", "-n", comp, NULL };
-    return command_ok(sysexec_run_argv("/system/bin/am", argv, 1)) ? 0 : -1;
+    return command_ok(sysexec_run_argv_timeout("/system/bin/am", argv, 1, HAPANELD_FRAMEWORK_TIMEOUT_MS, NULL)) ? 0 : -1;
 }
 
 // Forced display density (dpi) via `wm density`; arg = a number, or "reset" for the physical default.
 static int set_density(const char *arg) {
     if (strcmp(arg, "reset") == 0) {
         const char *const argv[] = { "wm", "density", "reset", NULL };
-        return command_ok(sysexec_run_argv("/system/bin/wm", argv, 1)) ? 0 : -1;
+        return command_ok(sysexec_run_argv_timeout("/system/bin/wm", argv, 1, HAPANELD_FRAMEWORK_TIMEOUT_MS, NULL)) ? 0 : -1;
     }
     if (!valid_num(arg)) return -1;
     const char *const argv[] = { "wm", "density", arg, NULL };
-    return command_ok(sysexec_run_argv("/system/bin/wm", argv, 1)) ? 0 : -1;
+    return command_ok(sysexec_run_argv_timeout("/system/bin/wm", argv, 1, HAPANELD_FRAMEWORK_TIMEOUT_MS, NULL)) ? 0 : -1;
 }
 
 // Read the current density as "PHYS=<n> OVER=<n|->" parsed from `wm density` (one line).
 static int get_density(char *out, size_t outsz) {
     const char *const argv[] = { "wm", "density", NULL };
     char phys[16] = "", over[16] = "-", output[512];
-    if (!command_ok(sysexec_capture_argv("/system/bin/wm", argv, output, sizeof output))) return -1;
+    if (!command_ok(sysexec_capture_argv_timeout("/system/bin/wm", argv, output, sizeof output, HAPANELD_FRAMEWORK_TIMEOUT_MS, NULL))) return -1;
     char *save = NULL;
     for (char *buf = strtok_r(output, "\r\n", &save); buf; buf = strtok_r(NULL, "\r\n", &save)) {
         char *c;
@@ -78,11 +105,11 @@ static int get_density(char *out, size_t outsz) {
 static int set_fontscale(const char *arg) {
     if (strcmp(arg, "reset") == 0) {
         const char *const argv[] = { "settings", "delete", "system", "font_scale", NULL };
-        return command_ok(sysexec_run_argv("/system/bin/settings", argv, 1)) ? 0 : -1;
+        return command_ok(sysexec_run_argv_timeout("/system/bin/settings", argv, 1, HAPANELD_FRAMEWORK_TIMEOUT_MS, NULL)) ? 0 : -1;
     }
     if (!valid_decimal(arg)) return -1;
     const char *const argv[] = { "settings", "put", "system", "font_scale", arg, NULL };
-    return command_ok(sysexec_run_argv("/system/bin/settings", argv, 1)) ? 0 : -1;
+    return command_ok(sysexec_run_argv_timeout("/system/bin/settings", argv, 1, HAPANELD_FRAMEWORK_TIMEOUT_MS, NULL)) ? 0 : -1;
 }
 
 #define BOOTCHIME_MAX_VALUE 100U
@@ -103,20 +130,20 @@ static int valid_bootchime_setting(const char *value) {
     return strcmp(value, "-") == 0 || valid_bootchime_value(value);
 }
 
-static int write_bootchime_setting(const char *key, const char *value) {
+static int write_bootchime_setting(const char *key, const char *value, uint64_t deadline) {
     if (strcmp(value, "-") == 0) {
         const char *const argv[] = { "settings", "delete", "system", key, NULL };
-        return command_ok(sysexec_run_argv("/system/bin/settings", argv, 1)) ? 0 : -1;
+        return command_ok(sysexec_run_argv_timeout("/system/bin/settings", argv, 1, framework_remaining(deadline), NULL)) ? 0 : -1;
     }
     const char *const argv[] = { "settings", "put", "system", key, value, NULL };
-    return command_ok(sysexec_run_argv("/system/bin/settings", argv, 1)) ? 0 : -1;
+    return command_ok(sysexec_run_argv_timeout("/system/bin/settings", argv, 1, framework_remaining(deadline), NULL)) ? 0 : -1;
 }
 
-static int write_bootchime_stream(const char *stream, const char *value) {
+static int write_bootchime_stream(const char *stream, const char *value, uint64_t deadline) {
     const char *const argv[] = {
         "cmd", "media_session", "volume", "--stream", stream, "--set", value, NULL
     };
-    return command_ok(sysexec_run_argv("/system/bin/cmd", argv, 1)) ? 0 : -1;
+    return command_ok(sysexec_run_argv_timeout("/system/bin/cmd", argv, 1, framework_remaining(deadline), NULL)) ? 0 : -1;
 }
 
 static int apply_bootchime(
@@ -126,16 +153,17 @@ static int apply_bootchime(
     const char *ring_stream,
     const char *notification_stream
 ) {
+    uint64_t deadline = framework_deadline();
     int applied = 0;
-    if (write_bootchime_setting("volume_ring_speaker", ring_speaker) != 0) return -1;
+    if (write_bootchime_setting("volume_ring_speaker", ring_speaker, deadline) != 0) return -1;
     applied++;
-    if (write_bootchime_setting("volume_ring", ring) != 0) return applied;
+    if (write_bootchime_setting("volume_ring", ring, deadline) != 0) return applied;
     applied++;
-    if (write_bootchime_setting("volume_notification", notification) != 0) return applied;
+    if (write_bootchime_setting("volume_notification", notification, deadline) != 0) return applied;
     applied++;
-    if (write_bootchime_stream("2", ring_stream) != 0) return applied;
+    if (write_bootchime_stream("2", ring_stream, deadline) != 0) return applied;
     applied++;
-    if (write_bootchime_stream("5", notification_stream) != 0) return applied;
+    if (write_bootchime_stream("5", notification_stream, deadline) != 0) return applied;
     return 0;
 }
 
@@ -149,11 +177,57 @@ static const char *bootchime_reply(int result) {
 static int get_fontscale(char *out, size_t outsz) {
     const char *const argv[] = { "settings", "get", "system", "font_scale", NULL };
     char val[32] = "";
-    if (!command_ok(sysexec_capture_argv("/system/bin/settings", argv, val, sizeof val))) return -1;
+    if (!command_ok(sysexec_capture_argv_timeout("/system/bin/settings", argv, val, sizeof val, HAPANELD_FRAMEWORK_TIMEOUT_MS, NULL))) return -1;
     char *nl = strpbrk(val, "\r\n");
     if (nl) *nl = '\0';
     if (val[0] == '\0') strcpy(val, "null");
     snprintf(out, outsz, "SCALE=%s\n", val);
+    return 0;
+}
+
+// Fixed cpu0 read-back; reserve the final raw byte as an overflow probe, never a valid prefix.
+#define GOVREAD_RAW_LIMIT 4096u
+#define GOVREAD_TOKEN_LIMIT 63u
+
+static int governor_read_byte(unsigned char c) {
+    return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+        (c >= '0' && c <= '9') || c == '_' || c == '.' || c == '-';
+}
+
+static int read_governors(int current, char *output) {
+    const char *path = current
+        ? "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor"
+        : "/sys/devices/system/cpu/cpu0/cpufreq/scaling_available_governors";
+    int fd = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (fd < 0) return -1;
+    unsigned char raw[GOVREAD_RAW_LIMIT];
+    size_t used = 0;
+    while (used < sizeof raw) {
+        ssize_t n = read(fd, raw + used, sizeof raw - used);
+        if (n < 0 && errno == EINTR) continue;
+        if (n < 0) { close(fd); return -1; }
+        if (n == 0) break;
+        used += (size_t)n;
+    }
+    if (close(fd) != 0) return -1;
+    if (used == sizeof raw) return -1;
+
+    size_t out_used = 7, token_size = 0, tokens = 0;
+    memcpy(output, "GOVREAD", out_used);
+    for (size_t i = 0; i < used; i++) {
+        unsigned char c = raw[i];
+        if (c == ' ' || c == '\t' || c == '\r' || c == '\n') {
+            token_size = 0;
+            continue;
+        }
+        if (!governor_read_byte(c)) return -1;
+        if (token_size == 0) { output[out_used++] = ' '; tokens++; }
+        if (++token_size > GOVREAD_TOKEN_LIMIT) return -1;
+        output[out_used++] = (char)c;
+    }
+    if (tokens == 0 || (current && tokens != 1)) return -1;
+    output[out_used++] = '\n';
+    output[out_used] = '\0';
     return 0;
 }
 
@@ -193,7 +267,7 @@ static int set_governor(const char *gov) {
 static int stop_pkg(const char *pkg) {
     if (!valid_pkg(pkg) || is_critical_pkg(pkg)) return -1;
     const char *const argv[] = { "am", "force-stop", pkg, NULL };
-    return command_ok(sysexec_run_argv("/system/bin/am", argv, 1)) ? 0 : -1;
+    return command_ok(sysexec_run_argv_timeout("/system/bin/am", argv, 1, HAPANELD_FRAMEWORK_TIMEOUT_MS, NULL)) ? 0 : -1;
 }
 
 // Enable/disable a package for the primary user. Disable (`pm disable-user --user 0`) stops a vendor
@@ -203,7 +277,7 @@ static int set_pkg_enabled(const char *pkg, int enabled) {
     if (!valid_pkg(pkg)) return -1;
     if (!enabled && is_critical_pkg(pkg)) return -1;
     const char *const argv[] = { "pm", enabled ? "enable" : "disable-user", "--user", "0", pkg, NULL };
-    return command_ok(sysexec_run_argv("/system/bin/pm", argv, 1)) ? 0 : -1;
+    return command_ok(sysexec_run_argv_timeout("/system/bin/pm", argv, 1, HAPANELD_FRAMEWORK_TIMEOUT_MS, NULL)) ? 0 : -1;
 }
 
 // Read or set a package's SYSTEM_ALERT_WINDOW (floating-overlay) app-op. Taming records the exact
@@ -219,14 +293,14 @@ static int set_overlay(const char *pkg, const char *mode) {
     if (!valid_pkg(pkg) || !valid_overlay_mode(mode)) return -1;
     if (is_critical_pkg(pkg) && strcmp(mode, "allow") != 0 && strcmp(mode, "default") != 0) return -1;
     const char *const argv[] = { "appops", "set", pkg, "SYSTEM_ALERT_WINDOW", mode, NULL };
-    return command_ok(sysexec_run_argv("/system/bin/appops", argv, 1)) ? 0 : -1;
+    return command_ok(sysexec_run_argv_timeout("/system/bin/appops", argv, 1, HAPANELD_FRAMEWORK_TIMEOUT_MS, NULL)) ? 0 : -1;
 }
 
 static int get_overlay(const char *pkg, char *out, size_t outsz) {
     if (!valid_pkg(pkg)) return -1;
     const char *const argv[] = { "appops", "get", pkg, "SYSTEM_ALERT_WINDOW", NULL };
     char output[2048];
-    if (!command_ok(sysexec_capture_argv("/system/bin/appops", argv, output, sizeof output))) return -1;
+    if (!command_ok(sysexec_capture_argv_timeout("/system/bin/appops", argv, output, sizeof output, HAPANELD_FRAMEWORK_TIMEOUT_MS, NULL))) return -1;
     char mode[16] = "";
     char *save = NULL;
     for (char *cursor = strtok_r(output, "\r\n", &save); cursor; cursor = strtok_r(NULL, "\r\n", &save)) {
@@ -255,7 +329,7 @@ static int get_overlay(const char *pkg, char *out, size_t outsz) {
 static int set_home(const char *comp) {
     if (!valid_component(comp)) return -1;
     const char *const argv[] = { "cmd", "package", "set-home-activity", comp, NULL };
-    return command_ok(sysexec_run_argv("/system/bin/cmd", argv, 1)) ? 0 : -1;
+    return command_ok(sysexec_run_argv_timeout("/system/bin/cmd", argv, 1, HAPANELD_FRAMEWORK_TIMEOUT_MS, NULL)) ? 0 : -1;
 }
 
 // Report a package's state for the app watchdog: "DEAD" (no live process), "FG" (alive and the
@@ -274,7 +348,7 @@ static int app_state(const char *pkg, char *out, size_t outsz) {
     int fg = 0;
     const char *const window_argv[] = { "dumpsys", "window", NULL };
     char output[128 * 1024];
-    if (!command_ok(sysexec_capture_argv("/system/bin/dumpsys", window_argv, output, sizeof output))) return -1;
+    if (!command_ok(sysexec_capture_argv_timeout("/system/bin/dumpsys", window_argv, output, sizeof output, HAPANELD_FRAMEWORK_TIMEOUT_MS, NULL))) return -1;
     char needle[160];
     snprintf(needle, sizeof needle, "%s/", pkg);
     char *save = NULL;
@@ -458,6 +532,13 @@ void cmd_bootchime(conn_ctx *ctx, const char *args) {
     ));
 }
 
+void cmd_govread(conn_ctx *ctx, const char *args) {
+    int current = strcmp(args, "CURRENT") == 0;
+    if (!current && strcmp(args, "AVAILABLE") != 0) { reply(ctx->fd, "ERR\n"); return; }
+    char output[GOVREAD_RAW_LIMIT + 9];
+    reply(ctx->fd, read_governors(current, output) == 0 ? output : "ERR\n");
+}
+
 void cmd_gov(conn_ctx *ctx, const char *args) {
     char gov[32] = "";
     sscanf(args, "%31s", gov);
@@ -596,12 +677,13 @@ static const struct {
 // need; the app probes the same pair. Whitelisting an already-whitelisted package is a no-op, so the
 // verb stays idempotent.
 static int grant_battery(const char *pkg) {
+    uint64_t deadline = framework_deadline();
     char argument[160];
     if (snprintf(argument, sizeof argument, "+%s", pkg) >= (int)sizeof argument) return -1;
     const char *const modern[] = { "cmd", "deviceidle", "whitelist", argument, NULL };
-    if (command_ok(sysexec_run_argv("/system/bin/cmd", modern, 1))) return 0;
+    if (command_ok(sysexec_run_argv_timeout("/system/bin/cmd", modern, 1, framework_remaining(deadline), NULL))) return 0;
     const char *const legacy[] = { "dumpsys", "deviceidle", "whitelist", argument, NULL };
-    return command_ok(sysexec_run_argv("/system/bin/dumpsys", legacy, 1)) ? 0 : -1;
+    return command_ok(sysexec_run_argv_timeout("/system/bin/dumpsys", legacy, 1, framework_remaining(deadline), NULL)) ? 0 : -1;
 }
 
 // enabled_accessibility_services is a colon-separated list that other services share, so this is a
@@ -618,6 +700,7 @@ static int accessibility_list_plausible(const char *value) {
 }
 
 static int grant_accessibility(const char *pkg) {
+    uint64_t deadline = framework_deadline();
     // A component is the id plus the service class. The `.input.…` shorthand resolves against the id
     // and names the same class; an entry naming any other class is left for the framework.
     char component[256], shorthand[160];
@@ -628,7 +711,7 @@ static int grant_accessibility(const char *pkg) {
 
     char existing[1024];
     const char *const get[] = { "settings", "get", "secure", "enabled_accessibility_services", NULL };
-    if (!command_ok(sysexec_capture_argv("/system/bin/settings", get, existing, sizeof existing))) return -1;
+    if (!command_ok(sysexec_capture_argv_timeout("/system/bin/settings", get, existing, sizeof existing, framework_remaining(deadline), NULL))) return -1;
     size_t length = strlen(existing);
     while (length > 0 && (existing[length - 1] == '\n' || existing[length - 1] == '\r' ||
                           existing[length - 1] == ' ')) existing[--length] = '\0';
@@ -654,11 +737,11 @@ static int grant_accessibility(const char *pkg) {
         const char *const put[] = {
             "settings", "put", "secure", "enabled_accessibility_services", updated, NULL
         };
-        if (!command_ok(sysexec_run_argv("/system/bin/settings", put, 1))) return -1;
+        if (!command_ok(sysexec_run_argv_timeout("/system/bin/settings", put, 1, framework_remaining(deadline), NULL))) return -1;
     }
 
     const char *const enable[] = { "settings", "put", "secure", "accessibility_enabled", "1", NULL };
-    return command_ok(sysexec_run_argv("/system/bin/settings", enable, 1)) ? 0 : -1;
+    return command_ok(sysexec_run_argv_timeout("/system/bin/settings", enable, 1, framework_remaining(deadline), NULL)) ? 0 : -1;
 }
 
 static int apply_grant(const char *pkg, const char *capability) {
@@ -668,11 +751,11 @@ static int apply_grant(const char *pkg, const char *capability) {
         switch (GRANTS[i].kind) {
             case GRANT_PERMISSION: {
                 const char *const argv[] = { "pm", "grant", pkg, GRANTS[i].name, NULL };
-                return command_ok(sysexec_run_argv("/system/bin/pm", argv, 1)) ? 0 : -1;
+                return command_ok(sysexec_run_argv_timeout("/system/bin/pm", argv, 1, HAPANELD_FRAMEWORK_TIMEOUT_MS, NULL)) ? 0 : -1;
             }
             case GRANT_APPOP: {
                 const char *const argv[] = { "appops", "set", pkg, GRANTS[i].name, "allow", NULL };
-                return command_ok(sysexec_run_argv("/system/bin/appops", argv, 1)) ? 0 : -1;
+                return command_ok(sysexec_run_argv_timeout("/system/bin/appops", argv, 1, HAPANELD_FRAMEWORK_TIMEOUT_MS, NULL)) ? 0 : -1;
             }
             case GRANT_BATTERY:
                 return grant_battery(pkg);
@@ -813,7 +896,7 @@ static int copy_exact(int input, int output, uint64_t remaining) {
 // Two-phase upload keeps binary bytes out of server.c's line accumulator: the client sends only this
 // command, waits for READY, then writes exactly <bytes>. The app opened its own private file, while
 // this SELinux domain reads only the authenticated socket and writes the root staging path.
-void cmd_installstream(conn_ctx *ctx, const char *args) {
+static void install_stream(conn_ctx *ctx, const char *args, int upgrade_only) {
     uint64_t size;
     if (parse_install_stream_size(args, &size) != 0) {
         reply(ctx->fd, "STREAMERR\n");
@@ -857,14 +940,35 @@ void cmd_installstream(conn_ctx *ctx, const char *args) {
     int synced = copied && fsync(output) == 0;
     int closed = close(output) == 0;
     int installed = 0;
+    int uncertain = 0;
     if (copied && synced && closed) {
-        const char *const argv[] = { "pm", "install", "-r", "-d", INSTALL_STREAM_STAGE, NULL };
-        installed = sysexec_run_argv("/system/bin/pm", argv, 1) == 0;
+        const char *const upgrade_argv[] = { "pm", "install", "-r", INSTALL_STREAM_STAGE, NULL };
+        const char *const replace_argv[] = { "pm", "install", "-r", "-d", INSTALL_STREAM_STAGE, NULL };
+        int status = sysexec_run_argv_timeout("/system/bin/pm",
+            upgrade_only ? upgrade_argv : replace_argv, 1, HAPANELD_INSTALL_TIMEOUT_MS, NULL);
+        installed = status == 0;
+        // A lost wrapper cannot adjudicate PackageManager's work: Binder may already have committed.
+        // Final EOF keeps the app's existing may-have-committed recovery rather than a false rejection.
+        uncertain = status < 0;
     }
     unlink(INSTALL_STREAM_STAGE);
     pthread_mutex_unlock(&install_lock);
     guard_maintenance_install_end();
+    if (uncertain) {
+        shutdown(ctx->fd, SHUT_RDWR);
+        return;
+    }
     reply(ctx->fd, installed ? "OK\n" : "ERR\n");
+}
+
+void cmd_installstream(conn_ctx *ctx, const char *args) {
+    install_stream(ctx, args, 0);
+}
+
+// A provider update must preserve PackageManager's downgrade rejection even if another installer
+// advances the package after the app's last observation. Older helpers refuse this distinct verb.
+void cmd_installstreamupgrade(conn_ctx *ctx, const char *args) {
+    install_stream(ctx, args, 1);
 }
 
 // Compatibility acknowledgement for clients which clean retained inputs from the removed pathname

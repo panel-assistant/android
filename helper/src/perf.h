@@ -9,6 +9,7 @@
 #include "cmd.h"
 
 void cmd_perfdump(conn_ctx *ctx, const char *args);  // PERFDUMP
+void cmd_gfxinfo(conn_ctx *ctx, const char *args);   // GFXINFO SELF
 
 // Exposed for unit tests: utime(field14)+stime(field15) from a /proc/<pid>[/task/<tid>]/stat buffer;
 // comm (the text in the parens) into [comm] when non-NULL. Returns -1 on a malformed buffer.

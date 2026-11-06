@@ -839,34 +839,28 @@ internal class StubTest : PanelRuntimeRig() {
         }
     }
 
-    @Test fun aRebindThatCannotBindKeepsTryingUntilThePortIsFree() {
+    @Test fun aRebindWithAnOccupiedLanPortPublishesAnotherReachablePort() {
         val lan = NetworkInterface.getNetworkInterfaces().toList().filter { it.isUp && !it.isLoopback }
             .flatMap { it.inetAddresses.toList() }.firstOrNull { it is java.net.Inet4Address && !it.isLinkLocalAddress }
         assumeTrue("needs a non-loopback IPv4 address", lan != null)
         val port = ServerSocket(0).use { it.localPort }
+        var actualPort = port
         var offLan = true
-        val failures = java.util.concurrent.atomic.AtomicInteger()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        val listener = PaneldListener(scope, { port }, { offLan }, onBindFailure = { failures.incrementAndGet() }, retryInitialMs = 100, retryMaxMs = 400) {
+        val listener = PaneldListener(scope, { port }, { offLan }, onBound = { actualPort = it }) {
             routing { get("/") { call.respondText("ok") } }
         }
         try {
             listener.start(closeIngress = {})
-            // Something else holds the port on the LAN address, so moving from loopback to every address fails.
-            val holder = ServerSocket().apply { bind(InetSocketAddress(lan, port)) }
-            offLan = false
-            var rebound: Boolean? = null
-            val rebinding = kotlin.concurrent.thread { rebound = listener.rebind() }
-            Thread.sleep(1_500)
-            assertTrue("the failed binds were reported", failures.get() >= 1)
-            assertFalse("unbound while the port is held", listener.bound())
-            holder.close()
-            rebinding.join(15_000)
-
-            assertEquals(true, rebound)
-            assertTrue(listener.bound())
-            assertTrue("bound again on every address", connects(lan!!, port))
-            assertTrue(connects(InetAddress.getByName("127.0.0.1"), port))
+            ServerSocket().apply { bind(InetSocketAddress(lan, port)) }.use {
+                offLan = false
+                assertTrue(listener.rebind())
+                assertTrue(listener.bound())
+                assertTrue(actualPort in 1024..32767)
+                assertTrue(actualPort != port)
+                assertTrue(connects(lan!!, actualPort))
+                assertTrue(connects(InetAddress.getByName("127.0.0.1"), actualPort))
+            }
         } finally {
             listener.stop()
             scope.cancel()

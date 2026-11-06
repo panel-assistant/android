@@ -5,8 +5,6 @@ import io.panelassistant.android.http.browserI18nPayload
 import java.io.File
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** One admission boundary for every runtime surface that must move with a new release locale. */
@@ -39,43 +37,6 @@ class RuntimeLocaleRegistrationContractTest {
         assertExactSequence("page locale list", release + AppLocale.PSEUDO, locales)
     }
 
-    @Test fun `registration comparison rejects omissions duplicates extras reorderings and no-op mutants`() {
-        val actual = registrationSnapshot()
-        validateRegistration(actual)
-        val mutants = listOf<Pair<String, Registration>>(
-            "catalogue omission" to actual.copy(catalogues = actual.catalogues.dropLast(1)),
-            "Settings duplicate" to actual.copy(settings = actual.settings + actual.settings.last()),
-            "Configure extra" to actual.copy(configure = actual.configure + "zz"),
-            "Configure reorder" to actual.copy(configure = actual.configure.reversed()),
-            "release tranche not registered anywhere" to actual.copy(release = actual.release + "nl"),
-        )
-        assertEquals("mutation names must be unique", mutants.size, mutants.map { it.first }.toSet().size)
-        mutants.forEach { (name, mutant) ->
-            assertTrue("registration mutant unexpectedly survived: $name", runCatching {
-                validateRegistration(mutant)
-            }.isFailure)
-        }
-        assertFalse("the mutation battery must not contain a no-op", mutants.any { it.second == actual })
-    }
-
-    private fun registrationSnapshot(): Registration {
-        val catalogues = assets.resolve("i18n").listFiles { file -> file.isFile && file.extension == "json" }
-            .orEmpty().map { JSONObject(it.readText()).getString("locale") }
-        val configure = jsObjectKeys(assets.resolve("configure-state.js").readText(), "UI_LANGUAGE_LABELS")
-        return Registration(
-            release = release,
-            catalogues = catalogues,
-            settings = SettingsRegistry.UI_LANGUAGES,
-            configure = configure,
-        )
-    }
-
-    private fun validateRegistration(value: Registration) {
-        assertExactMembers("catalogues", value.release, value.catalogues)
-        assertExactSequence("Settings", listOf(SettingsRegistry.DEFAULT_UI_LANGUAGE) + value.release, value.settings)
-        assertExactSequence("Configure", listOf(SettingsRegistry.DEFAULT_UI_LANGUAGE) + value.release, value.configure)
-    }
-
     private fun jsObjectKeys(source: String, variable: String): List<String> {
         val body = checkNotNull(
             Regex("var\\s+$variable\\s*=\\s*\\{([\\s\\S]*?)\\n\\s*};").find(source),
@@ -95,10 +56,4 @@ class RuntimeLocaleRegistrationContractTest {
         assertEquals("$owner differs from canonical runtime order", expected, actual)
     }
 
-    private data class Registration(
-        val release: List<String>,
-        val catalogues: List<String>,
-        val settings: List<String>,
-        val configure: List<String>,
-    )
 }

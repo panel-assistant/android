@@ -2,6 +2,8 @@ package io.panelassistant.android.http
 
 import io.panelassistant.android.BuildConfig
 import io.panelassistant.android.Config
+import io.panelassistant.android.setupEverCompleted
+import io.panelassistant.android.homeTakeoverPending
 import io.panelassistant.android.sensors.HaLifecycleRuntime
 import io.panelassistant.android.sensors.HaNetworkPathRuntime
 import io.ktor.http.ContentType
@@ -34,7 +36,7 @@ internal fun healthLine(
     renderConfigConcurrencyHash: () -> String,
     panelAssistantRestartHealth: () -> String,
 ): String =
-    "ha-paneld ${Config.VERSION} panel=${config.panelId} build=${buildToken()} cfg=${renderConfigConcurrencyHash()}${panelAssistantDiscoveryHealthToken(config.deviceUid, config.androidId)}${packageHealthToken(packageName)}${versionCodeHealthToken(BuildConfig.VERSION_CODE)}${protocolHealthToken()}${haLifecycleHealthToken()}${haNetworkHealthToken()}${panelAssistantRestartHealth()}\n"
+    "ha-paneld ${Config.VERSION} panel=${config.panelId} build=${buildToken()} cfg=${renderConfigConcurrencyHash()}${panelAssistantDiscoveryHealthToken(config.deviceUid, config.androidId)}${packageHealthToken(packageName)}${versionCodeHealthToken(BuildConfig.VERSION_CODE)}${protocolHealthToken()} setup_complete=${if (config.setupEverCompleted) 1 else 0} home_pending=${if (config.homeTakeoverPending) 1 else 0}${haLifecycleHealthToken()}${haNetworkHealthToken()}${panelAssistantRestartHealth()}\n"
 
 /**
  * The lifecycle suffix on `/health`. Appended rather than given its own endpoint because every page

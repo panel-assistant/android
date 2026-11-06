@@ -41,6 +41,7 @@ internal fun proximityWizardSpeech(
     capabilities: ProximityWizardCapabilities,
     acceptedGestures: Int,
     requiredGestures: Int,
+    presenceStatus: String = "",
 ): ProximityWizardSpeech? = when (stage) {
     "intro" -> when {
         awaitingReading -> ProximityWizardSpeech("intro|waiting", R.string.proximity_wizard_speech_waiting)
@@ -50,7 +51,11 @@ internal fun proximityWizardSpeech(
     "clear" -> ProximityWizardSpeech("clear", R.string.proximity_wizard_speech_clear)
     "near" -> ProximityWizardSpeech("near", R.string.proximity_wizard_speech_near)
     "return_clear" -> ProximityWizardSpeech("return_clear", R.string.proximity_wizard_speech_return_clear)
-    "wave_baseline" -> ProximityWizardSpeech("wave_baseline", R.string.proximity_wizard_speech_wave_baseline)
+    "wave_baseline" -> if (proximityWizardPresenceRefused(presenceStatus)) {
+        ProximityWizardSpeech("wave_baseline|refused", R.string.proximity_wizard_speech_wave_baseline_refused)
+    } else {
+        ProximityWizardSpeech("wave_baseline", R.string.proximity_wizard_speech_wave_baseline)
+    }
     "wave_capture" -> if (waveCount == 2) {
         ProximityWizardSpeech("wave_capture|double", R.string.proximity_wizard_speech_wave_double)
     } else {
@@ -85,6 +90,14 @@ internal fun proximityWizardSpeech(
     "failed" -> ProximityWizardSpeech("failed", R.string.proximity_wizard_speech_failed)
     else -> null
 }
+
+/** Setup refused the person's normal approach, by timing out or by a separation too small for the sensor's drift. */
+internal fun proximityWizardPresenceRefused(presenceStatus: String): Boolean = presenceStatus == "not_detected"
+
+/** While the hand-wave start is measured: why presence stays off after a refused approach, else hands down. */
+internal fun proximityWizardWaveBaselineHint(presenceStatus: String): Int =
+    if (proximityWizardPresenceRefused(presenceStatus)) R.string.proximity_wizard_presence_refused_hint
+    else R.string.proximity_wizard_hands_down
 
 internal enum class ProximityWizardLayoutMode { COMPACT_SQUARE, PORTRAIT, LANDSCAPE }
 
@@ -413,15 +426,17 @@ class ProximityWizardActivity : AppCompatActivity() {
             snapshot.optBoolean("presenceSupported"), snapshot.optBoolean("waveSupported"),
         )
         val collecting = !proximityWizardHasLocalStepAction(stage) && stage != "saving"
+        val presenceStatus = snapshot.optString("presenceStatus")
+        val waveBaselineHint = proximityWizardWaveBaselineHint(presenceStatus)
         val (title, hint) = if (collecting && cue != ProximityWizardCue.NONE) when (cue) {
             ProximityWizardCue.PREPARE -> R.string.proximity_wizard_prepare to R.string.proximity_wizard_prepare_hint
             ProximityWizardCue.APPROACH -> if (stage == "wave_baseline") {
-                R.string.proximity_wizard_normal_position to R.string.proximity_wizard_hands_down
+                R.string.proximity_wizard_normal_position to waveBaselineHint
             } else if (usesHand) {
                 R.string.proximity_wizard_hand_near to R.string.proximity_wizard_hand_near_hint
             } else R.string.proximity_wizard_approach to R.string.proximity_wizard_approach_hint
             ProximityWizardCue.HOLD -> R.string.proximity_wizard_hold to if (stage == "wave_baseline") {
-                R.string.proximity_wizard_hands_down
+                waveBaselineHint
             } else R.string.proximity_wizard_hold_hint
             ProximityWizardCue.MOVE_AWAY -> if (usesHand) {
                 R.string.proximity_wizard_clear to R.string.proximity_wizard_clear_hint
@@ -509,6 +524,7 @@ class ProximityWizardActivity : AppCompatActivity() {
                     capabilities = capabilities,
                     acceptedGestures = accepted,
                     requiredGestures = required,
+                    presenceStatus = presenceStatus,
                 )?.let { speech ->
                     ProximityWizardHost.narrate(
                         currentId,

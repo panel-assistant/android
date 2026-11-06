@@ -11,7 +11,7 @@
     <string name="notice_hero_version_check">Перевірка версії</string>
     <string name="notice_hero_finding_dashboards">Пошук інформаційних панелей</string>
     <string name="notice_hero_upgrade_ha">Оновіть HA</string>
-    <string name="notice_hero_ancient_webview">Прадавній Webview</string>
+    <string name="notice_hero_ancient_webview">Дуже застарілий WebView</string>
     <string name="notice_hero_filter_failed">Фільтр не вдався</string>
     <string name="notice_hero_filter_refused">Фільтр відхилено</string>
     <string name="notice_hero_reading">Читання</string>

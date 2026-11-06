@@ -9,24 +9,28 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class HaSiteMetadataClientTest {
-    @Test fun `site projection rounds coordinates and elevation without retaining exact location`() {
-        val result = HaSiteMetadataProtocol.parse(
-            JSONObject()
-                .put("latitude", 51.507351)
-                .put("longitude", -0.127758)
-                .put("elevation", 34.6)
-                .put("time_zone", "Europe/London")
-                .put("location_name", "Exact private home name"),
-            fetchedAtEpochMs = 1234,
-        )!!
+    @Test fun `site fetch exposes rounded coordinates and elevation`() = runTest {
+        val client = HaSiteMetadataClient(
+            auth = HaApiSessionProvider { HaApiSession("https://ha.example", "secret") },
+            transport = object : HaAmbientTransport by MetadataTransport() {
+                override suspend fun config(baseUrl: String, accessToken: String): JSONObject = JSONObject()
+                    .put("latitude", 51.507351)
+                    .put("longitude", -0.127758)
+                    .put("elevation", 34.6)
+                    .put("time_zone", "Europe/London")
+                    .put("location_name", "Exact private home name")
+            },
+            workerDispatcher = StandardTestDispatcher(testScheduler),
+            epochMillis = { 1234L },
+        )
 
-        assertEquals(51.51, result.latitude, 0.0)
-        assertEquals(-0.13, result.longitude, 0.0)
-        assertEquals(35, result.elevationMeters)
-        assertEquals("Europe/London", result.timeZone)
-        assertEquals(1234, result.fetchedAtEpochMs)
-        assertEquals(setOf("latitude", "longitude", "elevationMeters", "timeZone", "fetchedAtEpochMs"),
-            result::class.java.declaredFields.map { it.name }.filterNot { it.startsWith("$") }.toSet())
+        assertEquals(
+            HaSiteMetadataResult(
+                HaSiteMetadataPhase.AVAILABLE,
+                HaSiteMetadata(51.51, -0.13, 35, "Europe/London", 1234L),
+            ),
+            client.fetch(),
+        )
     }
 
     @Test fun `invalid coordinates fail closed while optional elevation may be omitted`() {

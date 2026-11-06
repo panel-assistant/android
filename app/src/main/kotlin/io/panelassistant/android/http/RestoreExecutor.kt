@@ -52,6 +52,7 @@ internal class RestoreExecutor(
     private val dashboardIssues: io.panelassistant.android.persistence.DashboardIssueCustody =
         io.panelassistant.android.persistence.CatalogDashboardIssueCustody(appContext),
     private val applyState: (List<ConfigVault.StateRow>) -> Int = { AppState.applyRestoredRows(appContext, it) },
+    private val journal: RestoreJournal = RestoreJournal { appContext.filesDir },
 ) {
     suspend fun execute(
         configPlan: RestoreConfigPlan,
@@ -115,6 +116,8 @@ internal class RestoreExecutor(
         var companionResult: CompanionApplyResult? = null
         var profileResult: ProfileBackupRestoreResult? = null
         var appliedRevisionHash: String? = null
+        // Before the first durable write below: if the process ends part way, the next start reports it.
+        journal.begin()
         // Before the configuration, so a restored `voice_wake_words` selecting an imported id finds
         // its model when the listener rearms. Additive and never fatal: a model the engine refuses is
         // reported in the result, and a later configuration rollback leaves these imports in place,
@@ -129,6 +132,14 @@ internal class RestoreExecutor(
         }
         if (wakeWordOutcome?.restored?.isNotEmpty() == true) runCatching { onWakeWordsChanged() }
         val wakeWordComponent = wakeWordOutcome?.let(::wakeWordRestoreComponent)
+        // Also before the configuration, and taken up at once. A calibration this install already holds
+        // under the same key is kept, so the archive's copy only fills a gap and writing it first can
+        // replace nothing; a later rollback leaves it, as with the wake words above. After the commit it
+        // could be lost: Android kills the app when an app-op changes, and on the bench X2i that landed
+        // seven seconds into a restore, after the configuration and before this write. Never fatal.
+        restoredCalibrations = if (restorableCalibrations.isEmpty()) 0
+            else runCatching { calibrations.restore(restorableCalibrations) }.getOrDefault(0)
+        if (restoredCalibrations > 0 && runCatching { onDurableStateRestored() }.isFailure) stateRefreshFailed = true
         val operation = runCatching {
             configReceipt = commitConfig.apply(
                 admittedPlan.values,
@@ -139,6 +150,7 @@ internal class RestoreExecutor(
                     configCommitted = true
                     appliedRevisionHash = appliedHash
                     configReceipt = receipt
+                    journal.configSaved()
                 },
                 afterCommitBeforeRenderer = { effects, appliedHash ->
                     appliedRevisionHash = appliedHash
@@ -158,14 +170,10 @@ internal class RestoreExecutor(
                     ownerChoicesRestored = runCatching { config.applyOwnerChoices(ownerChoices) }.getOrDefault(0)
                     issuesRestored = if (restorableIssues.isEmpty()) 0
                         else runCatching { dashboardIssues.restore(restorableIssues) }.getOrDefault(0)
-                    // A calibration this install already holds under the same key is kept; the
-                    // archive's copy only fills a gap. Never fatal, like the state write above.
-                    restoredCalibrations = if (restorableCalibrations.isEmpty()) 0
-                        else runCatching { calibrations.restore(restorableCalibrations) }.getOrDefault(0)
-                    if (restoredStateRows > 0 || restoredCalibrations > 0 || ownerChoicesRestored > 0 || issuesRestored > 0) {
+                    if (restoredStateRows > 0 || ownerChoicesRestored > 0 || issuesRestored > 0) {
                         // Never fatal, exactly like the writes above: the restore is
                         // already durable, and a live re-read failing must not undo it.
-                        stateRefreshFailed = runCatching { onDurableStateRestored() }.isFailure
+                        if (runCatching { onDurableStateRestored() }.isFailure) stateRefreshFailed = true
                     }
                     val payload = profilePayload?.payload ?: return@afterApply
                     profileResult = requireNotNull(profileAdmin).restoreBackup(
@@ -273,6 +281,9 @@ internal class RestoreExecutor(
             )
         }
         Log.i(TAG, "restore: ${operation.message}")
+        // Every write is done, so the note goes while this restore still holds the lane: once finish
+        // releases it, the next restore may write its own note at once, which this one must not remove.
+        journal.end()
         InstallProgress.finish(
             progress,
             operation.message,

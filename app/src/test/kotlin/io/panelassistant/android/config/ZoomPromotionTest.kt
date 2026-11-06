@@ -30,7 +30,6 @@ class ZoomPromotionTest {
         assertEquals("dashboard_zoom", dashboardKeys(unprivileged).first())
         assertEquals(Tier.BASIC, zoom.tierFor(unprivileged))
         assertEquals("settings.dashboard_zoom.promoted_help", zoom.helpKeyFor(unprivileged))
-        assertTrue(zoom.promotedHelp.contains("size the dashboard"))
     }
 
     @Test fun `promotion reorders only the promoted spec`() {

@@ -11,7 +11,7 @@
     <string name="notice_hero_version_check">Vérif. version</string>
     <string name="notice_hero_finding_dashboards">Recherche tableaux</string>
     <string name="notice_hero_upgrade_ha">Mettre à jour HA</string>
-    <string name="notice_hero_ancient_webview">Webview antique</string>
+    <string name="notice_hero_ancient_webview">WebView très ancienne</string>
     <string name="notice_hero_filter_failed">Filtre en échec</string>
     <string name="notice_hero_filter_refused">Filtre refusé</string>
     <string name="notice_hero_reading">Lecture</string>

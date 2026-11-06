@@ -1409,7 +1409,6 @@ internal class KtorHaExactEntityStreamTransport(
     }
 
     private companion object {
-        const val SUBSCRIPTION_ID = 1
         val REGISTRY_EVENTS = listOf(
             "device_registry_updated",
             "entity_registry_updated",

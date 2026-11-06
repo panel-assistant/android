@@ -18,16 +18,30 @@ import kotlinx.coroutines.withContext
  * Home Assistant's to show: the reconnecting state, or a sign-in the panel has stopped retrying. It is a
  * cover, not a replacement: the WebView keeps its document and every retry path behind it. The caller's
  * two state flags own its life; the caller hides it whenever neither holds.
+ *
+ * Its clock ticks only while the screen is lit: nobody can read it in the dark, so it stops there (even on a
+ * cover first put up in the dark) and repaints from its unchanged origin as the screen wakes.
  */
-internal class DashboardWebCover(private val activity: Activity, private val main: Handler) {
+internal class DashboardWebCover(
+    private val activity: Activity,
+    private val main: Handler,
+    /** Whether the panel's screen is lit now. */
+    private val screenAwake: () -> Boolean = { true },
+    private val now: () -> Long = SystemClock::elapsedRealtime,
+    /** Where the clock's next tick is posted and cancelled: [main] on a panel. */
+    private val post: (Runnable, Long) -> Unit = { tick, delayMs -> main.postDelayed(tick, delayMs) },
+    private val cancel: (Runnable) -> Unit = { main.removeCallbacks(it) },
+    /** Paint the clock into a hero still in its window; false once it has left. */
+    private val paint: (TextView, String) -> Boolean = { view, text -> view.isAttachedToWindow.also { if (it) view.text = text } },
+) {
     private var cover: StatusSurface? = null
     private var hero: TextView? = null
     private var sinceMs = 0L
     private val tick = object : Runnable {
         override fun run() {
-            val shown = hero?.takeIf { it.isAttachedToWindow } ?: return
-            shown.text = haLifecycleClock(SystemClock.elapsedRealtime() - sinceMs)
-            main.postDelayed(this, 1_000L)
+            val shown = hero ?: return
+            if (!paint(shown, haLifecycleClock(now() - sinceMs))) return
+            if (screenAwake()) post(this, 1_000L)
         }
     }
 
@@ -46,16 +60,22 @@ internal class DashboardWebCover(private val activity: Activity, private val mai
         cover = next
     }
 
-    /** Count [view] up from [fromMs] (elapsed-realtime) once a second while the cover shows it. */
+    /** Count [view] up from [fromMs] (elapsed-realtime) once a second while the cover shows it and the screen is lit. */
     fun countUp(view: TextView, fromMs: Long) {
         hero = view
         sinceMs = fromMs
-        view.text = haLifecycleClock(SystemClock.elapsedRealtime() - fromMs)
-        main.postDelayed(tick, 1_000L)
+        view.text = haLifecycleClock(now() - fromMs)
+        if (screenAwake()) post(tick, 1_000L)
+    }
+
+    /** The screen went dark or lit: stop the clock, or repaint it at once and carry on counting. */
+    fun screenChanged(awake: Boolean) {
+        cancel(tick)
+        if (awake) tick.run()
     }
 
     fun hide() {
-        main.removeCallbacks(tick)
+        cancel(tick)
         cover?.root?.let { (it.parent as? ViewGroup)?.removeView(it) }
         cover = null
         hero = null

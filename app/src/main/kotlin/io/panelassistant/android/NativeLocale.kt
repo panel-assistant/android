@@ -3,6 +3,8 @@ package io.panelassistant.android
 import android.content.Context
 import android.content.res.Configuration
 import android.content.res.Resources
+import android.os.Handler
+import android.os.Looper
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.ConfigurationCompat
@@ -15,6 +17,14 @@ import java.util.Locale
 /** Keep native Android resources aligned with ha-paneld's locale-selection policy. */
 internal object NativeLocale {
     @Volatile private var resourceLanguageTag: String? = null
+
+    /**
+     * Runs [AppCompatDelegate.setApplicationLocales], which must run on the main thread: inline there,
+     * otherwise posted to the main looper. HTTP config saves call [apply] from a request thread.
+     */
+    @Volatile internal var mainThreadPoster: (Runnable) -> Unit = { task ->
+        if (Looper.myLooper() == Looper.getMainLooper()) task.run() else Handler(Looper.getMainLooper()).post(task)
+    }
 
     /** Read only [PreDatabaseSettings.FILE]; Guard DB recovery must not construct Config/AppState. */
     fun applyBeforeDatabase(context: Context) {
@@ -41,9 +51,11 @@ internal object NativeLocale {
         }
         resourceLanguageTag = locale
         val desired = locale?.let(LocaleListCompat::forLanguageTags) ?: LocaleListCompat.getEmptyLocaleList()
-        if (AppCompatDelegate.getApplicationLocales().toLanguageTags() != desired.toLanguageTags()) {
-            AppCompatDelegate.setApplicationLocales(desired)
-        }
+        mainThreadPoster(Runnable {
+            if (AppCompatDelegate.getApplicationLocales().toLanguageTags() != desired.toLanguageTags()) {
+                AppCompatDelegate.setApplicationLocales(desired)
+            }
+        })
     }
 
     private fun systemLanguageTag(): String? =
@@ -101,6 +113,7 @@ internal fun Context.nativeString(@StringRes id: Int, vararg formatArgs: Any): S
 
 internal fun Context.localizedLabel(operation: SensitiveOperation): String = getString(
     when (operation) {
+        SensitiveOperation.LOCAL_ADB_MAINTENANCE -> R.string.approval_op_local_adb
         SensitiveOperation.APK_INSTALL -> R.string.approval_op_apk_install
         SensitiveOperation.APK_FETCH -> R.string.approval_op_apk_fetch
         SensitiveOperation.BACKUP_EXPORT -> R.string.approval_op_backup_export

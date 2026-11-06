@@ -36,6 +36,12 @@ internal object HandBackHomePolicy {
 
         /** No other app on this device can take the HOME role, so surrendering it would strand the panel. */
         NO_REPLACEMENT_HOME,
+
+        /**
+         * The launcher recorded as this panel's original home screen is no longer there, so only reinstalling
+         * that launcher lets hand back proceed. [Decision.Refuse.originalHome] names it.
+         */
+        ORIGINAL_HOME_MISSING,
     }
 
     /**
@@ -96,7 +102,7 @@ internal object HandBackHomePolicy {
 
     sealed interface Decision {
         data class Proceed(val plan: Plan) : Decision
-        data class Refuse(val reason: Refusal) : Decision
+        data class Refuse(val reason: Refusal, val originalHome: String? = null) : Decision
     }
 
     /**
@@ -123,6 +129,7 @@ internal object HandBackHomePolicy {
         homeCandidates: List<HomeCandidate>?,
         ownPackage: String,
         currentHome: String? = null,
+        previousHomeComponent: String? = null,
     ): Decision {
         val markers = when (owned) {
             is TameOwnedMarkers.Ready -> owned.byPackage
@@ -151,11 +158,14 @@ internal object HandBackHomePolicy {
         }
 
         val willBeEnabled = restore + adopt
-        val target = homeCandidates
+        val eligibleHomes = homeCandidates
             .filter { it.pkg != ownPackage }
             .filter { !ineligibleForHome(it.pkg) }
             .filter { it.enabled || it.pkg in willBeEnabled }
-            .minWithOrNull(
+        val target = (if (previousHomeComponent != null) {
+            eligibleHomes.firstOrNull { it.component == previousHomeComponent }
+                ?: return Decision.Refuse(Refusal.ORIGINAL_HOME_MISSING, originalHome = previousHomeComponent)
+        } else eligibleHomes.minWithOrNull(
                 // A launcher that already holds the role is the answer on a panel that has been handed back
                 // once already: re-confirming it makes the retry a clean no-op instead of moving HOME to
                 // whatever else happens to be installed.
@@ -164,7 +174,7 @@ internal object HandBackHomePolicy {
                     // ahead of an unrelated third-party launcher that merely happens to be present.
                     .thenByDescending { it.pkg in willBeEnabled }
                     .thenBy { it.pkg },
-            )
+            ))
             ?: return Decision.Refuse(Refusal.NO_REPLACEMENT_HOME)
 
         return Decision.Proceed(Plan(restore = restore, adopt = adopt.toList(), targetHome = target))
@@ -177,7 +187,7 @@ internal object HandBackHomePolicy {
      * one proves it *gave it away* — and to the intended package, not merely to something that is not us.
      */
     fun homeHandbackSecured(setSucceeded: Boolean, observedHome: String?, target: String, ownPackage: String): Boolean =
-        setSucceeded && observedHome == target && observedHome != ownPackage
+        setSucceeded && observedHome == target && observedHome.substringBefore('/') != ownPackage
 
     /**
      * What one hand-back attempt achieved.
@@ -191,6 +201,8 @@ internal object HandBackHomePolicy {
         val adopted: List<String>,
         val outstanding: List<String>,
         val homeHandedTo: String?,
+        /** Enabled policy-selected component an external shell may finish handing HOME to. */
+        val homeTarget: String? = null,
     ) {
         val complete: Boolean get() = outstanding.isEmpty() && homeHandedTo != null
 

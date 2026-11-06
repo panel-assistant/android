@@ -6,6 +6,7 @@ import io.panelassistant.android.sensors.HaApiSessionProvider
 import org.json.JSONObject
 import android.content.Context
 import android.util.Log
+import io.panelassistant.android.requiresOwnedHomeProof
 import io.panelassistant.android.Config
 import io.panelassistant.android.BuildConfig
 import io.panelassistant.android.DiscoveryResult
@@ -22,6 +23,7 @@ import io.panelassistant.android.i18n.Strings as AppStrings
 import io.panelassistant.android.camera.AbsentCameraSurface
 import io.panelassistant.android.camera.CameraSurface
 import io.panelassistant.android.platform.PanelPermissionRepair
+import io.panelassistant.android.util.GuardDbProcessAdmission
 import io.panelassistant.android.control.CdpRelay
 import io.panelassistant.android.control.AdbController
 import io.panelassistant.android.control.CompanionDataOperationState
@@ -173,6 +175,7 @@ class PaneldServer internal constructor(
     private val profileReport: () -> PassiveProfileReport? = { null },
     private val profileProbe: (String) -> PassiveProfileReport? = { null },
     private val onProfileRestart: () -> Boolean = { false },
+    private val onWebViewRebind: () -> Boolean = { false },
     /**
      * Durable panel state was replaced underneath the running process. Live owners of that state
      * must re-read it before they write again, or a restore is silently overwritten by whatever
@@ -289,6 +292,24 @@ class PaneldServer internal constructor(
         return true
     }
 
+    /**
+     * A direct ON while Panel Assistant manages network ADB is refused rather than journalled: the app cannot
+     * apply it (AdbController.set), so a queued ON would read as pending for good and could open port 5555
+     * later without a new action from the owner. Restores and imports keep the hardened check only.
+     */
+    private suspend fun rejectDirectNetworkAdb(call: OpCall, requested: String?): Boolean {
+        if (rejectHardenedNetworkAdb(call, requested)) return true
+        if (!io.panelassistant.android.control.ManagedNetworkAdb.managed ||
+            SettingValue.parseBool(requested.orEmpty()) != true
+        ) return false
+        call.respondText(
+            """{"ok":false,"error":"network-adb-managed-by-panel-assistant","message":"Panel Assistant manages network ADB on this panel."}""",
+            ContentType.Application.Json,
+            HttpStatusCode.Conflict,
+        )
+        return true
+    }
+
 
 
     // Per-INSTALL build token (changes on every (re)install, not just a version bump) so an open info
@@ -328,9 +349,20 @@ class PaneldServer internal constructor(
         },
         { setupState.setupNeedsUser() },
     )
+    private val webViewUpdate by lazy {
+        io.panelassistant.android.util.WebViewUpdate(
+            scope,
+            { profile.recommendedWebView?.let { spec ->
+                io.panelassistant.android.device.profile.ProfileArtifacts.webViews.entries.firstOrNull { it.value == spec }?.key?.let { it to spec }
+            } },
+            io.panelassistant.android.util.AndroidWebViewUpdateIo(appContext, profile),
+            requestRebind = { onWebViewRebind() },
+        )
+    }
+
     private val setupState = SetupState(
         config, system, entityLearning, profile, appContext, haOAuth::pendingCount,
-        { lastHaDiscovery }, { pageHealth.webViewTooOldOnce },
+        { lastHaDiscovery }, { pageHealth.webViewOnce },
         ::effectiveDashboardIsBuiltin, scope, rendererPreparation,
     )
     private val catalogueLoader by lazy { CatalogueLoader(asset) }
@@ -392,8 +424,17 @@ class PaneldServer internal constructor(
         stopping = false
         pendingApks.open()
         val listener = PaneldListener(
-            scope, { config.httpPort }, { listenerOffLan(config) },
+            // A requested port is tried first at this start only; a later rebind keeps the bound port.
+            scope, { config.httpPortRequest ?: config.httpPort }, { listenerOffLan(config) },
             onBindFailure = { Log.e(TAG, "HTTP bind on :${config.httpPort} failed", it) },
+            onBound = { port ->
+                // Consumed by this start whether it got the requested port or fell back from it.
+                if (this.listener == null && config.httpPortRequest != null) config.setHttpPortRequest(null)
+                if (config.httpPort != port) {
+                    config.httpPort = port
+                    if (this.listener != null) onReconfigure(setOf("http_port"))
+                }
+            },
         ) { mount(this) }
         // Treat the bind as required startup, not a best-effort sidecar. A failure must close this
         // generation's admission and reach the service runtime owner, which records FAILED and prevents
@@ -433,7 +474,7 @@ class PaneldServer internal constructor(
                     config = config,
                     tameController = { tame },
                     profileKnownPackages = { tameProfileCandidates.mapTo(hashSetOf()) { it.pkg } },
-                    setHome = { system.setHomeActivity(it) },
+                    setHome = { system.setHomeActivity(it, restoringHome = true) },
                     ownPackage = { appContext.packageName },
                     authorize = ::authorizeSensitive,
                 ))
@@ -477,6 +518,7 @@ class PaneldServer internal constructor(
                         )
                     } ?: unavailableProfileRoutes()
                     healthRoute(config, appContext.packageName, ::buildToken, ::renderConfigConcurrencyHash) { panelAssistantTransport?.restartHealthToken().orEmpty() }
+                    webViewRoutes(webViewUpdate, ::authorizeSensitive)
                     configReadRoutes(
                         config = config,
                         values = ::configValues,
@@ -638,9 +680,13 @@ class PaneldServer internal constructor(
             // Serialize against an admitted start: teardown either prevents it or waits and then kills it.
             stopRelay = {
                 synchronized(inspectLock) {
-                    val stopped = !CdpRelay.running || CdpRelay.stop()
-                    if (stopped && config.hardenedSecurityEnabled) AdbController(appContext, config).reassert()
-                    stopped
+                    if (GuardDbProcessAdmission.maintenanceRequired()) {
+                        CdpRelay.proveAbsentForGuardDbHandoff()
+                    } else {
+                        val stopped = CdpRelay.proveAbsent() || CdpRelay.stop()
+                        if (stopped && config.hardenedSecurityEnabled) AdbController(appContext, config).reassert()
+                        stopped
+                    }
                 }
             },
             drainTameMutations = { tameReconciliation.closeAndJoin(TAME_SHUTDOWN_MS) },
@@ -659,6 +705,7 @@ class PaneldServer internal constructor(
         storageSnapshot: StorageHealthSnapshot,
         databaseObservationNonce: String? = null,
         homeProofRequested: Boolean = false,
+        setupForegroundRequested: Boolean = false,
     ): String {
         val management = managementObservations.snapStaleOk()
         val powerAdvisory = pageHealth.powerSafetyAdvisory(management.privilege, { profile.appCanSu }, powerSafety)
@@ -679,10 +726,14 @@ class PaneldServer internal constructor(
             proximity = sensors::proximityStatusJson,
             panelAssistantTransport = panelAssistantTransport?.facts(),
             homeProof = if (homeProofRequested) ({
-                val proof = system.homeUiProof(config.dashboardPackage, KioskAdminUi.isVisible())
+                val proof = system.homeUiProof(config.dashboardPackage, KioskAdminUi.isVisible(),
+                    requireOwnedHome = config.requiresOwnedHomeProof(setupForegroundRequested))
                 homeUiProofJson(proof.state, proof.reason, proof.evidence)
             }) else null,
             english = catalogueLoader.strings(AppLocale.ENGLISH),
+            profileId = { profile.id },
+            webView = { webViewUpdate.observe().toString() },
+            screenLockSecure = system::screenLockSecure,
         )
     }
 
@@ -736,6 +787,7 @@ class PaneldServer internal constructor(
         radioStatus = radioStatus,
         dashboardRecoveryState = pageHealth::dashboardRecoveryState,
         appSizingReady = density::appSizingReady,
+        profileId = { profile.id },
     )
 
     private fun dashboardPageHandler() = DashboardPageHandler(
@@ -825,6 +877,23 @@ class PaneldServer internal constructor(
      * Null for a name this build does not serve.
      */
     internal suspend fun managementRequest(op: String, args: JSONObject, onPending: () -> Unit, auth: HaApiSessionProvider): PanelAssistantManageReply? {
+        if (op == "webview.observe") return PanelAssistantManageReply(
+            PanelAssistantTransportProtocol.OUTCOME_APPLIED, null, withContext(Dispatchers.IO) { webViewUpdate.observe() },
+        )
+        if (op == "webview.install") {
+            val requestId = args.opt("request_id") as? String
+            val hash = args.opt("artifact_sha256") as? String
+            val refusal = authorizeSessionRequest(
+                config.hardenedSecurityEnabled, io.panelassistant.android.security.SensitiveOperation.APK_INSTALL,
+                "$op\u0000${requestId.orEmpty()}\u0000${hash.orEmpty()}", "Update System WebView", LocalApprovalBroker.instance, onPending,
+            )
+            if (refusal != null) return PanelAssistantManageReply(PanelAssistantTransportProtocol.OUTCOME_REFUSED, refusal, null)
+            val answer = withContext(Dispatchers.IO) { webViewUpdate.install(requestId, hash) }
+            return PanelAssistantManageReply(
+                if (answer.status < 400) PanelAssistantTransportProtocol.OUTCOME_APPLIED else PanelAssistantTransportProtocol.OUTCOME_REFUSED,
+                if (answer.status < 400) null else answer.body.optString("reason"), answer.body,
+            )
+        }
         if (op == MANAGE_STATUS) {
             val body = withContext(Dispatchers.IO) { statusJson(storageHealth(), homeProofRequested = args.optBoolean("home_proof")) }
             return PanelAssistantManageReply(PanelAssistantTransportProtocol.OUTCOME_APPLIED, null, JSONObject(body))
@@ -849,8 +918,9 @@ class PaneldServer internal constructor(
     private suspend fun manageThroughDispatcher(op: String, args: JSONObject, onPending: () -> Unit): PanelAssistantManageReply? {
         val kind = manageTable[op]?.kind ?: return null
         // Panel Assistant changes this panel only through its own operations above and the settings allowlist
-        // (protocol section 20.2); through this fall-through it may read, never command.
-        if (kind != io.panelassistant.android.ManageKind.READ) {
+        // (protocol section 20.2); through this fall-through it may read, never command, except hand HOME back
+        // before it removes the app from a panel whose ADB is closed.
+        if (kind != io.panelassistant.android.ManageKind.READ && op != PanelAssistantTransportProtocol.MANAGE_HAND_BACK_HOME) {
             return PanelAssistantManageReply(
                 PanelAssistantTransportProtocol.OUTCOME_REFUSED,
                 io.panelassistant.android.panelassistant.PanelAssistantCommandProcessor.CODE_NOT_COMMANDABLE,
@@ -892,7 +962,7 @@ class PaneldServer internal constructor(
         onboarding = DirectConfigOnboarding(config),
         capabilities = { liveCapabilities(managementObservations.snapStaleOk().caps) },
         authorizeSensitive = ::authorizeSensitive,
-        rejectHardenedNetworkAdb = ::rejectHardenedNetworkAdb,
+        rejectHardenedNetworkAdb = ::rejectDirectNetworkAdb,
         onHaAreaCommitted = { haArea.onHaAreaCommitted() },
     )
 

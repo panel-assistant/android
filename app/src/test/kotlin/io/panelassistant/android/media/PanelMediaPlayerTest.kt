@@ -22,6 +22,7 @@ class PanelMediaPlayerTest {
         val announced = mutableListOf<String>()
         val streamed = mutableListOf<String?>()
         var cancelled = 0
+        var ownerStops = 0
         var muted = false
         var changes = 0
         val player = PanelMediaPlayer(
@@ -29,6 +30,7 @@ class PanelMediaPlayerTest {
             post = { it() },
             announce = { url, stream -> announced += url; streamed += stream; true },
             cancelAnnouncement = { cancelled++ },
+            ownerStopped = { assertEquals("told before the sound is cancelled", ownerStops, cancelled); ownerStops++ },
             muted = { muted },
             setMuted = { muted = it },
         ).also { it.setChangeListener { changes++ } }
@@ -41,7 +43,9 @@ class PanelMediaPlayerTest {
 
     @Test fun playStreamsTheUrlDirectlyAndReportsBufferingThenPlaying() {
         val h = Harness()
-        assertEquals("""{"state":"idle","muted":false}""", h.player.observation())
+        val initial = JSONObject(h.player.observation())
+        assertEquals("idle", initial.getString("state"))
+        assertEquals(false, initial.get("muted"))
         assertTrue(h.player.command(PanelMediaCommand.Play(url, announce = false)))
         assertEquals(listOf(url), h.streams.map { it.url })
         assertEquals("buffering", h.state())
@@ -124,6 +128,16 @@ class PanelMediaPlayerTest {
         assertEquals(listOf("start"), h.last().calls)
     }
 
+    @Test fun aTeardownEndsMediaAndTheAnnouncementAsNoOwnersStop() {
+        val h = Harness()
+        h.player.command(PanelMediaCommand.Play(url, announce = false))
+        h.last().onPrepared()
+        h.player.halt()
+        assertEquals("release", h.last().calls.last())
+        assertEquals(1, h.cancelled)
+        assertEquals("a teardown is not the owner stopping a timer", 0, h.ownerStops)
+    }
+
     @Test fun stopEndsMediaAndTheCurrentAnnouncement() {
         val h = Harness()
         h.player.command(PanelMediaCommand.Play(url, announce = false))
@@ -131,6 +145,7 @@ class PanelMediaPlayerTest {
         h.player.command(PanelMediaCommand.Stop)
         assertEquals("release", h.last().calls.last())
         assertEquals(1, h.cancelled)
+        assertEquals("the owner stopped it", 1, h.ownerStops)
         assertEquals("idle", h.state())
         h.player.command(PanelMediaCommand.Resume)
         assertEquals("a stopped player has nothing to resume", 1, h.streams.size)

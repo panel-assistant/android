@@ -59,7 +59,7 @@
     <string name="approval_op_dashboard_storage_clear">Browserdaten des Dashboards löschen</string>
     <string name="approval_op_display_configuration">Anzeigegröße ändern</string>
     <string name="approval_op_power_configuration">Energieschutzmaßnahmen des Panels ändern</string>
-    <string name="approval_op_power_safety_ack">Einen ganz bestimmten Vorsichtshinweis zum Energieschutz ausblenden</string>
+    <string name="approval_op_power_safety_ack">Diesen Warnhinweis zur Stromversorgung ausblenden</string>
     <string name="approval_op_guard_db">Datenbankwiederherstellung fortsetzen</string>
     <string name="approval_op_camera_enable">Panel-Kamera aktivieren</string>
 
@@ -68,7 +68,7 @@
     <string name="panel_not_set_up">Dieses Panel ist noch nicht eingerichtet.</string>
     <string name="panel_not_set_up_hint">Scanne den Code mit deinem Smartphone – es dauert etwa zwei Minuten. Oder tippe auf %1$s, um es auf diesem Bildschirm einzurichten.</string>
     <string name="browser_engine_too_old">Die Browser-Engine dieses Panels ist zu alt.</string>
-    <string name="browser_engine_too_old_hint">Home Assistant-Dashboards benötigen eine neuere Version. Behebe dies auf der Einrichtungsseite in einem Browser.</string>
+    <string name="browser_engine_too_old_hint">Die Einrichtung lässt sich trotzdem abschließen, aber Home Assistant-Dashboards benötigen eine neuere Version. Wie du sie aktualisierst, zeigt die Einrichtungsseite in einem Browser.</string>
     <string name="choose_dashboard_app">Wähle eine Dashboard-App.</string>
     <string name="continue_setup_browser">Fahre auf der Einrichtungsseite in einem Browser fort.</string>
     <string name="connected_next_ha_address">Verbunden. Als Nächstes: die Home Assistant-Adresse.</string>
@@ -184,7 +184,7 @@
     <string name="guard_db_deadline">Harte Frist: %1$d vergangene ms</string>
     <string name="guard_db_forward_deadline">" · vorwärts: %1$d"</string>
     <string name="guard_db_unreachable">Der Root-Helfer wird neu gestartet oder ist nicht erreichbar. Es ist keine Änderung erlaubt.</string>
-    <string name="guard_db_malformed">Die Antwort des Root-Journals ist fehlerhaft. Die Wiederherstellung wird angehalten.</string>
+    <string name="guard_db_malformed">Die Antwort des Root-Journals hat ein ungültiges Format. Die Wiederherstellung ist angehalten.</string>
     <string name="guard_db_unsupported">Der installierte Helfer kann diese Wiederherstellung nicht ausführen. Die Wiederherstellung wird angehalten.</string>
     <string name="no_pending_physical_approval">Keine ausstehende physische Bestätigung.</string>
     <string name="pending_physical_approval">Ausstehende physische Bestätigung</string>
@@ -207,9 +207,10 @@
     <string name="database_busy_body">Die Panel-Datenbank blieb beschäftigt oder gesperrt%1$s. Öffne die Panel Assistant-Diagnose und warte vor einem erneuten Versuch auf eine fehlerfreie Prüfung.</string>
     <string name="database_failure_body">Die Panel-Datenbank hat einen Fehler gemeldet%1$s. Bewahre sie auf und öffne vor einem erneuten Versuch die Panel Assistant-Diagnose.</string>
     <string name="database_recovery_channel">Datenbankwiederherstellung</string>
-    <string name="database_recovery_notification">Die Wiederherstellung im selben Startvorgang ist aktiv; normale Panel-Dienste sind pausiert</string>
+    <string name="database_recovery_notification">Die Wiederherstellung in derselben Boot-Sitzung ist aktiv; normale Panel-Dienste sind pausiert</string>
     <string name="starting">Wird gestartet…</string>
     <string name="listening_on_port">Lauscht auf :%1$d</string>
     <string name="degraded_profile_startup">Eingeschränkt · Profilstart fehlgeschlagen</string>
     <string name="degraded_startup">Eingeschränkt · Start fehlgeschlagen</string>
+    <string name="approval_op_local_adb">Wartung des Panels ausführen</string>
 </resources>

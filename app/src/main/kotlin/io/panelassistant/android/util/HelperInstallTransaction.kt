@@ -21,6 +21,7 @@ internal class HelperInstallTransaction(
     fun install(
         apk: File,
         stagingDir: File,
+        strictUpgrade: Boolean = false,
         beforeSubmit: (() -> InstallOutcome.Failure?)? = null,
     ): InstallOutcome {
         if (!apk.isFile || apk.length() <= 0L) {
@@ -34,7 +35,7 @@ internal class HelperInstallTransaction(
                 refusal == null
             }
         }
-        val streamCommand = "INSTALLSTREAM ${apk.length()}"
+        val streamCommand = "${if (strictUpgrade) "INSTALLSTREAMUPGRADE" else "INSTALLSTREAM"} ${apk.length()}"
         val streamed = if (submissionAllowed == null) daemon.sendFile(streamCommand, apk, timeoutMs)
             else daemon.sendFile(streamCommand, apk, timeoutMs, submissionAllowed)
         when (streamed) {
@@ -51,6 +52,12 @@ internal class HelperInstallTransaction(
                 return InstallOutcome.Retryable("install outcome unknown: streamed input released", mayHaveCommitted = true)
             }
             DaemonStreamResult.Unsupported -> Unit
+        }
+
+        // Older helpers' verbs permit downgrades. Never negotiate down to them for a provider update.
+        if (strictUpgrade) {
+            apk.delete()
+            return InstallOutcome.Rejected("install refused: helper does not support upgrade-only installation")
         }
 
         val owned = staging.claim(apk, stagingDir)

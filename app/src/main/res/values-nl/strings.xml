@@ -65,7 +65,7 @@
     <string name="panel_not_set_up">Dit paneel is nog niet ingesteld.</string>
     <string name="panel_not_set_up_hint">Scan de code met je telefoon — het duurt ongeveer twee minuten. Of tik op %1$s om het op dit scherm te doen.</string>
     <string name="browser_engine_too_old">De browser-engine van dit paneel is te oud.</string>
-    <string name="browser_engine_too_old_hint">Home Assistant-dashboards hebben een nieuwere nodig. Los het op via de pagina ‘Instellen’ in een browser.</string>
+    <string name="browser_engine_too_old_hint">De installatie kan gewoon worden afgerond, maar Home Assistant-dashboards hebben een nieuwere nodig. De pagina ‘Instellen’ in een browser laat zien hoe je die bijwerkt.</string>
     <string name="choose_dashboard_app">Kies een dashboard-app.</string>
     <string name="continue_setup_browser">Ga verder op de pagina ‘Instellen’ in een browser.</string>
     <string name="connected_next_ha_address">Verbonden. Volgende stap: het Home Assistant-adres.</string>
@@ -176,8 +176,8 @@
     <string name="guard_db_deadline">Strikte deadline: %1$d elapsed-ms</string>
     <string name="guard_db_forward_deadline">" · vooruit: %1$d"</string>
     <string name="guard_db_unreachable">De root-helper wordt opnieuw opgestart of is niet bereikbaar. Er zijn geen wijzigingen toegestaan.</string>
-    <string name="guard_db_malformed">Het antwoord van het root-logboek is onjuist opgebouwd. Het herstel wordt uitgesteld.</string>
-    <string name="guard_db_unsupported">De geïnstalleerde helper kan dit herstelproces niet uitvoeren. Het herstelproces wordt uitgesteld.</string>
+    <string name="guard_db_malformed">Het antwoord van het root-logboek is onjuist opgebouwd. Het herstel is opgeschort.</string>
+    <string name="guard_db_unsupported">De geïnstalleerde helper kan dit herstel niet uitvoeren. Het herstel is opgeschort.</string>
     <string name="no_pending_physical_approval">Geen openstaande fysieke goedkeuring.</string>
     <string name="pending_physical_approval">Openstaande fysieke goedkeuring</string>
     <string name="approval_exact_detail">Bekijk de actie en de exacte bewijsstukken van het verzoek voordat je het goedkeurt.\n\nDetails van het verzoek (Engels):\n%1$s\n\nExact verzoek van %2$s. Goedkeuring is eenmalig en verloopt.</string>
@@ -202,4 +202,5 @@
     <string name="listening_on_port">Luistert op :%1$d</string>
     <string name="degraded_profile_startup">Verminderde functionaliteit · het opstarten van het profiel is mislukt</string>
     <string name="degraded_startup">Verminderde functionaliteit · opstarten mislukt</string>
+    <string name="approval_op_local_adb">Paneelonderhoud uitvoeren</string>
 </resources>

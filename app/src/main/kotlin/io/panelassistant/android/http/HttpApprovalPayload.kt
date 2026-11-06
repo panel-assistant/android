@@ -95,6 +95,47 @@ internal fun relayedAdministratorExempt(origin: io.panelassistant.android.Comman
 /** The approval peer for requests Panel Assistant makes over its own session (protocol section 20.2 origin key). */
 internal const val PANEL_ASSISTANT_APPROVAL_PEER = "panel_assistant"
 
+internal class DeferredSessionApproval(
+    val refusal: String? = null,
+    val consume: () -> Boolean = { false },
+    val cancel: () -> Unit = {},
+)
+
+/** Keep the broker's original expiry until the caller's serialized effect admission. */
+internal suspend fun awaitSessionApproval(
+    operation: SensitiveOperation,
+    payload: String,
+    summary: String,
+    broker: ApprovalBroker,
+    onPending: () -> Unit,
+    pollMs: Long = 1_000L,
+    admitted: () -> Boolean = { true },
+): DeferredSessionApproval {
+    val (decision, id) = broker.request(operation, PANEL_ASSISTANT_APPROVAL_PEER, payload, summary, consumeApproved = false)
+    var handedOff = false
+    try {
+        if (decision != ApprovalBroker.Decision.APPROVED) {
+            onPending()
+            while (true) {
+                delay(pollMs)
+                if (!admitted()) return DeferredSessionApproval(PanelAssistantCommandProcessor.CODE_EXPIRED)
+                when (broker.state(id)) {
+                    ApprovalBroker.State.PENDING -> continue
+                    ApprovalBroker.State.APPROVED -> break
+                    ApprovalBroker.State.ABSENT -> return DeferredSessionApproval(PanelAssistantCommandProcessor.CODE_APPROVAL_DENIED)
+                }
+            }
+        }
+        handedOff = true
+        return DeferredSessionApproval(
+            consume = { broker.consume(id, operation, PANEL_ASSISTANT_APPROVAL_PEER, payload) },
+            cancel = { broker.deny(id) },
+        )
+    } finally {
+        if (!handedOff) broker.deny(id)
+    }
+}
+
 /**
  * The session form of [authorizeSensitiveRequest]: the same policy for a request Panel Assistant makes over
  * its own session, which has no HTTP peer. Relaxed mode admits it as it admits a LAN request. Hardened mode

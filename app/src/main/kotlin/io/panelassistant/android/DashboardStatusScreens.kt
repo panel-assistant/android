@@ -46,6 +46,11 @@ internal class DashboardStatusScreens(
         LocalAdminEndpoint.externalUrl(localIpv4(), localIpv6(), Config(activity).httpPort, it)
     },
     private val addressReader: CoroutineDispatcher = Dispatchers.IO,
+    private val screenAwake: () -> Boolean = { true },
+    private val now: () -> Long = SystemClock::elapsedRealtime,
+    private val postWaiting: (Runnable, Long) -> Unit = { tick, delay -> main.postDelayed(tick, delay) },
+    private val cancelWaiting: (Runnable) -> Unit = { main.removeCallbacks(it) },
+    private val paintWaitingHero: (TextView, String) -> Unit = { view, text -> view.text = text },
 ) {
     interface Host {
         val activityOwner: Long
@@ -108,8 +113,8 @@ internal class DashboardStatusScreens(
     private var waitingStartedAt = 0L
     private val waitingTick = object : Runnable {
         override fun run() {
-            if (host.destroyed || !BuiltinDashboard.ownsActivity(host.activityOwner) || waitingStatus == null) return
-            val elapsed = SystemClock.elapsedRealtime() - waitingStartedAt
+            if (host.destroyed || !BuiltinDashboard.ownsActivity(host.activityOwner) || waitingStatus == null || !screenAwake()) return
+            val elapsed = now() - waitingStartedAt
             val expected = (waitingEstimateMs + 500L) / 1_000L
             waitingStatus?.text = if (waitingEstimateLearned) {
                 activity.getString(R.string.elapsed_usually, elapsed / 1_000L, expected)
@@ -118,11 +123,11 @@ internal class DashboardStatusScreens(
             }
             val snapshot = startupNetworkSnapshot()
             val notice = networkWaitNotice(snapshot, elapsed, waitingEstimateMs, waitingEstimateLearned)
-            waitingHero?.text = haLifecycleClock(notice.heroMs)
+            waitingHero?.let { paintWaitingHero(it, haLifecycleClock(notice.heroMs)) }
             waitingTrack?.show(notice.step, notice.fills)
             statusSurface?.notice?.setPill(activity.getString(NETWORK_STEPS[notice.step]))
             waitingStage?.text = localizedStartupNetworkStage(snapshot)
-            main.postDelayed(this, 1_000L)
+            postWaiting(this, 1_000L)
         }
     }
 
@@ -274,12 +279,19 @@ internal class DashboardStatusScreens(
         waitingHero = hero
         // Redrawing after a rotation must not restart the clock — the panel has been waiting exactly
         // as long as it was a moment ago, and the learned estimate is measured from this.
-        if (waitingStartedAt == 0L) waitingStartedAt = SystemClock.elapsedRealtime()
+        if (waitingStartedAt == 0L) waitingStartedAt = now()
         // Cancel before starting: a redraw used to leave the previous once-per-second chain running,
         // so every configuration change added a permanent timer until the network recovered.
-        main.removeCallbacks(waitingTick)
+        cancelWaiting(waitingTick)
         waitingTick.run()
         Log.i(TAG, "no default network at startup — waiting before creating WebView")
+    }
+
+    /** Suspend only the visible clock; network recovery and its elapsed origin keep running. */
+    fun screenChanged(awake: Boolean) {
+        if (waitingStatus == null) return
+        cancelWaiting(waitingTick)
+        if (awake) waitingTick.run()
     }
 
     /** The default network arrived: stop the wait and its once-per-second update, learn how long it took
@@ -288,11 +300,11 @@ internal class DashboardStatusScreens(
         val waitMs = (SystemClock.elapsedRealtime() - waitingStartedAt).coerceAtLeast(0L)
         if (waitingStartedAt > 0L) Config(activity).setLastNetworkWaitMs(waitMs)
         waitingStartedAt = 0L
+        if (waitingStatus != null) cancelWaiting(waitingTick)
         waitingStatus = null
         waitingStage = null
         waitingTrack = null
         waitingHero = null
-        main.removeCallbacks(waitingTick)
         return waitMs
     }
 

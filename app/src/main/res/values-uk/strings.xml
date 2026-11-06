@@ -65,7 +65,7 @@
     <string name="panel_not_set_up">Ця панель ще не налаштована.</string>
     <string name="panel_not_set_up_hint">Відскануйте код телефоном — це займе близько двох хвилин. Або натисніть %1$s, щоб зробити це на цьому екрані.</string>
     <string name="browser_engine_too_old">Браузерний рушій цієї панелі занадто застарілий.</string>
-    <string name="browser_engine_too_old_hint">Інформаційним панелям Home Assistant потрібен новіший рушій. Виправте це на сторінці налаштувань у браузері.</string>
+    <string name="browser_engine_too_old_hint">Налаштування можна завершити, але інформаційним панелям Home Assistant потрібен новіший рушій. Як його оновити, показує сторінка налаштувань у браузері.</string>
     <string name="choose_dashboard_app">Оберіть застосунок для інформаційної панелі.</string>
     <string name="continue_setup_browser">Продовжуйте на сторінці налаштування в браузері.</string>
     <string name="connected_next_ha_address">Підключено. Далі: адреса Home Assistant.</string>
@@ -120,7 +120,7 @@
     <string name="ha_transport_not_ready">З’єднання з Home Assistant ще не готове.</string>
     <string name="ha_transport_tls_trust">Сертифікат сервера не визнано надійним. Перевірте ланцюжок сертифікатів та годинник панелі.</string>
     <string name="ha_transport_tls_other">Не вдалося встановити безпечне з’єднання. Перевірте конфігурацію TLS сервера.</string>
-    <string name="ha_transport_dns">Не вдалося визначити ім’я хоста Home Assistant. Перевірте DNS і налаштовану адресу.</string>
+    <string name="ha_transport_dns">Не вдалося визначити адресу за іменем хоста Home Assistant. Перевірте DNS і налаштовану адресу.</string>
     <string name="ha_transport_timeout">Час очікування з’єднання вичерпано. Перевірте маршрутизацію, Wi-Fi, а також чи відповідає Home Assistant.</string>
     <string name="ha_transport_refused">Хост відмовив у з’єднанні. Перевірте, чи Home Assistant працює на налаштованому порту.</string>
     <string name="ha_transport_unreachable">У мережі немає маршруту до Home Assistant. Перевірте налаштування мережі та сімейства адрес панелі.</string>
@@ -202,4 +202,5 @@
     <string name="listening_on_port">Прослуховування на :%1$d</string>
     <string name="degraded_profile_startup">Погіршена робота · не вдалося запустити профіль</string>
     <string name="degraded_startup">Погіршена робота · збій під час запуску</string>
+    <string name="approval_op_local_adb">Виконати обслуговування панелі</string>
 </resources>

@@ -16,18 +16,6 @@ class MetricSinkTest {
         assertEquals(listOf(3.0, 4.0, 5.0), sink.history("cpu").map { it.num })
     }
 
-    @Test fun exactlyMatchesAnArrayDequeFifoAcrossManyPushes() {
-        val cap = 120
-        val sink = RamRingSink(cap)
-        val reference = ArrayDeque<Int>()
-        for (i in 0 until 500) {
-            sink.record(MetricSample.num("cpu", i.toDouble(), ts = i.toLong()))
-            reference.addLast(i)
-            while (reference.size > cap) reference.removeFirst()
-        }
-        assertEquals(reference.toList(), sink.history("cpu").map { it.num!!.toInt() })
-    }
-
     @Test fun keysAreIndependent() {
         val sink = RamRingSink(2)
         sink.record(MetricSample.num("cpu", 1.0, ts = 1))

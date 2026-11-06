@@ -43,6 +43,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "adb_recovery.h"
 #include "led.h"
 #include "screen.h"
 #include "input.h"
@@ -457,9 +458,25 @@ static int run_supervisor(char **argv, const char *replacement_nonce) {
     enum guard_supervisor_work executor_work = GUARD_WORK_NONE;
     long long executor_deadline_ms = 0;
     enum guard_supervisor_work pending_work = GUARD_WORK_NONE;
+    long long retirement_after_ms = 0;
     for (;;) {
         long long now = monotonic_millis();
         if (now < 0) return 1;
+        if (executor <= 1 && pending_work == GUARD_WORK_NONE && now >= retirement_after_ms &&
+            helper_app_data_absent()) {
+            // Reap before deleting custody: no socket handler may still write or restore state.
+            if (worker > 1) {
+                (void)kill(worker, SIGKILL);
+                pid_t reaped;
+                do reaped = waitpid(worker, NULL, 0); while (reaped < 0 && errno == EINTR);
+                if (reaped != worker && errno != ECHILD) return 1;
+                worker = -1;
+            }
+            if (guard_maintenance_retire_uninstalled() == 0) return 0;
+            // A reinstall, active Guard plan, lease or Companion restore retains the supervisor.
+            // Give its socket worker time to serve recovery/status between refused cleanup attempts.
+            retirement_after_ms = now + 1000;
+        }
         if (worker <= 1 && now >= worker_after_ms) {
             int may_retire_replaced = replacement_nonce == NULL &&
                 guard_maintenance_replacement_safe() == 0;
@@ -475,8 +492,7 @@ static int run_supervisor(char **argv, const char *replacement_nonce) {
                     char nonce[65];
                     if (executor > 1 || pending_work != GUARD_WORK_NONE ||
                         guard_maintenance_replacement_parent_grant(nonce) !=
-                            GUARD_REPLACEMENT_READY ||
-                        guard_maintenance_replacement_export_lease() != 0) {
+                            GUARD_REPLACEMENT_READY) {
                         /* A bare exit code is only a worker crash. A valid durable request may not
                          * preempt package work; remain fail-closed under the original lease. */
                         worker_after_ms = now + 1000;
@@ -542,7 +558,6 @@ static int run_supervisor(char **argv, const char *replacement_nonce) {
                         pending_work, start_result == -2
                             ? GUARD_EXEC_WAIT_LOST : GUARD_EXEC_NOT_STARTED, 0);
                     pending_work = next > 0 ? (enum guard_supervisor_work)next : GUARD_WORK_NONE;
-                    continue;
                 }
             }
         }
@@ -571,6 +586,14 @@ static int run_supervisor_entry(char **argv) {
 }
 
 int main(int argc, char **argv) {
+    if (argc >= 2 && strcmp(argv[1], "--reconcile-stale-replacement") == 0) {
+        int result = argc == 2 && geteuid() == 0
+            ? guard_maintenance_reconcile_stale_replacement() : -1;
+        puts(result == 1 ? "STALE_REPLACEMENT RECONCILED" :
+             result == 0 ? "STALE_REPLACEMENT NONE" : "STALE_REPLACEMENT HOLD");
+        return result < 0 ? 3 : 0;
+    }
+    if (argc == 2 && strcmp(argv[1], "--adb-recovery") == 0) return adb_recovery_main();
     if (argc == 2 && strcmp(argv[1], "--version") == 0) {
         puts(helper_identity());
         return 0;

@@ -12,6 +12,13 @@ interface RootShell {
     /** True if any su form works (a `su true` succeeds). */
     fun available(): Boolean
 
+    /**
+     * Whether root is usable as far as this process has already observed, never starting a root
+     * process. Repeated status, snapshot and capability reads use this; [available] is for an action
+     * about to run root anyway. The default keeps test/legacy fakes, which start no process, unchanged.
+     */
+    fun observedUsable(): Boolean = available()
+
     /** Run [cmd] as root, waiting for completion; true on exit 0. */
     fun run(cmd: String): Boolean
 
@@ -82,21 +89,6 @@ interface RootShell {
                 "{ [ \"\$direction\" = out ] || printf '%s' out > $dir/direction 2>/dev/null; } && " +
                 "[ \"\$(cat $dir/direction 2>/dev/null)\" = out ] && [ -w $dir/value ] && printf ready",
         )?.trim() == "ready"
-    }
-
-    /** Read-only counterpart of [prepareOutputGpio]: which of [gpios] are already exported as writable
-     * outputs. It never exports a pin, changes a direction or writes a value, and runs on the bounded
-     * lane independent of interactive hardware control. Null when the probe itself failed. */
-    fun preparedOutputGpios(gpios: Collection<Int>, timeoutMs: Long = 5_000L): Set<Int>? {
-        require(gpios.all { it in 0..4095 })
-        if (gpios.isEmpty()) return emptySet()
-        val probe = gpios.joinToString("; ", postfix = "; true") { gpio ->
-            val dir = "/sys/class/gpio/gpio$gpio"
-            "{ [ -e $dir/direction ] && [ \"\$(cat $dir/direction 2>/dev/null)\" = out ] && " +
-                "[ -w $dir/value ] && echo $gpio; }"
-        }
-        val out = runOutputIsolatedBounded(probe, maxBytes = gpios.size * 8L, timeoutMs = timeoutMs) ?: return null
-        return out.lineSequence().mapNotNull { it.trim().toIntOrNull() }.toSet()
     }
 
     private fun safeSysfsPath(path: String): Boolean =

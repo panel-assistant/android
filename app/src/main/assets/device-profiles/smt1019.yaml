@@ -1,6 +1,6 @@
 schema: 2
 id: smt1019
-version: 3.0.2
+version: 3.0.3
 display_name: ZHICAI SMT1019
 soc_class: rk3576
 soc:
@@ -64,8 +64,8 @@ sensors:
   # Same GXHT30 part and the same vendor evdev layout as the ZX-SMT156, which already ships this route:
   # `sun-ths` / `sun-hum` are in the helper's exact climate allowlist and are point-read via EVIOCGABS.
   # It was false only because this profile was written from a no-root unit without a privileged read
-  # route; that route is a verified root helper or an approved Shizuku shell, not a hardware property.
-  # Without either authority the read returns nothing and the default-enabled Room entities publish no
+  # route; that route is the verified root helper, not a hardware property.
+  # Without that authority the read returns nothing and the default-enabled Room entities publish no
   # value, exactly as on ZX-SMT156 with the same `su_form: none` / `app_can_su: false` posture.
   cht8305: true
   # Evisionics VI530x time-of-flight sensor on i2c 4-006c. The helper starts it and reads the range;

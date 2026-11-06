@@ -278,6 +278,49 @@ class AcceptedRestoreTransactionTest {
         }
     }
 
+    @Test fun aRestoredCalibrationIsSavedAndTakenUpBeforeTheConfigurationCommits() = runBlocking {
+        // Android kills the app when an app-op changes; on 2026-11-03 that landed 7 s into a restore on the
+        // bench X2i, after its configuration was durable, and the calibration the backup carried was lost.
+        PaneldServerHttpFixture().use { fixture ->
+            fixture.config.setRaw(requireNotNull(SettingsRegistry.spec("friendly_name")), "Restore contract panel")
+            val snapshot = ProximityCalibrationRuntime.encode(
+                ProximityCalibrationEngine.Calibration(mode = ProximityCalibrationEngine.Mode.RANGED, clearRaw = 120f, nearRaw = 900f),
+            )
+            val saved = EntityCatalogStore.ProximityModelRow(
+                "a".repeat(64), ProximityCalibrationRuntime.STORAGE_VERSION, "explicit-calibration-v2", snapshot, true, 1000L,
+            )
+            val manifest = JSONObject("{" + ProximityCalibrationBackup.manifestFragment(listOf(saved)).removePrefix(",") + "}")
+            val database = File(fixture.directory, "calibrations.db")
+            var reloads = 0
+            var atCommit: Pair<List<EntityCatalogStore.ProximityModelRow>, Int>? = null
+            val executor = restoreExecutor(
+                fixture, capabilities = { Capabilities() }, persist = { true },
+                calibrations = SqliteCalibrations(database),
+                onDurableStateRestored = { reloads++ },
+                // Runs once the configuration is durable and before anything the restore does after it:
+                // what a process killed at the commit has kept.
+                onReconfigure = { if (atCommit == null) atCommit = SqliteCalibrations(database).export() to reloads },
+            )
+            val ticket = requireNotNull(InstallProgress.start("restore"))
+            try {
+                executor.execute(
+                    RestoreConfigPlan(mapOf("panel_id" to "restored", "dashboard_zoom" to "120"), emptyList(), emptyList()),
+                    null, null, null, null, emptyList(), false,
+                    emptyList(), null, ticket,
+                    restorableCalibrations = ProximityCalibrationBackup.restorable(manifest, samePanel = true),
+                )
+                val result = JSONObject(InstallProgress.json()).getJSONObject("result")
+                assertEquals(result.toString(), "restored", fixture.config.panelId)
+                assertEquals(listOf(saved) to 1, atCommit)
+                assertEquals(1, reloads)
+                assertEquals(result.toString(), "succeeded", result.getString("status"))
+                assertEquals(1, result.getJSONObject("state").getInt("items"))
+            } finally {
+                InstallProgress.finish(ticket, "test cleanup")
+            }
+        }
+    }
+
     // JVM SQLite custody uses the production table schema and missing-only contract. Android's
     // CatalogProximityCalibrationCustody adapter is reviewed statically, not executed here.
     private class SqliteCalibrations(private val database: File) : ProximityCalibrationCustody {
@@ -379,6 +422,135 @@ class AcceptedRestoreTransactionTest {
             } finally {
                 InstallProgress.finish(ticket, "test cleanup")
             }
+        }
+    }
+
+    @Test fun aRestoreCutShortByTheEndOfTheProcessIsReportedAtEveryStartUntilAnotherOperationRuns() = runBlocking {
+        // Android ends the app whenever one of its app-ops changes; on the bench X2i (2026-11-05) that cut a
+        // restore at its first saved configuration, and the next process reported nothing at all.
+        for (configSaved in listOf(true, false)) PaneldServerHttpFixture().use { fixture ->
+            val config = fixture.config
+            config.setRaw(requireNotNull(SettingsRegistry.spec("friendly_name")), "Restore contract panel")
+            val reached = java.util.concurrent.CountDownLatch(1)
+            val processEnds = java.util.concurrent.CountDownLatch(1)
+            fun cutHere() { reached.countDown(); processEnds.await() }
+            val executor = restoreExecutor(
+                fixture, capabilities = { Capabilities(networkAdb = true) }, persist = { true },
+                onReconfigure = { if (configSaved) cutHere() },
+                calibrations = object : ProximityCalibrationCustody {
+                    override fun export() = emptyList<EntityCatalogStore.ProximityModelRow>()
+                    override fun restore(rows: List<EntityCatalogStore.ProximityModelRow>): Int {
+                        if (!configSaved) cutHere()
+                        return 0
+                    }
+                },
+            )
+            val ticket = requireNotNull(InstallProgress.start("Restore"))
+            val restore = Thread {
+                runBlocking {
+                    executor.execute(
+                        RestoreConfigPlan(mapOf("panel_id" to "restored-panel"), emptyList(), emptyList()),
+                        null, null, null, null, emptyList(), false,
+                        emptyList(), null, ticket,
+                        restorableCalibrations = listOf(
+                            EntityCatalogStore.ProximityModelRow("a".repeat(64), 1, "explicit", "{}", true, 1L),
+                        ),
+                    )
+                }
+            }.apply { start() }
+            try {
+                assertTrue(reached.await(10, java.util.concurrent.TimeUnit.SECONDS))
+                // The process ends here, and its lane and in-memory result end with it.
+                InstallProgress.finish(ticket, "process ended")
+                fun nextStart() = io.panelassistant.android.ServiceComponentOperations(
+                    fixture.context, kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined),
+                    { config }, { error("No core") }, { error("No profile") },
+                ).run { attachSoftwareUpdateObservers(); detachSoftwareUpdateObservers() }
+                for (start in 1..2) {
+                    nextStart()
+                    val status = JSONObject(InstallProgress.json())
+                    assertFalse(status.getBoolean("running"))
+                    assertEquals("Restore", status.getString("component"))
+                    assertTrue("no result reported: $status", status.has("result"))
+                    val result = status.getJSONObject("result")
+                    assertTrue(status.toString(), result.optBoolean("interrupted"))
+                    assertEquals(if (configSaved) "partial" else "failed", result.getString("status"))
+                    assertEquals(
+                        if (configSaved) "restore-partial" else "restore-failed",
+                        status.getJSONObject("presentation").getString("code"),
+                    )
+                }
+                // The owner's next operation supersedes the report, and later starts no longer make it.
+                val next = requireNotNull(InstallProgress.start("WebView"))
+                InstallProgress.finish(next, "done")
+                nextStart()
+                val status = JSONObject(InstallProgress.json())
+                assertEquals("WebView", status.getString("component"))
+                assertFalse(status.toString(), status.has("result"))
+            } finally {
+                processEnds.countDown()
+                restore.join(10_000)
+            }
+        }
+    }
+
+    @Test fun aRestoreThatFinishedIsNotReportedAsInterruptedAtTheNextStart() = runBlocking {
+        PaneldServerHttpFixture().use { fixture ->
+            fixture.config.setRaw(requireNotNull(SettingsRegistry.spec("friendly_name")), "Restore contract panel")
+            val executor = restoreExecutor(
+                fixture, capabilities = { Capabilities(networkAdb = true) }, persist = { true }, onReconfigure = {},
+            )
+            val ticket = requireNotNull(InstallProgress.start("Restore"))
+            executor.execute(
+                RestoreConfigPlan(mapOf("ha_url" to "http://b.test:8123"), emptyList(), emptyList()),
+                null, null, null, null, emptyList(), false,
+                emptyList(), null, ticket,
+            )
+            assertEquals("succeeded", JSONObject(InstallProgress.json()).getJSONObject("result").getString("status"))
+            // The process ends after the result was recorded; the next start must not report a cut.
+            io.panelassistant.android.ServiceComponentOperations(
+                fixture.context, kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined),
+                { fixture.config }, { error("No core") }, { error("No profile") },
+            ).run { attachSoftwareUpdateObservers(); detachSoftwareUpdateObservers() }
+            val result = JSONObject(InstallProgress.json()).getJSONObject("result")
+            assertFalse(result.toString(), result.optBoolean("interrupted"))
+            assertEquals("succeeded", result.getString("status"))
+        }
+    }
+
+    @Test fun aRestoreAdmittedTheMomentTheLastOneFinishesKeepsItsOwnNote() = runBlocking {
+        PaneldServerHttpFixture().use { fixture ->
+            fixture.config.setRaw(requireNotNull(SettingsRegistry.spec("friendly_name")), "Restore contract panel")
+            val executor = restoreExecutor(
+                fixture, capabilities = { Capabilities(networkAdb = true) }, persist = { true }, onReconfigure = {},
+            )
+            // The next restore takes the lane as soon as the first releases it, and has begun its own
+            // writes when the process ends.
+            var next: InstallProgress.Ticket? = null
+            InstallProgress.observer = {
+                if (next == null && !InstallProgress.running && InstallProgress.component == "Restore") {
+                    next = InstallProgress.start("Restore")
+                    RestoreJournal { fixture.directory }.begin()
+                }
+            }
+            try {
+                val ticket = requireNotNull(InstallProgress.start("Restore"))
+                executor.execute(
+                    RestoreConfigPlan(mapOf("ha_url" to "http://b.test:8123"), emptyList(), emptyList()),
+                    null, null, null, null, emptyList(), false,
+                    emptyList(), null, ticket,
+                )
+            } finally {
+                InstallProgress.observer = null
+            }
+            InstallProgress.finish(requireNotNull(next), "process ended")
+            io.panelassistant.android.ServiceComponentOperations(
+                fixture.context, kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined),
+                { fixture.config }, { error("No core") }, { error("No profile") },
+            ).run { attachSoftwareUpdateObservers(); detachSoftwareUpdateObservers() }
+            val status = JSONObject(InstallProgress.json())
+            assertTrue("the second restore's cut is not reported: $status", status.optJSONObject("result")?.optBoolean("interrupted") == true)
+            InstallProgress.finish(requireNotNull(InstallProgress.start("cleanup")), "done")
         }
     }
 

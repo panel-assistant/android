@@ -4,7 +4,9 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import vm from 'node:vm';
-import { i18nHelper, installTransport } from './fixtures/i18n-bridge.mjs';
+import { chromium } from 'playwright-core';
+import { browserTest, chrome, json, startHarness } from './fixtures/browser-harness.mjs';
+import { i18nBridge, i18nHelper, installTransport } from './fixtures/i18n-bridge.mjs';
 
 const defaultAsset = fileURLToPath(new URL('../../app/src/main/assets/switcher.js', import.meta.url));
 const switcherAsset = process.argv[2] ? resolve(process.argv[2]) : defaultAsset;
@@ -60,13 +62,12 @@ async function loadSwitcher({ translate, peers: suppliedPeers } = {}) {
       return node;
     },
   };
-  const calls = [];
   const window = {
     document,
     location: { pathname: '/configure', search: '?lang=zh-Hans', hash: '#network', href: '' },
     addEventListener() {},
   };
-  window.HaI18n = i18nHelper({ strings: translate === undefined ? {} : { 'shell.panel_switcher.title': translate } }, calls);
+  window.HaI18n = i18nHelper({ strings: translate === undefined ? {} : { 'shell.panel_switcher.title': translate } });
   const peers = suppliedPeers || [
     { panel_id: 'beta', name: 'Beta panel', ip: '192.168.1.20', port: 8080 },
     { panel_id: 'alpha', name: 'Alpha panel', ip: '192.168.1.10', port: 8080, self: true },
@@ -86,13 +87,12 @@ async function loadSwitcher({ translate, peers: suppliedPeers } = {}) {
   vm.runInContext(source, context);
   await new Promise((done) => setImmediate(done));
   await new Promise((done) => setImmediate(done));
-  return { calls, created, host, select: created.find((node) => node.tagName === 'SELECT'), source, window };
+  return { select: created.find((node) => node.tagName === 'SELECT'), window };
 }
 
 test('panel switcher resolves its title through the shared catalogue helper', async () => {
   const rig = await loadSwitcher({ translate: '切换到另一个 ha-paneld 面板（保留当前视图）' });
 
-  assert.deepEqual(rig.calls, [{ key: 'shell.panel_switcher.title', fallback: ENGLISH_TITLE }]);
   assert.equal(rig.select.title, '切换到另一个 ha-paneld 面板（保留当前视图）');
   assert.deepEqual(rig.select.options.map((option) => option.textContent), ['Alpha panel', 'Beta panel']);
   assert.deepEqual(rig.select.options.map((option) => option.value), ['', 'beta']);
@@ -109,18 +109,22 @@ test('panel switcher retains the exact English title when untranslated', async (
   assert.equal(rig.select.title, ENGLISH_TITLE);
 });
 
-test('untrusted translated title and peer names remain inert text', async () => {
+browserTest('untrusted translated title and peer names remain inert text in the browser', async t => {
   const payload = '<img src=x onerror="globalThis.peerExecuted=true">';
-  const rig = await loadSwitcher({
-    translate: payload,
-    peers: [
-      { panel_id: 'beta', name: payload, ip: '192.168.1.20', port: 8080 },
-      { panel_id: 'alpha', name: 'Alpha panel', ip: '192.168.1.10', port: 8080, self: true },
-    ],
-  });
-
-  assert.equal(rig.select.title, payload);
-  assert.deepEqual(rig.select.options.map((option) => option.textContent), [payload, 'Alpha panel']);
-  assert.deepEqual(rig.created.map((node) => node.tagName), ['SELECT', 'OPTION', 'OPTION', 'SPAN']);
-  assert.doesNotMatch(rig.source, /\.innerHTML\s*=/);
+  const peers = [
+    { panel_id: 'beta', name: payload, ip: '192.168.1.20', port: 8080 },
+    { panel_id: 'alpha', name: 'Alpha panel', ip: '192.168.1.10', port: 8080, self: true },
+  ];
+  const harness = await startHarness(path => path === '/api/v1/peers' ? json(peers) : undefined,
+    () => `<!doctype html><html><head>${i18nBridge({ strings: { 'shell.panel_switcher.title': payload } })}</head><body><small id="pswitch" data-self-id="alpha" data-self-name="Alpha panel"></small><script src="/assets/switcher.js"></script></body></html>`);
+  let browser;
+  t.after(async () => { await browser?.close(); harness.server.closeAllConnections?.(); await new Promise(done => harness.server.close(done)); });
+  browser = await chromium.launch({ executablePath: chrome, headless: true });
+  const page = await browser.newPage();
+  await page.goto(harness.url);
+  await page.locator('#pswitch select').waitFor();
+  assert.equal(await page.locator('#pswitch select').getAttribute('title'), payload);
+  assert.deepEqual(await page.locator('#pswitch option').allTextContents(), [payload, 'Alpha panel']);
+  assert.equal(await page.locator('#pswitch img').count(), 0);
+  assert.equal(await page.evaluate(() => globalThis.peerExecuted), undefined);
 });

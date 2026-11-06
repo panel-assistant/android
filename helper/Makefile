@@ -24,14 +24,16 @@ BUILD   := build
 # the unit tests, so coverage can never silently drop a module. main.c (accept loop) and sysexec.c
 # (real exec/pipe/thread/reboot) are deliberately NOT here: the fuzz and test builds swap in a stub
 # sysexec and never run main, so a valid REBOOT/RELOAD/WATCH/GPIOWATCH can't exec or spawn on the build host.
-CORE_SRCS := $(addprefix $(SRC_DIR)/, identity.c util.c sha256.c led.c screen.c input.c gpio.c sysctl.c perf.c cht8305.c vi530x.c version.c companion.c guard_maintenance.c logcat.c server.c dispatch.c)
+# The dispatch-only ENSURE fixture and socket/fuzz fixtures additionally wrap its publisher; the
+# real replacement driver separately exercises publication and detached recovery processes.
+CORE_SRCS := $(addprefix $(SRC_DIR)/, identity.c adb_recovery.c util.c sha256.c led.c screen.c input.c gpio.c sysctl.c zigbee.c wifi.c adb_state.c sysfs_read.c perf.c cht8305.c vi530x.c version.c companion.c guard_maintenance.c guard_replacement.c logcat.c server.c dispatch.c)
 DAEMON_SRCS := $(CORE_SRCS) $(SRC_DIR)/main.c $(SRC_DIR)/sysexec.c
 STUB := test/sysexec_stub.c
 TEST_BUILD_ID := aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 REPLACEMENT_OLD_BUILD_ID := eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
 REPLACEMENT_NEW_BUILD_ID := dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 
-.PHONY: all daemon test test-units peer-auth-test request-timeout-test replacement-identity-test cdprelay-resource-test socket-test-server fuzz contract clean print-core
+.PHONY: actuator-exec-test adb-recovery-test all daemon test test-units peer-auth-test request-timeout-test replacement-identity-test cdprelay-resource-test socket-test-server fuzz contract clean print-core
 all: daemon
 
 # Host build of the real daemon — a compile sanity check (-Werror); the shipped binary is build.sh.
@@ -42,15 +44,20 @@ $(BUILD)/hapaneld-helper: $(DAEMON_SRCS) | $(BUILD)
 # Unit tests: CORE modules + the sysexec stub (no real exec) + the test driver. `test` runs the three
 # groups one after another, even under -j; CI runs each group as its own job because the two installer
 # scripts spend most of their time waiting on the installer's retry intervals.
-TEST_BINS := $(BUILD)/unit $(BUILD)/hapaneld-helper $(BUILD)/companion-boundary $(BUILD)/guard-maintenance-boundary $(BUILD)/guard-maintenance-gates $(BUILD)/replacement-lease-old $(BUILD)/replacement-lease-new $(BUILD)/sysexec-fd-boundary $(BUILD)/sysexec-platform-wrapper $(BUILD)/peer-auth $(BUILD)/request-timeout $(BUILD)/bounded-exec $(BUILD)/hapaneld-helper-old $(BUILD)/hapaneld-helper-new $(BUILD)/cdprelay-resource-test $(BUILD)/cdprelay-test $(BUILD)/logcat-fixture $(BUILD)/logcat-boundary
+TEST_BINS := $(BUILD)/actuator-exec $(BUILD)/adb-recovery $(BUILD)/uninstall-supervisor $(BUILD)/unit $(BUILD)/hapaneld-helper $(BUILD)/companion-boundary $(BUILD)/guard-maintenance-boundary $(BUILD)/guard-maintenance-gates $(BUILD)/replacement-lease-old $(BUILD)/replacement-lease-new $(BUILD)/sysexec-fd-boundary $(BUILD)/sysexec-platform-wrapper $(BUILD)/peer-auth $(BUILD)/request-timeout $(BUILD)/bounded-exec $(BUILD)/hapaneld-helper-old $(BUILD)/hapaneld-helper-new $(BUILD)/cdprelay-resource-test $(BUILD)/cdprelay-test $(BUILD)/logcat-fixture $(BUILD)/logcat-boundary
 test:
 	$(MAKE) test-units
 
-test-units: $(TEST_BINS)
+test-units: $(BUILD)/stale-replacement-cli $(BUILD)/adb-ensure-boundary $(BUILD)/gfxinfo-boundary $(BUILD)/gfxinfo-exec $(BUILD)/cdp-state-boundary $(BUILD)/sysfs-read-boundary $(BUILD)/adb-state-boundary $(BUILD)/adb-exec $(BUILD)/wifi-boundary $(BUILD)/wifi-exec $(BUILD)/zigbee-boundary $(BUILD)/zigbee-role-exec $(TEST_BINS)
+	$(MAKE) adb-recovery-retirement-test
+	$(MAKE) adb-recovery-replacement-test
+	$(BUILD)/adb-recovery
+	$(BUILD)/uninstall-supervisor
 	$(BUILD)/unit
-	test "$$($(BUILD)/hapaneld-helper --version)" = "HELPER version=1.3.1 proto=1.3"
+	test "$$($(BUILD)/hapaneld-helper --version)" = "HELPER version=1.15.0 proto=1.15"
 	$(BUILD)/companion-boundary
 	$(BUILD)/guard-maintenance-boundary
+	$(BUILD)/stale-replacement-cli
 	$(BUILD)/guard-maintenance-gates
 	$(BUILD)/replacement-lease-old $(BUILD)/replacement-lease-old $(BUILD)/replacement-lease-new
 	$(BUILD)/sysexec-fd-boundary
@@ -58,14 +65,27 @@ test-units: $(TEST_BINS)
 	$(BUILD)/peer-auth
 	$(BUILD)/request-timeout
 	$(BUILD)/bounded-exec
+	$(BUILD)/actuator-exec
+	$(BUILD)/adb-ensure-boundary
+	$(BUILD)/gfxinfo-boundary
+	$(BUILD)/gfxinfo-exec
+	$(BUILD)/cdp-state-boundary
+	$(BUILD)/sysfs-read-boundary
+	$(BUILD)/adb-state-boundary
+	$(BUILD)/adb-exec
+	$(BUILD)/wifi-boundary
+	$(BUILD)/wifi-exec
+	$(BUILD)/zigbee-boundary
+	$(BUILD)/zigbee-role-exec
 	$(BUILD)/logcat-boundary
 	bash ./test/replacement_identity_test.sh $(BUILD)/hapaneld-helper-old $(BUILD)/hapaneld-helper-new
 	$(BUILD)/cdprelay-resource-test $(BUILD)/cdprelay-test
 
+# --wrap=read also injects short reads and errors for fixed governor nodes.
 # --wrap=open/ioctl lets tests provide a fake evdev node and capture requested exclusive grabs while
 # preserving the existing ledjni ioctl assertions; --wrap=write forces deterministic stream edge cases.
 $(BUILD)/unit: $(CORE_SRCS) $(STUB) test/unit.c | $(BUILD)
-	$(CC) $(CFLAGS) -DHAPANELD_TEST -I$(SRC_DIR) $(CORE_SRCS) $(STUB) test/unit.c $(LDLIBS) -Wl,--wrap=open -Wl,--wrap=ioctl -Wl,--wrap=write -o $@
+	$(CC) $(CFLAGS) -DHAPANELD_TEST -I$(SRC_DIR) $(CORE_SRCS) $(STUB) test/unit.c $(LDLIBS) -Wl,--wrap=open -Wl,--wrap=ioctl -Wl,--wrap=write -Wl,--wrap=read -Wl,--wrap=__read_chk -o $@
 
 $(BUILD)/companion-boundary: $(CORE_SRCS) $(STUB) test/companion_boundary.c | $(BUILD)
 	$(CC) $(CFLAGS) -DHAPANELD_TEST -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) \
@@ -74,6 +94,14 @@ $(BUILD)/companion-boundary: $(CORE_SRCS) $(STUB) test/companion_boundary.c | $(
 $(BUILD)/guard-maintenance-boundary: $(CORE_SRCS) $(STUB) test/guard_boundary_harness.h test/guard_maintenance_boundary.c | $(BUILD)
 	$(CC) $(CFLAGS) -DHAPANELD_TEST -DHAPANELD_TEST_SKIP_SELF_BINDING -DHAPANELD_BUILD_ID='"$(TEST_BUILD_ID)"' -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) \
 		test/guard_maintenance_boundary.c $(LDLIBS) -o $@
+
+$(BUILD)/stale-replacement-boundary: $(CORE_SRCS) $(STUB) test/guard_boundary_harness.h test/guard_maintenance_boundary.c | $(BUILD)
+	$(CC) $(CFLAGS) -DHAPANELD_TEST -DHAPANELD_TEST_SKIP_SELF_BINDING -DHAPANELD_TEST_STALE_ONLY -DHAPANELD_BUILD_ID='"$(TEST_BUILD_ID)"' -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) \
+		test/guard_maintenance_boundary.c $(LDLIBS) -o $@
+
+$(BUILD)/stale-replacement-cli: $(CORE_SRCS) $(STUB) $(SRC_DIR)/main.c test/guard_boundary_harness.h test/stale_replacement_cli.c | $(BUILD)
+	$(CC) $(CFLAGS) -DHAPANELD_TEST -DHAPANELD_BUILD_ID='"$(TEST_BUILD_ID)"' -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) \
+		test/stale_replacement_cli.c $(LDLIBS) -o $@
 
 $(BUILD)/guard-maintenance-gates: $(CORE_SRCS) $(STUB) test/guard_boundary_harness.h test/guard_maintenance_gates.c | $(BUILD)
 	$(CC) $(CFLAGS) -DHAPANELD_TEST -DHAPANELD_TEST_SKIP_SELF_BINDING -DHAPANELD_BUILD_ID='"$(TEST_BUILD_ID)"' -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) \
@@ -98,7 +126,7 @@ $(BUILD)/sysexec-platform-wrapper: $(SRC_DIR)/sysexec.c test/sysexec_platform_wr
 peer-auth-test: $(BUILD)/peer-auth
 	$(BUILD)/peer-auth
 $(BUILD)/peer-auth: test/peer_auth.c $(SRC_DIR)/main.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c $(SRC_DIR)/identity.c | $(BUILD)
-	$(CC) $(CFLAGS) -I$(SRC_DIR) test/peer_auth.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c $(SRC_DIR)/identity.c $(LDLIBS) -o $@
+	$(CC) $(CFLAGS) -I$(SRC_DIR) test/peer_auth.c $(SRC_DIR)/adb_recovery.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c $(SRC_DIR)/identity.c $(LDLIBS) -o $@
 
 request-timeout-test: $(BUILD)/request-timeout
 	$(BUILD)/request-timeout
@@ -109,12 +137,18 @@ bounded-exec-test: $(BUILD)/bounded-exec
 	$(BUILD)/bounded-exec
 $(BUILD)/bounded-exec: test/bounded_exec.c $(SRC_DIR)/sysexec.c | $(BUILD)
 	$(CC) $(CFLAGS) -I$(SRC_DIR) test/bounded_exec.c $(SRC_DIR)/sysexec.c $(LDLIBS) -o $@
+# Real dispatcher + real bounded exec; only Android executable paths are remapped in the fixture.
+actuator-exec-test: $(BUILD)/actuator-exec
+	$(BUILD)/actuator-exec
+$(BUILD)/actuator-exec: $(CORE_SRCS) $(SRC_DIR)/sysexec.c test/actuator_exec.c | $(BUILD)
+	$(CC) $(CFLAGS) -DHAPANELD_TEST -DHAPANELD_FRAMEWORK_TIMEOUT_MS=200U -DHAPANELD_INSTALL_TIMEOUT_MS=900U -I$(SRC_DIR) -Itest $(CORE_SRCS) $(SRC_DIR)/sysexec.c test/actuator_exec.c $(LDLIBS) -Wl,--wrap=execve -o $@
+
 $(BUILD)/logcat-fixture: test/logcat_fixture.c | $(BUILD)
 	$(CC) $(CFLAGS) test/logcat_fixture.c -o $@
 $(BUILD)/logcat-boundary: $(CORE_SRCS) $(SRC_DIR)/sysexec.c test/logcat_boundary.c $(BUILD)/logcat-fixture | $(BUILD)
-	$(CC) $(CFLAGS) -DHAPANELD_LOGCAT_PATH='"$(abspath $(BUILD)/logcat-fixture)"' -I$(SRC_DIR) $(CORE_SRCS) $(SRC_DIR)/sysexec.c test/logcat_boundary.c $(LDLIBS) -o $@
+	$(CC) $(CFLAGS) -DHAPANELD_LOGCAT_PATH='"$(abspath $(BUILD)/logcat-fixture)"' -DLOGCAT_DUMP_DEADLINE_MS=500u -I$(SRC_DIR) $(CORE_SRCS) $(SRC_DIR)/sysexec.c test/logcat_boundary.c $(LDLIBS) -o $@
 $(BUILD)/request-timeout: test/request_timeout.c $(SRC_DIR)/main.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c $(SRC_DIR)/identity.c | $(BUILD)
-	$(CC) $(CFLAGS) -I$(SRC_DIR) test/request_timeout.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c $(SRC_DIR)/identity.c $(LDLIBS) -o $@
+	$(CC) $(CFLAGS) -I$(SRC_DIR) test/request_timeout.c $(SRC_DIR)/adb_recovery.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c $(SRC_DIR)/identity.c $(LDLIBS) -o $@
 
 # Start two real daemon binaries on an isolated socket. Their names intentionally share the exact
 # 15-byte Linux comm value used on panels while their executable inodes and BUILDIDs differ.
@@ -144,8 +178,8 @@ $(BUILD)/cdprelay-test: cdprelay.c | $(BUILD)
 
 # Real UNIX-socket composition fixture: production server/dispatch core with the no-exec host stub.
 socket-test-server: $(BUILD)/socket-test-server
-$(BUILD)/socket-test-server: $(CORE_SRCS) $(STUB) test/socket_server.c | $(BUILD)
-	$(CC) $(CFLAGS) -DHAPANELD_TEST -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/socket_server.c $(LDLIBS) -o $@
+$(BUILD)/socket-test-server: $(CORE_SRCS) $(STUB) test/socket_server.c $(SRC_DIR)/commands.def test/zigbee_paths.h | $(BUILD)
+	$(CC) $(CFLAGS) -DHAPANELD_TEST -DCDP_PROC_ROOT='"$(abspath $(BUILD)/cdp-state-socket-fixture)"' -DSYSFS_READ_CLASS_ROOT='"$(abspath $(BUILD)/sysfs-read-socket-fixture)"' -DZIGBEE_TEST_ROOT='"$(abspath $(BUILD)/zigbee-socket-fixture)"' -include test/zigbee_paths.h -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/socket_server.c $(LDLIBS) -Wl,--wrap=open -Wl,--wrap=adb_recovery_ensure -o $@
 
 # App<->daemon verb-contract cross-check: every verb the app sends must exist in commands.def.
 contract:
@@ -164,3 +198,80 @@ $(BUILD):
 
 clean:
 	rm -rf $(BUILD) fuzz/build
+
+$(BUILD)/uninstall-supervisor: $(CORE_SRCS) $(SRC_DIR)/main.c $(SRC_DIR)/sysexec.c test/uninstall_supervisor.c | $(BUILD)
+	$(CC) $(CFLAGS) -DHAPANELD_TEST -DSOCK_NAME='"hapaneld-helper-uninstall-test"' \
+		-DAPP_DATA='"/tmp/.hapaneld-uninstall-data-test"' -DAPP_USER_DATA='"/tmp/.hapaneld-uninstall-user-test"' \
+		-I$(SRC_DIR) $(CORE_SRCS) $(SRC_DIR)/sysexec.c test/uninstall_supervisor.c $(LDLIBS) -Wl,--wrap=unlinkat -Wl,--wrap=lstat -o $@
+
+$(BUILD)/adb-recovery: test/adb_recovery.c test/adb_recovery_paths.h $(SRC_DIR)/adb_recovery.c $(SRC_DIR)/identity.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c | $(BUILD)
+	$(CC) $(CFLAGS) -include test/adb_recovery_paths.h -DHAPANELD_BUILD_ID='"$(TEST_BUILD_ID)"' -I$(SRC_DIR) test/adb_recovery.c $(SRC_DIR)/identity.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c $(LDLIBS) -o $@
+adb-recovery-test: $(BUILD)/adb-recovery
+	$(BUILD)/adb-recovery
+
+# Process/filesystem proof through the production command-line entry.
+.PHONY: adb-recovery-retirement-test
+adb-recovery-retirement-test: $(BUILD)/adb-recovery-retirement
+	$(BUILD)/adb-recovery-retirement
+$(BUILD)/adb-recovery-retirement: test/adb_recovery_retirement.py | $(BUILD)
+	cp $< $@
+	chmod +x $@
+
+# Runtime stale-build replacement through the shipped daemon entry.
+.PHONY: adb-recovery-replacement-test
+adb-recovery-replacement-test: $(BUILD)/adb-recovery-replacement
+	$(BUILD)/adb-recovery-replacement
+$(BUILD)/adb-recovery-replacement: test/adb_recovery_replacement.py test/adb_recovery_replacement_cuts.c | $(BUILD)
+	cp $< $@
+	chmod +x $@
+
+# Small selections of the same real ordinary-dispatch/recovery driver for fault qualification.
+ENSURE_CASES_fresh := fresh
+ENSURE_CASES_bound := source-bound
+ENSURE_CASES_faults := unsafe-target,publication-faults
+ENSURE_CASES_reaper := reaper-failure
+ENSURE_CASES_status := readiness-faults
+ENSURE_CASES_contender := superseded
+ENSURE_CASES_drain := timeout-retry
+ENSURE_CASES_receipt := receipt-sync-fails
+$(BUILD)/adb-ensure-%: $(BUILD)/adb-recovery-replacement Makefile
+	test -n '$(ENSURE_CASES_$*)'
+	printf '%s\n' '#!/bin/sh' 'RECOVERY_REPLACEMENT_LEGS=ensure RECOVERY_REPLACEMENT_CASES=$(ENSURE_CASES_$*) exec "$$(dirname "$$0")/adb-recovery-replacement"' > $@
+	chmod +x $@
+
+# Real dispatch fixture; path substitution is compile-time and absent from shipped builds.
+$(BUILD)/zigbee-boundary: $(CORE_SRCS) $(STUB) test/zigbee_boundary.c test/zigbee_paths.h | $(BUILD)
+	$(CC) $(CFLAGS) -DHAPANELD_TEST -DZIGBEE_TEST_ROOT='"$(abspath $(BUILD)/zigbee-fixture)"' -include test/zigbee_paths.h -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/zigbee_boundary.c $(LDLIBS) -o $@
+
+$(BUILD)/zigbee-role-exec: $(SRC_DIR)/sysexec.c test/zigbee_role_exec.c | $(BUILD)
+	$(CC) $(CFLAGS) -I$(SRC_DIR) test/zigbee_role_exec.c $(SRC_DIR)/sysexec.c $(LDLIBS) -Wl,--wrap=execve -o $@
+
+$(BUILD)/wifi-boundary: $(CORE_SRCS) $(STUB) test/wifi_boundary.c | $(BUILD)
+	$(CC) $(CFLAGS) -DHAPANELD_TEST -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/wifi_boundary.c $(LDLIBS) -Wl,--wrap=sysexec_capture_wifi_status -o $@
+
+$(BUILD)/wifi-exec: $(SRC_DIR)/sysexec.c test/wifi_exec.c | $(BUILD)
+	$(CC) $(CFLAGS) -I$(SRC_DIR) test/wifi_exec.c $(SRC_DIR)/sysexec.c $(LDLIBS) -Wl,--wrap=execve -o $@
+
+$(BUILD)/adb-state-boundary: $(CORE_SRCS) $(STUB) test/adb_state_boundary.c | $(BUILD)
+	$(CC) $(CFLAGS) -DHAPANELD_TEST -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/adb_state_boundary.c $(LDLIBS) -Wl,--wrap=sysexec_capture_adb_properties -Wl,--wrap=open -Wl,--wrap=read -Wl,--wrap=__read_chk -o $@
+
+$(BUILD)/adb-exec: $(SRC_DIR)/sysexec.c test/adb_exec.c | $(BUILD)
+	$(CC) $(CFLAGS) -I$(SRC_DIR) test/adb_exec.c $(SRC_DIR)/sysexec.c $(LDLIBS) -Wl,--wrap=execve -o $@
+
+# Fixed sysfs paths are substituted only for dispatch fixtures; production remains /sys/class.
+$(BUILD)/sysfs-read-boundary: $(CORE_SRCS) $(STUB) test/sysfs_read_boundary.c | $(BUILD)
+	$(CC) $(CFLAGS) -DHAPANELD_TEST -DSYSFS_READ_CLASS_ROOT='"$(abspath $(BUILD)/sysfs-read-fixture)"' -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/sysfs_read_boundary.c $(LDLIBS) -Wl,--wrap=readdir -Wl,--wrap=read -Wl,--wrap=__read_chk -Wl,--wrap=faccessat -Wl,--wrap=openat -Wl,--wrap=open -o $@
+
+$(BUILD)/cdp-state-boundary: $(CORE_SRCS) $(STUB) test/cdp_state_boundary.c | $(BUILD)
+	$(CC) $(CFLAGS) -DHAPANELD_TEST -DCDP_PROC_ROOT='"$(abspath $(BUILD)/cdp-state-fixture)"' -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/cdp_state_boundary.c $(LDLIBS) -Wl,--wrap=open -Wl,--wrap=openat -Wl,--wrap=read -Wl,--wrap=__read_chk -Wl,--wrap=readdir -Wl,--wrap=fstatat -o $@
+
+# GFXINFO dispatch uses a counted capture seam; execution tests retain the real supervised child.
+$(BUILD)/gfxinfo-boundary: $(CORE_SRCS) $(STUB) test/gfxinfo_boundary.c | $(BUILD)
+	$(CC) $(CFLAGS) -DHAPANELD_TEST -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/gfxinfo_boundary.c $(LDLIBS) -Wl,--wrap=sysexec_capture_gfxinfo -o $@
+
+$(BUILD)/gfxinfo-exec: $(SRC_DIR)/sysexec.c test/gfxinfo_exec.c | $(BUILD)
+	$(CC) $(CFLAGS) -I$(SRC_DIR) test/gfxinfo_exec.c $(SRC_DIR)/sysexec.c $(LDLIBS) -Wl,--wrap=execve -o $@
+
+# Ordinary fixed ENSURE wire/argument boundary; the real driver qualifies publication/custody.
+$(BUILD)/adb-ensure-boundary: $(CORE_SRCS) test/adb_ensure_boundary.c | $(BUILD)
+	$(CC) $(CFLAGS) -DHAPANELD_TEST -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/adb_ensure_boundary.c $(LDLIBS) -Wl,--wrap=adb_recovery_ensure -o $@

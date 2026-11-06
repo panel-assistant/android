@@ -3,7 +3,9 @@ package io.panelassistant.android.http
 import io.panelassistant.android.Config
 import io.panelassistant.android.control.TameController
 import io.panelassistant.android.control.HandBackHomeController
+import io.panelassistant.android.control.handBackHomeController
 import io.panelassistant.android.control.HandBackHomePolicy
+import io.panelassistant.android.panelassistant.PanelAssistantTransportProtocol
 import io.panelassistant.android.security.SensitiveOperation
 import io.panelassistant.android.util.AndroidInput
 import io.panelassistant.android.util.Json
@@ -32,6 +34,7 @@ internal data class HandBackHomeRouteDependencies(
     val handBack: (Set<String>) -> HandBackHomeController.Result,
     /** Record that something outside the app disabled `pkg`, so hand-back can reverse it later. */
     val recordTamed: (pkg: String) -> HandBackHomePolicy.RecordOutcome,
+    val restoreVendorBrightness: () -> String = { "untouched" },
     val authorize: suspend (OpCall, SensitiveOperation, String, String) -> Boolean =
         { _, _, _, _ -> true },
 )
@@ -46,7 +49,7 @@ internal fun Route.handBackHomeRoutes(dependencies: HandBackHomeRouteDependencie
          * ownership records and device profile, never from anything a caller names. A caller who could name
          * packages could enable something ha-paneld never disabled, which is the one thing this must not do.
          */
-        post("/hand-back-home") {
+        post("/hand-back-home", name = PanelAssistantTransportProtocol.MANAGE_HAND_BACK_HOME) {
             if (!dependencies.authorize(
                     call,
                     SensitiveOperation.HOME_ROLE_HAND_BACK,
@@ -58,13 +61,23 @@ internal fun Route.handBackHomeRoutes(dependencies: HandBackHomeRouteDependencie
             val profileKnown = withContext(Dispatchers.IO) { dependencies.profileKnownPackages() }
             when (val result = withContext(Dispatchers.IO) { dependencies.handBack(profileKnown) }) {
                 is HandBackHomeController.Result.Refused -> call.respondText(
-                    """{"ok":false,"error":${Json.str(refusalCode(result.reason))}}""",
+                    """{"ok":false,"error":${Json.str(refusalCode(result.reason))}""" +
+                        result.originalHome?.let { ""","original_home":${Json.str(it)}""" }.orEmpty() + "}",
                     ContentType.Application.Json,
                     // A refusal here is a panel state, not a malformed request: nothing was changed and the
                     // caller's next move is to fix the panel, so this is 409 rather than 400.
                     HttpStatusCode.Conflict,
                 )
                 is HandBackHomeController.Result.Done -> {
+                    val vendorBrightness = withContext(Dispatchers.IO) { dependencies.restoreVendorBrightness() }
+                    if (vendorBrightness == "unrestored") {
+                        call.respondText(
+                            """{"ok":false,"error":"vendor-brightness-unrestored"}""",
+                            ContentType.Application.Json,
+                            HttpStatusCode.Conflict,
+                        )
+                        return@post
+                    }
                     val outcome = result.outcome
                     call.respondText(
                         buildString {
@@ -77,6 +90,10 @@ internal fun Route.handBackHomeRoutes(dependencies: HandBackHomeRouteDependencie
                             outcome.homeHandedTo?.let {
                                 append(""","home_handed_to":""").append(Json.str(it))
                             }
+                            outcome.homeTarget?.let {
+                                append(""","home_target":""").append(Json.str(it))
+                            }
+                            append(",\"vendor_brightness\":").append(Json.str(vendorBrightness))
                             append("}")
                         },
                         ContentType.Application.Json,
@@ -153,20 +170,29 @@ internal fun handBackHomeDependencies(
         profileKnownPackages = profileKnownPackages,
         handBack = { profileKnown ->
             val tame = tameController()
-            HandBackHomeController(
-                ownedMarkers = tame::ownedMarkerSnapshot,
-                packageStates = tame::handBackPackageStates,
-                homeCandidates = tame::handBackHomeCandidates,
-                // Both keys, before the role moves: the reconciler re-asserts the desired blocklist on
-                // every wake, and `launcher_package` naming ha-paneld keeps the admin-home repair tick
-                // putting the role straight back.
-                clearDesiredState = config::clearHandBackDesiredState,
-                restoreOwned = tame::restoreEveryOwnedPackage,
-                enable = tame::adoptAndEnable,
+            handBackHomeController(
+                config = config,
+                tame = tame,
                 setHome = setHome,
-                observeHome = tame::observeDefaultHome,
                 ownPackage = ownPackage(),
             ).handBack(profileKnown)
+        },
+        restoreVendorBrightness = {
+            synchronized(io.panelassistant.android.platform.LocalRpcVendorScreen.CUSTODY_LOCK) {
+                config.profile?.vendorService?.let {
+                    io.panelassistant.android.platform.LocalRpcVendorScreen(it.port, config.vendorBrightnessCustody())
+                        .restoreBrightness()
+                } ?: config.vendorBrightnessCustody().let { custody ->
+                    val state = custody.read()
+                    when (state) {
+                        null, "pending", "restored:untouched" ->
+                            if (custody.write("restored:untouched")) "untouched" else "unrestored"
+                        "unknown", "restoring:unknown" ->
+                            if (custody.write("restoring:unknown")) "unknown" else "unrestored"
+                        else -> "unrestored"
+                    }
+                }
+            }
         },
         recordTamed = { pkg ->
             val tame = tameController()
@@ -191,6 +217,7 @@ private fun refusalCode(reason: HandBackHomePolicy.Refusal): String = when (reas
     HandBackHomePolicy.Refusal.OWNERSHIP_UNREADABLE -> "ownership-unreadable"
     HandBackHomePolicy.Refusal.PACKAGE_STATE_UNKNOWN -> "package-state-unknown"
     HandBackHomePolicy.Refusal.NO_REPLACEMENT_HOME -> "no-replacement-home"
+    HandBackHomePolicy.Refusal.ORIGINAL_HOME_MISSING -> "original-home-missing"
 }
 
 private fun jsonArray(values: List<String>): String =

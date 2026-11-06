@@ -140,8 +140,8 @@
     // Dot 1 covers the renderer choice AND the HA server address; dot 3 is which HA dashboard shows.
     var labels = [
       i18nText("setup.progress.name", "Name"), i18nText("setup.progress.server", "Server"),
-      i18nText("setup.progress.sign_in", "HA sign-in"), i18nText("setup.progress.dashboard", "HA dash"),
-      i18nText("setup.progress.optimize", "Optimize")
+      i18nText("setup.progress.sign_in", "Sign-in"), i18nText("setup.progress.dashboard", "Dashboard"),
+      i18nText("setup.progress.optimize", "Optimise")
     ];
     var currentIdx = journey.complete ? labels.length : (DOT_OF_STAGE[journey.next] !== undefined ? DOT_OF_STAGE[journey.next] : labels.length);
     var anyInFlight = (journey.steps || []).some(function (s) {
@@ -255,6 +255,23 @@
         i18nText("setup.repair.title", "This panel has stopped working fully."),
         i18nText("setup.repair.explanation", "Its settings are still here — nothing has been reset. One thing needs attention below.")));
     }
+    if (journey.webview) {
+      // Advisory, never blocking: the facts, then what to do about them. The update steps open in a new tab
+      // so this page stays open to carry on.
+      var wv = journey.webview;
+      var lines = [];
+      if (wv.found && wv.needed) lines.push(i18nText("setup.webview.found", "This panel’s browser engine (Android System WebView) has Chromium {found}. A current Home Assistant dashboard needs Chromium {needed} or newer.",
+        { found: String(wv.found), needed: String(wv.needed) }));
+      if (wv.play) lines.push(i18nText("setup.webview.play", "This panel updates its engine through Google Play: on the panel, open the Play Store and update Android System WebView."));
+      // The note promises the page moves on to the Home Assistant address, true only up to that step.
+      if (key === "identity" || key === "renderer" || key === "ha_url") {
+        lines.push(i18nText("setup.webview.after_update", "After the update the panel restarts its app. Keep this page open: it carries on to the Home Assistant address by itself."));
+      }
+      var updateLink = wv.steps ? el("a", { href: wv.steps, target: "_blank", rel: "noopener",
+        text: wv.model ? i18nText("setup.webview.update_steps", "Update steps for {model}", { model: wv.model }) : i18nText("setup.webview.update_steps_any", "WebView update steps") }) : null;
+      stepHost.appendChild(window.HaNotice.row("warning",
+        i18nText("setup.webview.title", "The panel’s browser engine needs updating"), lines.join(" "), updateLink));
+    }
     kids.forEach(function (k) { if (k) stepHost.appendChild(k); });
     var h = stepHost.querySelector("h2");
     if (h) { h.setAttribute("tabindex", "-1"); h.focus({ preventScroll: false }); }
@@ -294,7 +311,7 @@
           }),
         preview,
         el("p", { class: "wiz-consequence", text: i18nText("setup.identity.panel_id.consequence", "You can change this later, but it renames every one of those entities, so anything already pointing at them (automations, dashboards, scripts) would need updating too. Most people set it once, here.") }),
-        field("friendly_name", i18nText("setup.identity.friendly_name.label", "Friendly Name"), i18nText("setup.identity.friendly_name.help", "Just the label in Home Assistant. Safe to change any time."),
+        field("friendly_name", i18nText("setup.identity.friendly_name.label", "Friendly name"), i18nText("setup.identity.friendly_name.help", "Just the label in Home Assistant. Safe to change any time."),
           { value: typed.friendly_name !== undefined ? typed.friendly_name : (journey.panel && journey.panel.name || "") }),
         primary(i18nText("setup.action.save_continue", "Save and continue"), saveIdentity),
       ]),
@@ -455,7 +472,7 @@
       i18nText("setup.sign_in.lead", "The built-in dashboard needs permission to read your Home Assistant."), [
       browserRoute,
       panelRoute,
-      statusLine(inFlight ? i18nText("setup.sign_in.state.in_progress", "A sign-in is in progress… finish it here or on the panel.") :
+      statusLine(inFlight ? i18nText("setup.sign_in.state.in_progress", "The panel is showing a Home Assistant login. Sign in there, or use this browser.") :
         i18nText("setup.sign_in.state.waiting", "Choose an option above. This page updates by itself once you’ve signed in.")),
       el("p", { class: "muted", id: "wiz-err", role: "alert" }),
     ])], "signin");
@@ -518,26 +535,6 @@
     ])], "attest");
   }
 
-  /* ---------- the browser-engine blocker, raised before any sign-in ---------- */
-
-  /* The panel's system WebView is below the floor a current Home Assistant frontend needs, so no amount of
-   * correct configuration produces a working dashboard. Raised at the renderer step — before the Home
-   * Assistant address and sign-in — because the alternative is letting someone complete the whole journey
-   * for a panel that was never going to render. */
-  function webViewCard() {
-    var body = [
-      el("p", { class: "wiz-lead", text: i18nText("setup.webview.explanation", "This panel’s browser engine is too old to show a current Home Assistant dashboard. Everything else can be set up perfectly and the dashboard will still come up blank or broken, so this is worth fixing first.") }),
-      // Said plainly because it is the wrong turn people take next: both renderers draw the dashboard in the
-      // panel's one system WebView, so switching to the Home Assistant app does not avoid this.
-      el("p", { class: "wiz-consequence", text: i18nText("setup.webview.companion_does_not_help", "Choosing the Home Assistant app instead will not help — it draws the dashboard using the same engine.") }),
-    ];
-    body.push(el("p", { class: "wiz-cta" }, [
-      el("a", { class: "pbtn", href: internalHref("./"), text: i18nText("setup.action.panel_dashboard", "Panel dashboard") }),
-    ]));
-    body.push(el("p", { class: "muted", id: "wiz-err", role: "alert" }));
-    show([card(i18nText("setup.webview.title", "The panel’s browser engine needs updating"), null, body)], "webview");
-  }
-
   /* ---------- step 4½: which dashboard this panel shows ----------
    * Asked right after sign-in and BEFORE the entity filter, because the filter's learned list is keyed by
    * the dashboard path — answering the filter first would scope it to a dashboard about to change. Home
@@ -576,7 +573,7 @@
       primary(i18nText("setup.dashboard.action.use", "Use this dashboard"), function (e) { answerHomeDashboard(e.target); }),
       el("p", { class: "muted", id: "wiz-err", role: "alert" }),
     ];
-    show([card(i18nText("setup.dashboard.title", "Select the HA dashboard for this panel"), null, body)], "home_dashboard");
+    show([card(i18nText("setup.dashboard.title", "Select the Home Assistant dashboard for this panel"), null, body)], "home_dashboard");
     loadHomeDashboardCatalog();
   }
 
@@ -614,7 +611,7 @@
     }
     var localOverrideNote = overrideNote(chosenArea);
     var editable = hdArea.admin || !current;
-    host.appendChild(el("b", { class: "hd-area-label", text: i18nText("setup.area.label", "Set the HA Area that your panel is in") }));
+    host.appendChild(el("b", { class: "hd-area-label", text: i18nText("setup.area.label", "Set the Home Assistant Area that your panel is in") }));
     if (!editable) {
       // A DISABLED select, not bare text: it must read as "a control you don't have permission for",
       // not as missing UI (hardware-review note). Same control either way; only the permission differs.
@@ -622,7 +619,7 @@
       locked.appendChild(el("option", { value: savedArea, text: savedArea }));
       locked.disabled = true;
       host.appendChild(locked);
-      host.appendChild(el("small", { class: "hd-area-note", text: overrideNote(savedArea) || i18nText("setup.area.locked_note", "This panel is already registered in Home Assistant, so its area can only be changed there by an HA admin user — this panel will follow whatever is set.") }));
+      host.appendChild(el("small", { class: "hd-area-note", text: overrideNote(savedArea) || i18nText("setup.area.locked_note", "This panel is already registered in Home Assistant, so its area can only be changed there by a Home Assistant admin user — this panel will follow whatever is set.") }));
       return;
     }
     var areaNote = el("small", { class: "hd-area-note", text: localOverrideNote });
@@ -653,20 +650,8 @@
       : i18nText("setup.area.non_admin_help", "Where this panel lives. Your choice is saved and applies when the panel registers, or when a Home Assistant admin next signs in.") }));
   }
 
-  // Home Assistant's built-in dashboards arrive titled by their frontend translation key (`home`,
-  // `light`, …); show the names Home Assistant itself shows for them. Keyed by panel, not path.
-  function panelTitle(d) {
-    var key = String(d.path || "").slice(1);
-    return d.group === "panel" && Object.prototype.hasOwnProperty.call(PANEL_TITLES, key) ? PANEL_TITLES[key] : "";
-  }
-  var PANEL_TITLES = {
-    home: i18nText("setup.dashboard.panel.home", "Overview"),
-    light: i18nText("setup.dashboard.panel.light", "Lights"),
-    security: i18nText("setup.dashboard.panel.security", "Security"),
-    climate: i18nText("setup.dashboard.panel.climate", "Climate"),
-    energy: i18nText("setup.dashboard.panel.energy", "Energy"),
-    maintenance: i18nText("setup.dashboard.panel.maintenance", "Maintenance"),
-  };
+  // Built-in dashboard names come from the one shared map (HaDashboardTitles, i18n.js).
+  var panelTitle = window.HaDashboardTitles.panelTitle;
 
   function paintHomeDashboards() {
     var host = document.getElementById("hd-host");
@@ -1041,10 +1026,11 @@
     var attested = proof.detail === "user_attested";
     var ef = journey.entity_filter || {};
 
+    var unproven = proof.status !== "satisfied";
     var completeStatus = attested
       ? i18nText("setup.done.status.attested", "Dashboard confirmed by you.")
       : i18nText("setup.done.status.rendering", "Home Assistant is rendering on the panel.");
-    var top = [statusLine(completeStatus, true)];
+    var top = unproven ? [] : [statusLine(completeStatus, true)];
     // Confirm the filter state so answering the question earlier is never a silent no-op.
     if (ef.relevant && ef.enabled) {
       top.push(el("p", { class: "muted", text: i18nText("setup.done.filter_note", "Entity filter is on — it’s learning which entities to show; review the list any time on the Entities tab. The panel’s dashboard may reload a few times in the first minutes while that settles — nothing is wrong.") }));
@@ -1112,9 +1098,7 @@
     if (journey.complete) return "done";
     switch (journey.next) {
       case "identity": return "identity";
-      case "renderer":
-        // A too-old engine is a renderer that cannot work, not a renderer that is unchosen.
-        return step("renderer").detail.indexOf("webview_too_old") === 0 ? "webview" : "renderer";
+      case "renderer": return "renderer";
       case "ha_url": return "ha_url";
       case "ha_credentials": return "signin";
       case "home_dashboard": return "home_dashboard";
@@ -1131,7 +1115,6 @@
     switch (key) {
       case "identity": return identityCard();
       case "entity_filter": return entityFilterCard();
-      case "webview": return webViewCard();
       case "renderer": return rendererCard();
       case "ha_url": return haUrlCard();
       case "signin": return signinCard(step("ha_credentials").status === "in_flight");

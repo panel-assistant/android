@@ -14,15 +14,42 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ManagementHttpTest {
-    @Test fun statusTellsPanelAssistantThePanelOffersNoUpdateOfItsOwn() {
+    @Test fun statusReportsFreshCredentialSafetyAndUnknownWithoutStartingRoot() {
+        var secure = false
+        var readable = true
+        var reads = 0
+        val root = io.panelassistant.android.control.FakeRootShell(available = false)
+        val system = io.panelassistant.android.control.SystemController(
+            io.panelassistant.android.control.FakeSystemEnv(), root,
+            io.panelassistant.android.control.FakeDaemon(available = false),
+            isDeviceSecure = { reads++; check(readable); secure },
+        )
+        PaneldServerHttpFixture().use { fixture ->
+            fixture.useManagementStatus { error("Passive status read must not refresh storage") }
+            PaneldServer::class.java.getDeclaredField("system").apply { isAccessible = true }
+                .set(fixture.server, system)
+            testApplication {
+                application { fixture.mount(this) }
+                suspend fun status() = org.json.JSONObject(client.get("/api/v1/status").bodyAsText())
+                assertFalse(status().getBoolean("screen_lock_secure"))
+                secure = true
+                assertTrue(status().getBoolean("screen_lock_secure"))
+                readable = false
+                assertTrue(status().isNull("screen_lock_secure"))
+                assertEquals("every status reads the current credential state", 3, reads)
+                assertTrue("status must not execute root commands", root.ran.isEmpty())
+            }
+        }
+    }
+
+    @Test fun statusCarriesNoRetiredPanelUpdateField() {
         PaneldServerHttpFixture().use { fixture ->
             fixture.useManagementStatus { error("Passive status read must not refresh storage") }
             testApplication {
                 application { fixture.mount(this) }
                 val status = client.get("/api/v1/status")
                 assertEquals(HttpStatusCode.OK, status.status)
-                val update = org.json.JSONObject(status.bodyAsText()).getJSONObject("panel_assistant_update")
-                assertEquals("{\"state\":\"none\"}", update.toString())
+                assertFalse(org.json.JSONObject(status.bodyAsText()).has("panel_assistant_update"))
             }
         }
     }

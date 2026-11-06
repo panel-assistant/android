@@ -175,7 +175,9 @@ internal class ServiceSystemControls(
     }
 
     fun buildControls() {
-        watchdog = WatchdogController(system, config(), sensors()::proximityCalibrationActive)
+        watchdog = WatchdogController(system, config()) {
+            sensors().proximityCalibrationActive() || io.panelassistant.android.input.PanelAccessibilityService.portalRenameActive()
+        }
         kiosk = KioskController(service, system, config(), profile().appCanSu)
         // On-device unlock gesture (7 corner taps): the same OFF the :8888 toggle sends, through the command
         // worker that orders every kiosk change. Off the main thread: the gesture fires on the overlay's touch
@@ -307,7 +309,7 @@ internal class ServiceSystemControls(
     }
 
     /** The launcher, dashboard or URL changed: a new HOME policy generation, applied off the caller. */
-    fun onLauncherHomeChanged() {
+    fun onLauncherHomeChanged(afterHome: () -> Unit = {}) {
         launcherHomePolicyGeneration.incrementAndGet()
         launcherHomeFailedGeneration.set(Long.MIN_VALUE)
         scope.launch(Dispatchers.IO) {
@@ -317,6 +319,7 @@ internal class ServiceSystemControls(
                     config().dashboardPackage,
                     config().haUrl.isNotBlank(),
                 )
+                afterHome()
             }.onFailure { Log.w(TAG, "launcher HOME policy apply failed", it) }
         }
     }

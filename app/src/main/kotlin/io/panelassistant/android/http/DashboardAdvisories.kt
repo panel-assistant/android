@@ -28,6 +28,8 @@ internal class DashboardAdvisories(
     private val radioStatus: () -> ZigbeeHealthSnapshot?,
     private val dashboardRecoveryState: () -> PanelStatus.DashboardRecoveryState,
     private val appSizingReady: () -> Boolean,
+    /** The panel profile id, read only when a WebView-too-old banner links its update steps. */
+    private val profileId: () -> String,
 ) {
     /** The setup / health / update banners — everything above the cards. Needs the facts map, so on a
      *  cold start it hydrates with the rest. */
@@ -70,6 +72,6 @@ internal class DashboardAdvisories(
                 radioStatus, dashboardRecoveryState,
                 managementObservations.companionServersForRender(), inlineRepair = false, strings = strings,
             ) +
-            findings.joinToString("") { bannerFor(it, strings) } + termuxBridge + proximityLearning + haSetup
+            findings.joinToString("") { bannerFor(it, strings, profileId) } + termuxBridge + proximityLearning + haSetup
     }
 }

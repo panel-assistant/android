@@ -17,7 +17,7 @@ Newline-terminated ASCII on the abstract UNIX socket `@hapaneld-helper`. One or 
 
 | Command | Effect | Reply |
 | --- | --- | --- |
-| `VERSION` | read the helper identity without touching hardware | `HELPER version=1.3.1 proto=1.3` / `ERR` when arguments are supplied |
+| `VERSION` | read the helper identity without touching hardware | `HELPER version=1.15.0 proto=1.15` / `ERR` when arguments are supplied |
 | `RGB <r> <g> <b>` | set LED colour (each 0..255) | `OK` / `ERR` |
 | `OFF` | LED off | `OK` / `ERR` |
 | `BTN <0..255>` | button-backlight brightness | `OK` / `ERR` |
@@ -30,6 +30,7 @@ Newline-terminated ASCII on the abstract UNIX socket `@hapaneld-helper`. One or 
 | `SCREENCAP` | capture the screen as PNG | raw PNG bytes, then EOF |
 | `LOGCATCAPS` | probe the authenticated full-system log stream; older helpers return `ERR` | `LOGCATCAPS 1` / `ERR` for arguments |
 | `LOGCAT` | follow all Android log buffers from the current time using fixed `logcat -b all -T 1 -v long -v epoch` arguments; the client closes the socket to stop the stream | `OK`, then raw long-format lines including blank entry separators / `ERR` for arguments or start failure |
+| `LOGCATDUMP <n>` | one bounded backlog of the last `n` (1–1000) entries from all Android log buffers using fixed `logcat -b all -v long -v epoch -v printable -d -t <n>` arguments; no other argument is accepted. The child runs under a 3 s deadline and is killed and reaped at it, and output stops at 256 KiB, so the last entry may be cut. Protocol 1.4 and later | `OK`, then raw long-format lines, then EOF / `ERR` for a missing, out-of-range or malformed count or start failure |
 | `RELOAD <pkg>` | force-stop + relaunch an app (dashboard reload); serialized with supported Companion data transactions | `OK` / `ERR` / `BUSY` |
 | `START <pkg/cls>` | launch an activity by component (root, bypasses BAL limits); serialized with supported Companion data transactions | `OK` / `ERR` / `BUSY` |
 | `SETHOME <pkg/cls>` | set the default home (launcher) to a component — re-asserts the dashboard app as home after a HOME-app install clears it | `OK` / `ERR` |
@@ -48,7 +49,18 @@ Newline-terminated ASCII on the abstract UNIX socket `@hapaneld-helper`. One or 
 | `GPIOSUBSCRIBE` | stream current, changed, and unavailable GPIO status independently of evdev subscribers | `OK`, then `GPIO <n> <0\|1>` or `GPIOUNAVAILABLE <n>` records until disconnect; `ERR` on subscriber overflow / arguments |
 | `DENSITY` / `DENSITY <n>\|reset` | get display density / set it (`wm density`) | `PHYS=<n> OVER=<n\|->` / `ERR` (get) · `OK` / `ERR` (set) |
 | `FONTSCALE` / `FONTSCALE <n>\|reset` | get system font scale / set it (`settings system font_scale`) | `SCALE=<n\|null>` / `ERR` (get) · `OK` / `ERR` (set) |
+| `GOVREAD CURRENT` / `GOVREAD AVAILABLE` | read the fixed cpu0 scaling governor / available governors directly, without subprocesses (protocol 1.5) | `GOVREAD <tokens>` / `ERR` |
 | `GOV <name>` | set the CPU scaling governor on all cores | `OK` / `ERR` |
+| `ZIGBEESTATE` | argument-free, fixed Sonoff gateway footprint and complete process observation (protocol 1.6) | ordered `ZIGBEESTATE 1` frame ending `END`, or `ERR` |
+| `ZIGBEEHEALTH` | the same observation plus process start/jiffy samples, total CPU, bounded watchdog and network evidence (protocol 1.7) | ordered `ZIGBEEHEALTH 1` frame ending `END`, or `ERR` |
+| `ZIGBEEROLE` | argument-free, one fixed local broker topic under a 3500 ms child deadline (protocol 1.8) | `ZIGBEEROLE <hex JSON bytes>` / `ERR` |
+| `RELAYREAD <RELAY or ST_RELAY or STRELAY> <COUNT or 1..16>` | fixed relay class inventory/value (protocol 1.11) | `RELAYREAD <class> COUNT=<0..16 or ?>` / `RELAYREAD <class> RELAY=<n> VALUE=<0 or 1 or ?>` / `ERR` |
+| `GPIOREAD <0..65535>` | fixed GPIO value and output preparation observation (protocol 1.12) | `GPIOREAD <pin> VALUE=<0 or 1 or ?> PREPARED=<0 or 1 or ?>` / `ERR` |
+| `GFXINFO SELF` | fixed authenticated app cumulative HWUI counters (protocol 1.14) | `GFXINFO SINCE=<u64> TOTAL=<u32> JANKY=<u32>` / `ERR` |
+| `CDPSTATE` | argument-free fixed relay process/listener exposure observation (protocol 1.13) | `CDPSTATE PRESENT` / `CDPSTATE ABSENT` / `CDPSTATE UNKNOWN` / `ERR` |
+| `ADBSTATE` | argument-free bounded fixed Android ADB properties and direct TCP listener inventory (protocol 1.10) | `PROPS=<0 or 1 or ?> LISTEN=<0 or 1 or ?>` / `ERR` |
+| `ADBRECOVERYENSURE` | argument-free publication and readiness of the independent ADB recovery owner (protocol 1.15) | `ADBRECOVERYENSURE READY` / `ADBRECOVERYENSURE UNAVAILABLE` / `ERR` for arguments |
+| `WIFISTATUS` | argument-free bounded current Wi-Fi fields from fixed Android commands (protocol 1.9) | `SSID=<hex or -> RSSI=<dBm or ->` / `ERR` |
 | `ZIGBEECONTAIN` | argument-free containment for the exact vendor-native Sonoff `/vendor/bin/siliconlabs_host` layout; targets only its guard, gateway and matching broker, then demotes a surviving gateway | `OK` / `PARTIAL` / `ERR` |
 | `PERFDUMP` | CPU/load/temp/gpu/process snapshot (for sandbox-walled apps) | marker-delimited stream, then EOF |
 | `CHT8305` | room temp/humidity from exact allowlisted input layouts (`temperature`/`humidity` or ZX-SMT156 `sun-ths`/`sun-hum`) | `T=<centi> H=<centi>` / `ERR` |
@@ -56,6 +68,79 @@ Newline-terminated ASCII on the abstract UNIX socket `@hapaneld-helper`. One or 
 | `GRANT <pkg> <capability>` | apply one grant from a fixed table to the app's own package: `NOTIFICATIONS`, `MICROPHONE`, `CAMERA` (runtime permissions), `WRITESETTINGS`, `OVERLAY` (app-ops), `BATTERY` (deviceidle whitelist, `cmd` with a `dumpsys` fallback), `ACCESSIBILITY` (append the panel service to the shared secure setting and enable accessibility, idempotently). No free-form permission, app-op or setting name is accepted, and no other package | `OK` / `ERR` |
 | `PING` | liveness probe | `OK` |
 | anything else | — | `ERR` |
+
+`ADBRECOVERYENSURE` accepts no paths, build IDs or commands. It first checks the fixed recovery
+endpoint for the running helper's exact build. Otherwise it copies its pinned running executable
+(at most 8 MiB) to an exclusive root-owned stage in the fixed recovery directory, syncs it, closes
+the writer, atomically publishes `helper`, and syncs the directory. Unsafe existing metadata is
+refused. Publication failure never removes the canonical helper or custody receipt. The child
+executes a read-only pin to that published inode with fixed arguments and a clean environment;
+its startup rechecks the canonical inode before touching incumbent custody. The existing recovery
+replacement, guardian drain and receipt validation remain authoritative.
+
+The operation shares a 25 s monotonic userspace budget, including a first readiness probe capped
+at 500 ms. Blocking kernel filesystem calls can outlast that budget. At most two children can be
+owned by pre-reserved detached reapers. An ordinary-helper exit or request timeout does not kill
+the independent recovery owner. Only a fresh root-peer, exact-build recovery `STATUS` establishes
+`READY`; launching alone does not. The reply has one trailing newline and is at most 32 bytes.
+This command does not arm or renew a recovery lease, and `ARM`, `BEAT`, `RECOVER` and `SHELL`
+remain on the separate recovery endpoint.
+
+`GOVREAD` accepts exactly `CURRENT` or `AVAILABLE`, with no extra arguments. It reads only
+`/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor` or `scaling_available_governors` in the same
+directory. Each returned token matches `[A-Za-z0-9_.-]{1,63}`; `CURRENT` requires exactly one token,
+and `AVAILABLE` requires one or more in their original order. Spaces, tabs, CR and LF are normalized
+to single spaces between tokens. The reply has one trailing newline. Empty input, other control bytes,
+NUL, invalid tokens, open/read failure, or raw input reaching the 4096-byte overflow probe returns
+`ERR`; at most 4095 raw bytes can succeed. There is no subprocess fallback. The broader read grammar
+does not change the governor writer's allowlist.
+
+`WIFISTATUS` executes only `/system/bin/cmd wifi status`, with `/system/bin/dumpsys wifi`
+as a fallback after a complete nonzero exit. Both share one 2000 ms monotonic budget and a
+128 KiB complete-capture bound per attempt (at most 256 KiB read across both attempts, with one
+reused buffer and only the selected capture parsed). Timeout, overflow, I/O failure and embedded NUL never trigger
+fallback; nonzero primary output is discarded, while failure prefixes in the selected successful
+capture return `ERR`. Only one recognized current `WifiInfo:` or `mWifiInfo` record is admitted;
+historical RSSI and the connection banner cannot supply fields. Multiple records are ambiguous.
+The ordered reply is `SSID=<lowercase hex or -> RSSI=<-126..0 or ->` followed by one newline,
+at most 80 bytes. SSID and RSSI can independently be unavailable. SSIDs must be 1–32 bytes of
+printable UTF-8; quoted commas are supported. Unknown SSIDs, ambiguous quoting, hex/unsupported
+representations, controls, malformed UTF-8 and oversized SSIDs are unavailable. No raw dump,
+BSSID or MAC address is returned. These formats follow Android's WifiShellCommand/WifiInfo;
+no vendor-specific stdout format is assumed.
+
+`ZIGBEESTATE`, `ZIGBEEHEALTH` and `ZIGBEEROLE` accept no arguments. Paths are fixed to
+`/vendor/bin/siliconlabs_host`, `/data/vendor/siliconlabs_host` and `/proc`; callers cannot select
+another layout or target. A missing gateway directory alone never proves stopped: state and health
+complete a bounded scan (at most 8192 numeric process entries), skip vanished entries, zombies and
+kernel threads, and verify candidate executable inodes against the fixed gateway binary or platform
+shell. An unreadable, malformed, oversized or ambiguous observation, duplicate exact process, or
+symlinked/non-directory gateway tree returns `ERR`. No state or health read executes a subprocess.
+
+The state frame contains these exact ordered lines after `ZIGBEESTATE 1`: `managed=`, `guard=`,
+`run=`, `binary=`, `broker=`, `package_marker=`, `running=`, `guard_running=`, `package=`, then `END`.
+Flags are `0` or `1`. Package is lowercase hex encoding at most 120 printable UTF-8 bytes (empty
+allowed); the frame is at most 512 bytes. File flags describe regular, non-symlinked files; binary
+and broker must also have an executable bit. Absence requires a complete process scan.
+
+Health uses the same fields after `ZIGBEEHEALTH 1`, then `gateway_pid=`, `gateway_start=`,
+`gateway_jiffies=`, `guard_pid=`, `guard_start=`, `guard_jiffies=`, `total_jiffies=`, `recursive=`,
+`netinfo=`, and `END`. Process triplets are all canonical decimal values or all `-` when absent;
+start time is Linux start ticks, and jiffies are user plus system ticks. Total CPU sums the first
+eight aggregate counters (guest ticks are already included). Values fit signed 64-bit integers;
+PIDs fit a positive signed 32-bit integer. `recursive` is a `0`/`1` flag for the exact legacy recursive
+library-path assignment in a bounded 64 KiB guard script. `netinfo` is lowercase hex of at most 4096
+opaque bytes, or `-` when unavailable. The authoritative canonical file wins; only an absent/empty
+file permits the fixed gateway-log fallback (last 200 lines, bounded to 64 KiB per file). Nonregular,
+unreadable or oversized canonical evidence stays unknown. The app retains JSON parsing and public
+redaction; raw network evidence must never become public attributes. Health is at most 9216 bytes.
+
+Role runs only `/vendor/bin/siliconlabs_host/mosquitto_sub` with fixed argv
+`-h 127.0.0.1 -p 1883 -i hapaneld_zr -t zigbee/system/network-role/information -C 1 -W 3`.
+Only this child receives `LD_LIBRARY_PATH=/vendor/bin/siliconlabs_host`; the daemon environment is
+unchanged. A failed, empty, NUL-containing, oversized or timed-out result returns `ERR`, without a
+shell or fallback. Success returns complete broker JSON as lowercase hex (at most 4096 raw bytes,
+8204 wire bytes); the app validates JSON and the printable role. Every frame ends with a newline.
 
 `VERSION` is the stable compatibility bootstrap. `version` is the helper release version and `proto` is the wire protocol version; clients accept the same protocol major and treat later minor versions as additive. Helpers from before this command return the ordinary unknown-command `ERR`, so the app verifies them with `PING` and reports them as reachable but compatibility-unverified. Run `hapaneld-helper --version` to print the same identity without initializing hardware or binding the socket.
 
@@ -130,9 +215,10 @@ The daemon is split by capability under `helper/src/` (the binary, `@hapaneld-he
 | `commands.def` / `dispatch.c` | the shared verb→handler manifest + exact-match `dispatch()` |
 | `version.c` | stable helper and protocol identity exposed by `VERSION` and `--version` |
 | `led.c` / `screen.c` / `input.c` / `gpio.c` | LED (sysfs + ledjni), backlight power, evdev buttons, held-descriptor GPIO streams |
-| `sysctl.c` | density / governor / reload / start / reboot / screencap privileged operations |
+| `sysctl.c` | density / governor read-back and control / reload / start / reboot / screencap privileged operations |
 | `companion.c` | descriptor-anchored, bounded HA Companion backup/restore transaction |
 | `perf.c` | `PERFDUMP` `/proc` snapshot |
+| `zigbee.c` | bounded fixed-layout gateway state, health and role observations |
 | `logcat.c` | bounded full-system log stream; sends complete entries only, with a drop record when entry or rate limits apply |
 | `cht8305.c` | `CHT8305`-compatible room climate read from exact input names/axes (`EVIOCGABS`, no exec) |
 | `util.c` | clamp, node IO, the argument validators |
@@ -163,3 +249,62 @@ Every supported route executes `/data/local/hapaneld-helper --supervise`; system
 - A writable-system/userdebug panel receives the init registration in `/system/etc/init`.
 - Otherwise, a writable vendor init directory receives the same registration in `/vendor/etc/init`.
 - Otherwise, a read-only-system panel is accepted only when a supported Magisk, KernelSU, or APatch service runner is detected; it receives a `service.d` launcher under `/data/adb/service.d`.
+
+The bundled executable also supports `--adb-recovery`, independently of the ordinary helper daemon. This mode serves the app/root UID on a separate authenticated abstract socket and accepts bounded administrator shell programs from the app's negotiated Panel Assistant session. Browser and HTTP callers cannot use that channel. Shell execution returns merged byte output and exit status once, with a deadline, process-group cleanup and a 32 KiB output ceiling. The ordinary helper socket retains its fixed-command surface.
+
+Before managed network ADB closure, this separate owner establishes a persistent positive boot fallback and an independently watched healthy-app lease. Closure stops adbd using runtime properties; the firmware's boot path restores the positive baseline, and a fresh compatible session reapplies closure. Expiry, app removal, execution-worker failure or either recovery-owner failure restores network ADB. An explicit recovery request holds it open until a later compatible session. The separate executable and its root-owned directory do not replace the ordinary helper, its boot registration or its recovery custody.
+
+Hardened mode retains physical approval for each exact maintenance request. Automatic recovery also applies in Hardened mode: it invalidates the app's durable security authority before reopening. If allocating a fence fails, recovery retires the old authority without allocating a new file. If storage prevents every durable invalidation, emergency recovery still opens ADB and reports security as unverified; fresh live OFF proof remains mandatory before database maintenance can be admitted.
+
+`ADBSTATE` returns exactly `PROPS=0 LISTEN=0\n` with each scalar independently `0`, `1`, or `?`
+(17 bytes). Five supervised `/system/bin/getprop` children read only `service.adb.listen_addrs`,
+`service.adb.tcp.port`, `persist.adb.tcp.port`, `service.adb.tls.port`, and
+`persist.adb.tls_server.enable`, in that order, sharing a 2000 ms monotonic budget. Each capture
+accepts at most 256 stdout bytes with an overflow probe; nonzero exit, timeout, I/O failure,
+overflow, and embedded NUL are unknown. A complete successful empty value is inactive. Any
+nonempty trimmed listen-address value is active; ports retain signed 32-bit decimal semantics
+(1..65535 active, nonpositive inactive, malformed/overflow/greater values unknown); enable accepts
+only `0` or `1`. A positive property wins unknown observations; otherwise every property must be
+proven inactive. Fixed supervised commands preserve successful-empty versus failed reads; this
+operation starts up to five children and does not use the ambiguous absent-property result of the
+Bionic property API. There is no shell, `su`, caller-provided target, or settings mutation.
+
+Listener observation directly reads only `/proc/net/tcp` and `/proc/net/tcp6`, each bounded to
+128 KiB plus an overflow probe. Each table must have a complete recognized header and well-formed
+rows; unreadable, nonregular, NUL, malformed, unterminated, or overflowing tables are unknown.
+Port 5555 in LISTEN state counts at any local address, including loopback. A complete positive
+table wins an unavailable other table; a negative requires both complete valid tables. A malformed
+later row invalidates an earlier positive in the same table. This read-only parser is separate
+from ADB recovery and does not change recovery actions.
+
+`RELAYREAD` accepts only the exact class selectors `RELAY`, `ST_RELAY`, and `STRELAY`, mapped internally to `/sys/class/relay`, `/sys/class/st_relay`, and `/sys/class/strelay`. `COUNT` completes a bounded directory scan (at most 256 entries, including `.` and `..`) and counts consecutive names `relay1` through `relay16`, independently of their values. A missing class is known zero; failed, overflowing or incomplete scans are unknown. Seventeen consecutive names are unsupported and unknown. Gaps end the count. Numeric selectors are canonical decimal 1..16 and read the fixed `relayN` node directly. Both response forms echo the admitted selector and end in one newline.
+
+`GPIOREAD` accepts only a canonical decimal pin 0..65535 and observes `/sys/class/gpio/gpioN/value` and `direction`. Values are independent of output preparation: `VALUE` accepts only trimmed `0` or `1`; `PREPARED` is one only when trimmed direction is `out` and the fixed value node passes `W_OK`. Direction `in` or an established missing/denied/read-only value node proves preparation zero. Otherwise malformed or unavailable direction/access evidence remains unknown. Value read failure does not erase independent preparation evidence; inability to open the GPIO directory for reading alone does not prove that its value node is unwritable. Each scalar must be a regular file, fully read within 64 raw bytes plus an overflow probe, contain no NUL, and match exactly after ASCII whitespace trimming. Replies are at most 64 bytes, echo the canonical pin, and terminate with one newline. Unknown fields use `?`.
+
+These observations follow legitimate kernel sysfs class/device symlinks. They never export GPIOs, write values or directions, configure edges, start watchers, or execute commands. Caller paths, arbitrary classes, noncanonical integers, and extra arguments are rejected with `ERR`.
+
+`CDPSTATE` reads only fixed `/proc/PID/comm`, `/proc/net/tcp`, and `/proc/net/tcp6`. An exact complete `cdprelay` comm record or an independently complete valid TCP table with any local-address port9222 in LISTEN state proves `PRESENT`. `ABSENT` requires a complete negative process scan and complete valid negative tables; only IPv6 table open `ENOENT` is permitted as negative. Missing IPv4 or any other unavailable evidence remains `UNKNOWN` unless another complete observation proves presence. A malformed later row invalidates an earlier matching row in the same table. The existing ADB5555 observation retains its own stricter missing-table policy.
+
+The process scan is limited to8192 total directory entries, including non-PID entries. Each comm file must be regular, complete within64rawbytes plus an overflow probe, NUL-free and newline-terminated. Only the exact complete bytes `cdprelay\n` count positive; other kernel-valid names may contain nonprintable bytes or embedded newlines. An unreadable or malformed live comm record makes absence unknown, but scanning continues so later independent process evidence can prove presence. Missing comm is skipped only after confirming its PID directory disappeared. Each TCP table is bounded at128KiB plus an overflow probe. Replies are exact newline-terminated records of at most17bytes. Extra arguments are rejected before observations. This is a non-atomic exposure observation, including arbitrary processes with the exact comm name; it does not authenticate an executable, filter zombies, run commands, or stop/start processes.
+
+
+`GFXINFO SELF` derives the target package from the authenticated app identity table and executes only `/system/bin/dumpsys gfxinfo io.panelassistant.android`, without flags, under a two-second deadline and the fixed clean child environment. Root/operator and unauthenticated callers have no SELF package and receive `ERR`; caller packages, PIDs, reset/framestats flags, and extra arguments are rejected before capture. This intentionally runs one fixed platform command, with no shell or su fallback.
+
+The capture must finish successfully, fit within 128 KiB plus an overflow probe, contain no NUL, and end in a newline. Exactly one ordered complete primary `Stats since:`, `Total frames rendered:`, and `Janky frames:` summary is accepted. Separately named legacy-jank and unrelated lines are ignored; missing, duplicated, malformed, or multiple-process summaries and failure lines produce `ERR`. Exactly one positive-PID process header must identify the fixed package. Decimal counters reject signs, leading zeros, overflow, and trailing garbage; epoch supports the full unsigned 64-bit range, counts the unsigned 32-bit range, and janky cannot exceed total. The AOSP two-decimal percentage presentation is checked for shape and omitted from the reply; older zero-frame `nan` presentations are conservatively unavailable. The canonical newline-terminated frame is at most 128 bytes. These are cumulative counters; this operation does not reset HWUI state or report interval percentiles.
+
+
+`--reconcile-stale-replacement` is a fixed, root-only bootstrap command with no arguments.
+It returns exactly `STALE_REPLACEMENT RECONCILED`, `STALE_REPLACEMENT NONE`, or
+`STALE_REPLACEMENT HOLD`, followed by one newline; HOLD has nonzero exit status.
+It acquires the shared helper transaction lock and exclusive Guard directory/owner custody.
+Only a valid prior-boot REQUESTED/generation1 or GRANTED/generation2 journal with exact recorded
+root:root0700 single-link old live and new staged binary identities can be retired. The Guard
+namespace must contain only its owner lock and that journal; previous copies, temporary records,
+active owners, malformed state, current-boot records, and later phases remain HOLD.
+The command preserves both binaries, removes the journal last, and requires directory fsync before
+reporting reconciliation. It never promotes or launches either binary and does not change normal
+supervisor startup or same-boot lease recovery. An authenticated app bootstrap must run the exact
+bundled helper from a separate verified recovery slot, preserving the transaction's staged file,
+then recheck the ordinary install authority. File hashing is bounded to16MiB per recorded binary;
+callers must bound the bootstrap process lifetime. This is recovery of interrupted helper
+replacement, not authorization to discard Guard plans, settings, or database custody.

@@ -341,12 +341,17 @@ data class CameraPresentation(
             summary = "camera off", action = "turn on the camera setting to serve snapshots and a stream",
         )
 
-        fun permissionNeeded(streamPort: Int? = null): CameraPresentation = CameraPresentation(
+        private const val REENABLE_ACTION = "turn the camera setting off and on again, then grant the permission when Android asks"
+
+        fun permissionNeeded(
+            streamPort: Int? = null,
+            declined: Boolean = CameraPermissionPrompt.isDeclined(),
+        ): CameraPresentation = CameraPresentation(
             state = CameraState.PERMISSION_NEEDED, outcome = CameraRefusal.PERMISSION.token,
             fault = CameraFault.PERMISSION, faultDetail = null, recovery = "none", clients = 0,
             lastFrameAgeMs = null, consecutiveFailures = 0, indication = CameraIndication.NONE,
             summary = "camera on, but Android has not granted the permission",
-            action = "grant the camera permission on the panel when prompted",
+            action = if (declined) REENABLE_ACTION else "grant the camera permission on the panel when prompted",
             streamPort = streamPort,
         )
 

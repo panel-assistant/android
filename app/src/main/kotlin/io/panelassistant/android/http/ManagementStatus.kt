@@ -53,6 +53,11 @@ internal fun managementStatusJson(
     panelAssistantTransport: PanelAssistantTransportFacts? = null,
     /** The capability rows' wire text is English, from the same catalogue the dashboard reads. */
     english: AppStrings,
+    /** The panel profile id, read only to link a WebView-too-old warning to that model's update steps. */
+    profileId: () -> String,
+    webView: (() -> String)? = null,
+    rootLostSinceBoot: () -> Boolean = io.panelassistant.android.control.Su::rootLostSinceBoot,
+    screenLockSecure: () -> Boolean? = { null },
 ): String {
     // Engine-aware WebView age check (a Cromite swap reports the stale OEM package version). Same finding
     // set as the dashboard banner + Install tab (HealthAudit); the audit lists ALL available updates
@@ -106,7 +111,7 @@ internal fun managementStatusJson(
     findings.forEach { finding ->
         addWarning(
             statusWarningSeverity(finding),
-            statusWarning(finding),
+            statusWarning(finding, profileId),
             HealthAudit.presentation(
                 finding,
                 targetChromium = PanelHealth.MIN_CHROMIUM,
@@ -146,11 +151,10 @@ internal fun managementStatusJson(
     return "{\"warnings\":[${warns.joinToString(",") { jsonStr(it) }}]," +
         "\"warning_severities\":[${severities.joinToString(",") { jsonStr(it.wire) }}]," + presentationOverlay +
         "\"capabilities\":[$caps],${installCapabilityStatusJson(management.privilege, management.confirmedSelfUpdate)}," +
+        "\"root_lost_since_boot\":${runCatching(rootLostSinceBoot).getOrDefault(false)}," +
+        "\"screen_lock_secure\":${runCatching(screenLockSecure).getOrNull() ?: "null"}," +
         storageProof +
         homeProofJson +
-        // The panel never offers its own update: Panel Assistant owns that. Older Panel Assistant
-        // releases still parse this object, so it stays, always `none`.
-        "\"panel_assistant_update\":{\"state\":\"none\"}," +
         // Additive, presentation-only, and read from state the panel already holds.
         "\"panel_assistant_device\":${
             PanelAssistantDevice.json(
@@ -178,6 +182,7 @@ internal fun managementStatusJson(
         "\"panel_assistant_transport\":${
             (panelAssistantTransport ?: PanelAssistantTransportFacts(PanelAssistantTransportPhase.STOPPED, null)).statusJson()
         }," +
+        (webView?.let { "\"webview\":${it()}," } ?: "") +
         "\"renderer\":${renderer().statusJson()}," +
         "\"camera\":${camera().statusJson()}," +
         proximityJson +
@@ -197,10 +202,10 @@ private fun statusWarningSeverity(f: HealthAudit.Finding): NoticeSeverity = when
     HealthAudit.Kind.UPDATE -> NoticeSeverity.UPDATE
 }
 
-private fun statusWarning(f: HealthAudit.Finding): String = when (f.kind) {
+private fun statusWarning(f: HealthAudit.Finding, profileId: () -> String): String = when (f.kind) {
     HealthAudit.Kind.WEBVIEW_OLD ->
         "⚠ <b>System WebView is too old</b> (${esc(f.detail)}) — the Home Assistant dashboard may render blank. " +
-            "<a href=\"$WEBVIEW_DOC\" target=\"_blank\" rel=\"noopener\">How &amp; why to update</a> (target Chromium ${PanelHealth.MIN_CHROMIUM}+)."
+            "<a href=\"${webViewUpdateSteps(profileId())}\" target=\"_blank\" rel=\"noopener\">How &amp; why to update</a> (target Chromium ${PanelHealth.MIN_CHROMIUM}+)."
     HealthAudit.Kind.NO_RENDERER ->
         "ℹ <b>Next: choose a dashboard renderer.</b> Select Panel Assistant's built-in renderer, install the Home Assistant Companion app, or configure another dashboard package."
     HealthAudit.Kind.UPDATE -> f.update!!.let { u ->

@@ -1,7 +1,8 @@
 package io.panelassistant.android.control
 
 import io.panelassistant.android.device.ScreenOff
-import io.panelassistant.android.platform.RootShell
+import io.panelassistant.android.platform.Daemon
+import io.panelassistant.android.platform.DaemonLongResult
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -13,15 +14,16 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 /**
- * The `SCREEN_BRIGHTNESS` observer over a real [ScreenController] on the su `bl_power` route. Android
- * delivers the observer on the main looper, so a root read there freezes the panel's UI; panels logged
- * main-thread waits of up to 16 s inside `Su.runOutput`.
+ * The `SCREEN_BRIGHTNESS` observer over a real [ScreenController] on the su `bl_power` route, whose
+ * `bl_power` read goes to the root helper. Android delivers the observer on the main looper, so a
+ * privileged read there freezes the panel's UI; panels logged main-thread waits of up to 16 s inside
+ * `Su.runOutput` when that read still went to su.
  */
 class BrightnessSettingObserverTest {
     private val lane = Executors.newSingleThreadExecutor { Thread(it, LANE) }
-    private val root = GatedRootShell()
+    private val root = GatedHelper()
     private val backlight = FakeBacklight(level = 120)
-    private val screen = ScreenController(backlight, FakeScreenPower(), root, FakeDaemon(), route = ScreenOff.SU_BLPOWER)
+    private val screen = ScreenController(backlight, FakeScreenPower(), FakeRootShell(), root, route = ScreenOff.SU_BLPOWER)
     private val journal = BrightnessWriteAttribution()
     private val notes = Collections.synchronizedList(mutableListOf<Pair<Int, Int>>())
     private var setting: Int? = null
@@ -42,13 +44,13 @@ class BrightnessSettingObserverTest {
         lane.shutdownNow()
     }
 
-    @Test fun `a change returns on the delivering thread without a root read`() {
+    @Test fun `a change returns on the delivering thread without a privileged read`() {
         root.blPower = "0"
         val caller = Thread({ change(80) }, "main").apply { isDaemon = true; start() }
         caller.join(PROMPT_MS)
 
-        assertFalse("onChange waited inside Su.runOutput on the delivering thread", caller.isAlive)
-        assertTrue("the delivering thread entered Su.runOutput", "main" !in root.readers)
+        assertFalse("onChange waited inside the privileged read on the delivering thread", caller.isAlive)
+        assertTrue("the delivering thread entered the privileged read", "main" !in root.readers)
         assertTrue("nothing is attributed before the darkness check", notes.isEmpty())
 
         root.gate.countDown()
@@ -62,7 +64,7 @@ class BrightnessSettingObserverTest {
         root.blPower = "0"
 
         journal.record(90, NOW_MS)
-        change(90)            // ha-paneld's own write: consumed at delivery, no root read
+        change(90)            // ha-paneld's own write: consumed at delivery, no privileged read
         drain()
         assertTrue(root.readers.isEmpty())
 
@@ -87,19 +89,21 @@ class BrightnessSettingObserverTest {
         lane.submit {}.get(5, TimeUnit.SECONDS)
     }
 
-    /** su whose `bl_power` read waits for [gate], as it does behind other root work, and names its caller. */
-    private class GatedRootShell : RootShell {
+    /** A root helper whose `BLPOWER` read waits for [gate], as it does behind other helper work, and
+     *  names its caller. */
+    private class GatedHelper : Daemon {
         val gate = CountDownLatch(1)
         val readers: MutableList<String> = Collections.synchronizedList(mutableListOf())
         @Volatile var blPower = "0"
         override fun available() = true
-        override fun run(cmd: String) = true
-        override fun runOutput(cmd: String): String? {
+        override fun send(cmd: String): String? {
             readers += Thread.currentThread().name
             gate.await(10, TimeUnit.SECONDS)
-            return if ("bl_power" in cmd) blPower else null
+            return if (cmd == "BLPOWER") blPower else null
         }
-        override fun runBytes(cmd: String): ByteArray? = null
+        override fun sendLong(cmd: String, timeoutMs: Long): DaemonLongResult =
+            send(cmd)?.let(DaemonLongResult::Reply) ?: DaemonLongResult.NotSubmitted
+        override fun sendBytes(cmd: String): ByteArray? = null
     }
 
     private companion object {

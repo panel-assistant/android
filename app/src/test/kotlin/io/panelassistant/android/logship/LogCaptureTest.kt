@@ -1,6 +1,5 @@
 package io.panelassistant.android.logship
 
-import io.panelassistant.android.device.SuForm
 import io.panelassistant.android.metrics.FeatureCostOperation
 import io.panelassistant.android.metrics.FeatureCostRegistry
 import kotlinx.coroutines.CoroutineScope
@@ -14,6 +13,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.io.InterruptedIOException
 import java.io.InputStream
 import java.io.OutputStream
@@ -204,11 +204,11 @@ class LogCaptureTest {
         }
     }
 
-    @Test fun unrootedSystemCaptureUsesHelperStreamAndKeepsWholeEntry() {
+    @Test fun systemCaptureUsesHelperStreamAndKeepsWholeRedactedEntryWithoutStartingSu() {
         val helperStarts = AtomicInteger()
+        val processStarts = AtomicInteger()
         val cap = LogCapture.system(
             CoroutineScope(Dispatchers.IO),
-            suForm = SuForm.NONE,
             helperLines = { emit ->
                 helperStarts.incrementAndGet()
                 emit("[ 1790592713.123  123: 456 E/AndroidRuntime ]")
@@ -216,7 +216,7 @@ class LogCaptureTest {
                 emit("")
                 awaitCancellation()
             },
-            rootAvailable = { false },
+            processStarter = { processStarts.incrementAndGet(); GateProcess("").also { it.finish(1) } },
         )
         val got = java.util.concurrent.CopyOnWriteArrayList<String>()
         val subscription = cap.subscribe(got::add)
@@ -226,40 +226,35 @@ class LogCaptureTest {
             assertTrue(got.single().contains("password=***\nAuthorization: Bearer ***\n\n    at Example.first(Example.kt:12)"))
             assertFalse(got.single().contains("hunter2secret"))
             assertFalse(got.single().contains("abc123XYZ"))
-            assertEquals(emptyList<String>(), cap.dump()) // no su attempt on an unrooted panel
+            assertEquals(emptyList<String>(), cap.dump())
+            assertEquals(got.toList(), cap.initialBacklog())
+            assertEquals(0, processStarts.get())
         } finally {
             subscription.close()
             cap.close()
         }
     }
 
-    @Test fun rootedSystemCaptureShipsACompleteExceptionWithEitherSuForm() {
-        val record = "[ 1790592713.123  123: 456 E/RSLProof ]\n" +
-            "java.lang.IllegalStateException: complete\\x0A    at Example.first(Example.kt:12)\\x0A\\x0A    at Example.second(Example.kt:25)\n\n"
-        for ((form, prefix) in listOf(
-            SuForm.ANDROID to listOf("su", "0", "sh", "-c"),
-            SuForm.TOOLBOX to listOf("su", "-c"),
-        )) {
-            val started = java.util.concurrent.CopyOnWriteArrayList<List<String>>()
+    @Test fun missingOrRefusedHelperRetriesStreamAndRepeatedDumpsWithoutStartingSu() {
+        for (failure in listOf(IOException("helper missing"), UnsupportedOperationException("helper LOGCAT unsupported"))) {
+            val starts = AtomicInteger()
+            val helperAttempts = AtomicInteger()
             val cap = LogCapture.system(
                 CoroutineScope(Dispatchers.IO),
-                suForm = form,
-                processStarter = { command ->
-                    started.add(command)
-                    val accepted = command.take(prefix.size) == prefix && command.last().contains("-v printable")
-                    GateProcess(if (accepted) record else "").also { it.finish(if (accepted) 0 else 1) }
-                },
+                helperLines = { helperAttempts.incrementAndGet(); throw failure },
+                processStarter = { starts.incrementAndGet(); GateProcess("").also { it.finish(1) } },
             )
-            val received = java.util.concurrent.CopyOnWriteArrayList<String>()
-            val subscription = cap.subscribe(received::add)
+            val got = java.util.concurrent.CopyOnWriteArrayList<String>()
+            val subscription = cap.subscribe(got::add)
             try {
-                await { received.isNotEmpty() }
-                assertEquals("$form must stream the complete exception as one record", 1, received.size)
-                assertEquals("$form must follow from now", true, started.any { it.last().contains("-T 1") })
-                val expected = "[ 1790592713.123  123: 456 E/RSLProof ]\n" +
-                    "java.lang.IllegalStateException: complete\n    at Example.first(Example.kt:12)\n\n    at Example.second(Example.kt:25)"
-                assertEquals("$form must stream the complete exception", expected, received.single())
-                assertEquals("$form must dump the same complete exception", listOf(expected), cap.dump(10))
+                repeat(3) {
+                    assertEquals(emptyList<String>(), cap.dump())
+                    assertEquals(emptyList<String>(), cap.initialBacklog())
+                }
+                // Prove a restart as well as the first subscription: neither may fall back to su.
+                await { helperAttempts.get() >= 2 }
+                assertTrue(got.isEmpty())
+                assertEquals("${failure.message} must never start a subprocess", 0, starts.get())
             } finally {
                 subscription.close()
                 cap.close()
@@ -555,6 +550,38 @@ class LogCaptureTest {
             assertTrue(cap.snapshot().isEmpty())
         } finally {
             replacement.close()
+            cap.close()
+        }
+    }
+
+    @Test fun repeatingStartFailureBacksOffAndAHealthyPassResetsIt() {
+        val starts = AtomicInteger()
+        val healthy = java.util.concurrent.atomic.AtomicBoolean(false)
+        val cap = LogCapture(
+            CoroutineScope(Dispatchers.IO),
+            streamCmd = listOf("logcat"),
+            dumpCmd = { emptyList() },
+            processStarter = {
+                starts.incrementAndGet()
+                if (healthy.get()) GateProcess("one line\n") else throw IOException("no logcat")
+            },
+            restartBaseMs = 10,
+            restartMaxMs = 160,
+        )
+        val sub = cap.subscribe { }
+        try {
+            Thread.sleep(1_000)
+            // Fixed 10 ms retry would start ~100 times; 10,20,40,80,160,160... allows about 10.
+            assertTrue("starts=${starts.get()}", starts.get() in 3..14)
+            healthy.set(true)
+            Thread.sleep(400) // outlast the pending 160 ms wait; the next pass emits and resets
+            val atRecovery = starts.get()
+            Thread.sleep(300)
+            // After the reset the cadence is back at 10 ms, so a silent-EOF-free line each pass
+            // restarts quickly (well over what a 160 ms cadence would give in 300 ms).
+            assertTrue("recovered=${starts.get() - atRecovery}", starts.get() - atRecovery > 5)
+        } finally {
+            sub.close()
             cap.close()
         }
     }

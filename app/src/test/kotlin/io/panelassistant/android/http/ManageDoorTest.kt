@@ -312,6 +312,7 @@ internal class ManageDoorTest : PanelRuntimeRig() {
             "install.component", "install.apk", "install.apk.from_url", "install.apk.fetch.cancel",
             "install.apk.discard", "install.apk.pending", "install.apk.commit", "install.apk.allow",
             "install.versions", "install.status", "backup", "updates.ignore", "packages", "uninstall",
+            "webview.observe", "webview.install",
             "dashboard.clear_storage", "companion.repair_url", "tame", "tame.record", "tame.suggest",
             "hand_back_home", "display", "display.density",
             "dashboard.entity_filter", "dashboard.entity_filter.set", "dashboard.entities",

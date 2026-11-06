@@ -65,7 +65,7 @@
     <string name="panel_not_set_up">Tento panel ještě není nastaven.</string>
     <string name="panel_not_set_up_hint">Naskenujte kód telefonem — zabere to asi dvě minuty. Nebo klepněte na %1$s a proveďte to přímo na této obrazovce.</string>
     <string name="browser_engine_too_old">Prohlížečové jádro tohoto panelu je příliš staré.</string>
-    <string name="browser_engine_too_old_hint">Ovládací panely Home Assistant potřebují novější jádro. Opravte to na stránce nastavení v prohlížeči.</string>
+    <string name="browser_engine_too_old_hint">Nastavení lze dokončit, ale ovládací panely Home Assistant potřebují novější jádro. Jak ho aktualizovat, ukáže stránka nastavení v prohlížeči.</string>
     <string name="choose_dashboard_app">Vyberte aplikaci pro ovládací panel.</string>
     <string name="continue_setup_browser">Pokračujte na stránce nastavení v prohlížeči.</string>
     <string name="connected_next_ha_address">Připojeno. Dále: adresa Home Assistant.</string>
@@ -202,4 +202,5 @@
     <string name="listening_on_port">Naslouchá na :%1$d</string>
     <string name="degraded_profile_startup">Omezený provoz · spuštění profilu selhalo</string>
     <string name="degraded_startup">Omezený provoz · spuštění selhalo</string>
+    <string name="approval_op_local_adb">Spustit údržbu panelu</string>
 </resources>

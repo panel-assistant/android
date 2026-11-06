@@ -125,7 +125,7 @@ internal class PanelAssistantVoice(
     private sealed interface Outbound {
         data object Configure : Outbound
         class Run(val turn: VoiceTurn) : Outbound
-        class Played(val announceId: String?) : Outbound
+        class Played(val announceId: String?, val stopped: Boolean) : Outbound
         class Cancel(val runId: Long) : Outbound
     }
 
@@ -147,8 +147,8 @@ internal class PanelAssistantVoice(
         return turn
     }
 
-    /** The panel finished playing a reply (null) or the named announcement. */
-    fun played(announceId: String?) = enqueue(Outbound.Played(announceId))
+    /** The panel finished playing a reply (null) or the named announcement, or the owner [stopped] it. */
+    fun played(announceId: String?, stopped: Boolean = false) = enqueue(Outbound.Played(announceId, stopped))
 
     private fun cancel(turn: VoiceTurn) {
         val runId = synchronized(lock) {
@@ -217,6 +217,7 @@ internal class PanelAssistantVoice(
             is Outbound.Played -> {
                 message.put("type", COMMAND_VOICE_PLAYED)
                 item.announceId?.let { message.put("announce_id", it) }
+                if (item.stopped) message.put("outcome", OUTCOME_STOPPED)
             }
             // Core's own command, which carries no session: ending the subscription cancels the pipeline.
             is Outbound.Cancel -> {
@@ -329,6 +330,7 @@ internal class PanelAssistantVoice(
         const val COMMAND_VOICE_CONFIGURATION = "panel_assistant/voice_configuration"
         const val COMMAND_VOICE_RUN = "panel_assistant/voice_run"
         const val COMMAND_VOICE_PLAYED = "panel_assistant/voice_played"
+        const val OUTCOME_STOPPED = "stopped"
         const val EVENT_VOICE_ANNOUNCE = "voice_announce"
         const val EVENT_VOICE_COLORS = "voice_colors"
         private val COLOR = Regex("^#[0-9A-Fa-f]{6}$")

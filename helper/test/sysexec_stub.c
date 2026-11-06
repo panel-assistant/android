@@ -11,11 +11,15 @@
 #include <string.h>
 #include <unistd.h>
 
+static int ensure_result, ensure_calls;
+void sysexec_stub_set_ensure_result(int result) { ensure_result = result; }
+int sysexec_stub_count_ensure(void) { return ensure_calls; }
+
 #define MAX_POPEN_RULES 8
 #define MAX_RUN_HISTORY 32
 #define MAX_RUN_BYTES 4096
 #define MAX_ARGV_HISTORY 32
-#define MAX_ARGV_ARGS 8
+#define MAX_ARGV_ARGS 32
 #define MAX_ARGV_BYTES 1280
 
 typedef struct {
@@ -56,6 +60,7 @@ static int deadline_call_count;
 static unsigned deadline_elapsed_ms;
 
 void sysexec_stub_reset(void) {
+    ensure_result = ensure_calls = 0;
     memset(run_fail_needle, 0, sizeof run_fail_needle);
     run_fail_status = 0;
     memset(run_timeout_needle, 0, sizeof run_timeout_needle);
@@ -372,3 +377,54 @@ unsigned sysexec_stub_deadline_ms(int index) {
 }
 
 void sysexec_stub_set_deadline_elapsed(unsigned ms) { deadline_elapsed_ms = ms; }
+
+int sysexec_capture_zigbee_role(char *output, size_t capacity, size_t *used) {
+    const char *const argv[] = { "/vendor/bin/siliconlabs_host/mosquitto_sub", "-h", "127.0.0.1",
+        "-p", "1883", "-i", "hapaneld_zr", "-t", "zigbee/system/network-role/information",
+        "-C", "1", "-W", "3", NULL };
+    int status = sysexec_capture_argv_timeout(argv[0], argv, output, capacity, 3500u, NULL);
+    if (used) *used = strlen(output);
+    return status;
+}
+
+int sysexec_capture_wifi_status(char *output, size_t capacity, size_t *used) {
+    const char *const primary[] = { "/system/bin/cmd", "wifi", "status", NULL };
+    int status = sysexec_capture_argv_timeout(primary[0], primary, output, capacity, 2000u, NULL);
+    if (status > 0) {
+        const char *const fallback[] = { "/system/bin/dumpsys", "wifi", NULL };
+        status = sysexec_capture_argv_timeout(fallback[0], fallback, output, capacity, 2000u, NULL);
+    }
+    if (used) *used = strlen(output);
+    return status;
+}
+
+void sysexec_capture_adb_properties(struct adb_property_capture *capture) {
+    if (!capture) return;
+    memset(capture, 0, sizeof *capture);
+    for (size_t i = 0; i < ADB_PROPERTY_COUNT; i++) capture->status[i] = -1;
+    static const char *const names[ADB_PROPERTY_COUNT] = {
+        "service.adb.listen_addrs", "service.adb.tcp.port", "persist.adb.tcp.port",
+        "service.adb.tls.port", "persist.adb.tls_server.enable"
+    };
+    for (size_t i = 0; i < ADB_PROPERTY_COUNT; i++) {
+        const char *const argv[] = { "/system/bin/getprop", names[i], NULL };
+        capture->status[i] = sysexec_capture_argv_timeout(argv[0], argv, capture->output[i],
+            sizeof capture->output[i], 2000u, NULL);
+        if (capture->status[i] == -2) break;
+        const popen_rule *rule = find_argv_rule(argv);
+        if (rule && strlen(rule->output) >= sizeof capture->output[i]) capture->status[i] = -1;
+        else if (capture->status[i] >= 0) capture->used[i] = strlen(capture->output[i]);
+    }
+}
+
+int sysexec_capture_gfxinfo(const char *package, char *output, size_t capacity, size_t *used) {
+    if (used) *used = 0;
+    if (!package || !*package || !used) return -1;
+    const char *const argv[] = { "/system/bin/dumpsys", "gfxinfo", package, NULL };
+    int status = sysexec_capture_argv_timeout(argv[0], argv, output, capacity, 2000u, NULL);
+    if (output && capacity) *used = strlen(output);
+    return status;
+}
+
+// No-exec socket/fuzz fixtures interpose the fixed ordinary recovery operation.
+int __wrap_adb_recovery_ensure(void) { ensure_calls++; return ensure_result; }

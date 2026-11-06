@@ -14,6 +14,7 @@ void cmd_reboot(conn_ctx *ctx, const char *args);     // REBOOT
 void cmd_density(conn_ctx *ctx, const char *args);    // DENSITY [<n>|reset]   get/set display density
 void cmd_fontscale(conn_ctx *ctx, const char *args);  // FONTSCALE [<s>|reset] get/set system font scale
 void cmd_bootchime(conn_ctx *ctx, const char *args);  // BOOTCHIME SILENCE | RESTORE <setting|->...; OK/ERR/PARTIAL
+void cmd_govread(conn_ctx *ctx, const char *args);    // GOVREAD CURRENT|AVAILABLE fixed cpu0 read-back
 void cmd_gov(conn_ctx *ctx, const char *args);        // GOV <governor>    CPU scaling governor
 void cmd_zigbeecontain(conn_ctx *ctx, const char *args); // ZIGBEECONTAIN exact Sonoff vendor-native containment
 void cmd_screencap(conn_ctx *ctx, const char *args);  // SCREENCAP         raw PNG stream
@@ -24,6 +25,7 @@ void cmd_enable(conn_ctx *ctx, const char *args);     // ENABLE <pkg>      pm en
 void cmd_overlay(conn_ctx *ctx, const char *args);    // OVERLAY <pkg> deny|allow  SYSTEM_ALERT_WINDOW
 void cmd_install(conn_ctx *ctx, const char *args);    // INSTALL <apk-path> legacy verb; always fails closed
 void cmd_installstream(conn_ctx *ctx, const char *args); // INSTALLSTREAM <bytes> two-phase socket upload + install
+void cmd_installstreamupgrade(conn_ctx *ctx, const char *args); // INSTALLSTREAMUPGRADE <bytes> ordinary replacement; never downgrade
 void cmd_installgc(conn_ctx *ctx, const char *args);  // INSTALLGC <apk-path> legacy cleanup acknowledgement
 // GRANT accepts ONLY the app's own package id, so the app can repair its own grants without a root
 // shell and nothing else gains a privileged package surface.

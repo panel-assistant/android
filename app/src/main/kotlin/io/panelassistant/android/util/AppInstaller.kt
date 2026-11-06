@@ -367,11 +367,22 @@ object AppInstaller {
         guardDbInstallBlocked("apk")
     }
 
+    /** Provider caller owns the pinned identity and fresh no-downgrade admission at submission. */
+    internal suspend fun installStrictUpgrade(
+        context: Context,
+        apk: File,
+        beforeSubmit: () -> InstallOutcome.Failure?,
+    ): InstallOutcome = installLocalApkAdmitted(
+        context, apk, component = "webview", strictUpgrade = true, beforeStrictSubmit = beforeSubmit,
+    )
+
     private suspend fun installLocalApkAdmitted(
         context: Context,
         apk: File,
         component: String,
         beforeInstall: (() -> Boolean)? = null,
+        strictUpgrade: Boolean = false,
+        beforeStrictSubmit: (() -> InstallOutcome.Failure?)? = null,
     ): InstallOutcome = withContext(Dispatchers.IO) {
         if (!GuardDbProcessAdmission.ordinaryMutationsAllowed()) {
             return@withContext guardDbInstallBlocked(component)
@@ -413,7 +424,9 @@ object AppInstaller {
                 return@withContext policyFailure(why)
             }
         }
-        val submissionRefusal: (() -> InstallOutcome.Failure?)? = if (info.pkg == AppIdentity.OWN) {
+        val submissionRefusal: (() -> InstallOutcome.Failure?)? = if (strictUpgrade) {
+            beforeStrictSubmit ?: { InstallOutcome.Rejected("upgrade admission unavailable") }
+        } else if (info.pkg == AppIdentity.OWN) {
             { currentPanelUpdateRefusal(context, info)?.let(::policyFailure) }
         } else null
         // DB_COMPAT_MUTATION_ANCHOR: IN_APP_FIRST_MUTATION
@@ -443,7 +456,7 @@ object AppInstaller {
                     // Stream the APK straight into `pm install -S <size>` — no intermediate /data/local/tmp copy
                     // (halves peak disk use). Long-timeout: staging a large stream far exceeds the 5s su bound.
                     Su.runWithStdinLong(
-                        "pm install -S ${apk.length()} -r ${if (info.pkg == AppIdentity.OWN) "" else "-d "}2>&1",
+                        "pm install -S ${apk.length()} -r ${if (strictUpgrade || info.pkg == AppIdentity.OWN) "" else "-d "}2>&1",
                         apk,
                         HelperInstallTransaction.INSTALL_TIMEOUT_MS,
                     )?.trim()
@@ -474,6 +487,7 @@ object AppInstaller {
                     apk,
                     File(context.filesDir, HelperInstallTransaction.STAGING_DIR),
                     beforeSubmit = submissionRefusal,
+                    strictUpgrade = strictUpgrade,
                 )
             } else {
                 apk.delete()

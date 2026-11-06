@@ -1,7 +1,6 @@
 package io.panelassistant.android.config
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -10,9 +9,6 @@ import org.junit.Test
  *  entity. */
 class DashboardZoomSpecTest {
     private val spec = SettingsRegistry.spec("dashboard_zoom")
-
-    @Test fun registered() =
-        assertNotNull("dashboard_zoom must stay in the registry (persist/export/import)", spec)
 
     @Test fun hundredPercentDefaultIntOnDashboardCard() {
         assertEquals(SettingType.INT, spec!!.type)

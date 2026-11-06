@@ -8,7 +8,8 @@ import android.content.ContextWrapper
 import android.content.SharedPreferences
 import android.content.res.Resources
 import io.panelassistant.android.Config
-import io.panelassistant.android.platform.RootShell
+import io.panelassistant.android.platform.Daemon
+import io.panelassistant.android.platform.DaemonLongResult
 import java.io.File
 import java.lang.reflect.Proxy
 import java.nio.file.Files
@@ -31,7 +32,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The controller monitor is never held across the seven-day baseline fit or the root backlight write,
+ * The controller monitor is never held across the seven-day baseline fit or the helper backlight write,
  * and a result computed from state that has since been superseded is discarded rather than applied.
  * Every blocking point is a latch the test owns, so nothing here depends on timing except the bound
  * on how long a call that must not wait is allowed to take.
@@ -42,14 +43,14 @@ class AutoBrightnessControllerLockTest {
     @After fun tearDown() = closeables.asReversed().forEach { it() }
 
     @Test(timeout = 30_000)
-    fun `setHaSourceAvailable returns while a tick is blocked inside su`() {
+    fun `setHaSourceAvailable returns while a tick is blocked inside the helper write`() {
         val h = harness()
         h.controller.submitPanelLux(LUX)
-        assertTrue("the tick reaches the root backlight write", h.root.entered.await(5, TimeUnit.SECONDS))
+        assertTrue("the tick reaches the helper backlight write", h.helper.entered.await(5, TimeUnit.SECONDS))
 
         returnsPromptly("setHaSourceAvailable(true)") { h.controller.setHaSourceAvailable(true) }
         returnsPromptly("setHaSourceAvailable(false)") { h.controller.setHaSourceAvailable(false) }
-        assertEquals("still inside su", 1, h.root.writes.size)
+        assertEquals("still inside the helper write", 1, h.helper.writes.size)
     }
 
     @Test(timeout = 30_000)
@@ -65,32 +66,32 @@ class AutoBrightnessControllerLockTest {
     fun `Home Assistant availability hands its evaluation to the controller thread`() {
         val ticked = CountDownLatch(1)
         val h = harness(haEntity = "sensor.room_lux", wallClockMs = { ticked.countDown(); System.currentTimeMillis() })
-        h.root.release.countDown()
+        h.helper.release.countDown()
         h.controller.submitHaLux(LUX)
         assertTrue("a tick reads the unavailable source", ticked.await(5, TimeUnit.SECONDS))
         h.controller.status() // the monitor round trip: that tick has finished with the source unavailable
-        assertEquals("an unavailable source is not evaluated", 0, h.root.writes.size)
+        assertEquals("an unavailable source is not evaluated", 0, h.helper.writes.size)
 
         h.controller.setHaSourceAvailable(true)
 
-        assertTrue("availability starts an evaluation", h.root.awaitWrites(1))
+        assertTrue("availability starts an evaluation", h.helper.awaitWrites(1))
     }
 
     @Test(timeout = 30_000)
-    fun `a write superseded while inside su is not recorded and current state is re-asserted`() {
+    fun `a write superseded while inside the helper write is not recorded and current state is re-asserted`() {
         val h = harness()
         h.controller.submitPanelLux(LUX)
-        assertTrue(h.root.entered.await(5, TimeUnit.SECONDS))
-        val automatic = h.root.writes.single()
+        assertTrue(h.helper.entered.await(5, TimeUnit.SECONDS))
+        val automatic = h.helper.writes.single()
         val manual = if (automatic > 128) 20 else 240
 
         returnsPromptly("noteExternalBrightness") {
             assertTrue(h.controller.noteExternalBrightness(manual, BrightnessPreferenceOrigin.PANEL_CONTROLS))
         }
-        h.root.release.countDown()
+        h.helper.release.countDown()
 
-        assertTrue("current state is re-asserted after the superseded write", h.root.awaitWrites(2))
-        val reasserted = h.root.writes[1]
+        assertTrue("current state is re-asserted after the superseded write", h.helper.awaitWrites(2))
+        val reasserted = h.helper.writes[1]
         assertTrue("re-asserted $reasserted tracks the manual level $manual", abs(reasserted - manual) < 4)
         assertEquals("the superseded $automatic is not recorded as applied", reasserted, h.controller.status().appliedTarget)
     }
@@ -104,7 +105,7 @@ class AutoBrightnessControllerLockTest {
         gate.release()
 
         assertTrue(gate.awaitDone(1))
-        assertEquals("the superseded automatic target never reaches su", emptyList<Int>(), h.root.writes.toList())
+        assertEquals("the superseded automatic target never reaches the helper", emptyList<Int>(), h.helper.writes.toList())
         assertEquals(240, h.controller.status().appliedTarget)
     }
 
@@ -115,7 +116,7 @@ class AutoBrightnessControllerLockTest {
         gate.release()
 
         assertTrue("the resumed evaluation reaches the actuator", gate.awaitDone(2))
-        assertEquals("only the resumed evaluation writes", 1, h.root.writes.size)
+        assertEquals("only the resumed evaluation writes", 1, h.helper.writes.size)
     }
 
     @Test(timeout = 30_000)
@@ -125,7 +126,7 @@ class AutoBrightnessControllerLockTest {
         gate.release()
 
         assertTrue("the reset evaluation reaches the actuator", gate.awaitDone(2))
-        assertEquals("only the reset evaluation writes", 1, h.root.writes.size)
+        assertEquals("only the reset evaluation writes", 1, h.helper.writes.size)
     }
 
     @Test(timeout = 30_000)
@@ -135,7 +136,7 @@ class AutoBrightnessControllerLockTest {
         gate.release()
 
         assertTrue(gate.awaitDone(1))
-        assertEquals("a closed controller writes nothing", emptyList<Int>(), h.root.writes.toList())
+        assertEquals("a closed controller writes nothing", emptyList<Int>(), h.helper.writes.toList())
     }
 
     @Test(timeout = 30_000)
@@ -143,24 +144,24 @@ class AutoBrightnessControllerLockTest {
         val fit = BlockingFit()
         val gateCalls = AtomicInteger()
         val h = harness(baselineCache = fit.cache, actuationGate = { action -> gateCalls.incrementAndGet(); action(); true })
-        h.root.release.countDown()
+        h.helper.release.countDown()
         h.controller.submitPanelLux(LUX)
         assertTrue("the first fit runs", fit.entered.await(5, TimeUnit.SECONDS))
 
         returnsPromptly("resetHistory") { h.controller.resetHistory() }
         fit.release.countDown()
 
-        assertTrue("the repeated evaluation writes", h.root.awaitWrites(1))
+        assertTrue("the repeated evaluation writes", h.helper.awaitWrites(1))
         assertEquals("the superseded evaluation never reached the actuator", 1, gateCalls.get())
         assertEquals(2, fit.count.get())
-        assertEquals(1, h.root.writes.size)
+        assertEquals(1, h.helper.writes.size)
     }
 
     @Test(timeout = 30_000)
     fun `an evaluation superseded by a manual level during its fit is repeated`() {
         val fit = BlockingFit()
         val h = harness(baselineCache = fit.cache)
-        h.root.release.countDown()
+        h.helper.release.countDown()
         h.controller.submitPanelLux(LUX)
         assertTrue("the first fit runs", fit.entered.await(5, TimeUnit.SECONDS))
 
@@ -182,27 +183,27 @@ class AutoBrightnessControllerLockTest {
             AdaptiveAmbientModel.estimate(now, rows, zone, location, fallback)
         }
         val h = harness(baselineCache = cache)
-        h.root.release.countDown()
+        h.helper.release.countDown()
         h.controller.submitPanelLux(LUX)
-        assertTrue(h.root.awaitWrites(1))
+        assertTrue(h.helper.awaitWrites(1))
 
         h.controller.resumeFullAuto()
 
-        assertTrue("the forced evaluation writes", h.root.awaitWrites(2))
+        assertTrue("the forced evaluation writes", h.helper.awaitWrites(2))
         assertEquals("the second evaluation reused the stored fit", 1, fits.get())
     }
 
     @Test(timeout = 30_000)
-    fun `close does not interrupt a tick inside su`() {
+    fun `close does not interrupt a tick inside the helper write`() {
         val h = harness()
         h.controller.submitPanelLux(LUX)
-        assertTrue(h.root.entered.await(5, TimeUnit.SECONDS))
+        assertTrue(h.helper.entered.await(5, TimeUnit.SECONDS))
 
         assertFalse("the in-flight write outlives the close bound", h.controller.closeAndJoin(timeoutMs = 200L))
-        h.root.release.countDown()
+        h.helper.release.countDown()
 
-        assertTrue(h.root.exited.await(5, TimeUnit.SECONDS))
-        assertFalse("a root command is never interrupted by teardown", h.root.interrupted.get())
+        assertTrue(h.helper.exited.await(5, TimeUnit.SECONDS))
+        assertFalse("a helper write is never interrupted by teardown", h.helper.interrupted.get())
     }
 
     @Test(timeout = 30_000)
@@ -210,12 +211,12 @@ class AutoBrightnessControllerLockTest {
         val historyExecutor = Executors.newSingleThreadScheduledExecutor()
         val h = harness(historyExecutor = historyExecutor)
         h.controller.submitPanelLux(LUX)
-        assertTrue(h.root.entered.await(5, TimeUnit.SECONDS))
+        assertTrue(h.helper.entered.await(5, TimeUnit.SECONDS))
 
         h.controller.closeAndJoin(timeoutMs = 200L)
 
-        assertTrue("history is flushed and closed although su is still blocked", historyExecutor.isShutdown)
-        assertEquals("the write is still inside su", 1L, h.root.exited.count)
+        assertTrue("history is flushed and closed although the helper write is still blocked", historyExecutor.isShutdown)
+        assertEquals("the write is still inside the helper", 1L, h.helper.exited.count)
     }
 
     @Test(timeout = 30_000)
@@ -308,12 +309,12 @@ class AutoBrightnessControllerLockTest {
         val first = harness(haEntity = haEntity, store = store, clock = clock)
         first.controller.updateSite(SITE_LAT, SITE_LON, SITE_ZONE)
         assertTrue(first.controller.noteExternalBrightness(240, BrightnessPreferenceOrigin.PANEL_CONTROLS, priorAppliedLevel = 100))
-        first.root.release.countDown()
+        first.helper.release.countDown()
         first.controller.closeAndJoin(timeoutMs = 5_000L)
         assertNotNull("the preference was persisted at stop", store.load())
     }
 
-    private class Harness(val controller: AutoBrightnessController, val root: BlockingRootShell)
+    private class Harness(val controller: AutoBrightnessController, val helper: BlockingHelper)
 
     /** Blocks the first actuation before its action runs; counts completed actuations. */
     private class HeldGate {
@@ -350,8 +351,8 @@ class AutoBrightnessControllerLockTest {
         }
     }
 
-    /** Answers backlight discovery; each backlight write blocks until [release], recording its level. */
-    private class BlockingRootShell : RootShell {
+    /** A root helper over a 0..255 node; each BLSET blocks until [release], recording its level. */
+    private class BlockingHelper : Daemon {
         val entered = CountDownLatch(1)
         val release = CountDownLatch(1)
         val exited = CountDownLatch(1)
@@ -360,8 +361,9 @@ class AutoBrightnessControllerLockTest {
         private val written = Object()
 
         override fun available() = true
-        override fun run(cmd: String): Boolean {
-            val level = WRITE.find(cmd)?.groupValues?.get(1)?.toInt() ?: return true
+        override fun send(cmd: String): String? {
+            if (cmd == "BLREAD") return "0 255"
+            val level = cmd.removePrefix("BLSET ").takeIf { it != cmd }?.toIntOrNull() ?: return null
             writes += level
             synchronized(written) { written.notifyAll() }
             entered.countDown()
@@ -372,14 +374,11 @@ class AutoBrightnessControllerLockTest {
             } finally {
                 exited.countDown()
             }
-            return true
+            return "OK"
         }
-        override fun runOutput(cmd: String): String? = when {
-            cmd.contains("ls -d /sys/class/backlight") -> "/sys/class/backlight/panel/"
-            cmd.contains("max_brightness") -> "255"
-            else -> null
-        }
-        override fun runBytes(cmd: String): ByteArray? = null
+        override fun sendLong(cmd: String, timeoutMs: Long): DaemonLongResult =
+            send(cmd)?.let(DaemonLongResult::Reply) ?: DaemonLongResult.NotSubmitted
+        override fun sendBytes(cmd: String): ByteArray? = null
 
         fun awaitWrites(count: Int): Boolean {
             val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
@@ -392,17 +391,13 @@ class AutoBrightnessControllerLockTest {
             }
             return true
         }
-
-        companion object {
-            private val WRITE = Regex("""^echo (\d+) > /sys/class/backlight/panel/brightness$""")
-        }
     }
 
     /** A tick that has decided on a write and is held at the actuator, before the write runs. */
     private fun blockedBeforeWrite(): Pair<Harness, HeldGate> {
         val gate = HeldGate()
         val h = harness(actuationGate = gate::actuate)
-        h.root.release.countDown()
+        h.helper.release.countDown()
         h.controller.submitPanelLux(LUX)
         assertTrue("the tick decided on a write", gate.entered.await(5, TimeUnit.SECONDS))
         return h to gate
@@ -424,10 +419,10 @@ class AutoBrightnessControllerLockTest {
             setAutoBrightness(true)
             if (haEntity.isNotEmpty()) setAutoBrightnessHaEntity(haEntity)
         }
-        val root = BlockingRootShell()
+        val helper = BlockingHelper()
         val controller = AutoBrightnessController(
             context = context,
-            brightness = BrightnessController(context, root, FakeDaemon()),
+            brightness = BrightnessController(context, helper),
             config = config,
             actuationGate = actuationGate,
             wallClockMs = wallClockMs,
@@ -443,10 +438,10 @@ class AutoBrightnessControllerLockTest {
             canWriteBrightness = { true },
         )
         closeables += {
-            root.release.countDown()
+            helper.release.countDown()
             controller.closeAndJoin(timeoutMs = 5_000L)
         }
-        return Harness(controller, root)
+        return Harness(controller, helper)
     }
 
     private fun returnsPromptly(label: String, call: () -> Unit) {

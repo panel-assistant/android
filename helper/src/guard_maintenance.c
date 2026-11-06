@@ -1,267 +1,28 @@
 #define _GNU_SOURCE
-#include "guard_maintenance.h"
-
-#include "sha256.h"
-#include "sysexec.h"
-#include "util.h"
-#include "version.h"
-
-#include <errno.h>
-#include <dirent.h>
-#include <fcntl.h>
-#include <inttypes.h>
-#include <limits.h>
-#include <pthread.h>
-#include <signal.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/stat.h>
-#include <sys/statvfs.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <sys/file.h>
-#include <sys/xattr.h>
-#include <time.h>
-#include <unistd.h>
-
-#ifdef HAPANELD_TEST
-#define GUARD_PARENT "/tmp"
-#define GUARD_DIR_NAME ".hapaneld-guard-db-test"
-#define GUARD_APP_USER_ROOT "/tmp/.hapaneld-guard-app-test/data/user/0"
-#define GUARD_BOOT_ID "/tmp/.hapaneld-guard-db-test.boot-id"
-#define GUARD_INSTALLED_APK "/tmp/.hapaneld-guard-installed/base.apk"
-#else
-#define GUARD_PARENT "/data/local"
-#define GUARD_DIR_NAME ".hapaneld-guard-db"
-#define GUARD_APP_USER_ROOT "/data/user/0"
-#define GUARD_BOOT_ID "/proc/sys/kernel/random/boot_id"
+#include "guard_maintenance_internal.h"
+#include <stddef.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#ifndef SOCK_NAME
+#define SOCK_NAME "hapaneld-helper"
 #endif
 
-#define GUARD_DIR GUARD_PARENT "/" GUARD_DIR_NAME
-// The package a session acts on is bound once, at GUARDPREPARE, from the caller's SO_PEERCRED
-// identity, and lives in the durable plan; every later verb and every reconcile derives the package
-// id, its database directory, `pm path`, `am force-stop` and `monkey -p` target from that record.
-// GUARD_DB_NAME and every restore-record, schema and metadata identifier stay byte-identical,
-// because shipped 0.4.1 verifiers compare them exactly.
-#define GUARD_DB_NAME "ha-paneld.db"
-#define GUARD_APP_PATH_BYTES 512
-#define GUARD_PACKAGE_BYTES 64
-#define GUARD_DRAFT "draft.v1"
-#define GUARD_DRAFT_TMP ".draft.v1.tmp"
-#define GUARD_MANIFEST "manifest.v1"
-#define GUARD_MANIFEST_TMP ".manifest.v1.tmp"
-#define GUARD_JOURNAL "journal.v1"
-#define GUARD_JOURNAL_TMP ".journal.v1.tmp"
-#define GUARD_CAPTURE "capture.v1"
-#define GUARD_CAPTURE_TMP ".capture.v1.tmp"
-#define GUARD_REPLACEMENT "replacement.v1"
-#define GUARD_REPLACEMENT_TMP ".replacement.v1.tmp"
-#define GUARD_A_APK "a.apk"
-#define GUARD_B_APK "b.apk"
-#define GUARD_A_UPLOAD ".a.apk.upload"
-#define GUARD_B_UPLOAD ".b.apk.upload"
-#define GUARD_BASELINE "baseline.db"
-#define GUARD_BASELINE_TMP ".baseline.db.tmp"
-#define GUARD_PREMIGRATE "premigrate.db"
-#define GUARD_PREMIGRATE_TMP ".premigrate.db.tmp"
-#define GUARD_B_PRIMARY "b-primary.db"
-#define GUARD_B_PRIMARY_TMP ".b-primary.db.tmp"
-#define GUARD_HEALTH_COPY "health.db"
-#define GUARD_HEALTH_COPY_TMP ".health.db.tmp"
-#define GUARD_SETTINGS "settings.v2"
-#define GUARD_SETTINGS_UPLOAD ".settings.v2.upload"
-#define GUARD_OWNER_LOCK ".owner.lock"
-#define GUARD_A_APK_PATH GUARD_DIR "/" GUARD_A_APK
-#define GUARD_B_APK_PATH GUARD_DIR "/" GUARD_B_APK
-#define GUARD_HEALTH_COPY_URI "file:" GUARD_DIR "/" GUARD_HEALTH_COPY "?immutable=1"
-#define GUARD_ROLLBACK_TMP ".guard.rollback.tmp"
-#define GUARD_APP_RESTORE_RECORD ".ha-paneld.db.restore.v1"
-#define GUARD_APP_RESTORE_RECORD_TMP ".ha-paneld.db.restore.v1.tmp"
-#define GUARD_APP_RESTORE_PREPARED ".ha-paneld.db.restore.prepared.v1"
-#define GUARD_APP_RESTORE_MAX_RECORD_BYTES 2048
-#define GUARD_REPLACEMENT_MAX_BINARY_BYTES (16ULL * 1024ULL * 1024ULL)
-#ifdef HAPANELD_TEST
-#define GUARD_APP_HELPER_PARENT "/tmp"
-#define GUARD_APP_HELPER_LIVE ".hapaneld-helper-live-test"
-#define GUARD_APP_HELPER_STAGE ".hapaneld-helper-live-test.new"
-#define GUARD_APP_HELPER_PREVIOUS ".hapaneld-helper-live-test.previous"
-#define GUARD_APP_HELPER_PREVIOUS_TMP ".hapaneld-helper-live-test.previous.tmp"
-#define HELPER_TRANSACTION_LOCK_PARENT "/tmp"
-#define HELPER_TRANSACTION_LOCK_NAME ".hapaneld-helper-transaction-lock-test"
-#else
-#define GUARD_APP_HELPER_PARENT "/data/local"
-#define GUARD_APP_HELPER_LIVE "hapaneld-helper"
-#define GUARD_APP_HELPER_STAGE ".hapaneld-helper.new"
-#define GUARD_APP_HELPER_PREVIOUS ".hapaneld-helper.previous"
-#define GUARD_APP_HELPER_PREVIOUS_TMP ".hapaneld-helper.previous.tmp"
-#define HELPER_TRANSACTION_LOCK_PARENT "/dev"
-#define HELPER_TRANSACTION_LOCK_NAME ".hapaneld-helper-transaction.lock"
-#endif
-#define HELPER_TRANSACTION_LOCK_PID "pid"
-#define GUARD_MAX_RECORD_BYTES 4096
-#define GUARD_MAX_APK_BYTES (256ULL * 1024ULL * 1024ULL)
-#define GUARD_MAX_DB_BYTES (64ULL * 1024ULL * 1024ULL)
-#define GUARD_MAX_SETTINGS_BYTES (256ULL * 1024ULL)
-#define GUARD_STORAGE_HEADROOM (64ULL * 1024ULL * 1024ULL)
-#define GUARD_TOKEN_COUNT 48
-#define GUARD_LABEL_BYTES 256
-#define GUARD_HEALTH_TIMEOUT_MS (2ULL * 60ULL * 1000ULL)
-#define GUARD_OVERALL_MAX_MS (30ULL * 60ULL * 1000ULL)
-#define GUARD_RECOVERY_RESERVE_MS (8ULL * 60ULL * 1000ULL)
-#define GUARD_FORWARD_MIN_MS (2ULL * 60ULL * 1000ULL)
-#define GUARD_SQLITE_PROOF_MAX_BYTES (8ULL * 1024ULL * 1024ULL)
-#define GUARD_SQLITE_PROOF_TIMEOUT_MS 5000U
-#define GUARD_AM_TIMEOUT_MS 10000U
-#define GUARD_SQLITE_PATH "/system/bin/sqlite3"
-#define GUARD_PROBE_TABLE "db_compatibility_canary_v15"
 
-typedef struct {
-    int defined;
-    int staged;
-    uint64_t bytes;
-    char sha[65];
-    uint64_t version_code;
-    uint32_t contract_min;
-    uint32_t contract_max;
-    uint32_t expected_schema;
-} guard_artifact;
-
-typedef struct {
-    char session[65];
-    char boot[65];
-    char signer[65];
-    char package[GUARD_PACKAGE_BYTES];
-    uint64_t generation;
-    uint64_t overall_deadline_ms;
-    uint64_t forward_deadline_ms;
-    uint32_t settings_authority_version;
-    uint64_t settings_authority_bytes;
-    char settings_authority_sha[65];
-    int settings_authority_staged;
-    uint64_t baseline_bytes;
-    char baseline_sha[65];
-    uint32_t baseline_schema;
-    uint64_t baseline_app_state;
-    char baseline_app_state_sha[65];
-    char baseline_settings_sha[65];
-    guard_artifact a;
-    guard_artifact b;
-    int captured;
-    uint64_t db_dir_dev;
-    uint64_t db_dir_ino;
-    uint64_t db_dev;
-    uint64_t db_ino;
-    uint64_t db_uid;
-    uint64_t db_gid;
-    uint32_t db_mode;
-    char db_label[GUARD_LABEL_BYTES];
-} guard_plan;
-
-typedef struct {
-    char session[65];
-    uint64_t manifest_generation;
-    char manifest_sha[65];
-    uint64_t generation;
-    enum guard_phase phase;
-    char role[5];
-    char installed_sha[65];
-    uint64_t version_code;
-    uint32_t schema;
-    uint64_t deadline_ms;
-    char error[33];
-    char outcome[33];
-    int pm_settled;
-    int pm_spawned;
-    uint64_t pm_pid;
-    uint64_t pm_start_ticks;
-    int rollback_attempt_consumed;
-    uint64_t recovery_deadline_ms;
-    uint64_t premigrate_bytes;
-    char premigrate_sha[65];
-    uint64_t b_primary_bytes;
-    char b_primary_sha[65];
-    char retirement_sha[65];
-} guard_journal;
-
-enum guard_capture_state {
-    GUARD_CAPTURE_INTENT = 0,
-    GUARD_CAPTURE_STOP_ATTEMPTED,
-    GUARD_CAPTURE_FAILED_LAUNCHING,
-    GUARD_CAPTURE_FAILED_NO_MUTATION,
-    GUARD_CAPTURE_CANCEL_INTENT,
-};
-
-typedef struct {
-    char session[65];
-    uint64_t draft_generation;
-    char draft_sha[65];
-    enum guard_capture_state state;
-} guard_capture;
-
-enum guard_replacement_phase {
-    GUARD_REPLACEMENT_REQUESTED = 0,
-    GUARD_REPLACEMENT_GRANTED,
-    GUARD_REPLACEMENT_BACKUP_DURABLE,
-    GUARD_REPLACEMENT_SWAPPED,
-};
-
-typedef struct {
-    char boot[65];
-    char nonce[65];
-    enum guard_replacement_phase phase;
-    uint64_t generation;
-    uint64_t old_bytes;
-    char old_sha[65];
-    uint64_t old_dev;
-    uint64_t old_ino;
-    uint64_t new_bytes;
-    char new_sha[65];
-    uint64_t new_dev;
-    uint64_t new_ino;
-    char new_build[65];
-} guard_replacement;
-
-typedef struct {
-    int present;
-    struct stat stat;
-} guard_file_snapshot;
-
-typedef struct {
-    int parent;
-    int dir;
-    struct stat dir_stat;
-    struct stat pid_stat;
-} helper_transaction_lock;
-
-enum helper_transaction_lock_result {
-    HELPER_TRANSACTION_LOCK_HOLD = -1,
-    HELPER_TRANSACTION_LOCK_ACQUIRED = 0,
-    HELPER_TRANSACTION_LOCK_BUSY = 1,
-};
-
-enum guard_publish_result {
-    GUARD_PUBLISH_FAILED = -1,
-    GUARD_PUBLISH_COMMITTED = 0,
-    GUARD_PUBLISH_INDETERMINATE = 1,
-};
-
-static pthread_mutex_t guard_lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t guard_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t package_gate = PTHREAD_MUTEX_INITIALIZER;
-static int guard_initialized;
+int guard_initialized;
 static int guard_supervised;
 static int guard_supervisor_owner;
 static pid_t guard_supervisor_pid = -1;
-static int guard_owner_fd = -1;
+int guard_owner_fd = -1;
 
-static int known_file_present(int dir, const char *name);
-static int empty_inventory_safe(int dir);
+int known_file_present(int dir, const char *name);
+int empty_inventory_safe(int dir);
 static int retirement_owner_lock_exact(int dir);
 static int plans_compatible(const guard_plan *plan);
-static int open_guard_dir(void);
+int open_guard_dir(void);
 static int load_replacement_at(int dir, guard_replacement *replacement);
-static int load_replacement_reconciled(int dir, guard_replacement *replacement);
+int load_replacement_reconciled(int dir, guard_replacement *replacement);
 static uint64_t monotonic_ms(void);
 static int load_manifest_reconciled(int dir, guard_plan *plan, guard_journal *journal,
                                     int repair_missing_journal);
@@ -278,13 +39,10 @@ static int reconcile_orphaned_cancel_at(int dir);
 static int reconcile_terminal_retirement_at(int dir);
 
 #ifdef HAPANELD_TEST
-static enum guard_test_fault test_fault;
+enum guard_test_fault test_fault;
 static uint64_t test_now_ms;
 static int test_pm_process_state;
 static int test_app_autonomous_profile;
-#define TEST_FAULT(value) (test_fault == (value))
-#else
-#define TEST_FAULT(value) ((void)(value), 0)
 #endif
 
 static int parse_u64(const char *text, uint64_t minimum, uint64_t maximum, uint64_t *value) {
@@ -376,7 +134,7 @@ const char *guard_phase_name(enum guard_phase phase) {
         ? names[(unsigned)phase] : "AMBIGUOUS";
 }
 
-static int open_guard_dir(void) {
+int open_guard_dir(void) {
     const char *parent_path = GUARD_PARENT;
 #ifdef HAPANELD_TEST
     const char *test_parent = getenv("HAPANELD_GUARD_TEST_PARENT");
@@ -408,7 +166,7 @@ static int open_guard_dir(void) {
     return dir;
 }
 
-static int remove_fixed_nondir(int dir, const char *name) {
+int remove_fixed_nondir(int dir, const char *name) {
     struct stat st;
     if (fstatat(dir, name, &st, AT_SYMLINK_NOFOLLOW) != 0) return errno == ENOENT ? 0 : -1;
     if (S_ISDIR(st.st_mode)) return -1;
@@ -733,7 +491,7 @@ static int deserialize_journal(char *record, size_t length, guard_journal *journ
 static const char *capture_state_name(enum guard_capture_state state) {
     static const char *const names[] = {
         "INTENT", "STOP_ATTEMPTED", "FAILED_LAUNCHING", "FAILED_NO_MUTATION",
-        "CANCEL_INTENT",
+        "FAILED_LAUNCH_ATTEMPTED", "CANCEL_INTENT",
     };
     return state >= GUARD_CAPTURE_INTENT && state <= GUARD_CAPTURE_CANCEL_INTENT
         ? names[(unsigned)state] : "INVALID";
@@ -909,7 +667,7 @@ static int replacement_same_transaction(const guard_replacement *left,
         left->new_ino == right->new_ino && strcmp(left->new_build, right->new_build) == 0;
 }
 
-static int load_replacement_reconciled(int dir, guard_replacement *replacement) {
+int load_replacement_reconciled(int dir, guard_replacement *replacement) {
     guard_replacement current, temporary;
     int final_state = load_replacement_at(dir, &current);
     char record[GUARD_MAX_RECORD_BYTES];
@@ -1006,7 +764,7 @@ static int store_capture_at(int dir, const guard_capture *capture) {
                 : GUARD_TEST_FAULT_CAPTURE_INTENT_DIR_SYNC);
 }
 
-static int store_replacement_at(int dir, const guard_replacement *replacement) {
+int store_replacement_at(int dir, const guard_replacement *replacement) {
     char record[GUARD_MAX_RECORD_BYTES];
     int length = serialize_replacement(replacement, record);
     if (length < 0) return GUARD_PUBLISH_FAILED;
@@ -4159,6 +3917,24 @@ void cmd_guardaction(conn_ctx *ctx, const char *args) {
     ok_reply(ctx, "GUARDACTION", journal.generation, journal.phase);
 }
 
+/* Only this exact pre-manifest tuple can authorize recovery of the stopped incumbent.
+ * Loading it without a deadline permits settlement after expiry, never a late launch. */
+static int load_failed_capture_at(int dir, guard_plan *plan, guard_capture *capture) {
+    return load_plan_at(dir, GUARD_DRAFT, plan) == 1 &&
+        namespace_has_only_known_names(dir) && plan_boot_is_current(plan) &&
+        load_capture_at(dir, capture) == 1 && capture_matches_draft(capture, plan) &&
+        (capture->state == GUARD_CAPTURE_FAILED_LAUNCHING ||
+         capture->state == GUARD_CAPTURE_FAILED_LAUNCH_ATTEMPTED ||
+         capture->state == GUARD_CAPTURE_FAILED_NO_MUTATION);
+}
+
+/* No install/restore was admitted. Settle even a failed or expired recovery attempt;
+ * this state records no maintenance mutation, not evidence of app health. */
+static int settle_failed_capture_at(int dir, guard_capture *capture) {
+    capture->state = GUARD_CAPTURE_FAILED_NO_MUTATION;
+    return store_capture_at(dir, capture) == GUARD_PUBLISH_COMMITTED ? 0 : -1;
+}
+
 int guard_maintenance_supervisor_tick(void) {
     if (!guard_maintenance_supervisor_authoritative() || !guard_initialized) return -1;
     pthread_mutex_lock(&guard_lock);
@@ -4175,6 +3951,21 @@ int guard_maintenance_supervisor_tick(void) {
     if (loaded == 0) {
         guard_plan draft;
         guard_capture capture;
+        if (dir >= 0 && load_failed_capture_at(dir, &draft, &capture)) {
+            uint64_t now = monotonic_ms();
+            int work = GUARD_WORK_NONE;
+            if (capture.state != GUARD_CAPTURE_FAILED_NO_MUTATION) {
+                if (capture.state == GUARD_CAPTURE_FAILED_LAUNCHING && now != 0 &&
+                    now < draft.overall_deadline_ms &&
+                    load_draft_reconciled(dir, &draft) == 1 &&
+                    installed_apk_stable_exact(draft.package, &draft.a) == 0)
+                    work = GUARD_WORK_LAUNCH_A;
+                else if (settle_failed_capture_at(dir, &capture) != 0) work = -1;
+            }
+            close(dir);
+            pthread_mutex_unlock(&guard_lock);
+            return work;
+        }
         int draft_state = dir >= 0 ? load_draft_reconciled(dir, &draft) : -1;
         int capture_state = dir >= 0 ? load_capture_at(dir, &capture) : -1;
         if (capture_state == 0 && draft_state >= 0) {
@@ -4187,16 +3978,6 @@ int guard_maintenance_supervisor_tick(void) {
             if (dir >= 0) close(dir);
             pthread_mutex_unlock(&guard_lock);
             return -1;
-        }
-        if (capture.state == GUARD_CAPTURE_FAILED_NO_MUTATION) {
-            close(dir);
-            pthread_mutex_unlock(&guard_lock);
-            return GUARD_WORK_NONE;
-        }
-        if (capture.state == GUARD_CAPTURE_FAILED_LAUNCHING) {
-            close(dir);
-            pthread_mutex_unlock(&guard_lock);
-            return GUARD_WORK_LAUNCH_A;
         }
         int completed = complete_capture_locked(dir, &draft, &capture);
         if (completed == 0) {
@@ -4495,6 +4276,14 @@ int guard_maintenance_supervisor_work_deadline(enum guard_supervisor_work work,
                 break;
         }
     }
+    if (loaded == 0 && work == GUARD_WORK_LAUNCH_A) {
+        guard_capture capture;
+        expected = load_failed_capture_at(dir, &plan, &capture) &&
+            capture.state == GUARD_CAPTURE_FAILED_LAUNCHING &&
+            load_draft_reconciled(dir, &plan) == 1 &&
+            installed_apk_stable_exact(plan.package, &plan.a) == 0;
+        if (expected) deadline = plan.overall_deadline_ms;
+    }
     uint64_t now = monotonic_ms();
     if (dir >= 0) close(dir);
     pthread_mutex_unlock(&guard_lock);
@@ -4503,12 +4292,26 @@ int guard_maintenance_supervisor_work_deadline(enum guard_supervisor_work work,
     return 0;
 }
 
-static int guard_plan_package_now(char package[GUARD_PACKAGE_BYTES]) {
+static int guard_plan_package_now(enum guard_supervisor_work work,
+                                  char package[GUARD_PACKAGE_BYTES]) {
     pthread_mutex_lock(&guard_lock);
     int dir = open_guard_dir();
     guard_plan plan;
     guard_journal journal;
     int loaded = dir >= 0 ? load_manifest_reconciled(dir, &plan, &journal, 0) : -1;
+    if (loaded == 0 && work == GUARD_WORK_LAUNCH_A) {
+        guard_capture capture;
+        uint64_t now = monotonic_ms();
+        if (load_failed_capture_at(dir, &plan, &capture) &&
+            capture.state == GUARD_CAPTURE_FAILED_LAUNCHING &&
+            load_draft_reconciled(dir, &plan) == 1 &&
+            installed_apk_stable_exact(plan.package, &plan.a) == 0 &&
+            (now = monotonic_ms()) != 0 && now < plan.overall_deadline_ms) {
+            /* Consume before spawn: a crash or uncertain exec must never replay this launch. */
+            capture.state = GUARD_CAPTURE_FAILED_LAUNCH_ATTEMPTED;
+            if (store_capture_at(dir, &capture) == GUARD_PUBLISH_COMMITTED) loaded = 1;
+        }
+    }
     if (loaded == 1) snprintf(package, GUARD_PACKAGE_BYTES, "%s", plan.package);
     if (dir >= 0) close(dir);
     pthread_mutex_unlock(&guard_lock);
@@ -4528,14 +4331,14 @@ int guard_maintenance_supervisor_start_work(enum guard_supervisor_work work, pid
         "pm", "install", "-r", "-d", GUARD_B_APK_PATH, NULL,
     };
     /* The launch target is the package the plan is bound to.  The supervisor has no caller, so it
-     * reads the durable record; work_deadline above already required a loadable manifest. */
+     * reads the durable manifest or consumes the exact failed-capture recovery authority. */
     char package[GUARD_PACKAGE_BYTES];
     const char *launch[7];
     int package_work = 1;
     if (work == GUARD_WORK_INSTALL_A) { path = "/system/bin/pm"; argv = install_a; }
     else if (work == GUARD_WORK_INSTALL_B) { path = "/system/bin/pm"; argv = install_b; }
     else if (work == GUARD_WORK_LAUNCH_A || work == GUARD_WORK_LAUNCH_B) {
-        if (guard_plan_package_now(package) != 0) return -1;
+        if (guard_plan_package_now(work, package) != 0) return -1;
         launch[0] = "monkey";
         launch[1] = "-p";
         launch[2] = package;
@@ -4594,15 +4397,8 @@ int guard_maintenance_supervisor_complete(enum guard_supervisor_work work,
         if (loaded == 0 && work == GUARD_WORK_LAUNCH_A && dir >= 0) {
             guard_plan draft;
             guard_capture capture;
-            int draft_state = load_draft_reconciled(dir, &draft);
-            int capture_state = load_capture_at(dir, &capture);
-            if (draft_state == 1 && capture_state == 1 &&
-                capture_matches_draft(&capture, &draft) &&
-                capture.state == GUARD_CAPTURE_FAILED_LAUNCHING &&
-                result == GUARD_EXEC_REAPED && WIFEXITED(wait_status) &&
-                WEXITSTATUS(wait_status) == 0 && installed_apk_stable_exact(draft.package, &draft.a) == 0) {
-                capture.state = GUARD_CAPTURE_FAILED_NO_MUTATION;
-                int stored = store_capture_at(dir, &capture);
+            if (load_failed_capture_at(dir, &draft, &capture)) {
+                int stored = settle_failed_capture_at(dir, &capture);
                 close(dir);
                 pthread_mutex_unlock(&guard_lock);
                 return stored == 0 ? GUARD_WORK_NONE : -1;
@@ -4898,13 +4694,13 @@ int guard_maintenance_install_begin(void) {
 
 void guard_maintenance_install_end(void) { pthread_mutex_unlock(&package_gate); }
 
-static int known_file_present(int dir, const char *name) {
+int known_file_present(int dir, const char *name) {
     struct stat st;
     if (fstatat(dir, name, &st, AT_SYMLINK_NOFOLLOW) == 0) return 1;
     return errno == ENOENT ? 0 : -1;
 }
 
-static int empty_inventory_safe(int dir) {
+int empty_inventory_safe(int dir) {
     int duplicate = openat(dir, ".", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
     if (duplicate < 0) return 0;
     DIR *stream = fdopendir(duplicate);
@@ -5117,7 +4913,7 @@ static int reconcile_terminal_retirement_at(int dir) {
 }
 
 static int finalized_retirement_preflight(int dir, const guard_plan *plan,
-                                          const guard_journal *journal) {
+                                          const guard_journal *journal, int uninstalled) {
     int rolled_back = strncmp(journal->outcome, "ROLLED_BACK_", 12) == 0;
     int recovery_exact = journal->premigrate_bytes == 0
         ? known_file_present(dir, GUARD_PREMIGRATE) == 0
@@ -5137,17 +4933,17 @@ static int finalized_retirement_preflight(int dir, const guard_plan *plan,
         validate_settings_authority_at(dir, plan) == 0 &&
         retirement_regular_exact_at(dir, GUARD_BASELINE, plan->baseline_bytes,
                                     plan->baseline_sha) && recovery_exact &&
-        installed_apk_stable_exact(plan->package, &plan->a) == 0 &&
+        (uninstalled || (installed_apk_stable_exact(plan->package, &plan->a) == 0 &&
         (rolled_back ? rollback_inventory_exact(plan) == 0
                      : (strcmp(journal->outcome, "CANARY_PASSED") == 0 &&
                         final_recovery_artifacts_exact(plan, journal) == 0 &&
-                        live_db_semantic_exact(dir, plan, plan->a.expected_schema, 0) == 0)) &&
+                        live_db_semantic_exact(dir, plan, plan->a.expected_schema, 0) == 0)))) &&
         known_file_present(dir, GUARD_REPLACEMENT) == 0 &&
         known_file_present(dir, GUARD_REPLACEMENT_TMP) == 0;
     return exact;
 }
 
-static int open_app_helper_parent(void) {
+int open_app_helper_parent(void) {
     int dir = open(GUARD_APP_HELPER_PARENT, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
     struct stat st;
     if (dir < 0 || fstat(dir, &st) != 0 || !S_ISDIR(st.st_mode) ||
@@ -5362,7 +5158,7 @@ static int acquire_helper_transaction_lock(helper_transaction_lock *lock) {
     return HELPER_TRANSACTION_LOCK_ACQUIRED;
 }
 
-static int app_helper_identity_at(int dir, const char *name, uint64_t *bytes,
+int app_helper_identity_at(int dir, const char *name, uint64_t *bytes,
                                   char sha[65], uint64_t *dev, uint64_t *ino) {
     int fd = openat(dir, name, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
     struct stat st;
@@ -5379,7 +5175,7 @@ static int app_helper_identity_at(int dir, const char *name, uint64_t *bytes,
     return exact ? 0 : -1;
 }
 
-static int app_helper_identity_matches(int dir, const char *name, uint64_t bytes,
+int app_helper_identity_matches(int dir, const char *name, uint64_t bytes,
                                        const char *sha, uint64_t dev, uint64_t ino) {
     uint64_t actual_bytes = 0, actual_dev = 0, actual_ino = 0;
     char actual_sha[65];
@@ -5450,12 +5246,12 @@ static int seal_app_helper_stage_at(int parent, uint64_t bytes, const char *sha,
         bytes, sha, dev, ino);
 }
 
-static int replacement_boot_current(const guard_replacement *replacement) {
+int replacement_boot_current(const guard_replacement *replacement) {
     char boot[65];
     return current_boot_nonce(boot) == 0 && strcmp(boot, replacement->boot) == 0;
 }
 
-static int replacement_request_topology_exact(const guard_replacement *replacement) {
+int replacement_request_topology_exact(const guard_replacement *replacement) {
     int parent = open_app_helper_parent();
     if (parent < 0) return -1;
     int exact = app_helper_identity_matches(parent, GUARD_APP_HELPER_LIVE,
@@ -5469,7 +5265,7 @@ static int replacement_request_topology_exact(const guard_replacement *replaceme
     return exact ? 0 : -1;
 }
 
-static int replacement_old_caller_exact(const guard_replacement *replacement) {
+int replacement_old_caller_exact(const guard_replacement *replacement) {
     if (replacement_request_topology_exact(replacement) != 0) return -1;
 #ifndef HAPANELD_TEST_SKIP_SELF_BINDING
     int parent = open_app_helper_parent();
@@ -5491,7 +5287,7 @@ static int acquire_owner_lock(int dir) {
     if (fd < 0) return -1;
     struct stat st;
     if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode) || st.st_uid != geteuid() ||
-        st.st_nlink != 1 || fchmod(fd, 0600) != 0 || flock(fd, LOCK_EX | LOCK_NB) != 0) {
+        st.st_nlink != 1 || flock(fd, LOCK_EX | LOCK_NB) != 0 || fchmod(fd, 0600) != 0) {
         close(fd);
         return -1;
     }
@@ -5505,6 +5301,244 @@ static int previous_helper_bytes_exact(int parent, const guard_replacement *repl
     return app_helper_identity_at(parent, GUARD_APP_HELPER_PREVIOUS,
         &bytes, sha, &dev, &ino) == 0 && bytes == replacement->old_bytes &&
         strcmp(sha, replacement->old_sha) == 0 ? 0 : -1;
+}
+
+/* This separate bootstrap never adopts a lease. The exclusive owner lock proves that the old
+ * supervisor is gone, including on this boot. Only the untouched pre-swap pair
+ * can be aborted; every other Guard artifact or topology remains owned recovery state. */
+static int stale_replacement_namespace_exact(int dir) {
+    int fd = openat(dir, ".", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    DIR *stream = fd >= 0 ? fdopendir(fd) : NULL;
+    if (!stream) { if (fd >= 0) close(fd); return 0; }
+    int exact = 1;
+    unsigned entries = 0;
+    errno = 0;
+    for (struct dirent *entry = readdir(stream); entry; entry = readdir(stream)) {
+        if (++entries > 16 || (strcmp(entry->d_name, ".") != 0 &&
+            strcmp(entry->d_name, "..") != 0 &&
+            strcmp(entry->d_name, GUARD_OWNER_LOCK) != 0 &&
+            strcmp(entry->d_name, GUARD_REPLACEMENT) != 0)) { exact = 0; break; }
+        errno = 0;
+    }
+    if (errno != 0) exact = 0;
+    closedir(stream);
+    return exact;
+}
+
+static int stale_helper_identity_exact(int parent, const char *name,
+                                       uint64_t bytes, const char *sha,
+                                       uint64_t dev, uint64_t ino) {
+    int fd = openat(parent, name, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC);
+    struct stat before, after, named;
+    char actual[65];
+    int exact = fd >= 0 && fstat(fd, &before) == 0 && S_ISREG(before.st_mode) &&
+        before.st_uid == 0 && before.st_gid == 0 && before.st_nlink == 1 &&
+        (before.st_mode & 07777) == 0700 && bytes > 0 &&
+        bytes <= GUARD_REPLACEMENT_MAX_BINARY_BYTES && (uint64_t)before.st_size == bytes &&
+        (uint64_t)before.st_dev == dev && (uint64_t)before.st_ino == ino &&
+        hapaneld_sha256_fd(fd, bytes, actual) == 0 && strcmp(actual, sha) == 0 &&
+        fstat(fd, &after) == 0 && fstatat(parent, name, &named, AT_SYMLINK_NOFOLLOW) == 0 &&
+        stat_identity_unchanged_strict(&before, &after) &&
+        stat_identity_unchanged_strict(&before, &named);
+    if (fd >= 0) close(fd);
+    return exact;
+}
+
+static int stale_replacement_read(int dir, guard_replacement *replacement) {
+    int fd = openat(dir, GUARD_REPLACEMENT, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC);
+    struct stat before, after, named;
+    char bytes[GUARD_MAX_RECORD_BYTES];
+    int exact = fd >= 0 && fstat(fd, &before) == 0 && S_ISREG(before.st_mode) &&
+        before.st_uid == 0 && before.st_gid == 0 && before.st_nlink == 1 &&
+        (before.st_mode & 07777) == 0600 && before.st_size > 0 &&
+        before.st_size < (off_t)sizeof bytes;
+    size_t used = 0;
+    while (exact && used < (size_t)before.st_size) {
+        ssize_t count = read(fd, bytes + used, (size_t)before.st_size - used);
+        if (count < 0 && errno == EINTR) continue;
+        if (count <= 0) { exact = 0; break; }
+        used += (size_t)count;
+    }
+    bytes[used] = '\0';
+    exact = exact && fstat(fd, &after) == 0 &&
+        fstatat(dir, GUARD_REPLACEMENT, &named, AT_SYMLINK_NOFOLLOW) == 0 &&
+        stat_identity_unchanged_strict(&before, &after) &&
+        stat_identity_unchanged_strict(&before, &named) &&
+        deserialize_replacement(bytes, used, replacement) == 0;
+    if (fd >= 0) close(fd);
+    return exact;
+}
+
+static int stale_owner_metadata_safe(int dir) {
+    struct stat st;
+    if (fstatat(dir, GUARD_OWNER_LOCK, &st, AT_SYMLINK_NOFOLLOW) != 0)
+        return errno == ENOENT;
+    return S_ISREG(st.st_mode) && st.st_uid == 0 && st.st_gid == 0 &&
+        st.st_nlink == 1 && (st.st_mode & 07777) == 0600;
+}
+
+/* Compatibility for supervisors predating occupied-FD3 export. Only their exact, already
+ * granted pre-swap transaction may be restarted; no ordinary live owner is displaced. */
+static int stale_replacement_custody_exact(int parent, int dir,
+        const guard_replacement *replacement, const struct stat *journal, const char *boot) {
+    struct stat current;
+    char current_boot[65];
+    return current_boot_nonce(current_boot) == 0 && strcmp(boot, current_boot) == 0 &&
+        stale_owner_metadata_safe(dir) && stale_replacement_namespace_exact(dir) &&
+        fstatat(dir, GUARD_REPLACEMENT, &current, AT_SYMLINK_NOFOLLOW) == 0 &&
+        stat_identity_unchanged_strict(journal, &current) &&
+        known_file_present(parent, GUARD_APP_HELPER_PREVIOUS) == 0 &&
+        known_file_present(parent, GUARD_APP_HELPER_PREVIOUS_TMP) == 0 &&
+        stale_helper_identity_exact(parent, GUARD_APP_HELPER_LIVE, replacement->old_bytes,
+            replacement->old_sha, replacement->old_dev, replacement->old_ino) &&
+        stale_helper_identity_exact(parent, GUARD_APP_HELPER_STAGE, replacement->new_bytes,
+            replacement->new_sha, replacement->new_dev, replacement->new_ino);
+}
+
+static int retire_stalled_replacement_owner(int parent, int dir,
+        const guard_replacement *replacement, const struct stat *journal, const char *boot) {
+    if (replacement->phase != GUARD_REPLACEMENT_GRANTED || replacement->generation != 2 ||
+        !replacement_boot_current(replacement)) return -1;
+    int socket_fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    struct sockaddr_un address = { .sun_family = AF_UNIX };
+    memcpy(address.sun_path + 1, SOCK_NAME, sizeof SOCK_NAME - 1);
+    struct ucred peer;
+    socklen_t peer_size = sizeof peer;
+    int worker = -1, supervisor = -1, result = -1;
+    if (socket_fd < 0 || connect(socket_fd, (struct sockaddr *)&address,
+            offsetof(struct sockaddr_un, sun_path) + sizeof SOCK_NAME) != 0 ||
+        getsockopt(socket_fd, SOL_SOCKET, SO_PEERCRED, &peer, &peer_size) != 0 ||
+        peer.uid != 0 || peer.pid <= 1 || peer.pid == getpid()) goto done;
+    char path[64], record[1024], state;
+    snprintf(path, sizeof path, "/proc/%ld", (long)peer.pid);
+    worker = open(path, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    int status = worker >= 0 ? openat(worker, "stat", O_RDONLY | O_CLOEXEC) : -1;
+    ssize_t used = status >= 0 ? read(status, record, sizeof record - 1) : -1;
+    if (status >= 0) close(status);
+    if (used <= 0) goto done;
+    record[used] = 0;
+    char *tail = strrchr(record, ')');
+    long parent_pid;
+    if (!tail || sscanf(tail + 1, " %c %ld", &state, &parent_pid) != 2 ||
+        parent_pid <= 1 || parent_pid > INT_MAX || parent_pid == getpid() || state == 'Z') goto done;
+    snprintf(path, sizeof path, "/proc/%ld", parent_pid);
+    supervisor = open(path, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    struct stat pinned, reached, old, worker_exe, fd3, null, owner;
+    if (supervisor < 0 || fstat(supervisor, &pinned) != 0 || pinned.st_uid != 0 ||
+        fstatat(supervisor, "exe", &old, 0) != 0 ||
+        fstatat(worker, "exe", &worker_exe, 0) != 0 ||
+        (uint64_t)old.st_dev != replacement->old_dev ||
+        (uint64_t)old.st_ino != replacement->old_ino ||
+        worker_exe.st_dev != old.st_dev || worker_exe.st_ino != old.st_ino ||
+        fstatat(supervisor, "fd/3", &fd3, 0) != 0 || stat("/dev/null", &null) != 0 ||
+        !S_ISCHR(fd3.st_mode) || fd3.st_dev != null.st_dev || fd3.st_ino != null.st_ino ||
+        fstatat(dir, GUARD_OWNER_LOCK, &owner, AT_SYMLINK_NOFOLLOW) != 0) goto done;
+    int command = openat(supervisor, "cmdline", O_RDONLY | O_CLOEXEC);
+    used = command >= 0 ? read(command, record, sizeof record) : -1;
+    if (command >= 0) close(command);
+    if (used <= 0 || record[used - 1] != 0) goto done;
+    size_t first = strnlen(record, (size_t)used) + 1;
+    if (first >= (size_t)used) goto done;
+    size_t arguments = (size_t)used - first;
+    int supervise = arguments == sizeof "--supervise" &&
+        memcmp(record + first, "--supervise", sizeof "--supervise") == 0;
+    int app_lease = arguments == sizeof "--supervise-app-lease" + 65 &&
+        memcmp(record + first, "--supervise-app-lease", sizeof "--supervise-app-lease") == 0 &&
+        lower_hex_64(record + first + sizeof "--supervise-app-lease");
+    if (!supervise && !app_lease) goto done;
+    int owner_found = 0;
+    for (int fd = 4; fd < 1024; fd++) {
+        char name[32]; struct stat held;
+        snprintf(name, sizeof name, "fd/%d", fd);
+        if (fstatat(supervisor, name, &held, 0) == 0 &&
+            held.st_dev == owner.st_dev && held.st_ino == owner.st_ino) { owner_found = 1; break; }
+    }
+    uint64_t started, checked;
+    if (!owner_found || process_start_ticks((pid_t)parent_pid, &started) != 1 ||
+        fstatat(supervisor, "exe", &old, 0) != 0 ||
+        (uint64_t)old.st_dev != replacement->old_dev || (uint64_t)old.st_ino != replacement->old_ino ||
+        stat(path, &reached) != 0 || reached.st_dev != pinned.st_dev || reached.st_ino != pinned.st_ino ||
+        process_start_ticks((pid_t)parent_pid, &checked) != 1 || checked != started ||
+        !stale_replacement_custody_exact(parent, dir, replacement, journal, boot) ||
+        fstatat(worker, "exe", &worker_exe, 0) != 0 ||
+        worker_exe.st_dev != old.st_dev || worker_exe.st_ino != old.st_ino ||
+        stat(path, &reached) != 0 || reached.st_dev != pinned.st_dev || reached.st_ino != pinned.st_ino ||
+        process_start_ticks((pid_t)parent_pid, &checked) != 1 || checked != started ||
+        kill((pid_t)parent_pid, SIGTERM) != 0) goto done;
+    /* The worker inherits the owner lease and has PDEATHSIG. Acquire only after both have
+     * released custody; a stuck worker keeps the journal and candidate untouched. */
+    for (unsigned attempt = 0; attempt < 200; attempt++) {
+        struct stat still_executing;
+        if (fstatat(worker, "exe", &still_executing, 0) != 0 && (errno == ENOENT || errno == ESRCH) &&
+            acquire_owner_lock(dir) == 0) { result = 0; break; }
+        usleep(10000);
+    }
+done:
+    if (socket_fd >= 0) close(socket_fd);
+    if (worker >= 0) close(worker);
+    if (supervisor >= 0) close(supervisor);
+    return result;
+}
+
+int guard_maintenance_reconcile_stale_replacement(void) {
+    if (geteuid() != 0) return -1;
+    helper_transaction_lock transaction;
+    if (acquire_helper_transaction_lock(&transaction) != HELPER_TRANSACTION_LOCK_ACQUIRED)
+        return -1;
+    pthread_mutex_lock(&guard_lock);
+    /* Do not chmod an unsafe existing namespace, block on a directory flock, or touch a
+     * live owner's lease. The fixed bootstrap holds transaction -> directory -> owner. */
+    int parent = open_app_helper_parent();
+    int dir = -1, result = -1;
+    struct stat directory, journal, journal_after;
+    if (parent < 0 || (mkdirat(parent, GUARD_DIR_NAME, 0700) != 0 && errno != EEXIST))
+        goto done;
+    dir = openat(parent, GUARD_DIR_NAME, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (dir < 0 || fstat(dir, &directory) != 0 || !S_ISDIR(directory.st_mode) ||
+        directory.st_uid != 0 || directory.st_gid != 0 ||
+        (directory.st_mode & 07777) != 0700 || flock(dir, LOCK_EX | LOCK_NB) != 0 ||
+        !stale_owner_metadata_safe(dir)) goto done;
+    int present = known_file_present(dir, GUARD_REPLACEMENT);
+    if (present == 0) {
+        if (acquire_owner_lock(dir) == 0 && retirement_owner_lock_exact(dir) &&
+            empty_inventory_safe(dir)) result = 0;
+        goto done;
+    }
+    guard_replacement replacement;
+    char boot[65];
+    if (present != 1 || known_file_present(dir, GUARD_OWNER_LOCK) != 1 ||
+        !stale_replacement_namespace_exact(dir) ||
+        fstatat(dir, GUARD_REPLACEMENT, &journal, AT_SYMLINK_NOFOLLOW) != 0 ||
+        !S_ISREG(journal.st_mode) || journal.st_uid != 0 || journal.st_gid != 0 ||
+        (journal.st_mode & 07777) != 0600 || journal.st_nlink != 1 ||
+        !stale_replacement_read(dir, &replacement) ||
+        current_boot_nonce(boot) != 0 ||
+        !((replacement.phase == GUARD_REPLACEMENT_REQUESTED && replacement.generation == 1) ||
+          (replacement.phase == GUARD_REPLACEMENT_GRANTED && replacement.generation == 2)) ||
+        known_file_present(parent, GUARD_APP_HELPER_PREVIOUS) != 0 ||
+        known_file_present(parent, GUARD_APP_HELPER_PREVIOUS_TMP) != 0 ||
+        !stale_helper_identity_exact(parent, GUARD_APP_HELPER_LIVE, replacement.old_bytes,
+            replacement.old_sha, replacement.old_dev, replacement.old_ino) ||
+        !stale_helper_identity_exact(parent, GUARD_APP_HELPER_STAGE, replacement.new_bytes,
+            replacement.new_sha, replacement.new_dev, replacement.new_ino) ||
+        fstatat(dir, GUARD_REPLACEMENT, &journal_after, AT_SYMLINK_NOFOLLOW) != 0 ||
+        !stat_identity_unchanged_strict(&journal, &journal_after) ||
+        !stale_replacement_namespace_exact(dir)) goto done;
+    if (acquire_owner_lock(dir) != 0 &&
+        retire_stalled_replacement_owner(parent, dir, &replacement, &journal, boot) != 0) goto done;
+    /* The incumbent is now gone. Recheck every recorded byte and inode under its actual lease. */
+    if (!retirement_owner_lock_exact(dir) ||
+        !stale_replacement_custody_exact(parent, dir, &replacement, &journal, boot)) goto done;
+    if (!TEST_FAULT(GUARD_TEST_FAULT_STALE_REPLACEMENT_UNLINK) &&
+        unlinkat(dir, GUARD_REPLACEMENT, 0) == 0 &&
+        !TEST_FAULT(GUARD_TEST_FAULT_STALE_REPLACEMENT_DIR_SYNC) && fsync(dir) == 0)
+        result = 1;
+done:
+    if (dir >= 0) close(dir);
+    if (parent >= 0) close(parent);
+    pthread_mutex_unlock(&guard_lock);
+    if (release_helper_transaction_lock(&transaction) != 0) result = -1;
+    return result;
 }
 
 int guard_maintenance_replacement_startup_reconcile_app(char nonce[65]) {
@@ -5670,6 +5704,11 @@ static void cmd_guardretire_app(conn_ctx *ctx, const char *args) {
         &replacement.new_dev, &replacement.new_ino) == 0 &&
         strcmp(replacement.new_sha, tokens[2]) == 0 &&
         strcmp(replacement.old_sha, replacement.new_sha) != 0;
+    const char *refusal = "replacement";
+    if (valid && replacement_old_caller_exact(&replacement) != 0) {
+        valid = 0;
+        refusal = "topology";
+    }
     if (valid) valid = seal_app_helper_stage_at(parent, replacement.new_bytes,
         replacement.new_sha, replacement.new_dev, replacement.new_ino) == 0;
     if (parent >= 0) close(parent);
@@ -5680,7 +5719,7 @@ static void cmd_guardretire_app(conn_ctx *ctx, const char *args) {
         (void)release_helper_transaction_lock(&transaction_lock);
         pthread_mutex_unlock(&package_gate);
         error_reply(ctx, published == GUARD_PUBLISH_INDETERMINATE ? "INDETERMINATE" : "HOLD",
-                    "replacement");
+                    refusal);
         return;
     }
     (void)release_helper_transaction_lock(&transaction_lock);
@@ -5764,7 +5803,7 @@ static void cmd_guardretire_terminal(conn_ctx *ctx, const char *args) {
         return;
     }
     char evidence_sha[65];
-    int exact = finalized_retirement_preflight(dir, &plan, &journal) &&
+    int exact = finalized_retirement_preflight(dir, &plan, &journal, 0) &&
         guard_evidence_sha(&plan, &journal, evidence_sha) == 0;
     if (!exact) {
         close(dir);
@@ -5813,274 +5852,6 @@ void cmd_guardretire(conn_ctx *ctx, const char *args) {
         cmd_guardretire_app(ctx, args);
 }
 
-int guard_maintenance_replacement_parent_grant(char nonce[65]) {
-    if (!guard_maintenance_supervisor_authoritative() || !nonce) return GUARD_REPLACEMENT_HOLD;
-    pthread_mutex_lock(&guard_lock);
-    int dir = open_guard_dir();
-    guard_replacement replacement;
-    int loaded = dir >= 0 ? load_replacement_reconciled(dir, &replacement) : -1;
-    int valid = loaded == 1 && replacement.phase == GUARD_REPLACEMENT_REQUESTED &&
-        replacement_boot_current(&replacement) && replacement_old_caller_exact(&replacement) == 0;
-    int stored = GUARD_PUBLISH_FAILED;
-    if (valid) {
-        replacement.phase = GUARD_REPLACEMENT_GRANTED;
-        replacement.generation++;
-        stored = store_replacement_at(dir, &replacement);
-    }
-    if (stored == GUARD_PUBLISH_COMMITTED) snprintf(nonce, 65, "%s", replacement.nonce);
-    if (dir >= 0) close(dir);
-    pthread_mutex_unlock(&guard_lock);
-    return stored == GUARD_PUBLISH_COMMITTED ? GUARD_REPLACEMENT_READY : GUARD_REPLACEMENT_HOLD;
-}
-
-int guard_maintenance_replacement_export_lease(void) {
-    if (!guard_maintenance_supervisor_authoritative() || guard_owner_fd < 0) return -1;
-    struct stat owner, exported;
-    if (fstat(guard_owner_fd, &owner) != 0 || !S_ISREG(owner.st_mode) ||
-        owner.st_uid != geteuid() || owner.st_nlink != 1 ||
-        dup2(guard_owner_fd, GUARD_REPLACEMENT_LEASE_FD) < 0 ||
-        fstat(GUARD_REPLACEMENT_LEASE_FD, &exported) != 0 ||
-        owner.st_dev != exported.st_dev || owner.st_ino != exported.st_ino) return -1;
-    int flags = fcntl(GUARD_REPLACEMENT_LEASE_FD, F_GETFD, 0);
-    return flags >= 0 && fcntl(GUARD_REPLACEMENT_LEASE_FD, F_SETFD,
-        flags & ~FD_CLOEXEC) == 0 ? 0 : -1;
-}
-
-int guard_maintenance_replacement_parent_abort(const char nonce[65]) {
-    if (!guard_maintenance_supervisor_authoritative() || !nonce || !lower_hex_64(nonce)) return -1;
-    pthread_mutex_lock(&guard_lock);
-    int dir = open_guard_dir();
-    guard_replacement replacement;
-    int loaded = dir >= 0 ? load_replacement_reconciled(dir, &replacement) : -1;
-    int safe = loaded == 1 && strcmp(replacement.nonce, nonce) == 0 &&
-        (replacement.phase == GUARD_REPLACEMENT_REQUESTED ||
-         replacement.phase == GUARD_REPLACEMENT_GRANTED) &&
-        replacement_boot_current(&replacement) && replacement_old_caller_exact(&replacement) == 0;
-    int removed = safe && unlinkat(dir, GUARD_REPLACEMENT, 0) == 0 && fsync(dir) == 0;
-    if (dir >= 0) close(dir);
-    close(GUARD_REPLACEMENT_LEASE_FD);
-    pthread_mutex_unlock(&guard_lock);
-    return removed ? 0 : -1;
-}
-
-static int adopt_replacement_lease(const char nonce[65], guard_replacement *replacement,
-                                   int *guard_dir) {
-#ifndef HAPANELD_TEST_SKIP_SELF_BINDING
-    if (geteuid() != 0) return -1;
-#endif
-    if (!nonce || !lower_hex_64(nonce)) return -1;
-    int dir = open_guard_dir();
-    int owner = dir >= 0 ? openat(dir, GUARD_OWNER_LOCK,
-        O_RDWR | O_NOFOLLOW | O_CLOEXEC) : -1;
-    struct stat lease_st, owner_st;
-    int valid = dir >= 0 && owner >= 0 &&
-        fstat(GUARD_REPLACEMENT_LEASE_FD, &lease_st) == 0 &&
-        fstat(owner, &owner_st) == 0 && S_ISREG(lease_st.st_mode) &&
-        lease_st.st_uid == geteuid() && lease_st.st_nlink == 1 &&
-        (lease_st.st_mode & 0777) == 0600 && lease_st.st_dev == owner_st.st_dev &&
-        lease_st.st_ino == owner_st.st_ino &&
-        flock(GUARD_REPLACEMENT_LEASE_FD, LOCK_EX | LOCK_NB) == 0 &&
-        load_replacement_reconciled(dir, replacement) == 1 &&
-        strcmp(replacement->nonce, nonce) == 0 && replacement_boot_current(replacement);
-    if (owner >= 0) close(owner);
-    if (!valid) {
-        if (dir >= 0) close(dir);
-        return -1;
-    }
-    guard_owner_fd = GUARD_REPLACEMENT_LEASE_FD;
-    *guard_dir = dir;
-    return 0;
-}
-
-static int copy_app_helper_at(int parent, const char *source_name,
-                              const char *temporary_name, uint64_t bytes,
-                              const char *sha) {
-    if (remove_fixed_nondir(parent, temporary_name) != 0) return -1;
-    int source = openat(parent, source_name, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
-    int output = openat(parent, temporary_name,
-        O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0700);
-    uint64_t remaining = bytes;
-    hapaneld_sha256 hash;
-    hapaneld_sha256_init(&hash);
-    unsigned char buffer[65536];
-    int copied = source >= 0 && output >= 0;
-    while (copied && remaining > 0) {
-        size_t wanted = remaining < sizeof buffer ? (size_t)remaining : sizeof buffer;
-        ssize_t count = read(source, buffer, wanted);
-        if (count < 0 && errno == EINTR) continue;
-        if (count <= 0 || write_complete(output, buffer, (size_t)count) != 0) {
-            copied = 0;
-            break;
-        }
-        hapaneld_sha256_update(&hash, buffer, (size_t)count);
-        remaining -= (uint64_t)count;
-    }
-    unsigned char digest[32];
-    char actual[65];
-    hapaneld_sha256_final(&hash, digest);
-    hapaneld_sha256_hex(digest, actual);
-    int durable = copied && remaining == 0 && strcmp(actual, sha) == 0 &&
-        fchmod(output, 0700) == 0 && fsync(output) == 0;
-    if (source >= 0) close(source);
-    if (output >= 0 && close(output) != 0) durable = 0;
-    if (!durable) {
-        (void)remove_fixed_nondir(parent, temporary_name);
-        return -1;
-    }
-    return 0;
-}
-
-int guard_maintenance_replacement_stage_app(const char nonce[65]) {
-    guard_replacement replacement;
-    int dir = -1;
-    if (adopt_replacement_lease(nonce, &replacement, &dir) != 0 ||
-        replacement.phase != GUARD_REPLACEMENT_GRANTED ||
-        replacement_request_topology_exact(&replacement) != 0) {
-        if (dir >= 0) close(dir);
-        return -1;
-    }
-    int parent = open_app_helper_parent();
-    int staged_self = parent >= 0;
-#ifndef HAPANELD_TEST_SKIP_SELF_BINDING
-    struct stat self_st, staged_st;
-    staged_self = staged_self && stat("/proc/self/exe", &self_st) == 0 &&
-        fstatat(parent, GUARD_APP_HELPER_STAGE, &staged_st, AT_SYMLINK_NOFOLLOW) == 0 &&
-        self_st.st_dev == staged_st.st_dev && self_st.st_ino == staged_st.st_ino;
-#endif
-    staged_self = staged_self && strcmp(helper_build_id(), replacement.new_build) == 0;
-    if (!staged_self || known_file_present(parent, GUARD_APP_HELPER_PREVIOUS) != 0 ||
-        copy_app_helper_at(parent, GUARD_APP_HELPER_LIVE,
-            GUARD_APP_HELPER_PREVIOUS_TMP, replacement.old_bytes,
-            replacement.old_sha) != 0 ||
-        renameat(parent, GUARD_APP_HELPER_PREVIOUS_TMP,
-                 parent, GUARD_APP_HELPER_PREVIOUS) != 0 || fsync(parent) != 0) {
-        if (parent >= 0) close(parent);
-        close(dir);
-        return -1;
-    }
-    uint64_t backup_bytes = 0, backup_dev = 0, backup_ino = 0;
-    char backup_sha[65];
-    int backup_exact = parent >= 0 && app_helper_identity_at(parent,
-        GUARD_APP_HELPER_PREVIOUS, &backup_bytes, backup_sha,
-        &backup_dev, &backup_ino) == 0 && backup_bytes == replacement.old_bytes &&
-        strcmp(backup_sha, replacement.old_sha) == 0;
-    if (!staged_self || !backup_exact || TEST_FAULT(GUARD_TEST_FAULT_REPLACEMENT_AFTER_BACKUP)) {
-        if (parent >= 0) close(parent);
-        close(dir);
-        return -1;
-    }
-    replacement.phase = GUARD_REPLACEMENT_BACKUP_DURABLE;
-    replacement.generation++;
-    if (store_replacement_at(dir, &replacement) != GUARD_PUBLISH_COMMITTED ||
-        renameat(parent, GUARD_APP_HELPER_STAGE, parent, GUARD_APP_HELPER_LIVE) != 0 ||
-        fsync(parent) != 0 ||
-        app_helper_identity_matches(parent, GUARD_APP_HELPER_LIVE,
-            replacement.new_bytes, replacement.new_sha,
-            replacement.new_dev, replacement.new_ino) != 0 ||
-        TEST_FAULT(GUARD_TEST_FAULT_REPLACEMENT_AFTER_SWAP)) {
-        close(parent);
-        close(dir);
-        return -1;
-    }
-    replacement.phase = GUARD_REPLACEMENT_SWAPPED;
-    replacement.generation++;
-    int stored = store_replacement_at(dir, &replacement);
-    close(parent);
-    close(dir);
-    return stored == GUARD_PUBLISH_COMMITTED ? 0 : -1;
-}
-
-int guard_maintenance_replacement_supervisor_adopt_app(const char nonce[65]) {
-    guard_replacement replacement;
-    int dir = -1;
-    if (adopt_replacement_lease(nonce, &replacement, &dir) != 0 ||
-        replacement.phase != GUARD_REPLACEMENT_SWAPPED ||
-        strcmp(helper_build_id(), replacement.new_build) != 0) {
-        if (dir >= 0) close(dir);
-        return -1;
-    }
-    int parent = open_app_helper_parent();
-    uint64_t previous_bytes = 0, previous_dev = 0, previous_ino = 0;
-    char previous_sha[65];
-    int exact = parent >= 0 && app_helper_identity_matches(parent, GUARD_APP_HELPER_LIVE,
-            replacement.new_bytes, replacement.new_sha,
-            replacement.new_dev, replacement.new_ino) == 0 &&
-        app_helper_identity_at(parent, GUARD_APP_HELPER_PREVIOUS,
-            &previous_bytes, previous_sha, &previous_dev, &previous_ino) == 0 &&
-        previous_bytes == replacement.old_bytes && strcmp(previous_sha, replacement.old_sha) == 0;
-#ifndef HAPANELD_TEST
-    struct stat self_st, live_st;
-    exact = exact && stat("/proc/self/exe", &self_st) == 0 &&
-        fstatat(parent, GUARD_APP_HELPER_LIVE, &live_st, AT_SYMLINK_NOFOLLOW) == 0 &&
-        self_st.st_dev == live_st.st_dev && self_st.st_ino == live_st.st_ino;
-#endif
-    if (parent >= 0) close(parent);
-    if (!exact) {
-        close(dir);
-        return -1;
-    }
-    int flags = fcntl(GUARD_REPLACEMENT_LEASE_FD, F_GETFD, 0);
-    if (flags < 0 || fcntl(GUARD_REPLACEMENT_LEASE_FD, F_SETFD,
-                           flags | FD_CLOEXEC) != 0) {
-        close(dir);
-        return -1;
-    }
-    guard_initialized = 0;
-    close(dir);
-    return 0;
-}
-
-int guard_maintenance_replacement_worker_commit_app(const char nonce[65]) {
-    if (!guard_maintenance_supervised() || !nonce || !lower_hex_64(nonce)) return -1;
-    pthread_mutex_lock(&guard_lock);
-    int dir = open_guard_dir();
-    guard_replacement replacement;
-    int loaded = dir >= 0 ? load_replacement_reconciled(dir, &replacement) : -1;
-    int parent = open_app_helper_parent();
-    int previous_present = parent >= 0
-        ? known_file_present(parent, GUARD_APP_HELPER_PREVIOUS) : -1;
-    if (loaded == 0 && previous_present == 0 && dir >= 0 && empty_inventory_safe(dir)) {
-        guard_initialized = 1;
-        if (parent >= 0) close(parent);
-        close(dir);
-        pthread_mutex_unlock(&guard_lock);
-        return 0;
-    }
-    if (loaded == 1 && previous_present == 0 && parent >= 0 &&
-        replacement.phase == GUARD_REPLACEMENT_SWAPPED &&
-        strcmp(replacement.nonce, nonce) == 0 && replacement_boot_current(&replacement) &&
-        strcmp(helper_build_id(), replacement.new_build) == 0 &&
-        app_helper_identity_matches(parent, GUARD_APP_HELPER_LIVE,
-            replacement.new_bytes, replacement.new_sha,
-            replacement.new_dev, replacement.new_ino) == 0) {
-        int resumed = unlinkat(dir, GUARD_REPLACEMENT, 0) == 0 && fsync(dir) == 0;
-        close(parent);
-        close(dir);
-        guard_initialized = resumed;
-        pthread_mutex_unlock(&guard_lock);
-        return resumed ? 0 : -1;
-    }
-    uint64_t previous_bytes = 0, previous_dev = 0, previous_ino = 0;
-    char previous_sha[65];
-    int exact = loaded == 1 && parent >= 0 &&
-        replacement.phase == GUARD_REPLACEMENT_SWAPPED &&
-        strcmp(replacement.nonce, nonce) == 0 && replacement_boot_current(&replacement) &&
-        strcmp(helper_build_id(), replacement.new_build) == 0 &&
-        app_helper_identity_matches(parent, GUARD_APP_HELPER_LIVE,
-            replacement.new_bytes, replacement.new_sha,
-            replacement.new_dev, replacement.new_ino) == 0 &&
-        app_helper_identity_at(parent, GUARD_APP_HELPER_PREVIOUS,
-            &previous_bytes, previous_sha, &previous_dev, &previous_ino) == 0 &&
-        previous_bytes == replacement.old_bytes && strcmp(previous_sha, replacement.old_sha) == 0;
-    int committed = exact && unlinkat(parent, GUARD_APP_HELPER_PREVIOUS, 0) == 0 &&
-        fsync(parent) == 0 && unlinkat(dir, GUARD_REPLACEMENT, 0) == 0 && fsync(dir) == 0;
-    if (parent >= 0) close(parent);
-    if (dir >= 0) close(dir);
-    guard_initialized = committed;
-    pthread_mutex_unlock(&guard_lock);
-    return committed ? 0 : -1;
-}
-
 void guard_maintenance_set_supervised(int supervised) {
     guard_supervised = supervised == 1;
     guard_supervisor_owner = 0;
@@ -6091,6 +5862,85 @@ void guard_maintenance_set_supervisor_owner(void) {
     guard_supervised = 0;
     guard_supervisor_owner = 1;
     guard_supervisor_pid = getpid();
+}
+
+int guard_maintenance_retire_uninstalled(void) {
+    if (!guard_maintenance_supervisor_authoritative() || !helper_app_data_absent()) return -1;
+    helper_transaction_lock lease;
+    if (acquire_helper_transaction_lock(&lease) != HELPER_TRANSACTION_LOCK_ACQUIRED) return -1;
+    pthread_mutex_lock(&guard_lock);
+    int parent = open_app_helper_parent();
+    struct stat self, live;
+    int exact = parent >= 0 && stat("/proc/self/exe", &self) == 0 &&
+        fstatat(parent, GUARD_APP_HELPER_LIVE, &live, AT_SYMLINK_NOFOLLOW) == 0 &&
+        S_ISREG(live.st_mode) && live.st_uid == geteuid() && live.st_nlink == 1 &&
+        self.st_dev == live.st_dev && self.st_ino == live.st_ino;
+    int dir = exact ? open_guard_dir() : -1;
+    exact = exact && dir >= 0 && acquire_owner_lock(dir) == 0 &&
+        retirement_owner_lock_exact(dir) && helper_app_data_absent();
+    if (exact) {
+        guard_plan plan;
+        guard_journal journal;
+        int manifest = load_plan_at(dir, GUARD_MANIFEST, &plan);
+        int stored = load_journal_at(dir, &journal);
+        // A completed Guard session no longer needs the uninstalled app's live DB/installed APK.
+        // Keep its signed artifacts and durable terminal journal checks before discarding custody.
+        if (manifest == 1 && stored == 1 && journal.phase == GUARD_PHASE_FINALIZED &&
+            journal_matches_plan(&plan, &journal) &&
+            finalized_retirement_preflight(dir, &plan, &journal, 1)) {
+            char evidence[65];
+            exact = guard_evidence_sha(&plan, &journal, evidence) == 0;
+            if (exact) {
+                journal.generation++;
+                journal.phase = GUARD_PHASE_RETIRING;
+                snprintf(journal.retirement_sha, sizeof journal.retirement_sha, "%s", evidence);
+                exact = store_journal_at(dir, &journal) == GUARD_PUBLISH_COMMITTED;
+            }
+        }
+        exact = exact && reconcile_terminal_retirement_at(dir) >= 0 &&
+            replacement_namespace_empty(dir);
+    }
+    // Unknown entries, active plans and interrupted Companion restores retain their custody.
+    if (exact) exact = companion_retire_uninstalled() == 0;
+    static const char *const remnants[] = {
+        GUARD_APP_HELPER_STAGE, GUARD_APP_HELPER_PREVIOUS, GUARD_APP_HELPER_PREVIOUS_TMP,
+    };
+    for (size_t i = 0; exact && i < sizeof remnants / sizeof remnants[0]; i++) {
+        struct stat st;
+        if (fstatat(parent, remnants[i], &st, AT_SYMLINK_NOFOLLOW) != 0) {
+            if (errno != ENOENT) exact = 0;
+        } else if (!S_ISREG(st.st_mode) || st.st_uid != geteuid() || st.st_nlink != 1 ||
+                   unlinkat(parent, remnants[i], 0) != 0) exact = 0;
+    }
+    const char *guard_parent = GUARD_PARENT;
+#ifdef HAPANELD_TEST
+    const char *test_parent = getenv("HAPANELD_GUARD_TEST_PARENT");
+    if (test_parent && *test_parent) guard_parent = test_parent;
+#endif
+    int state_parent = exact ? open(guard_parent, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC) : -1;
+    struct stat held, named;
+    exact = exact && state_parent >= 0 && fstat(dir, &held) == 0 &&
+        fstatat(state_parent, GUARD_DIR_NAME, &named, AT_SYMLINK_NOFOLLOW) == 0 &&
+        held.st_dev == named.st_dev && held.st_ino == named.st_ino && helper_app_data_absent();
+    if (exact) {
+        exact = unlinkat(dir, GUARD_OWNER_LOCK, 0) == 0 && fsync(dir) == 0;
+        close(guard_owner_fd);
+        guard_owner_fd = -1;
+        exact = exact && unlinkat(state_parent, GUARD_DIR_NAME, AT_REMOVEDIR) == 0 &&
+            fsync(state_parent) == 0;
+    }
+    // Last mutation: a crash before this point leaves a launchable binary that can retry cleanup.
+    if (exact) exact = helper_app_data_absent() &&
+        fstatat(parent, GUARD_APP_HELPER_LIVE, &named, AT_SYMLINK_NOFOLLOW) == 0 &&
+        named.st_dev == live.st_dev && named.st_ino == live.st_ino &&
+        unlinkat(parent, GUARD_APP_HELPER_LIVE, 0) == 0;
+    if (exact) (void)fsync(parent);
+    if (state_parent >= 0) close(state_parent);
+    if (dir >= 0) close(dir);
+    if (parent >= 0) close(parent);
+    pthread_mutex_unlock(&guard_lock);
+    (void)release_helper_transaction_lock(&lease);
+    return exact ? 0 : -1;
 }
 
 int guard_maintenance_supervised(void) {

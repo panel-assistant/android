@@ -32,7 +32,7 @@ class HaLifecycleBarTickTest {
         val tick = HaLifecycleBar::class.java.getDeclaredField("hide").apply { isAccessible = true }.get(bar) as Runnable
 
         // Drawing a card needs a real view; a tick that hides it does not.
-        runCatching { tick.run() }
+        tick.run()
 
         assertEquals("the old card hid instead of showing the replacement's state", listOf(false), shown)
     }

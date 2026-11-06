@@ -41,6 +41,36 @@ import java.util.concurrent.atomic.AtomicInteger
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class PanelAssistantTransportOwnerTest {
 
+    @Test fun `hello reports the current listener port on each connection`() =
+        io.panelassistant.android.http.PaneldListenerPortTest.withDefaultPortLock { runTest {
+        val first = FakeConnection(Ha.accepting())
+        val second = FakeConnection(Ha.accepting())
+        val harness = harness(first, second)
+        val holder = java.net.ServerSocket().apply { bind(java.net.InetSocketAddress("127.0.0.1", 8888)) }
+        val httpScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+        var actualPort = 8888
+        val listener = io.panelassistant.android.http.PaneldListener(httpScope, { 8888 }, { true }, onBound = { actualPort = it }) {}
+        try {
+            listener.start {}
+            assertTrue(actualPort in 1024..32767 && actualPort != 8888)
+            harness.owner.replaceDemand(DEMAND.copy(identity = IDENTITY.copy(httpPort = actualPort)))
+            runCurrent()
+            assertEquals(actualPort, first.sent.map(::JSONObject).single {
+                it.getString("type") == "panel_assistant/hello"
+            }.optInt("http_port", -1))
+            harness.owner.replaceDemand(DEMAND.copy(identity = IDENTITY.copy(httpPort = 14727)))
+            runCurrent()
+            assertEquals(14727, second.sent.map(::JSONObject).single {
+                it.getString("type") == "panel_assistant/hello"
+            }.optInt("http_port", -1))
+        } finally {
+            harness.owner.close()
+            listener.stop()
+            httpScope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
+            holder.close()
+        }
+    } }
+
     @Test fun `entity estimate follows the accepted current account and disappears immediately on replacement`() = runTest {
         val connection = FakeConnection(Ha.accepting(expectedEntityCount = 2_500))
         val harness = harness(connection)
@@ -883,6 +913,29 @@ class PanelAssistantTransportOwnerTest {
         harness.owner.close()
     }
 
+    @Test fun aSessionThatDropsAfterItsHelloKeepsItsRouteButAConnectThatFailsDoesNot() = runTest {
+        val route = io.panelassistant.android.HaConnectionRoute(OWNER, OWNER.url, 0L)
+        val silent = FakeConnection(Ha.accepting(answerPings = false))
+        val failed = mutableListOf<io.panelassistant.android.HaConnectionRoute>()
+        val harness = harness(silent, IOException("refused"), FakeConnection(Ha.accepting()),
+            onTransportFailure = { failed += it })
+        harness.session = { HaApiSession(OWNER.url, "token", owner = OWNER, route = route) }
+        harness.owner.replaceDemand(DEMAND)
+        advanceTimeBy(30_000L + 15_000L)
+        runCurrent()
+
+        assertTrue(silent.closed)
+        assertEquals("a route that carried an accepted session is not failed by its end", emptyList<Any>(), failed)
+        advanceTimeBy(1_000L)
+        runCurrent()
+        assertEquals(2, harness.connector.times.size)
+        assertEquals("a connect that fails still lets the routes try a peer", listOf(route), failed)
+        advanceTimeBy(60_000L)
+        runCurrent()
+        assertEquals(PanelAssistantTransportPhase.CONNECTED, harness.owner.status.phase)
+        harness.owner.close()
+    }
+
     @Test fun theHelloStatesTheChannelsTheBridgeCannotFillAndAChannelThatBecomesUnsupportedHelloesAgain() = runTest {
         val shadow = Shadow(listOf("relay1", "temperature"))
         shadow.unsupported += "humidity"
@@ -992,9 +1045,12 @@ class PanelAssistantTransportOwnerTest {
         val shadow = Shadow(listOf("relay1"))
         shadow.sink("relay1", "ON")
         val release = CompletableDeferred<Unit>()
-        val first = FakeConnection(Ha.accepting(capabilities = listOf("state"))).apply { holdReadAfterCancel = release }
-        val second = FakeConnection(Ha.accepting(capabilities = listOf("state")))
-        val harness = harness(first, second, shadow = shadow.reporter)
+        val forwarding = mutableListOf<Boolean>()
+        val logs = PanelAssistantLogs(emptyMap(), forwarding::add, { JSONObject() })
+        val sources = JSONObject().put("app", 5)
+        val first = FakeConnection(Ha.accepting(capabilities = listOf("state", "logs"), logs = sources)).apply { holdReadAfterCancel = release }
+        val second = FakeConnection(Ha.accepting(capabilities = listOf("state", "logs"), logs = sources))
+        val harness = harness(first, second, shadow = shadow.reporter, logs = logs)
         harness.owner.replaceDemand(DEMAND)
         runCurrent()
         assertEquals(listOf("panel_assistant/hello", "full_begin", "full_end"), first.sent.map(::kind))
@@ -1003,8 +1059,10 @@ class PanelAssistantTransportOwnerTest {
         harness.owner.replaceDemand(DEMAND.copy(identity = IDENTITY.copy(appVersionCode = 791)))
         runCurrent()
         assertFalse(first.closed)
+        assertEquals("retiring the session resumes direct logs before socket cleanup finishes", listOf(true, false), forwarding)
         release.complete(Unit)
         runCurrent()
+        assertTrue("the replacement session takes log routing authority", forwarding.last())
         shadow.sink("relay1", "OFF")
         runCurrent()
 
@@ -1067,6 +1125,47 @@ class PanelAssistantTransportOwnerTest {
         harness.owner.close()
     }
 
+    @Test fun theHelloOffersLocalAdbWhenRootAnEndpointOrTheExpectedOrdinaryHelperCanStartRecovery() = runTest {
+        fun offeredWith(rootKnownUnusable: Boolean, endpointAnswers: Boolean, wire: io.panelassistant.android.util.EnsureWireFixture = io.panelassistant.android.util.EnsureWireFixture().apply { missing = true }): List<String> {
+            val endpoint = object : LocalAdbEndpoint {
+                override fun state() = if (endpointAnswers) LocalAdbState(false, false) else null
+                override fun arm(nonce: String) = true
+                override fun beat(nonce: String) = true
+                override fun recover(nonce: String, submit: (() -> Unit) -> Boolean): Boolean? = true
+                override fun shell(command: ByteArray, timeoutMs: Int, submit: (() -> Unit) -> Boolean): JSONObject? = null
+            }
+            val runtime = LocalAdbRuntime(
+                backgroundScope, endpoint, { false }, { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), { it() },
+                rootKnownUnusable = { rootKnownUnusable }, daemon = wire.client,
+            )
+            val management = object : PanelAssistantManagement by FakeManagement() {
+                override val localAdb: PanelAssistantLocalAdb = runtime
+            }
+            val connection = FakeConnection(Ha.accepting(capabilities = listOf("management")))
+            val harness = harness(connection, management = management)
+            harness.owner.replaceDemand(DEMAND)
+            runCurrent()
+            val offered = JSONObject(connection.sent.first()).getJSONArray("capabilities")
+            harness.owner.close()
+            return (0 until offered.length()).map(offered::getString)
+        }
+
+        assertFalse("a panel without su and without an endpoint", "local_adb" in offeredWith(rootKnownUnusable = true, endpointAnswers = false))
+        assertTrue("management stays offered", "management" in offeredWith(rootKnownUnusable = true, endpointAnswers = false))
+        assertTrue("a rooted panel", "local_adb" in offeredWith(rootKnownUnusable = false, endpointAnswers = false))
+        assertTrue("an endpoint already answering", "local_adb" in offeredWith(rootKnownUnusable = true, endpointAnswers = true))
+        val helper = io.panelassistant.android.util.EnsureWireFixture()
+        assertTrue("the expected ordinary helper without a su route", "local_adb" in offeredWith(true, false, helper))
+        assertEquals(listOf(1 to "VERSION", 1 to "BUILDID"), helper.commands)
+        helper.identity = helper.identity.copy(build = "BUILDID ${"0".repeat(64)}")
+        assertFalse("a replaced helper must be admitted afresh", "local_adb" in offeredWith(true, false, helper))
+        assertTrue(helper.commands.none { it.second == "ADBRECOVERYENSURE" || it.second == "PING" })
+        val bypassed = io.panelassistant.android.util.EnsureWireFixture()
+        assertTrue("root offer stays cheap", "local_adb" in offeredWith(false, false, bypassed))
+        assertTrue("existing endpoint stays cheap", "local_adb" in offeredWith(true, true, bypassed))
+        assertTrue(bypassed.commands.isEmpty())
+    }
+
     @Test fun aRelayedCommandRunsAsItsUserThroughTheSidebarDoorAndNeverThroughPanelAssistantsOwnCommands() = runTest {
         val sink = ImmediateSink()
         val submitted = mutableListOf<Pair<String, String>>()
@@ -1120,6 +1219,25 @@ class PanelAssistantTransportOwnerTest {
         harness.owner.close()
     }
 
+    @Test fun privilegedShellWithoutNegotiatedCapabilityNeverReachesManagement() = runTest {
+        val management = FakeManagement()
+        val seen = mutableListOf<String>()
+        management.serve = { op, _, _ ->
+            seen += op
+            PanelAssistantManageReply("applied", null, JSONObject())
+        }
+        val connection = FakeConnection(Ha.accepting(capabilities = listOf("management")))
+        val harness = harness(connection, management = management)
+        harness.owner.replaceDemand(DEMAND)
+        runCurrent()
+        connection.inbound.trySend(Ha.manage("privileged", "adb.shell", args = JSONObject().put("command", "id").put("timeout_ms", 1000)))
+        runCurrent()
+        val answer = JSONObject(connection.sent.last())
+        assertEquals("refused", answer.getString("outcome"))
+        assertTrue("unnegotiated shell must never execute", seen.isEmpty())
+        harness.owner.close()
+    }
+
     @Test fun aNamedRequestCarriesItsArgumentsAndAnswersPendingApprovalBeforeItsResult() = runTest {
         val management = FakeManagement()
         val approved = CompletableDeferred<Unit>()
@@ -1158,9 +1276,11 @@ class PanelAssistantTransportOwnerTest {
 
     @Test fun aSnapshotStillBuildingNeverHoldsTheReconnectAfterTheSessionEnds() = runTest {
         val building = CompletableDeferred<Unit>()
+        var snapshotCalls = 0
         val management = object : PanelAssistantManagement by FakeManagement() {
             // Blocking work, as the status build is: cancellation cannot interrupt it.
             override suspend fun snapshot(): PanelAssistantManagementSnapshot {
+                snapshotCalls++
                 withContext(NonCancellable) { building.await() }
                 return PanelAssistantManagementSnapshot("", "")
             }
@@ -1171,6 +1291,7 @@ class PanelAssistantTransportOwnerTest {
         runCurrent()
         first.inbound.trySend(Ha.manage("m1", "snapshot"))
         runCurrent()
+        assertEquals("snapshot work must start before its session ends", 1, snapshotCalls)
         first.inbound.trySend(Ha.sessionClosed("entry_unloaded"))
         advanceTimeBy(5_000)
         runCurrent()
@@ -1731,6 +1852,7 @@ class PanelAssistantTransportOwnerTest {
         onConnection: (HaApiSession, PanelAssistantSession) -> Boolean = { _, _ -> true },
         checkPreferred: suspend () -> Boolean = { false },
         onTransportFailure: (io.panelassistant.android.HaConnectionRoute) -> Unit = {},
+        logs: PanelAssistantLogs? = null,
     ): Harness {
         val connector = FakeConnector(this, script.toMutableList(), repeating, repeatingFailure)
         val forces = mutableListOf<Boolean>()
@@ -1760,6 +1882,7 @@ class PanelAssistantTransportOwnerTest {
             onLifecycleAuthenticated = onLifecycleAuthenticated,
             onLifecycleDisconnected = onLifecycleDisconnected,
             onLifecycleRetired = onLifecycleRetired,
+            logs = logs,
         )
         harness = Harness(owner, connector, forces)
         return harness
@@ -1835,6 +1958,7 @@ class PanelAssistantTransportOwnerTest {
             updatePolicy: PanelAssistantUpdatePolicy? = null,
             /** Leave the `full_end` request unanswered; the test injects [reportAcknowledged] itself. */
             holdFullEnd: Boolean = false,
+            logs: JSONObject? = null,
         ): (JSONObject, FakeConnection) -> Unit = { frame, connection ->
             when (frame.getString("type")) {
                 "panel_assistant/hello" -> connection.inbound.trySend(
@@ -1851,6 +1975,7 @@ class PanelAssistantTransportOwnerTest {
                                 .put("integration", JSONObject().put("version", "0.3.0"))
                                 .put("channels", JSONObject().put("accepted", 0).put("unknown", JSONArray()))
                                 .apply { if (voiceStream != null) put("voice_stream_session", voiceStream) }
+                                .apply { if (logs != null) put("logs", JSONObject().put("sources", logs)) }
                                 .apply { if (lifecycle != null) put("lifecycle", lifecycle) }
                                 .apply { if (expectedEntityCount != null) put("expected_entity_count", expectedEntityCount) }
                                 .apply {

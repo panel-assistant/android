@@ -2,6 +2,8 @@ package io.panelassistant.android.http
 
 import io.panelassistant.android.ManageFamilies
 import io.panelassistant.android.testsupport.TestSources
+import io.panelassistant.android.testsupport.Node
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -12,18 +14,26 @@ import org.junit.Test
  * with. A page reads the same value on both transports only while the two agree on names, reads and floors.
  */
 class PageTransportFamiliesTest {
-    // Source-text reason: the family table in transport.js is page code the JVM cannot load; it is read as data.
-    private val table by lazy {
-        TestSources.asset("transport.js").readText().substringAfter("var FAMILIES = {").substringBefore("\n  };")
-    }
-    private val row = Regex("""(\w+): \{ floor: (\d+), reads: \[([^\]]*)\](, append: true)? \}""")
-
     @Test fun `the page transport's families are the panel's families`() {
-        val page = row.findAll(table).associate { match ->
-            val reads = Regex(""""([^"]+)"""").findAll(match.groupValues[3]).map { it.groupValues[1] }.toList()
-            match.groupValues[1] to Triple(match.groupValues[2].toLong(), reads, match.groupValues[4].isNotEmpty())
+        Node.assumeAvailable()
+        // Source-text reason: execute the shipped script and inspect the API its subscription consumers use.
+        val script = """
+            const fs = require('node:fs');
+            const vm = require('node:vm');
+            global.window = {};
+            global.document = {};
+            vm.runInThisContext(fs.readFileSync(process.argv[1], 'utf8'));
+            process.stdout.write(JSON.stringify(window.PaneldTransport.families));
+        """.trimIndent()
+        val (code, output) = Node.run("-e", script, TestSources.asset("transport.js").absolutePath)
+        assertEquals(output, 0, code)
+        val families = JSONObject(output)
+        val page = families.keys().asSequence().associateWith { key ->
+            val family = families.getJSONObject(key)
+            val reads = family.getJSONArray("reads")
+            Triple(family.getLong("floor"), (0 until reads.length()).map(reads::getString), family.optBoolean("append"))
         }
-        assertTrue("the family table parsed", page.isNotEmpty())
+        assertTrue("the family API is populated", page.isNotEmpty())
         val panel = ManageFamilies.DEFAULT.mapValues { (_, family) -> Triple(family.floorMs, family.reads, family.append) }
 
         assertEquals(panel, page)

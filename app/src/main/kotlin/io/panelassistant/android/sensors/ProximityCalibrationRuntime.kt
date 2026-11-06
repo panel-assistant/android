@@ -11,17 +11,22 @@ import java.util.UUID
 import java.util.concurrent.CompletableFuture
 import org.json.JSONObject
 
-/** Fixed calibration, an explicit local wizard, and one atomic durable save. No ambient model writes. */
+/** Learned ranged presence, explicit local setup, and one atomic durable calibration save. */
 internal class ProximityCalibrationRuntime(
     sourceIdentity: String,
     profileId: String,
-    private val baseline: ProximityCalibrationEngine.Calibration?,
+    profileBaseline: ProximityCalibrationEngine.Calibration?,
     private val store: ProximityModelStore,
     private val elapsed: () -> Long = SystemClock::elapsedRealtime,
     private val wall: () -> Long = System::currentTimeMillis,
     requestedWavePattern: ProximityCalibrationEngine.WavePattern = ProximityCalibrationEngine.WavePattern.SINGLE,
     private val observedSourceMode: ProximityCalibrationEngine.Mode? = null,
     profileRevision: String? = null,
+    private val driftMargin: Float = 0f,
+    /** The source's declared maximum range; readings beyond it are counts, the band's unit. 0 = always counts. */
+    private val driftDeclaredRange: Float = 0f,
+    /** Keep a stored calibration inside the band as saved, rather than decline it (`proximityKeepsStoredInsideDriftBand`). */
+    private val keepStoredInsideDriftBand: Boolean = false,
 ) : AutoCloseable {
     data class Decision(val reportMask: Int, val near: Boolean?, val normalizedLevel: Int?, val deliberateGesture: Boolean, val presenceApproach: Boolean = false)
 
@@ -34,6 +39,16 @@ internal class ProximityCalibrationRuntime(
     private val reportGate = ProximityReportGate(densePresenceStabilityMs = 0)
     private var userOverride = false
     private var readFailed = false
+
+    /** A wave-only calibration whose boundaries cannot hold the source's existing wave drift margin. */
+    private var driftUnsafe = false
+
+    /** Profile and stored calibrations use the same presence and wave admission policy. */
+    private val baseline = profileBaseline?.let { profile ->
+        admitStored(profile).also {
+            if (it == null) Log.w(TAG, "profile proximity calibration cannot hold this source's drift band; not used")
+        }
+    }
     private val engine = ProximityCalibrationEngine(readCalibration(), commit = { candidate ->
         val now = wall()
         // This is the only calibration write. The store commits the whole row in one transaction;
@@ -44,8 +59,9 @@ internal class ProximityCalibrationRuntime(
                     fingerprint, STORAGE_VERSION, "explicit-calibration-v2", encode(candidate), true, now,
                 ), emptyList(), emptyList(), now,
             )
-        }.isSuccess.also { if (it) { userOverride = true; readFailed = false } }
-    }, requestedWavePattern = requestedWavePattern, observedSourceMode = observedSourceMode)
+        }.isSuccess.also { if (it) { userOverride = true; readFailed = false; driftUnsafe = false } }
+    }, requestedWavePattern = requestedWavePattern, observedSourceMode = observedSourceMode,
+        driftMargin = driftMargin, driftDeclaredRange = driftDeclaredRange)
     @Volatile private var view = engine.current()
     @Volatile private var sessionId = ""
     @Volatile private var browserAt = 0L
@@ -59,12 +75,25 @@ internal class ProximityCalibrationRuntime(
     private var completedGestureToken = 0L
     private var processedAt = 0L
 
-    constructor(context: Context, sourceIdentity: String, profileId: String, profileRevision: String, profile: ProfileProximityCalibration?, observedSourceMode: ProximityCalibrationEngine.Mode? = null) : this(
+    constructor(
+        context: Context,
+        sourceIdentity: String,
+        profileId: String,
+        profileRevision: String,
+        profile: ProfileProximityCalibration?,
+        observedSourceMode: ProximityCalibrationEngine.Mode? = null,
+        driftMargin: Float = 0f,
+        driftDeclaredRange: Float = 0f,
+        keepStoredInsideDriftBand: Boolean = false,
+    ) : this(
         sourceIdentity, profileId, profile?.let(::fromProfile),
         SqliteProximityModelStore(EntityCatalogStore(context.applicationContext)),
         requestedWavePattern = profileWavePattern(profile),
         observedSourceMode = observedSourceMode,
         profileRevision = profileRevision,
+        driftMargin = driftMargin,
+        driftDeclaredRange = driftDeclaredRange,
+        keepStoredInsideDriftBand = keepStoredInsideDriftBand,
     )
 
     @Synchronized
@@ -79,11 +108,11 @@ internal class ProximityCalibrationRuntime(
     }
 
     @Synchronized
-    fun tick(receivedAt: Long = elapsed(), sparseReporting: Boolean = false): Decision {
+    fun tick(receivedAt: Long = elapsed(), sparseReporting: Boolean = false, heldEvidence: Boolean = false): Decision {
         val now = processingTime(receivedAt)
         if (closed) return Decision(ProximityReportGate.NONE, null, null, false)
         expireOwner(now)
-        view = engine.tick(now)
+        view = engine.tick(now, heldEvidence && sourceProven)
         return decision(now, sparseReporting)
     }
 
@@ -95,7 +124,7 @@ internal class ProximityCalibrationRuntime(
         return decision(now, false)
     }
 
-    fun needsTick(): Boolean = !closed && (view.active || engine.needsTick())
+    fun needsTick(heldEvidence: Boolean = false): Boolean = !closed && (view.active || engine.needsTick(heldEvidence))
     fun isReady(): Boolean = isPresenceReady()
     fun isPresenceReady(): Boolean = !closed && sourceProven && !saving && !view.active && view.presenceReady
     fun isPresenceNear(): Boolean = isPresenceReady() && view.near == true
@@ -191,6 +220,7 @@ internal class ProximityCalibrationRuntime(
             }.isFailure) return false
         userOverride = false
         readFailed = false
+        driftUnsafe = false
         sessionId = ""
         failureMessage = ""
         view = engine.reset(baseline, processingTime(elapsed()))
@@ -201,16 +231,29 @@ internal class ProximityCalibrationRuntime(
     /**
      * Takes up a calibration a restore has just written to the store. Only a stored calibration that differs
      * from the one running is adopted: a read that fails or finds nothing leaves the panel exactly as it was,
-     * and so does a setup in progress.
+     * and so does a setup in progress. A restored calibration passes the same drift check as one read at
+     * start, so reloading now leaves the panel where a restart would: one inside the band is declined, or on
+     * a route that keeps such calibrations, kept as saved.
      */
     @Synchronized
     fun reloadStored(): Boolean {
         if (closed || view.active || saving) return false
         val restored = runCatching { stored(fingerprint) }.getOrNull()?.second ?: return false
-        if (restored == view.calibration) return false
+        val margined = admitStored(restored)
+        if (margined == null) {
+            if (driftUnsafe && !userOverride) return false
+            driftUnsafe = true
+            userOverride = false
+            readFailed = false
+            view = engine.reset(baseline, processingTime(elapsed()))
+            reportGate.reset()
+            return true
+        }
+        if (margined == view.calibration) return false
         userOverride = true
         readFailed = false
-        view = engine.reset(restored, processingTime(elapsed()))
+        driftUnsafe = false
+        view = engine.reset(margined, processingTime(elapsed()))
         reportGate.reset()
         return true
     }
@@ -288,6 +331,7 @@ internal class ProximityCalibrationRuntime(
             put("calibrationSource", if (userOverride) "user" else if (baseline != null) "profile" else "none")
             put("profileDefaultAvailable", baseline != null)
             put("calibrationReadFailed", readFailed)
+            put("calibrationDriftUnsafe", driftUnsafe)
         }.toString()
     }
 
@@ -334,8 +378,26 @@ internal class ProximityCalibrationRuntime(
             readFailed = true
             return baseline
         }?.second ?: return baseline
+        // Admission is in memory only. Quiet statistics never alter the saved calibration row.
+        val margined = admitStored(value)
+        if (margined == null) {
+            driftUnsafe = true
+            return baseline
+        }
         userOverride = true
-        return value
+        return margined
+    }
+
+    /** Presence keeps measured anchors for polarity and learns its own local band on every ranged route.
+     * Wave admission retains the previous drift margin and the route's existing retained-wave policy. */
+    private fun admitStored(value: ProximityCalibrationEngine.Calibration): ProximityCalibrationEngine.Calibration? {
+        val previous = ProximityCalibrationEngine.driftMargined(value, driftMargin, driftDeclaredRange)
+        if (previous != null) return previous
+        if (keepStoredInsideDriftBand) return value
+        if (value.mode != ProximityCalibrationEngine.Mode.RANGED || !value.presenceSupported) return null
+        // The previous admission refused this whole calibration, including any explicit or legacy
+        // wave. Accepting its presence anchors must not enable a previously unavailable wave wake.
+        return value.copy(version = 2, wave = null)
     }
 
     private fun stored(key: String): Pair<EntityCatalogStore.ProximityModelRow, ProximityCalibrationEngine.Calibration>? {

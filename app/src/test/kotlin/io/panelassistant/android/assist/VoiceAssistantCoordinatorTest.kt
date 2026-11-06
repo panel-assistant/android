@@ -10,6 +10,7 @@ import io.panelassistant.android.audio.MicrophoneSource
 import io.panelassistant.android.audio.PcmConsumer
 import io.panelassistant.android.audio.PcmFrame
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -46,7 +47,8 @@ class VoiceAssistantCoordinatorTest {
 
     private class FakeEngine(val onActivation: (WakeWordActivation) -> Unit) : WakeWordEngine {
         var closed = false
-        override fun onFrame(frame: PcmFrame) {}
+        val heard = CopyOnWriteArrayList<List<Short>>()
+        override fun onFrame(frame: PcmFrame) { heard += frame.samples.toList() }
         override fun close() { closed = true }
     }
 
@@ -61,6 +63,7 @@ class VoiceAssistantCoordinatorTest {
 
     private inner class ScriptedRunner : AssistRunner {
         val requests = CopyOnWriteArrayList<VoiceTurnRequest>()
+        val heard = CopyOnWriteArrayList<List<Short>>()
         val started = CompletableDeferred<Unit>()
         val release = CompletableDeferred<AssistOutcome>()
         /** Completed once this run has fully unwound, including its capture attachment. */
@@ -85,7 +88,9 @@ class VoiceAssistantCoordinatorTest {
             onReply: (String) -> Unit,
         ): AssistOutcome {
             requests += request
-            attachment = attachAudio(object : PcmConsumer { override fun onFrame(frame: PcmFrame) {} })
+            attachment = attachAudio(object : PcmConsumer {
+                override fun onFrame(frame: PcmFrame) { heard += frame.samples.toList() }
+            })
             playbackHandle = playback
             started.complete(Unit)
             return try {
@@ -107,11 +112,15 @@ class VoiceAssistantCoordinatorTest {
 
     /** The `listen_after` of each streamed announcement's `voice_stream_end`. */
     @Volatile private var streamListenAfter = true
+
+    /** When set, each sound plays until it completes, as the media player's Stop would end it. */
+    @Volatile private var sounding: CompletableDeferred<Unit>? = null
     private val playback = object : AssistPlayback {
         override suspend fun play(url: String) {
             played += url
             mic.leases.firstOrNull()?.let { pausedWhilePlaying += it.paused }
             state.set(VoiceState.RESPONDING)
+            sounding?.await()
         }
 
         override suspend fun playStream(streamId: String): Boolean {
@@ -553,18 +562,20 @@ class VoiceAssistantCoordinatorTest {
         val c = coordinator()
         c.start()
 
-        val wakeLease = mic.leases.single { it.purpose == MicPurpose.WAKE_WORD }
-        val wakeDelivered = ShortArray(1) { 1000 }
-        wakeLease.consumer.onFrame(PcmFrame(wakeDelivered, timestampNs = 1L))
+        val engine = engines.single()
+        mic.pushFrame(shortArrayOf(1000), timestampNs = 1L)
+        assertEquals("the wake-word listener hears the captured signal", listOf(listOf<Short>(1000)), engine.heard)
 
-        engines.single().onActivation(WakeWordActivation("hey_jarvis", "hey jarvis"))
-        awaitRunner(0)
-        val assistLease = mic.leases.single { it.purpose == MicPurpose.ASSIST }
-        val delivered = ShortArray(1) { 1000 }
-        assistLease.consumer.onFrame(PcmFrame(delivered, timestampNs = 2L))
+        engine.onActivation(WakeWordActivation("hey_jarvis", "hey jarvis"))
+        val runner = awaitRunner(0)
+        mic.pushFrame(shortArrayOf(1000), timestampNs = 2L)
 
-        assertTrue("pipeline audio should be amplified, got ${delivered[0]}", delivered[0] > 3000)
-        assertEquals("the wake-word listener must see the unamplified signal", 1000, wakeDelivered[0].toInt())
+        assertEquals("the pipeline receives one amplified frame", listOf(listOf<Short>(3981)), runner.heard)
+        assertEquals("the wake-word listener is paused during the command", listOf(listOf<Short>(1000)), engine.heard)
+        runner.release.complete(AssistOutcome())
+        awaitRunFinished(c)
+        mic.pushFrame(shortArrayOf(1000), timestampNs = 3L)
+        assertEquals("the resumed wake-word listener still hears unamplified audio", listOf(listOf<Short>(1000), listOf<Short>(1000)), engine.heard)
     }
 
     @Test
@@ -573,11 +584,9 @@ class VoiceAssistantCoordinatorTest {
         val c = coordinator()
         c.start()
         engines.single().onActivation(WakeWordActivation("hey_jarvis", "hey jarvis"))
-        awaitRunner(0)
-        val assistLease = mic.leases.single { it.purpose == MicPurpose.ASSIST }
-        val delivered = ShortArray(1) { 1000 }
-        assistLease.consumer.onFrame(PcmFrame(delivered, timestampNs = 2L))
-        assertEquals(1000, delivered[0].toInt())
+        val runner = awaitRunner(0)
+        mic.pushFrame(shortArrayOf(1000, -1000, 0), timestampNs = 2L)
+        assertEquals(listOf(listOf<Short>(1000, -1000, 0)), runner.heard)
     }
 
     @Test
@@ -1051,14 +1060,53 @@ class VoiceAssistantCoordinatorTest {
     fun `an announcement plays its chime then its message with the listener paused, then reports it played`() {
         val c = coordinator()
         c.start()
-        val done = CompletableDeferred<Unit>()
-        c.announce(VoiceAnnouncement("message.mp3", "chime.mp3", listenAfter = false) { done.complete(Unit) })
-        runBlocking { withTimeout(2_000) { done.await() } }
+        val done = CompletableDeferred<Boolean>()
+        c.announce(VoiceAnnouncement("message.mp3", "chime.mp3", listenAfter = false) { done.complete(it) })
+        assertFalse("played to the end, not stopped", runBlocking { withTimeout(2_000) { done.await() } })
         awaitRunFinished(c)
         assertEquals(listOf("chime.mp3", "message.mp3"), played)
         assertEquals("the panel must not hear itself", listOf(true, true), pausedWhilePlaying)
         assertFalse(mic.leases[0].paused)
         assertTrue("an announcement alone asks nothing of Home Assistant", runners.isEmpty())
+    }
+
+    @Test
+    fun `the media player's Stop during the chime ends the announcement there, reported stopped once`() {
+        val c = coordinator()
+        c.start()
+        sounding = CompletableDeferred()
+        val outcomes = CopyOnWriteArrayList<Boolean>()
+        c.announce(VoiceAnnouncement("question.mp3", "chime.mp3", listenAfter = true) { outcomes += it })
+        runBlocking { withTimeout(2_000) { while ("chime.mp3" !in played) delay(10) } }
+        c.ownerStopped()
+        awaitRunFinished(c)
+        assertEquals("reported once, as stopped", listOf(true), outcomes)
+        assertEquals("the message never starts", listOf("chime.mp3"), played)
+        assertTrue("nothing listens after a stopped announcement", runners.isEmpty())
+    }
+
+    @Test
+    fun `the media player's Stop during the message ends it without listening, reported stopped once`() {
+        val c = coordinator()
+        c.start()
+        sounding = CompletableDeferred()
+        val outcomes = CopyOnWriteArrayList<Boolean>()
+        c.announce(VoiceAnnouncement("question.mp3", null, listenAfter = true) { outcomes += it })
+        runBlocking { withTimeout(2_000) { while ("question.mp3" !in played) delay(10) } }
+        c.ownerStopped()
+        awaitRunFinished(c)
+        assertEquals(listOf(true), outcomes)
+        assertTrue("nothing listens after a stopped announcement", runners.isEmpty())
+    }
+
+    @Test
+    fun `the media player's Stop with no announcement playing stops nothing`() {
+        val c = coordinator()
+        c.start()
+        c.ownerStopped()
+        val done = CompletableDeferred<Boolean>()
+        c.announce(VoiceAnnouncement("message.mp3", null, listenAfter = false) { done.complete(it) })
+        assertFalse(runBlocking { withTimeout(2_000) { done.await() } })
     }
 
     @Test

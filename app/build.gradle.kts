@@ -1,9 +1,11 @@
+import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
 import java.util.Properties
 import java.security.MessageDigest
 import org.cyclonedx.gradle.CyclonedxDirectTask
 import org.cyclonedx.model.Component
 import org.gradle.api.tasks.Exec
+import org.gradle.api.tasks.Sync
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.testing.Test
 
@@ -88,6 +90,10 @@ dependencyLocking {
 // neither changes the Gradle cache key nor matches the build-file paths that start the emulator tests.
 val appVersion = Properties().apply { file("version.properties").inputStream().use { load(it) } }
 
+// Stable development identity: release numbering must not invalidate debug compilation or lint.
+val debugVersionName = "1.0.0"
+val debugAssetsDirectory = layout.buildDirectory.dir("debug-assets")
+
 android {
     namespace = "io.panelassistant.android"
     compileSdk = 37
@@ -160,6 +166,15 @@ android {
         }
     }
 
+    sourceSets {
+        // Lint fingerprints assets too. Debug uses the same assets with stable OpenAPI metadata;
+        // release keeps the original published contract. Keep debug's directory a normal source
+        // directory because lint excludes generated asset directories from its inputs.
+        getByName("main").assets.setSrcDirs(emptyList<String>())
+        getByName("release").assets.srcDir("src/main/assets")
+        getByName("debug").assets.srcDir(debugAssetsDirectory.get().asFile)
+    }
+
     buildFeatures {
         buildConfig = true
     }
@@ -225,6 +240,33 @@ tasks.matching { it.name.startsWith("process") && it.name.endsWith("MainManifest
     inputs.property("databaseCompatibility", databaseCompatibilityContract)
 }
 
+// Execute the platform implementations behind provider receipts and package facts on the host.
+// Selected Android classes replace SDK stubs; tests use their host-executable paths without a framework runner or device.
+val providerAndroidRuntime = configurations.create("providerAndroidRuntime")
+val providerInstallSourceRuntime = configurations.create("providerInstallSourceRuntime")
+abstract class ProviderArchiveServices {
+    @get:javax.inject.Inject abstract val archives: org.gradle.api.file.ArchiveOperations
+}
+val providerAndroidRuntimeJar = tasks.register<Jar>("providerAndroidRuntimeJar") {
+    val archives = objects.newInstance<ProviderArchiveServices>().archives
+    archiveFileName.set("provider-android-runtime.jar")
+    destinationDirectory.set(layout.buildDirectory.dir("provider-android-runtime"))
+    from(providerAndroidRuntime.elements.map { files -> files.map { archives.zipTree(it.asFile) } }) {
+        include("android/util/AtomicFile*.class", "android/os/FileUtils*.class")
+        include("android/content/pm/Signature*.class", "android/content/pm/SigningInfo*.class")
+        include("android/content/pm/PackageInfo*.class", "android/content/pm/PackageParser\$SigningDetails*.class")
+        include("android/webkit/WebView.class", "android/webkit/WebView\$*.class")
+        include("android/webkit/WebViewFactory*.class", "android/webkit/WebViewProvider*.class")
+        include("android/view/ViewDebug\$HierarchyHandler.class", "com/android/internal/util/SizedInputStream.class")
+    }
+    from(providerInstallSourceRuntime.elements.map { files -> files.map { archives.zipTree(it.asFile) } }) {
+        include("android/content/pm/InstallSourceInfo*.class")
+    }
+}
+val androidMockPackageManager = androidComponents.sdkComponents.bootClasspath.map { files ->
+    files.first { it.asFile.name == "android.jar" }.asFile.resolveSibling("optional/android.test.mock.jar")
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
@@ -258,7 +300,11 @@ dependencies {
     // QR code for the on-device config URL (pure-Java encoder; no Android transitive deps).
     implementation("com.google.zxing:core:3.5.4")
 
-    // JVM unit tests (no Android/emulator deps): pure-logic + coroutine serialization regression tests.
+    providerAndroidRuntime("org.robolectric:android-all:10-robolectric-5803371")
+    providerInstallSourceRuntime("org.robolectric:android-all:11-robolectric-6757853")
+    testImplementation(files(androidMockPackageManager))
+
+    // JVM unit tests: pure logic, coroutine serialization, and narrow host platform adapters.
     testImplementation(libs.junit)
     testImplementation(kotlin("test"))
     testImplementation(libs.kotlinx.coroutines.test)
@@ -291,6 +337,13 @@ tasks.named<CyclonedxDirectTask>("cyclonedxDirectBom") {
 // Compile the CDP relay (helper/cdprelay.c) into assets at build time for the fleet ABIs, using the
 // pinned NDK that's already present in the Docker toolchain image and CI — so the repo ships source,
 // not prebuilt binaries. Extracted + launched at runtime by control/CdpRelay.kt.
+androidComponents.onVariants(androidComponents.selector().withBuildType("debug")) { variant ->
+    variant.outputs.forEach { output ->
+        output.versionCode.set(1)
+        output.versionName.set(debugVersionName)
+    }
+}
+
 val ndkDirectory = androidComponents.sdkComponents.sdkDirectory.map {
     it.dir("ndk/${android.ndkVersion}")
 }
@@ -424,6 +477,23 @@ val verifyOpenApiVersion = tasks.register("verifyOpenApiVersion") {
 }
 tasks.named("preBuild") { dependsOn(compileCdpRelay, verifyBundledRootHelperBuildIdentity, verifyOpenApiVersion) }
 
+val prepareDebugAssets = tasks.register<Sync>("prepareDebugAssets") {
+    dependsOn(compileCdpRelay, verifyBundledRootHelperBuildIdentity, verifyOpenApiVersion)
+    from("src/main/assets")
+    into(debugAssetsDirectory)
+    val openApi = debugAssetsDirectory.get().file("openapi.json").asFile
+    val versionName = debugVersionName
+    doLast {
+        @Suppress("UNCHECKED_CAST")
+        val document = JsonSlurper().parse(openApi) as MutableMap<String, Any?>
+        @Suppress("UNCHECKED_CAST")
+        val info = document["info"] as MutableMap<String, Any?>
+        info["version"] = versionName
+        openApi.writeText(JsonOutput.prettyPrint(JsonOutput.toJson(document)) + "\n")
+    }
+}
+tasks.matching { it.name == "preDebugBuild" }.configureEach { dependsOn(prepareDebugAssets) }
+
 // Built outside helper/build, which the helper Makefile's clean deletes while a JVM run may be using it.
 val helperSocketTestServer = layout.buildDirectory.file("helper-socket-test/socket-test-server").get().asFile
 val buildHelperSocketTestServer = tasks.register<Exec>("buildHelperSocketTestServer") {
@@ -447,6 +517,7 @@ val buildHostJniLibraries = tasks.register<Exec>("buildHostJniLibraries") {
     inputs.files(
         file("src/test/native"),
         file("src/main/cpp/led_jni.c"),
+        file("src/main/cpp/home_lock_jni.c"),
         file("src/main/cpp/microwakeword/MicroWakeWord_jni.cpp"),
         file("src/main/cpp/microwakeword/MicroWakeWordEngine.h"),
         file("src/main/cpp/microwakeword/MicroFrontendWrapper.h"),
@@ -480,6 +551,7 @@ val unitTestRuntimeReadFiles = listOf(
     "../gradle/libs.versions.toml",
     "../helper/Makefile", // the socket test server recipe, with the three test sources below
     "../helper/source-id.sh",
+    "../helper/test/replacement_handoff.py",
     "../helper/test/socket_server.c",
     "../helper/test/sysexec_stub.c",
     "../helper/test/sysexec_stub.h",
@@ -508,9 +580,10 @@ tasks.withType<Test>().configureEach {
     outputs.dir(layout.buildDirectory.dir("test-fixtures")).withPropertyName("testFixtures")
     if (System.getProperty("os.name").startsWith("Linux", ignoreCase = true)) {
         dependsOn(buildHelperSocketTestServer)
-        systemProperty("hapaneld.helper.socketTestServer", helperSocketTestServer.absolutePath)
+        // Relative to the project directory (the Test working directory) so the cache key matches across checkouts.
+        systemProperty("hapaneld.helper.socketTestServer", helperSocketTestServer.relativeTo(projectDir).invariantSeparatorsPath)
         dependsOn(buildHostJniLibraries)
-        systemProperty("hapaneld.test.hostJniDirectory", hostJniLibraries.get().asFile.absolutePath)
+        systemProperty("hapaneld.test.hostJniDirectory", hostJniLibraries.get().asFile.relativeTo(projectDir).invariantSeparatorsPath)
     }
     // RELATIVE path sensitivity keys the fingerprint on content plus tree-relative path, so a clean
     // checkout at another location reuses the cache while any byte change invalidates it.
@@ -528,6 +601,18 @@ tasks.withType<Test>().configureEach {
     systemProperty("hapaneld.test.runtimeReadDirectories", unitTestRuntimeReadDirectories.joinToString(File.pathSeparator))
     systemProperty("hapaneld.test.runtimeReadFiles", unitTestRuntimeReadFiles.joinToString(File.pathSeparator))
     systemProperty("hapaneld.test.runtimeReadAssetExcludes", unitTestGeneratedAssetExcludes.joinToString(File.pathSeparator))
+    val repositoryDirectory = rootProject.projectDir
+    doFirst {
+        val repository = repositoryDirectory.toPath().toAbsolutePath().normalize()
+        val activeInputs = inputs.files.files.map { it.toPath().toAbsolutePath().normalize() }
+            .filter { it.startsWith(repository) }
+            .map { repository.relativize(it).toFile().invariantSeparatorsPath }
+            .sorted()
+        // This generated observation is not an input to itself; keep its size out of JVM arguments.
+        val snapshot = temporaryDir.resolve("runtime-inputs.txt")
+        snapshot.writeText(activeInputs.joinToString("\n"))
+        systemProperty("hapaneld.test.activeTaskInputs", snapshot.absolutePath)
+    }
     providers.gradleProperty("autoSleepReplayInput").orNull?.let {
         systemProperty("hapaneld.autoSleepReplay.input", it)
         inputs.file(it)
@@ -536,5 +621,57 @@ tasks.withType<Test>().configureEach {
     providers.gradleProperty("autoSleepReplayOutput").orNull?.let {
         systemProperty("hapaneld.autoSleepReplay.output", it)
         inputs.property("autoSleepReplayOutputPath", it)
+    }
+}
+
+// Keep real platform classes in their own supported Test worker so unrelated JVM fixtures retain SDK stubs.
+afterEvaluate {
+    val debugTests = tasks.named<Test>("testDebugUnitTest")
+    val callerClasses = listOf(
+        "io.panelassistant.android.util.AndroidWebViewUpdateIoTest",
+        "io.panelassistant.android.http.PaneldServerWebViewApprovalTest",
+    )
+    // Caller class and method selections run in the dependency worker, including class-name globs.
+    val requestedArgs = gradle.startParameter.taskRequests.flatMap { it.args }
+    val requestedTests = requestedArgs.mapIndexedNotNull { index, argument ->
+        when {
+            argument == "--tests" -> requestedArgs.getOrNull(index + 1)
+            argument.startsWith("--tests=") -> argument.substringAfter('=')
+            else -> null
+        }
+    }
+    val ordinaryUnitTasks = setOf(":app:testDebugUnitTest", "testDebugUnitTest", ":app:testReleaseUnitTest", "testReleaseUnitTest")
+    fun callerSelector(pattern: String): Boolean = callerClasses.any { className ->
+        val simpleName = className.substringAfterLast('.')
+        // Keep broad globs on the ordinary path: they can also select SDK-stub tests.
+        val classPattern = pattern.substringBefore("$simpleName.", pattern).let {
+            if (it != pattern) it + simpleName else pattern
+        }
+        val namesCaller = classPattern.endsWith(simpleName)
+        val regex = classPattern.split('*').joinToString(".*") { Regex.escape(it) }.toRegex()
+        namesCaller && (regex.matches(className) || regex.matches(simpleName))
+    }
+    val singleOrdinaryTask = requestedArgs.firstOrNull() in ordinaryUnitTasks && requestedArgs.drop(1).all {
+        it == "--tests" || it == "--rerun" || it in requestedTests ||
+            (it.startsWith("--tests=") && it.substringAfter('=') in requestedTests)
+    }
+    val callerOnlySelection = singleOrdinaryTask && requestedTests.isNotEmpty() && requestedTests.all(::callerSelector)
+    val webViewCallerTests = tasks.register<Test>("testWebViewCaller") {
+        description = "Exercises native WebView admission and host-executable Android adapter paths."
+        group = "verification"
+        dependsOn(providerAndroidRuntimeJar)
+        testClassesDirs = debugTests.get().testClassesDirs
+        classpath = files(providerAndroidRuntimeJar) + debugTests.get().classpath
+        useJUnit()
+        if (callerOnlySelection) {
+            requestedTests.forEach { filter.includeTestsMatching(it) }
+        } else {
+            callerClasses.forEach { filter.includeTestsMatching(it) }
+        }
+    }
+    tasks.withType<Test>().matching { it.name.endsWith("UnitTest") }.configureEach {
+        dependsOn(webViewCallerTests)
+        callerClasses.forEach { filter.excludeTestsMatching(it) }
+        onlyIf("Caller-only selections execute in the isolated worker") { !callerOnlySelection }
     }
 }

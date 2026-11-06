@@ -55,6 +55,40 @@ class RemoteDebugSecurityAuthorityStoreTest {
         )
     }
 
+    @Test fun `recovery fence permits fresh transition but never resurrects the old Hardened epoch`() {
+        val directory = temporary.newFolder("recovery")
+        val epochs = ArrayDeque(listOf(101L, 102L))
+        val authority = store(directory, nextEpoch = { epochs.removeFirst() })
+        assertEquals(101L, authority.publishTransition()?.epoch)
+        assertTrue(authority.publishHardened(101L))
+        val fence = File(directory, "network-adb-recovery.fence")
+        write0600(fence, "recovery".toByteArray())
+        write0600(File(directory, PUBLICATION), "recovery".toByteArray())
+        assertEquals(RemoteDebugSecurityAuthorityLoad.Corrupt, authority.load())
+        assertFalse(authority.publishHardened(101L))
+        // The JVM transition retires old authority while the root owner still keeps the fence.
+        assertEquals(102L, authority.publishTransition()?.epoch)
+        assertEquals(RemoteDebugSecurityAuthorityLoad.Corrupt, authority.load())
+        assertFalse(authority.publishHardened(102L))
+        assertTrue(fence.delete()) // native ARM has now proven effective OFF
+        assertEquals(RemoteDebugSecurityAuthorityLoad.Valid(RemoteDebugSecurityAuthority(RemoteDebugSecurityState.TRANSITION, 102L)), authority.load())
+        assertFalse(authority.publishHardened(101L))
+        assertTrue(authority.publishHardened(102L))
+    }
+
+    @Test fun `recovery arriving during Hardened publication invalidates its final readback`() {
+        val directory = temporary.newFolder("recovery-race")
+        var recover = false
+        val authority = store(directory, nextEpoch = { 200L }, syncDirectory = {
+            if (recover) File(directory, "network-adb-recovery.fence").writeText("recovery")
+            hostSyncDirectory(it)
+        })
+        assertEquals(200L, authority.publishTransition()?.epoch)
+        recover = true
+        assertFalse(authority.publishHardened(200L))
+        assertEquals(RemoteDebugSecurityAuthorityLoad.Corrupt, authority.load())
+    }
+
     @Test fun `record inventory fails closed for corrupt mode links directories and owner drift`() {
         val directory = temporary.newFolder("inventory")
         val record = File(directory, RECORD)

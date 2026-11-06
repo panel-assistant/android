@@ -249,11 +249,9 @@ interface DeviceProfile {
      *  `wm density` "Physical density" field, which is a base logical DPI. Null when the profile has none. */
     fun displayGeometry(physicalWidthPx: Int, physicalHeightPx: Int): ProfiledDisplayGeometry? = null
 
-    /** The System WebView build to install when this panel's stock WebView is too old to render the HA
-     *  dashboard. These panels have no Play Store, so ha-paneld sideloads a known-good `com.android.webview`
-     *  from the `webview-mirror` release (pinned signer). null = no known-good build for this panel (leave
-     *  the WebView alone). Pick the newest the panel's Android version supports (NSPanel Pro's 8.1 caps at
-     *  138). See https://panel-assistant.io/go/docs?page=hardware/readme. */
+    /** Known-good provider for an owner-started Panel Assistant install or Repair. A profile pin is a
+     *  recommendation, not permission: actual ABI, Android version, provider signer and Play ownership
+     *  still decide whether an ordinary replacement is possible. null leaves the provider alone. */
     val recommendedWebView: WebViewSpec? get() = provisioning.webViewArtifactId?.let(ProfileArtifacts.webViews::get)
 
     /** The newest HA Companion version known-good on this platform, or null = no cap. The Companion
@@ -306,9 +304,9 @@ enum class SuForm(val yamlName: String) {
 
 /**
  * A known-good System WebView build for a panel (see [DeviceProfile.recommendedWebView]). The package
- * is always `com.android.webview` — the id the Android framework requires to auto-select a WebView
- * provider — so only the source + version + pinned signer vary. [version] is the full Chromium version
- * the build provides (e.g. "138.0.7204.63"); all four numeric components gate automatic updates.
+ * is always `com.android.webview` for this installation class; other framework providers are left alone.
+ * [version] is the full Chromium version the build provides (e.g. "138.0.7204.63"); all four numeric
+ * components and the package version code prohibit downgrades on owner-started requests.
  * [certSha256] is the build's signing cert (LineageOS / Cromite / …), and [apkSha256] pins the
  * exact mirrored artifact; both are verified before install.
  */
@@ -317,6 +315,12 @@ data class WebViewSpec(
     val version: String,
     val certSha256: String,
     val apkSha256: String,
+    val versionCode: Long,
+    val size: Long,
+    val abis: Set<String>,
+    val minSdk: Int,
+    val maxSdk: Int? = null,
+    val installClass: String = "same_package_same_signer",
 ) {
     /** Chromium major of [version] (e.g. 138), or 0 if unparseable. */
     val major: Int get() = version.substringBefore('.').toIntOrNull() ?: 0

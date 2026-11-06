@@ -58,15 +58,12 @@ internal class ServiceVoiceAudio(
     // One coalesced restart per burst of voice_* changes: a bundle import writes every key in turn and
     // must not rearm the listener once per key.
     @Volatile private var voiceRestart: kotlinx.coroutines.Job? = null
-    private val voicePrefsListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        if (key == HaConnectionRoutes.EPOCH_KEY) reconfigure(setOf(key))
-        if (key != null && key.startsWith("voice_")) {
-            voiceRestart?.cancel()
-            voiceRestart = scope.launch {
-                kotlinx.coroutines.delay(VOICE_SETTINGS_COALESCE_MS)
-                voice.start()
-                panelAssistantVoice.configurationChanged()
-            }
+    private val voicePrefsListener = serviceConfigurationListener(reconfigure) {
+        voiceRestart?.cancel()
+        voiceRestart = scope.launch {
+            kotlinx.coroutines.delay(VOICE_SETTINGS_COALESCE_MS)
+            voice.start()
+            panelAssistantVoice.configurationChanged()
         }
     }
     /**
@@ -118,7 +115,7 @@ internal class ServiceVoiceAudio(
             scope = scope,
             configuration = ::voiceConfiguration,
             onAnnouncement = { announcement ->
-                val done = { panelAssistantVoice.played(announcement.announceId) }
+                val done = { stopped: Boolean -> panelAssistantVoice.played(announcement.announceId, stopped) }
                 if (::voice.isInitialized) {
                     voice.announce(
                         io.panelassistant.android.assist.VoiceAnnouncement(
@@ -127,7 +124,7 @@ internal class ServiceVoiceAudio(
                         ),
                     )
                 } else {
-                    done()
+                    done(false)
                 }
             },
             log = { message -> Log.i(TAG, message) },
@@ -159,6 +156,7 @@ internal class ServiceVoiceAudio(
                 if (stream != null && ::voice.isInitialized) voice.announceStreamedMedia(url, stream) else (if (stream != null) audio.submitStreamForGeneration(stream) else audio.submitForGeneration(url, speech = true)) != null
             },
             cancelAnnouncement = { audio.snapshot().let { audio.cancelGeneration(it.generation) } },
+            ownerStopped = { if (::voice.isInitialized) voice.ownerStopped() },
             muted = volume()::isMuted,
             setMuted = volume()::setMuted,
             log = { Log.w(TAG, it) },
@@ -183,7 +181,7 @@ internal class ServiceVoiceAudio(
             foregroundMicrophone = ::setMicrophoneForegroundActive,
             state = voiceStateAuthority,
             engineFactory = io.panelassistant.android.assist.MicroWakeWordEngineFactory(
-                wakeWordCatalog,
+                wakeWordCatalog::load,
                 log = { Log.i(TAG, it) },
                 sensitivity = { config().voiceSensitivity },
             ),
@@ -214,7 +212,7 @@ internal class ServiceVoiceAudio(
     /** Stop admitting playback and stop the media player; ordinary teardown and a process boundary alike. */
     fun closeAdmission() {
         if (::audio.isInitialized) beginAudioTeardown(audio::closeAdmission, audio::cancelCurrent)
-        if (::media.isInitialized) media.command(io.panelassistant.android.media.PanelMediaCommand.Stop)
+        if (::media.isInitialized) media.halt()
     }
 
     /** Drain audio playback on the runtime lane; [drained] is what the finalizer later reads. */
@@ -261,3 +259,13 @@ internal class ServiceVoiceAudio(
         private const val AUDIO_SHUTDOWN_MS = 2_000L
     }
 }
+
+/** The service's existing configuration subscription also resumes ownership after first setup. */
+internal fun serviceConfigurationListener(
+    reconfigure: (Set<String>) -> Unit,
+    voiceSettingsChanged: () -> Unit,
+): android.content.SharedPreferences.OnSharedPreferenceChangeListener =
+    android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == HaConnectionRoutes.EPOCH_KEY || key == SETUP_EVER_COMPLETED_PREF) reconfigure(setOf(key))
+        if (key != null && key.startsWith("voice_")) voiceSettingsChanged()
+    }

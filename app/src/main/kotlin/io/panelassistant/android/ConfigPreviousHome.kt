@@ -1,0 +1,62 @@
+package io.panelassistant.android
+
+import io.panelassistant.android.config.TamePackagePolicy
+import io.panelassistant.android.platform.ActivityRef
+import io.panelassistant.android.util.AndroidInput
+
+private val HOME_CUSTODY_LOCK = Any()
+
+/** Order pending HOME acquisition against handback without blocking unrelated config writes.
+ *  Take this lock before any Config transaction; never wait for it while holding the Config lock. */
+internal fun <T> withHomeCustody(block: () -> T): T = synchronized(HOME_CUSTODY_LOCK, block)
+
+/** Local installation custody; kept in the canonical store across updates, never a user setting. */
+internal val Config.previousHomeComponent: String?
+    get() = prefs.getString("device_local_previous_home_component", null)
+
+/** Initial installation requested ownership, but setup must finish before it can be acquired. */
+internal val Config.homeTakeoverPending: Boolean
+    get() = prefs.getBoolean("device_local_home_takeover_pending", false)
+
+internal fun Config.completeHomeTakeover(): Boolean = synchronizedTransaction {
+    if (!homeTakeoverPending) true
+    else durableCommit { putBoolean("device_local_home_takeover_pending", false) }
+}
+
+/** HOME ownership is acknowledged only against fresh exact readback after first setup. */
+internal fun Config.confirmHomeTakeover(expected: ActivityRef, observed: ActivityRef?): Boolean =
+    setupEverCompleted && expected == observed && completeHomeTakeover()
+
+/** Explicit first-install proof may establish foreground while HOME acquisition is still deferred. */
+internal fun Config.requiresOwnedHomeProof(setupForegroundRequested: Boolean): Boolean =
+    !setupForegroundRequested || (setupEverCompleted && !homeTakeoverPending)
+
+/** Write before taking HOME or disabling its launcher. Retries must never replace the first record. */
+internal fun Config.preservePreviousHome(
+    home: ActivityRef?,
+    candidates: List<ActivityRef>,
+    armTakeover: Boolean = false,
+): Boolean = synchronized(io.panelassistant.android.platform.LocalRpcVendorScreen.CUSTODY_LOCK) {
+    synchronizedTransaction {
+        val original = previousHomeComponent
+        if (original != null && (!armTakeover || homeTakeoverPending)) return@synchronizedTransaction true
+        if (home == null) return@synchronizedTransaction false
+        val realHome = !AppIdentity.isPanelApp(home.pkg) && !TamePackagePolicy.isCritical(home.pkg) && home.pkg != "android"
+        if (realHome && (home !in candidates || !AndroidInput.isComponent(home.component))) return@synchronizedTransaction false
+        if (original == null && !realHome && !armTakeover) return@synchronizedTransaction true
+        durableCommit {
+            if (original == null && realHome) putString("device_local_previous_home_component", home.component)
+            if (armTakeover) {
+                putBoolean("device_local_home_takeover_pending", true)
+                // An explicit new setup may acquire brightness again after a completed handback.
+                // A failed restore keeps its original record and fence for the next removal attempt.
+                val brightness = prefs.getString("device_local_vendor_brightness_custody", null)
+                if (brightness?.startsWith("restored:") == true) {
+                    putString("device_local_vendor_brightness_custody", "pending")
+                } else if (brightness == "restoring:unknown") {
+                    putString("device_local_vendor_brightness_custody", "unknown")
+                }
+            }
+        }
+    }
+}

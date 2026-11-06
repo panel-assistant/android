@@ -1,11 +1,23 @@
 package io.panelassistant.android.util
 
 import io.panelassistant.android.testsupport.scratchDirectory
+import io.panelassistant.android.util.BundledHelperShellFixtures.STALE_JOURNAL_MS
+import io.panelassistant.android.util.BundledHelperShellFixtures.emptyStatus
+import io.panelassistant.android.util.BundledHelperShellFixtures.fakeHelper
+import io.panelassistant.android.util.BundledHelperShellFixtures.foreignHelperJournal
+import io.panelassistant.android.util.BundledHelperShellFixtures.incumbentBuild
+import io.panelassistant.android.util.BundledHelperShellFixtures.nowSeconds
+import io.panelassistant.android.util.BundledHelperShellFixtures.runCommandWithInput
+import io.panelassistant.android.util.BundledHelperShellFixtures.runTakeoverCommand
+import io.panelassistant.android.util.BundledHelperShellFixtures.setMode
+import io.panelassistant.android.util.BundledHelperShellFixtures.sha256
+import io.panelassistant.android.util.BundledHelperShellFixtures.stagedBuild
+import io.panelassistant.android.util.BundledHelperShellFixtures.staleJournal
+import io.panelassistant.android.util.BundledHelperShellFixtures.writeExecutable
 
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.attribute.PosixFilePermission
-import java.security.MessageDigest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -69,9 +81,6 @@ class BundledHelperInstallerTest {
         ))
     }
 
-    private val stagedBuild = "a".repeat(64)
-    private val incumbentBuild = "b".repeat(64)
-    private val emptyStatus = "OK GUARDSTATUS 0 EMPTY NONE NONE NONE NONE 0 0 0 NONE NONE 0 0"
     private val supervisedCaps =
         "${GuardDbMaintenanceProtocol.CAPS_REPLY} AUTONOMOUS SUPERVISED TERMINAL_RETIRE"
 
@@ -90,22 +99,34 @@ class BundledHelperInstallerTest {
         assertEquals(io.panelassistant.android.BuildConfig.HELPER_BUILD_ID, shellId)
     }
 
-    @Test fun `stage command atomically publishes a bounded candidate under shared authority lock`() {
-        val hash = "c".repeat(64)
-        val command = bundledHelperStageCommand(hash)
-        assertTrue(command.contains(".hapaneld-helper-transaction.lock"))
-        assertTrue(command.contains("upload=\$data_local/.hapaneld-helper.app-stage-$hash"))
-        assertTrue(command.contains("cat > \"\$upload\""))
-        assertTrue(command.contains("[ \"\${actual%% *}\" = \"$hash\" ]"))
-        assertTrue(command.contains("chown 0:0 \"\$upload\""))
-        assertTrue(command.contains("chmod 700 \"\$upload\""))
-        assertTrue(command.contains("0:0:700:1:*"))
-        assertTrue(command.contains("16777216"))
-        assertTrue(command.contains("mv -f \"\$upload\" \"\$stage\""))
-        assertTrue(command.contains("echo STAGED_OK"))
-        assertFalse(command.contains("cat > \"\$stage\""))
-        listOf("cp ", "pkill", " stop ", " start ", "--supervise", "awk", "/data/local/tmp")
-            .forEach { assertFalse(it, command.contains(it)) }
+    @Test fun `stage command accepts the upload limit and rejects larger authenticated bytes`() {
+        val root = scratchDirectory("bundled-helper-stage-limit-").toFile()
+        try {
+            val dataLocal = File(root, "data/local").apply { mkdirs() }
+            File(root, "dev").mkdirs()
+            val stage = File(dataLocal, ".hapaneld-helper.new")
+            val limit = 16 * 1024 * 1024
+            for (size in listOf(limit, limit + 1)) {
+                stage.writeText("retained stage")
+                val candidate = "x".repeat(size)
+                val result = runCommandWithInput(
+                    bundledHelperStageCommand(sha256(candidate), root.absolutePath), candidate,
+                )
+                if (size == limit) {
+                    assertEquals(result.output, 0, result.exitCode)
+                    assertEquals(candidate, stage.readText())
+                    assertTrue(result.output.lineSequence().any { it == "STAGED_OK" })
+                } else {
+                    assertEquals(result.output, 1, result.exitCode)
+                    assertEquals("retained stage", stage.readText())
+                    assertFalse(result.output.lineSequence().any { it == "STAGED_OK" })
+                }
+                assertFalse(File(root, "dev/.hapaneld-helper-transaction.lock").exists())
+                assertTrue(dataLocal.listFiles().orEmpty().none { it.name.startsWith(".hapaneld-helper.app-stage-") })
+            }
+        } finally {
+            root.deleteRecursively()
+        }
     }
 
     @Test fun `stage command replaces only an unowned fixed orphan after authenticating full upload`() {
@@ -129,6 +150,26 @@ class BundledHelperInstallerTest {
                 PosixFilePermission.OWNER_WRITE,
                 PosixFilePermission.OWNER_EXECUTE,
             ), Files.getPosixFilePermissions(stage.toPath()))
+            assertFalse(File(root, "dev/.hapaneld-helper-transaction.lock").exists())
+            assertTrue(dataLocal.listFiles().orEmpty().none { it.name.startsWith(".hapaneld-helper.app-stage-") })
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun `stage command rejects mismatched upload bytes without replacing the fixed stage`() {
+        val root = scratchDirectory("bundled-helper-stage-digest-").toFile()
+        try {
+            val dataLocal = File(root, "data/local").apply { mkdirs() }
+            File(root, "dev").mkdirs()
+            val stage = File(dataLocal, ".hapaneld-helper.new").apply { writeText("retained stage") }
+            val result = runCommandWithInput(
+                bundledHelperStageCommand(sha256("expected candidate"), root.absolutePath),
+                "different candidate",
+            )
+            assertEquals(result.output, 1, result.exitCode)
+            assertEquals("retained stage", stage.readText())
+            assertFalse(result.output.lineSequence().any { it == "STAGED_OK" })
             assertFalse(File(root, "dev/.hapaneld-helper-transaction.lock").exists())
             assertTrue(dataLocal.listFiles().orEmpty().none { it.name.startsWith(".hapaneld-helper.app-stage-") })
         } finally {
@@ -225,6 +266,89 @@ class BundledHelperInstallerTest {
         }
     }
 
+    @Test fun `a stale journal the deleted installers left is retired in place and staging proceeds`() {
+        deletedInstallerJournals.forEach { path ->
+            val root = scratchDirectory("bundled-helper-stale-journal-").toFile()
+            try {
+                val dataLocal = File(root, "data/local").apply { mkdirs() }
+                File(root, "dev").mkdirs()
+                val journal = staleJournal(root, path)
+                val candidate = "new candidate\n"
+                val result = runCommandWithInput(
+                    bundledHelperStageCommand(
+                        sha256(candidate), root.absolutePath, appInstalledAtEpochSeconds = nowSeconds(),
+                    ),
+                    candidate,
+                )
+                assertEquals(path + result.output, 0, result.exitCode)
+                assertTrue(path, bundledHelperStaged(result.output))
+                assertEquals(path, candidate, File(dataLocal, ".hapaneld-helper.new").readText())
+                assertEquals(path, "retained authority\n", journal.readText())
+                assertEquals(path, STALE_JOURNAL_MS, journal.lastModified())
+            } finally {
+                root.deleteRecursively()
+            }
+        }
+    }
+
+    @Test fun `a journal from this boot or this install or not a plain root file still blocks staging`() {
+        val installed = nowSeconds()
+        val cases: List<Pair<String, (File) -> Unit>> = listOf(
+            "written this boot" to { root -> foreignHelperJournal(root, "system/bin/.hapaneld-helper-upgrade") },
+            "written after this install" to { root -> staleJournal(root, "system/bin/.hapaneld-helper-upgrade") },
+            "a stale link to a stale journal" to { root ->
+                val target = staleJournal(root, "data/local/tmp/old-journal")
+                val link = File(root, "system/bin/.hapaneld-helper-upgrade").apply { parentFile!!.mkdirs() }
+                Files.createSymbolicLink(link.toPath(), target.toPath())
+                assertEquals(0, ProcessBuilder("touch", "-h", "-d", "@${STALE_JOURNAL_MS / 1000}", link.path).start().waitFor())
+            },
+            "owned by another user" to { root ->
+                val journal = staleJournal(root, "data/local/.hapaneld-helper-manual-upgrade")
+                assertEquals(0, ProcessBuilder("chown", "1000:1000", journal.path).start().waitFor())
+            },
+            "a second link to a stale journal" to { root ->
+                val journal = staleJournal(root, "data/adb/hapaneld/.helper-upgrade.marker")
+                Files.createLink(File(root, "data/local/journal-copy").toPath(), journal.toPath())
+            },
+            "Guard replacement, whatever its age" to { root ->
+                staleJournal(root, "data/local/.hapaneld-guard-db/replacement.v1")
+            },
+        )
+        cases.forEach { (name, arrange) ->
+            val root = scratchDirectory("bundled-helper-live-journal-").toFile()
+            try {
+                val dataLocal = File(root, "data/local").apply { mkdirs() }
+                File(root, "dev").mkdirs()
+                arrange(root)
+                val candidate = "new candidate\n"
+                // Each case fails exactly one condition: "this boot" is still older than an install after it.
+                val installedAt = when (name) {
+                    "written after this install" -> STALE_JOURNAL_MS / 1000 - 60
+                    "written this boot" -> installed + 3600
+                    else -> installed
+                }
+                val result = runCommandWithInput(
+                    bundledHelperStageCommand(sha256(candidate), root.absolutePath, appInstalledAtEpochSeconds = installedAt),
+                    candidate,
+                )
+                assertEquals(name, 75, result.exitCode)
+                assertFalse(name, File(dataLocal, ".hapaneld-helper.new").exists())
+            } finally {
+                root.deleteRecursively()
+            }
+        }
+    }
+
+    // Independent of the production list: what only the installers deleted on 2026-10-08 wrote.
+    private val deletedInstallerJournals = listOf(
+        "system/bin/.hapaneld-helper-upgrade",
+        "system/bin/.hapaneld-helper-manual-upgrade",
+        "data/adb/hapaneld/.helper-upgrade.marker",
+        "data/adb/hapaneld/.helper-hybrid-upgrade.marker",
+        "data/adb/hapaneld/.helper-manual-upgrade.marker",
+        "data/local/.hapaneld-helper-manual-upgrade",
+    )
+
     // Independent of the production list: removing an authority must not remove its test case.
     private val foreignHelperJournals = listOf(
         "data/local/.hapaneld-guard-db/replacement.v1",
@@ -236,12 +360,6 @@ class BundledHelperInstallerTest {
         "data/adb/hapaneld/.helper-manual-upgrade.marker",
         "data/local/.hapaneld-helper-manual-upgrade",
     )
-
-    private fun foreignHelperJournal(root: File, path: String): File = File(root, path).apply {
-        parentFile!!.mkdirs()
-        writeText("retained authority\n")
-        setMode(this, 600)
-    }
 
     @Test fun `interrupted upload removes only its unique partial and releases admission`() {
         val root = scratchDirectory("bundled-helper-stage-signal-").toFile()
@@ -288,37 +406,6 @@ class BundledHelperInstallerTest {
         bundledHelperStageCommand("a; reboot")
     }
 
-    @Test fun `released base without Guard verbs uses candidate owned takeover`() {
-        // RC2 answers bare ERR to GUARDSTATUS, which statusProbe classifies as Unsupported. It cannot
-        // consume GUARDRETIRE, so this must never enter the guarded-retire settlement loop.
-        assertEquals(
-            BundledHelperReplacementMode.RELEASED_LEGACY_TAKEOVER,
-            bundledHelperReplacementMode(GuardDbMaintenanceClient.StatusProbe.Unsupported),
-        )
-
-        val hash = "c".repeat(64)
-        val command = bundledLegacyHelperTakeoverCommand(hash, stagedBuild, incumbentBuild)
-        assertTrue(command.contains("stage=\$data_local/.hapaneld-helper.new"))
-        assertTrue(command.contains("live=\$data_local/hapaneld-helper"))
-        assertTrue(command.contains("lock=\$root/dev/.hapaneld-helper-transaction.lock"))
-        assertTrue(command.contains("--replacement-safe"))
-        assertTrue(command.contains(".hapaneld-helper.legacy-takeover"))
-        assertTrue(command.contains("LEGACYTAKEOVER 1"))
-        assertTrue(command.contains("= \"BUILDID $incumbentBuild\""))
-        assertTrue(command.contains("mv -f \"\$stage\" \"\$live\""))
-        assertTrue(command.indexOf("mv -f \"\$record_tmp\" \"\$record\"") <
-            command.indexOf("\"\$root/system/bin/stop\" hapaneld_helper"))
-        assertTrue(command.contains("\"\$root/system/bin/start\" hapaneld_helper"))
-        assertTrue(command.contains("\"\$live\" --supervise"))
-        assertTrue(command.contains("--request BUILDID"))
-        assertTrue(command.contains("--request GUARDSELF"))
-        assertTrue(command.contains("$hash $stagedBuild"))
-        assertTrue(command.contains("AUTONOMOUS SUPERVISED TERMINAL_RETIRE"))
-        assertTrue(command.contains(emptyStatus))
-        assertFalse(command.contains("GUARDRETIRE"))
-        assertFalse(command.contains("killall"))
-    }
-
     @Test(expected = IllegalArgumentException::class)
     fun `legacy takeover rejects non digest build interpolation`() {
         bundledLegacyHelperTakeoverCommand("c".repeat(64), "a; reboot", incumbentBuild)
@@ -332,12 +419,24 @@ class BundledHelperInstallerTest {
                 filesystemRoot = fixture.root.absolutePath,
                 polls = 1,
             )
-            assertEquals(0, runTakeoverCommand(command))
+            assertEquals(BundledHelperInstaller.Result.INSTALLED, installBundledHelperReplacement(
+                BundledHelperReplacementMode.RELEASED_LEGACY_TAKEOVER,
+                stagedBuild, incumbentBuild, null, null,
+                stage = { true },
+                guarded = { error("released helper cannot retire through Guard") },
+                legacy = { runTakeoverCommand(command) == 0 },
+                fresh = { error("released helper is not a fresh install") },
+                cleanup = { error("released recovery record must remain") },
+            ))
             assertEquals(fixture.candidateBytes, fixture.live.readText())
             assertEquals(fixture.oldRegistration, fixture.registration.readText())
             assertEquals(fixture.oldBytes, fixture.oldBin.readText())
             assertFalse(fixture.stage.exists())
             assertTrue(File(fixture.dataLocal, ".hapaneld-helper.legacy-takeover").isFile)
+            assertFalse(
+                "boot service stopped before the takeover record was durable",
+                File(fixture.root, "stopped-before-record").exists(),
+            )
             assertFalse(File(fixture.root, "dev/.hapaneld-helper-transaction.lock").exists())
             }
         }
@@ -536,7 +635,7 @@ class BundledHelperInstallerTest {
         }
     }
 
-    @Test fun `guarded successor cleans stale authority before old boot helper needs legacy takeover`() {
+    @Test fun `guarded successor retains exact recovery authority after supervisor loss`() {
         withTakeoverFiles(TakeoverTopology.SYSTEM, candidateStarts = true) { fixture ->
             val xSha = sha256(fixture.stage)
             assertEquals(0, runTakeoverCommand(bundledLegacyHelperTakeoverCommand(
@@ -545,24 +644,30 @@ class BundledHelperInstallerTest {
             )))
             assertTrue(File(fixture.dataLocal, ".hapaneld-helper.legacy-takeover").isFile)
 
-            // Exact guarded X->Y settlement owns this cleanup before the next reboot can expose RC2.
-            val retained = requireNotNull(parseBundledLegacyTakeoverRecord(
-                File(fixture.dataLocal, ".hapaneld-helper.legacy-takeover").readText(),
-            ))
-            assertEquals(0, runTakeoverCommand(bundledLegacyTakeoverRecordCleanupCommand(
-                retained.recordSha256,
-                retained.recordBytes,
-                filesystemRoot = fixture.root.absolutePath,
-            )))
-            assertFalse(File(fixture.dataLocal, ".hapaneld-helper.legacy-takeover").exists())
-
+            val recordFile = File(fixture.dataLocal, ".hapaneld-helper.legacy-takeover")
+            val retained = requireNotNull(parseBundledLegacyTakeoverRecord(recordFile.readText()))
             val yBuild = "f".repeat(64)
             val yBytes = fakeHelper(yBuild, candidate = true, starts = true)
             writeExecutable(fixture.live, yBytes, 700)
-            writeExecutable(fixture.stage, yBytes, 700)
-            assertEquals(0, runTakeoverCommand("'${fixture.oldBin.absolutePath}'"))
-            assertEquals(0, runTakeoverCommand(bundledLegacyHelperTakeoverCommand(
-                sha256(fixture.stage), yBuild, incumbentBuild,
+            val successor = retained.copy(
+                stagedBuildId = yBuild,
+                candidateSha256 = sha256(yBytes),
+                candidateBytes = yBytes.toByteArray().size.toLong(),
+            )
+            assertEquals(0, runTakeoverCommand(bundledLegacyTakeoverRecordCleanupCommand(
+                retained.recordSha256, retained.recordBytes, fixture.root.absolutePath,
+                preserveIfOldAuthorityExact = successor,
+            )))
+            assertTrue("successful replacement must retain restart authority", recordFile.isFile)
+            val recovered = requireNotNull(parseBundledLegacyTakeoverRecord(recordFile.readText()))
+            assertEquals("recovery must name the successor, not the retired candidate", yBuild, recovered.stagedBuildId)
+            assertEquals(incumbentBuild, recovered.incumbentBuildId)
+            assertEquals(successor.candidateSha256, recovered.candidateSha256)
+            assertFalse(fixture.stage.exists())
+            // No staging or boot-helper start is available after the new supervisor is lost.
+            fixture.incumbentReady.delete()
+            assertEquals(0, runTakeoverCommand(bundledLegacyHelperResumeCommand(
+                recovered.candidateSha256, recovered.stagedBuildId, recovered.incumbentBuildId,
                 filesystemRoot = fixture.root.absolutePath, polls = 1,
             )))
             assertEquals(yBytes, fixture.live.readText())
@@ -583,8 +688,7 @@ class BundledHelperInstallerTest {
         assertTrue(bundledLegacyRecoveryAllowed(GuardDbMaintenanceClient.StatusProbe.Unreachable, parsed))
         assertTrue(bundledLegacyRecoveryAllowed(GuardDbMaintenanceClient.StatusProbe.Unsupported, parsed))
         assertFalse(bundledLegacyRecoveryAllowed(GuardDbMaintenanceClient.StatusProbe.Malformed, parsed))
-        // Even if X is currently Guard-capable, APK Y cannot retire X and discard the record:
-        // the released boot helper would return after reboot with no way to resume Y.
+        // Cross-build reuse needs the exact live app-owned candidate, not a record alone.
         val nextBuild = "f".repeat(64)
         assertEquals(
             BundledLegacyPriorRecordDisposition.REPROVISION,
@@ -594,10 +698,53 @@ class BundledHelperInstallerTest {
             BundledLegacyPriorRecordDisposition.KEEP,
             bundledLegacyPriorRecordDisposition(parsed.stagedBuildId, parsed),
         )
-        val readCommand = bundledLegacyTakeoverRecordReadCommand()
-        assertTrue(readCommand.contains(".hapaneld-helper.legacy-takeover"))
-        assertTrue(readCommand.contains("\"\$bytes\" -le 1024"))
         assertNull(parseBundledLegacyTakeoverRecord(fixture + "0".repeat(1025)))
+    }
+
+    @Test fun `staging a guarded successor preserves and rebinds the exact live takeover record`() {
+        withTakeoverFiles(TakeoverTopology.SYSTEM, candidateStarts = true) { fixture ->
+            assertEquals(0, runTakeoverCommand(bundledLegacyHelperTakeoverCommand(
+                sha256(fixture.stage), stagedBuild, incumbentBuild,
+                filesystemRoot = fixture.root.absolutePath, polls = 1,
+            )))
+            val recordFile = File(fixture.dataLocal, ".hapaneld-helper.legacy-takeover")
+            val recordBytes = recordFile.readText()
+            val record = requireNotNull(parseBundledLegacyTakeoverRecord(recordBytes))
+            val successor = fakeHelper("f".repeat(64), candidate = true, starts = true)
+            val command = bundledHelperStageCommand(
+                sha256(successor), fixture.root.absolutePath, retainedRecord = record,
+            )
+            val staged = runCommandWithInput(command, successor)
+            assertEquals(staged.output, 0, staged.exitCode)
+            assertEquals(successor, fixture.stage.readText())
+            assertEquals(recordBytes, recordFile.readText())
+            assertEquals(fixture.candidateBytes, fixture.live.readText())
+            assertEquals(fixture.oldBytes, fixture.oldBin.readText())
+            assertEquals(fixture.oldRegistration, fixture.registration.readText())
+
+            // The parsed authority cannot authorize staging after another writer changes its bytes.
+            recordFile.writeText(recordBytes.replace(record.oldSha256, "0".repeat(64)))
+            fixture.stage.writeText("retained candidate")
+            assertEquals(75, runCommandWithInput(command, successor).exitCode)
+            assertEquals("retained candidate", fixture.stage.readText())
+            assertEquals(fixture.candidateBytes, fixture.live.readText())
+        }
+    }
+
+    @Test fun `legacy takeover refuses an unrelated stale data local helper before custody`() {
+        withTakeoverFiles(TakeoverTopology.SYSTEM, candidateStarts = true) { fixture ->
+            val stale = fakeHelper("f".repeat(64), candidate = true, starts = true)
+            writeExecutable(fixture.live, stale, 700)
+            assertTrue(runTakeoverCommand(bundledLegacyHelperTakeoverCommand(
+                sha256(fixture.stage), stagedBuild, incumbentBuild,
+                filesystemRoot = fixture.root.absolutePath, polls = 1,
+            )) != 0)
+            assertEquals(stale, fixture.live.readText())
+            assertEquals(fixture.candidateBytes, fixture.stage.readText())
+            assertEquals(fixture.oldBytes, fixture.oldBin.readText())
+            assertEquals(fixture.oldRegistration, fixture.registration.readText())
+            assertFalse(File(fixture.dataLocal, ".hapaneld-helper.legacy-takeover").exists())
+        }
     }
 
     @Test fun `record cleanup deletes only the exact bytes parsed before lock acquisition`() {
@@ -618,17 +765,13 @@ class BundledHelperInstallerTest {
                 filesystemRoot = fixture.root.absolutePath,
             )))
             assertEquals(foreign, record.readText())
-            assertFalse(bundledLegacyTakeoverRecordCleanupCommand(
-                parsed.recordSha256,
-                parsed.recordBytes,
-                filesystemRoot = fixture.root.absolutePath,
-            ).contains("awk"))
         }
     }
 
-    @Test fun `canonical helper retains record only while exact released boot authority survives`() {
+    @Test fun `canonical helper preserves recovery evidence when boot authority changes`() {
         withTakeoverFiles(TakeoverTopology.HYBRID, candidateStarts = true) { fixture ->
             writeTakeoverRecord(fixture)
+            Files.move(fixture.stage.toPath(), fixture.live.toPath())
             val recordFile = File(fixture.dataLocal, ".hapaneld-helper.legacy-takeover")
             val record = requireNotNull(parseBundledLegacyTakeoverRecord(recordFile.readText()))
             val command = { bundledLegacyTakeoverRecordCleanupCommand(
@@ -641,8 +784,150 @@ class BundledHelperInstallerTest {
             assertTrue(recordFile.isFile)
 
             fixture.oldBin.appendText("superseded\n")
-            assertEquals(0, runTakeoverCommand(command()))
-            assertFalse(recordFile.exists())
+            assertEquals(1, runTakeoverCommand(command()))
+            assertTrue(recordFile.isFile)
+        }
+    }
+
+    @Test fun `startup repairs interrupted successor record publication before resuming lost supervisor`() {
+        for (cut in listOf("before-record", "partial-record", "after-record", "same-build-partial-record")) {
+            withTakeoverFiles(TakeoverTopology.SYSTEM, candidateStarts = true) { fixture ->
+                assertEquals(0, runTakeoverCommand(bundledLegacyHelperTakeoverCommand(
+                    sha256(fixture.stage), stagedBuild, incumbentBuild, fixture.root.absolutePath, polls = 1,
+                )))
+                val recordFile = File(fixture.dataLocal, ".hapaneld-helper.legacy-takeover")
+                val old = requireNotNull(parseBundledLegacyTakeoverRecord(recordFile.readText()))
+                val ready = File(fixture.root, "successor-ready")
+                val yBuild = "f".repeat(64)
+                val yBytes = fakeHelper(yBuild, candidate = true, starts = true).replaceFirst(
+                    "#!/bin/sh\n",
+                    "#!/bin/sh\n" +
+                        "if [ \"\$1\" = --supervise ]; then : > '${ready.absolutePath}'; fi\n" +
+                        "if [ \"\$1\" = --request ] && [ ! -f '${ready.absolutePath}' ]; then exit 1; fi\n",
+                )
+                val identity = GuardDbMaintenanceProtocol.SelfIdentity(
+                    yBytes.toByteArray().size.toLong(), sha256(yBytes), yBuild,
+                )
+                writeExecutable(fixture.live, yBytes, 700)
+                fun rebind(record: BundledLegacyTakeoverRecord, target: GuardDbMaintenanceProtocol.SelfIdentity): Boolean =
+                    runTakeoverCommand(bundledLegacyTakeoverRecordCleanupCommand(
+                        record.recordSha256, record.recordBytes, fixture.root.absolutePath,
+                        preserveIfOldAuthorityExact = record.copy(
+                            stagedBuildId = target.buildId, candidateSha256 = target.sha256, candidateBytes = target.bytes,
+                        ),
+                    )) == 0
+                when (cut) {
+                    "partial-record" -> writeExecutable(File(recordFile.path + ".tmp"), "partial", 600)
+                    "after-record", "same-build-partial-record" -> assertTrue(rebind(old, identity))
+                }
+                if (cut == "same-build-partial-record") {
+                    writeExecutable(File(recordFile.path + ".tmp"), "partial", 600)
+                }
+                var resumes = 0
+                var rebinds = 0
+                val probe = {
+                    val output = runCommandWithInput("'${fixture.live.absolutePath}' --request GUARDSTATUS", "")
+                    GuardDbMaintenanceProtocol.parseStatus(output.output.trim())?.let {
+                        GuardDbMaintenanceClient.StatusProbe.Valid(it)
+                    } ?: GuardDbMaintenanceClient.StatusProbe.Unreachable
+                }
+                val status = reacquireGuardDbStartupStatus(
+                    statusProbe = probe,
+                    resumeRetainedCurrent = {
+                        resumeBundledLegacyHelper(
+                            probe(), parseBundledLegacyTakeoverRecord(recordFile.readText()), yBuild,
+                            bundledIdentity = { identity },
+                            rebind = { record, target -> rebinds++; rebind(record, target) },
+                            resume = { record ->
+                                resumes++
+                                val resumed = runCommandWithInput(bundledLegacyHelperResumeCommand(
+                                    record.candidateSha256, record.stagedBuildId, record.incumbentBuildId,
+                                    fixture.root.absolutePath, polls = 2,
+                                ), "")
+                                assertEquals("$cut resume: ${resumed.output}", 0, resumed.exitCode)
+                                true
+                            },
+                        ) == true
+                    },
+                    pause = {},
+                )
+                assertTrue(cut, status is GuardDbMaintenanceClient.StatusProbe.Valid)
+                assertEquals(cut, 1, resumes)
+                assertEquals(cut, if (cut in listOf("after-record", "same-build-partial-record")) 0 else 1, rebinds)
+                val settled = requireNotNull(parseBundledLegacyTakeoverRecord(recordFile.readText()))
+                assertEquals(cut, yBuild, settled.stagedBuildId)
+                assertEquals(cut, incumbentBuild, settled.incumbentBuildId)
+                assertEquals(cut, fixture.oldBytes, fixture.oldBin.readText())
+                assertEquals(cut, fixture.oldRegistration, fixture.registration.readText())
+                assertEquals(cut, yBytes, fixture.live.readText())
+                assertFalse(fixture.stage.exists())
+                assertFalse(File(recordFile.path + ".tmp").exists())
+            }
+        }
+    }
+
+    @Test fun `successor rebind refuses changed bytes and in flight replacement custody`() {
+        for (fault in listOf("hash", "size", "record", "replacement", "previous", "locked", "temporary-link")) {
+            withTakeoverFiles(TakeoverTopology.SYSTEM, candidateStarts = true) { fixture ->
+                writeTakeoverRecord(fixture)
+                Files.move(fixture.stage.toPath(), fixture.live.toPath())
+                val recordFile = File(fixture.dataLocal, ".hapaneld-helper.legacy-takeover")
+                val original = recordFile.readText()
+                val record = requireNotNull(parseBundledLegacyTakeoverRecord(original))
+                val successor = when (fault) {
+                    "hash" -> record.copy(candidateSha256 = "0".repeat(64))
+                    "size" -> record.copy(candidateBytes = record.candidateBytes + 1)
+                    else -> record
+                }
+                when (fault) {
+                    "record" -> recordFile.writeText(original.replaceFirst("system ", "hybrid "))
+                    "replacement" -> foreignHelperJournal(fixture.root, "data/local/.hapaneld-guard-db/replacement.v1")
+                    "previous" -> File(fixture.dataLocal, ".hapaneld-helper.previous").writeText("custody")
+                    "locked" -> File(fixture.root, "dev/.hapaneld-helper-transaction.lock").also {
+                        it.mkdirs(); File(it, "pid").writeText(ProcessHandle.current().pid().toString())
+                    }
+                    "temporary-link" -> Files.createSymbolicLink(File(recordFile.path + ".tmp").toPath(), fixture.oldBin.toPath())
+                }
+                val before = recordFile.readText()
+                assertTrue(fault, runTakeoverCommand(bundledLegacyTakeoverRecordCleanupCommand(
+                    record.recordSha256, record.recordBytes, fixture.root.absolutePath,
+                    preserveIfOldAuthorityExact = successor,
+                )) != 0)
+                assertEquals(fault, before, recordFile.readText())
+                assertEquals(fault, fixture.candidateBytes, fixture.live.readText())
+                assertEquals(fault, fixture.oldBytes, fixture.oldBin.readText())
+                assertEquals(fault, fixture.oldRegistration, fixture.registration.readText())
+            }
+        }
+    }
+
+    @Test fun `retained restart refuses foreign temporary record custody`() {
+        for (fault in listOf("symlink", "hardlink", "mode", "oversized")) {
+            withTakeoverFiles(TakeoverTopology.SYSTEM, candidateStarts = true) { fixture ->
+                writeTakeoverRecord(fixture)
+                Files.move(fixture.stage.toPath(), fixture.live.toPath())
+                val recordFile = File(fixture.dataLocal, ".hapaneld-helper.legacy-takeover")
+                val record = recordFile.readText()
+                val temporary = File(recordFile.path + ".tmp")
+                when (fault) {
+                    "symlink" -> Files.createSymbolicLink(temporary.toPath(), fixture.oldBin.toPath())
+                    "hardlink" -> {
+                        val twin = File(fixture.root, "foreign-temporary")
+                        writeExecutable(twin, "partial", 600)
+                        Files.createLink(temporary.toPath(), twin.toPath())
+                    }
+                    "mode" -> writeExecutable(temporary, "partial", 644)
+                    "oversized" -> writeExecutable(temporary, "x".repeat(1025), 600)
+                }
+                assertTrue(fault, runTakeoverCommand(bundledLegacyHelperResumeCommand(
+                    sha256(fixture.live), stagedBuild, incumbentBuild, fixture.root.absolutePath, polls = 1,
+                )) != 0)
+                assertTrue(fault, Files.exists(temporary.toPath()))
+                assertEquals(fault, record, recordFile.readText())
+                assertEquals(fault, fixture.candidateBytes, fixture.live.readText())
+                assertEquals(fault, fixture.oldBytes, fixture.oldBin.readText())
+                assertEquals(fault, fixture.oldRegistration, fixture.registration.readText())
+            }
         }
     }
 
@@ -658,11 +943,37 @@ class BundledHelperInstallerTest {
         }
     }
 
-    @Test fun `candidate termination never trusts a cached possibly reused pid`() {
-        val command = bundledLegacyHelperTakeoverCommand("c".repeat(64), stagedBuild, incumbentBuild)
-        assertFalse(command.contains("kill \"\$candidate_pid\""))
-        assertTrue(command.contains("stat -Lc '%d:%i'"))
-        assertTrue(LEGACY_TAKEOVER_TIMEOUT_MS >= 120_000L)
+    @Test fun `candidate rollback spares an unrelated program now holding the candidate's pid`() {
+        // The supervisor's pid is what a script would cache from `$!`; exec gives it to another
+        // program, as pid reuse would. Rollback must stop only processes running the live inode.
+        val pidFile = File(scratchDirectory("bundled-helper-supervise-pid-").toFile(), "pid")
+        try {
+            withTakeoverFiles(TakeoverTopology.SYSTEM, candidateStarts = false, supervisePidFile = pidFile) { fixture ->
+                val command = bundledLegacyHelperTakeoverCommand(
+                    sha256(fixture.stage), stagedBuild, incumbentBuild,
+                    filesystemRoot = fixture.root.absolutePath, polls = 1,
+                )
+                val process = ProcessBuilder("bash", "-c", command).redirectErrorStream(true).start()
+                val output = process.inputStream.bufferedReader().readText()
+                assertEquals(output, 1, process.waitFor())
+                val deadline = System.nanoTime() + 5_000_000_000L
+                while ((!pidFile.isFile || pidFile.readText().isBlank()) && System.nanoTime() < deadline) Thread.sleep(10)
+                val pid = pidFile.readText().trim().toLong()
+                assertTrue(
+                    "rollback killed the unrelated owner of the candidate's pid",
+                    ProcessHandle.of(pid).map { it.isAlive }.orElse(false),
+                )
+                assertEquals(fixture.oldBytes, fixture.oldBin.readText())
+                assertEquals(fixture.oldRegistration, fixture.registration.readText())
+                assertEquals(fixture.candidateBytes, fixture.stage.readText())
+                assertFalse(fixture.live.exists())
+                assertFalse(File(fixture.root, "dev/.hapaneld-helper-transaction.lock").exists())
+            }
+        } finally {
+            pidFile.takeIf { it.isFile }?.readText()?.trim()?.toLongOrNull()
+                ?.let { ProcessHandle.of(it).ifPresent { handle -> handle.destroyForcibly() } }
+            pidFile.parentFile!!.deleteRecursively()
+        }
     }
 
     @Test fun `termination before custody exits and leaves topology untouched`() {
@@ -883,232 +1194,6 @@ class BundledHelperInstallerTest {
         assertNull(bundledHelperReplacementMode(GuardDbMaintenanceClient.StatusProbe.Malformed))
     }
 
-    @Test fun `no helper socket is a fresh install and not maintenance owning recovery`() {
-        // Issue #182: a fresh install has no helper to answer GUARDSTATUS. That used to read as
-        // "maintenance owns recovery", so no panel installed by Panel Assistant ever got a helper.
-        assertEquals(
-            BundledHelperReplacementMode.FRESH_INSTALL,
-            bundledHelperReplacementMode(GuardDbMaintenanceClient.StatusProbe.Unreachable),
-        )
-    }
-
-    @Test fun `fresh install publishes and supervises the bundled helper and repeats after a reboot`() {
-        withFreshFiles { fixture ->
-            val command = bundledFreshHelperInstallCommand(
-                sha256(fixture.stage), stagedBuild, filesystemRoot = fixture.root.absolutePath, polls = 1,
-            )
-            assertEquals(0, runTakeoverCommand(command))
-            assertEquals(fixture.candidateBytes, fixture.live.readText())
-            assertFalse(fixture.stage.exists())
-            assertFalse(File(fixture.root, "dev/.hapaneld-helper-transaction.lock").exists())
-
-            // A reboot keeps the /data/local file but not the process; the next start restages and relaunches.
-            writeExecutable(fixture.stage, fixture.candidateBytes, 700)
-            assertEquals(0, runTakeoverCommand(command))
-            assertEquals(fixture.candidateBytes, fixture.live.readText())
-            assertFalse(fixture.stage.exists())
-            // Staging may also find nothing to stage when the exact live copy is already there.
-            assertEquals(0, runTakeoverCommand(command))
-        }
-    }
-
-    @Test fun `first start on a panel with no helper stages then installs it`() {
-        // The root-side sequence ensureCurrent issues when no helper answers: stage, then fresh install.
-        withFreshFiles { fixture ->
-            fixture.stage.delete()
-            val hash = sha256(fixture.candidateBytes)
-            val staged = runCommandWithInput(
-                bundledHelperStageCommand(hash, filesystemRoot = fixture.root.absolutePath),
-                fixture.candidateBytes,
-            )
-            assertEquals(staged.output, 0, staged.exitCode)
-            assertTrue(staged.output, bundledHelperStaged(staged.output))
-            assertEquals(0, runTakeoverCommand(bundledFreshHelperInstallCommand(
-                hash, stagedBuild, filesystemRoot = fixture.root.absolutePath, polls = 1,
-            )))
-            assertEquals(fixture.candidateBytes, fixture.live.readText())
-        }
-    }
-
-    @Test fun `fresh install replaces an earlier build left at data local by a reboot`() {
-        withFreshFiles { fixture ->
-            writeExecutable(fixture.live, fakeHelper(incumbentBuild, candidate = true, starts = true), 700)
-            assertEquals(0, runTakeoverCommand(bundledFreshHelperInstallCommand(
-                sha256(fixture.stage), stagedBuild, filesystemRoot = fixture.root.absolutePath, polls = 1,
-            )))
-            assertEquals(fixture.candidateBytes, fixture.live.readText())
-            assertFalse(fixture.stage.exists())
-        }
-    }
-
-    @Test fun `fresh install refuses beside any provisioned helper or journal or takeover authority`() {
-        val authorities = listOf(
-            "system/bin/hapaneld-helper",
-            "system/etc/init/hapaneld-helper.rc",
-            "vendor/etc/init/hapaneld-helper.rc",
-            "data/adb/hapaneld",
-            "data/adb/service.d/hapaneld-helper.sh",
-            "system/bin/hapaneld-ledd",
-            "system/etc/init/hapaneld-ledd.rc",
-            "data/local/.hapaneld-guard-db/replacement.v1",
-            "data/local/.hapaneld-guard-db/.replacement.v1.tmp",
-            "system/bin/.hapaneld-helper-upgrade",
-            "system/bin/.hapaneld-helper-manual-upgrade",
-            "data/adb/hapaneld/.helper-upgrade.marker",
-            "data/adb/hapaneld/.helper-hybrid-upgrade.marker",
-            "data/adb/hapaneld/.helper-manual-upgrade.marker",
-            "data/local/.hapaneld-helper-manual-upgrade",
-            "data/local/.hapaneld-helper.legacy-takeover",
-            "data/local/.hapaneld-helper.legacy-takeover.tmp",
-            "data/local/.hapaneld-helper.previous",
-            "data/local/.hapaneld-helper.previous.tmp",
-            "data/local/.hapaneld-guard-db/manifest.v1",
-            "data/local/.hapaneld-guard-db/journal.v1",
-            "data/local/.hapaneld-guard-db/draft.v1",
-            "data/local/.hapaneld-guard-db/capture.v1",
-            "data/local/.hapaneld-guard-db/.journal.v1.tmp",
-            "data/local/.hapaneld-guard-db/a.apk",
-            "data/local/.hapaneld-guard-db/unrecognised",
-        )
-        authorities.forEach { path ->
-            withFreshFiles { fixture ->
-                val authority = File(fixture.root, path).apply { parentFile!!.mkdirs(); writeText("kept\n") }
-                assertEquals(path, 1, runTakeoverCommand(bundledFreshHelperInstallCommand(
-                    sha256(fixture.stage), stagedBuild, filesystemRoot = fixture.root.absolutePath, polls = 1,
-                )))
-                assertFalse(path, fixture.live.exists())
-                assertFalse(path, fixture.stage.exists())
-                assertEquals(path, "kept\n", authority.readText())
-                assertFalse(path, File(fixture.root, "dev/.hapaneld-helper-transaction.lock").exists())
-            }
-        }
-    }
-
-    @Test fun `fresh install stops an earlier data local helper that is still running`() {
-        withFreshFiles { fixture ->
-            File("/bin/sleep").copyTo(fixture.live)
-            setMode(fixture.live, 700)
-            val running = ProcessBuilder(fixture.live.absolutePath, "60").start()
-            try {
-                assertEquals(0, runTakeoverCommand(bundledFreshHelperInstallCommand(
-                    sha256(fixture.stage), stagedBuild, filesystemRoot = fixture.root.absolutePath, polls = 1,
-                )))
-                assertTrue(running.waitFor(5, java.util.concurrent.TimeUnit.SECONDS))
-                assertEquals(fixture.candidateBytes, fixture.live.readText())
-            } finally {
-                running.destroyForcibly()
-            }
-        }
-    }
-
-    @Test fun `fresh install without its candidate leaves a running data local helper alone`() {
-        withFreshFiles { fixture ->
-            fixture.stage.delete()
-            File("/bin/sleep").copyTo(fixture.live)
-            setMode(fixture.live, 700)
-            val running = ProcessBuilder(fixture.live.absolutePath, "60").start()
-            try {
-                assertEquals(1, runTakeoverCommand(bundledFreshHelperInstallCommand(
-                    sha256(fixture.candidateBytes), stagedBuild,
-                    filesystemRoot = fixture.root.absolutePath, polls = 1,
-                )))
-                assertTrue(running.isAlive)
-            } finally {
-                running.destroyForcibly()
-            }
-        }
-    }
-
-    @Test fun `fresh install accepts a Guard directory holding only its owner lock`() {
-        withFreshFiles { fixture ->
-            File(fixture.root, "data/local/.hapaneld-guard-db").apply { mkdirs() }
-                .resolve(".owner.lock").writeText("")
-            assertEquals(0, runTakeoverCommand(bundledFreshHelperInstallCommand(
-                sha256(fixture.stage), stagedBuild, filesystemRoot = fixture.root.absolutePath, polls = 1,
-            )))
-            assertEquals(fixture.candidateBytes, fixture.live.readText())
-        }
-    }
-
-    @Test fun `fresh install refuses a Guard directory that is a link`() {
-        withFreshFiles { fixture ->
-            val elsewhere = File(fixture.root, "elsewhere").apply { mkdirs() }
-            Files.createSymbolicLink(File(fixture.root, "data/local/.hapaneld-guard-db").toPath(), elsewhere.toPath())
-            assertEquals(1, runTakeoverCommand(bundledFreshHelperInstallCommand(
-                sha256(fixture.stage), stagedBuild, filesystemRoot = fixture.root.absolutePath, polls = 1,
-            )))
-            assertFalse(fixture.live.exists())
-        }
-    }
-
-    @Test fun `fresh install refuses when a stopped copy leaves Guard custody behind`() {
-        withFreshFiles { fixture ->
-            File("/bin/bash").copyTo(fixture.live)
-            setMode(fixture.live, 700)
-            val guard = File(fixture.root, "data/local/.hapaneld-guard-db").apply { mkdirs() }
-            val earlier = fixture.live.readBytes()
-            val running = ProcessBuilder(
-                fixture.live.absolutePath, "-c",
-                "trap 'echo held > \"${guard.absolutePath}/journal.v1\"; exit 0' TERM; while :; do sleep 0.1; done",
-            ).start()
-            try {
-                Thread.sleep(300)
-                assertEquals(1, runTakeoverCommand(bundledFreshHelperInstallCommand(
-                    sha256(fixture.stage), stagedBuild, filesystemRoot = fixture.root.absolutePath, polls = 1,
-                )))
-                assertTrue(File(guard, "journal.v1").isFile)
-                assertTrue(earlier.contentEquals(fixture.live.readBytes()))
-                assertFalse(fixture.stage.exists())
-            } finally {
-                running.destroyForcibly()
-            }
-        }
-    }
-
-    @Test fun `fresh install waits for a live transaction owner`() {
-        withFreshFiles { fixture ->
-            File(fixture.root, "dev/.hapaneld-helper-transaction.lock").apply { mkdirs() }
-                .resolve("pid").writeText("${ProcessHandle.current().pid()}\n")
-            assertEquals(75, runTakeoverCommand(bundledFreshHelperInstallCommand(
-                sha256(fixture.stage), stagedBuild, filesystemRoot = fixture.root.absolutePath, polls = 1,
-            )))
-            assertFalse(fixture.live.exists())
-            assertEquals(fixture.candidateBytes, fixture.stage.readText())
-        }
-    }
-
-    @Test fun `fresh candidate that cannot prove its build or Guard surface fails`() {
-        listOf(
-            fakeHelper(incumbentBuild, candidate = true, starts = true),
-            fakeHelper(stagedBuild, candidate = true, starts = false),
-        ).forEach { bytes ->
-            withFreshFiles(candidateBytes = bytes) { fixture ->
-                assertEquals(1, runTakeoverCommand(bundledFreshHelperInstallCommand(
-                    sha256(fixture.stage), stagedBuild, filesystemRoot = fixture.root.absolutePath, polls = 1,
-                )))
-                assertFalse(File(fixture.root, "dev/.hapaneld-helper-transaction.lock").exists())
-            }
-        }
-    }
-
-    private data class FreshFixture(val root: File, val live: File, val stage: File, val candidateBytes: String)
-
-    private fun withFreshFiles(
-        candidateBytes: String = fakeHelper(stagedBuild, candidate = true, starts = true),
-        test: (FreshFixture) -> Unit,
-    ) {
-        val root = scratchDirectory("bundled-helper-fresh-").toFile()
-        try {
-            val dataLocal = File(root, "data/local").apply { mkdirs() }
-            File(root, "dev").mkdirs()
-            val stage = File(dataLocal, ".hapaneld-helper.new")
-            writeExecutable(stage, candidateBytes, 700)
-            test(FreshFixture(root, File(dataLocal, "hapaneld-helper"), stage, candidateBytes))
-        } finally {
-            root.deleteRecursively()
-        }
-    }
-
     private fun exactProbe(build: String): HelperReplacementProbe = classifyHelperReplacementProbe(
         "OK",
         "BUILDID $build",
@@ -1143,6 +1228,7 @@ class BundledHelperInstallerTest {
         registrationBytes: String = legacyRegistration(topology),
         sharedSocketReplies: Boolean = false,
         guardStatus: String = emptyStatus,
+        supervisePidFile: File? = null,
         test: (TakeoverFixture) -> Unit,
     ) {
         val root = scratchDirectory("bundled-helper-takeover-").toFile()
@@ -1184,6 +1270,7 @@ class BundledHelperInstallerTest {
                 signalOnSupervise = signalOnSupervise,
                 sharedSocketMarker = sharedSocketMarker,
                 guardStatus = guardStatus,
+                supervisePidFile = supervisePidFile,
             )
             val oldRegistration = registrationBytes
             writeExecutable(oldBin, oldBytes, 755)
@@ -1194,6 +1281,8 @@ class BundledHelperInstallerTest {
                 writeExecutable(File(root, "system/bin/stop"), """
                     #!/bin/sh
                     [ "${'$'}1" = hapaneld_helper ] || exit 2
+                    [ -s '${File(dataLocal, ".hapaneld-helper.legacy-takeover").absolutePath}' ] ||
+                      : > '${File(root, "stopped-before-record").absolutePath}'
                     rm -f '${incumbentReady.absolutePath}'
                 """.trimIndent() + "\n", 755)
                 writeExecutable(File(root, "system/bin/start"), """
@@ -1268,95 +1357,4 @@ class BundledHelperInstallerTest {
         )
         setMode(record, 600)
     }
-
-    private fun fakeHelper(
-        build: String,
-        candidate: Boolean,
-        starts: Boolean,
-        readyAfterFailedProbes: Int = 0,
-        signalOnReplacementCheck: Boolean = false,
-        signalOnSupervise: Boolean = false,
-        sharedSocketMarker: File? = null,
-        incumbentReadyMarker: File? = null,
-        guardStatus: String = emptyStatus,
-    ): String = """
-        #!/bin/sh
-        if [ "${'$'}1" = --replacement-safe ]; then
-          ${if (signalOnReplacementCheck) "kill -TERM \"${'$'}(ps -o ppid= -p \"${'$'}PPID\" | tr -d ' ')\"; sleep 1" else ":"}
-          ${if (candidate) "echo REPLACE_SAFE; exit 0" else "exit 2"}
-        fi
-        if [ "${'$'}1" = --supervise ]; then
-          ${if (signalOnSupervise) "kill -TERM \"${'$'}PPID\"; sleep 1" else ":"}
-          exit ${if (starts) 0 else 7}
-        fi
-        if [ "${'$'}1" = --request ]; then
-          case "${'$'}2" in
-            PING) echo OK ;;
-            BUILDID)
-              ${if (sharedSocketMarker != null) "if [ -f '${sharedSocketMarker.absolutePath}' ] && [ -f '${sharedSocketMarker.parentFile!!.absolutePath}/hapaneld-helper' ]; then echo 'BUILDID $stagedBuild'; else ${if (!candidate && incumbentReadyMarker != null) "[ -f '${incumbentReadyMarker.absolutePath}' ] || exit 1; " else ""}echo 'BUILDID $build'; fi" else "${if (!candidate && incumbentReadyMarker != null) "[ -f '${incumbentReadyMarker.absolutePath}' ] || exit 1; " else ""}echo 'BUILDID $build'"}
-              ;;
-            GUARDCAPS) ${if (candidate && starts) "echo '${GuardDbMaintenanceProtocol.CAPS_REPLY} AUTONOMOUS SUPERVISED TERMINAL_RETIRE'" else "echo ERR"} ;;
-            GUARDSELF)
-              ${if (readyAfterFailedProbes > 0) "counter=${'$'}{0%/*}/.candidate-ready-probes; remaining=${'$'}(cat \"${'$'}counter\"); if [ \"${'$'}remaining\" -gt 0 ]; then echo ${'$'}((remaining - 1)) > \"${'$'}counter\"; exit 1; fi" else ":"}
-              self_bytes=${'$'}(stat -c %s "${'$'}0")
-              self_sha=${'$'}(sha256sum "${'$'}0")
-              self_sha=${'$'}{self_sha%% *}
-              echo "OK GUARDSELF 1 ${'$'}self_bytes ${'$'}self_sha $build"
-              ;;
-            GUARDSTATUS) ${if (candidate && starts) "echo '$guardStatus'" else "echo ERR"} ;;
-            *) echo ERR ;;
-          esac
-          exit 0
-        fi
-        if [ "${'$'}#" -eq 0 ]; then
-          ${if (incumbentReadyMarker != null) ": > '${incumbentReadyMarker.absolutePath}'" else ":"}
-          exit 0
-        fi
-        exit 3
-    """.trimIndent() + "\n"
-
-    private fun writeExecutable(file: File, bytes: String, mode: Int = 700) {
-        file.writeText(bytes)
-        setMode(file, mode)
-    }
-
-    private fun setMode(file: File, mode: Int) {
-        val permissions = mutableSetOf(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE)
-        if (mode == 700 || mode == 755) permissions += PosixFilePermission.OWNER_EXECUTE
-        if (mode == 644 || mode == 755) permissions += PosixFilePermission.GROUP_READ
-        if (mode == 755) permissions += PosixFilePermission.GROUP_EXECUTE
-        if (mode == 644 || mode == 755) permissions += PosixFilePermission.OTHERS_READ
-        if (mode == 755) permissions += PosixFilePermission.OTHERS_EXECUTE
-        Files.setPosixFilePermissions(file.toPath(), permissions)
-    }
-
-    private fun sha256(file: File): String = MessageDigest.getInstance("SHA-256")
-        .digest(file.readBytes())
-        .joinToString("") { "%02x".format(it) }
-
-    private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256")
-        .digest(value.toByteArray())
-        .joinToString("") { "%02x".format(it) }
-
-    private fun runTakeoverCommand(command: String): Int = ProcessBuilder("bash", "-c", command)
-        .redirectErrorStream(true)
-        .start()
-        .let { process ->
-            process.inputStream.bufferedReader().readText()
-            process.waitFor()
-        }
-
-    private data class CommandResult(val exitCode: Int, val output: String)
-
-    private fun runCommandWithInput(command: String, input: String): CommandResult =
-        ProcessBuilder("bash", "-c", command)
-            .redirectErrorStream(true)
-            .start()
-            .let { process ->
-                // A refused command exits before reading its input; the broken pipe is not the result.
-                runCatching { process.outputStream.bufferedWriter().use { it.write(input) } }
-                val output = process.inputStream.bufferedReader().readText()
-                CommandResult(process.waitFor(), output)
-            }
-
 }

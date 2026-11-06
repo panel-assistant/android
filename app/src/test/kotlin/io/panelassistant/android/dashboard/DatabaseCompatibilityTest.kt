@@ -140,6 +140,39 @@ class DatabaseCompatibilityTest {
         }
     }
 
+    @Test fun primaryBeingCreatedByAnotherOpenerIsFreshNotBelowMinimum() {
+        // A concurrent first open creates the file before onCreate commits: zero bytes, or a SQLite
+        // header with user_version 0 and no schema objects. Neither holds data to protect.
+        val directory = scratchDirectory("compat-being-created").toFile()
+        try {
+            val target = File(directory, "ha-paneld.db").apply { createNewFile() }
+            val emptyFile = observeDatabaseCompatibility(target, inspectDatabase = { DatabaseFileInspection(0, true) })
+            assertEquals(PrimaryDatabaseObservation.Missing, emptyFile.primary)
+            assertEquals(
+                DatabaseCompatibilityDecision.Fresh,
+                DatabaseCompatibility.decide(boundary, emptyFile, DatabaseOwnerState.RUNTIME_STARTUP),
+            )
+
+            target.writeText("header only")
+            assertEquals(
+                PrimaryDatabaseObservation.Missing,
+                observeDatabaseCompatibility(
+                    target,
+                    inspectDatabase = { DatabaseFileInspection(0, true, hasSchemaObjects = false) },
+                ).primary,
+            )
+            assertEquals(
+                PrimaryDatabaseObservation.Readable(0),
+                observeDatabaseCompatibility(
+                    target,
+                    inspectDatabase = { DatabaseFileInspection(0, true, hasSchemaObjects = true) },
+                ).primary,
+            )
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
     @Test fun directOpenDoesNotReadLargeUnusedRecovery() {
         val directory = scratchDirectory("compat-unused-recovery").toFile()
         try {

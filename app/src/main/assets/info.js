@@ -144,7 +144,7 @@ function rendererMeasurement(mode,r){
  if(r&&r.status!=='no-renderer'){
   var rows=[{label:text('dashboard.renderer.measurement_mode','Measurement mode'),val:text('dashboard.renderer.cpu_proxy','renderer CPU proxy'),suf:text('dashboard.renderer.not_tap_latency','· not actual tap latency'),col:'var(--fg-muted)'},
    {label:text('dashboard.renderer.main_thread','Dashboard main-thread'),val:text('dashboard.renderer.core_percent','{percent}% of one core',{percent:r.mainPct}),suf:text('dashboard.renderer.saturated','· 100% means the renderer thread is saturated'),bold:true}];
-  if(r.jankPct!=null)rows.push({label:text('dashboard.renderer.rendering_proxy','Rendering proxy'),val:text('dashboard.renderer.janky_percent','{percent}% janky',{percent:r.jankPct}),suf:text('dashboard.renderer.worst_frame','· worst frame {milliseconds} ms',{milliseconds:r.p99})});
+  if(r.jankPct!=null)rows.push({label:text('dashboard.renderer.rendering_proxy','Rendering proxy'),val:text('dashboard.renderer.janky_percent','{percent}% janky',{percent:r.jankPct}),suf:r.p99!=null?text('dashboard.renderer.worst_frame','· worst frame {milliseconds} ms',{milliseconds:r.p99}):''});
   return {header:text('dashboard.renderer.external_proxy_header','· external renderer proxy'),title:text('dashboard.renderer.measuring','measuring {package}',{package:r.pkg}),rows:rows};
  }
  return {header:'',title:'',rows:[{label:text('dashboard.renderer.measurement_mode','Measurement mode'),val:text('dashboard.renderer.needs_root','External renderer proxy needs root/helper access'),col:'var(--fg-muted)'}]};
@@ -329,6 +329,7 @@ function cameraCard(tbl,hdr){
  function actionText(action){
   switch(action){
    case 'turn on the camera setting to serve snapshots and a stream':return i18nText('dashboard.camera.action.enable','turn on the camera setting to serve snapshots and a stream');
+   case 'turn the camera setting off and on again, then grant the permission when Android asks':return i18nText('dashboard.camera.action.reenable_permission','turn the camera setting off and on again, then grant the permission when Android asks');
    case 'grant the camera permission on the panel when prompted':return i18nText('dashboard.camera.action.grant_permission','grant the camera permission on the panel when prompted');
    case 'check the camera hardware; a new client after the hold retries':return i18nText('dashboard.camera.action.check_hardware','check the camera hardware; a new client after the hold retries');
    case 'the profile declares a camera this board does not expose; correct hardware.camera in the profile':return i18nText('dashboard.camera.action.misdeclared_profile','the profile declares a camera this board does not expose; correct hardware.camera in the profile');

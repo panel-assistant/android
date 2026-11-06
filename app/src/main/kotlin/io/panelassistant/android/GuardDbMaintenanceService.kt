@@ -128,7 +128,7 @@ class GuardDbMaintenanceService : Service() {
         fun securityReady(): Boolean = guardDbMaintenanceSecurityReady(
             expectedEpoch = sentinel.securityAuthorityEpoch,
             durableHardenedEpoch = RemoteDebugSecurityTransitionGate::hardenedAuthorityEpoch,
-            relayRunning = { CdpRelay.running },
+            relayAbsent = { CdpRelay.proveAbsent() },
             remoteDebugOff = { AdbController.proveMaintenanceRemoteDebugOff(applicationContext) },
         )
         val security = object : GuardDbMaintenanceSecurityAuthority {
@@ -169,7 +169,7 @@ class GuardDbMaintenanceService : Service() {
                         remoteDebugOff = {
                             AdbController.proveMaintenanceRemoteDebugOff(applicationContext)
                         },
-                        cdpRelayAbsent = { !CdpRelay.running },
+                        cdpRelayAbsent = { CdpRelay.proveAbsent() },
                     )
                 },
                 readDatabase = { prepared ->
@@ -380,10 +380,10 @@ private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-25
 internal fun guardDbMaintenanceSecurityReady(
     expectedEpoch: Long,
     durableHardenedEpoch: () -> Long?,
-    relayRunning: () -> Boolean,
+    relayAbsent: () -> Boolean,
     remoteDebugOff: () -> Boolean,
 ): Boolean {
-    if (expectedEpoch <= 0L || durableHardenedEpoch() != expectedEpoch || relayRunning()) return false
+    if (expectedEpoch <= 0L || durableHardenedEpoch() != expectedEpoch || !relayAbsent()) return false
     if (!remoteDebugOff()) return false
-    return durableHardenedEpoch() == expectedEpoch && !relayRunning()
+    return durableHardenedEpoch() == expectedEpoch && relayAbsent()
 }

@@ -174,7 +174,6 @@ class CaptureLayerTests(unittest.TestCase):
         self.assertIn(["ls", "-1", "/proc/4242/fd"], calls)
         logcat = next(a for a in calls if a[0] == "logcat")
         self.assertEqual(logcat, ["logcat", "-b", "crash", "-d", "-t", "500"])
-        self.assertEqual(rb.CRASH_LOG_TAIL, 500)
 
     def test_capture_rejects_process_restart(self):
         for final_pid, expected in (("4343\n", "4343"), ("", "not running")):

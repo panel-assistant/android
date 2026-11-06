@@ -186,25 +186,7 @@ class EntityLearningProtocolTest {
         )
     }
 
-    @Test fun observerAttributesInitialHydrationAndFlushesPromptly() {
-        val script = EntityLearningProtocol.documentStartScript("https://example.test")
-        assertTrue(script.contains("if(window.top&&window.top!==window)return"))
-        assertTrue(script.contains("recordMetric(k,event.a[k])"))
-        assertTrue(script.contains("__ha_paneld_observer"))
-        assertTrue(script.contains("m.id!==entitySubscriptionId"))
-        assertTrue(script.contains("Array.isArray(decoded)?decoded:[decoded]"))
-        assertTrue(script.contains("},5000);"))
-    }
 
-    @Test fun observerAcceptsThePermittedUpgradedSocketOrigin() {
-        val script = EntityLearningProtocol.documentStartScript(
-            "http://ha.example",
-            linkedSetOf("http://ha.example", "https://ha.example"),
-        )
-
-        assertTrue(script.contains("targetWsOrigins=[\"ws://ha.example\",\"wss://ha.example\"]"))
-        assertTrue(script.contains("targetWsOrigins.includes(u.origin)"))
-    }
 
     @Test fun browserObserverEnvelopeBoundsPressureCounters() {
         val envelope = EntityLearningProtocol.parseMetricEnvelope(
@@ -600,6 +582,14 @@ class EntityLearningProtocolTest {
         )
     }
 
+    @Test fun untitledDefaultDashboardIsCalledOverview() {
+        val dashboards = JSONArray("""[{"url_path":"","title":""},{"url_path":"alpha","title":""}]""")
+        assertEquals(
+            listOf("Overview", "alpha"),
+            EntityLearningProtocol.homeDashboardChoices(dashboards, isAdmin = true).map { it.title },
+        )
+    }
+
     @Test fun homeDashboardChoicesCarrySanitizedIconsForThePicker() {
         // The picker renders each dashboard's own mdi icon like HA does; a malformed icon value must reduce
         // to blank (client falls back to mdi:view-dashboard) rather than reach innerHTML.
@@ -668,13 +658,6 @@ class EntityLearningProtocolTest {
         )
     }
 
-    @Test fun learningScriptPreservesWebsocketShapeAndBatchesBridgeCalls() {
-        val script = EntityLearningProtocol.documentStartScript("https://ha.example")
-        assertTrue(script.contains("entityLearningAccesses"))
-        assertTrue(script.contains("entityLearningMetrics"))
-        assertTrue(script.contains("Object.setPrototypeOf(LearningWebSocket,Parent)"))
-        assertTrue(script.contains("wss://ha.example"))
-    }
 
     @Test fun autoEntitiesExcludeIdsAreNotCollectedAsOrdinaryStaticReferences() {
         val scan = EntityLearningProtocol.scanDashboard(

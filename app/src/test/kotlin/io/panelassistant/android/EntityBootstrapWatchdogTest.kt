@@ -18,14 +18,13 @@ class EntityBootstrapWatchdogTest {
     private companion object {
         const val RETRY_MS = 30_000L
         const val RETRY_CEILING_MS = 300_000L
-        const val PROBLEM_MS = 90_000L
         const val PROBE_MS = 300_000L
         const val PROBE_CEILING_MS = 3_600_000L
         const val SECOND = 1_000L
         const val HOUR = 3_600L * SECOND
     }
 
-    private fun watchdog() = EntityBootstrapWatchdog(RETRY_MS, RETRY_CEILING_MS, PROBLEM_MS, PROBE_MS, PROBE_CEILING_MS)
+    private fun watchdog() = EntityBootstrapWatchdog(RETRY_MS, RETRY_CEILING_MS, PROBE_MS, PROBE_CEILING_MS)
 
     private class Run(val watchdog: EntityBootstrapWatchdog) {
         var nowMs = 0L
@@ -49,14 +48,12 @@ class EntityBootstrapWatchdogTest {
         fun count(action: EntityBootstrapWatchdogAction) = actions.count { it.second == action }
     }
 
-    @Test fun `a decision hold never resyncs and never gives up across the reported outage`() {
+    @Test fun `a decision hold never resyncs across the reported outage`() {
         // The reported hold: 237,616,126 ms behind an unanswered unbounded-selector decision.
         val run = Run(watchdog())
         run.poll(237_616 * SECOND, blockingIssues = 1)
 
         assertEquals(0, run.count(EntityBootstrapWatchdogAction.RESYNC))
-        assertEquals(0, run.count(EntityBootstrapWatchdogAction.PRESENT_PROBLEM))
-        assertFalse(run.watchdog.gaveUp)
         assertTrue(run.watchdog.heldOnDecision)
         // Probes: 5, 15, 35, 75, 135 minutes, then hourly. 66 hours holds 68 of them; the same span
         // held 794 full resyncs before.
@@ -111,7 +108,6 @@ class EntityBootstrapWatchdogTest {
         run.poll(40 * SECOND, blockingIssues = 1, syncRunning = true)
         run.poll(10 * 60 * SECOND, blockingIssues = 1, syncRunning = false)
         assertEquals(0, run.count(EntityBootstrapWatchdogAction.RESYNC))
-        assertEquals(0, run.count(EntityBootstrapWatchdogAction.PRESENT_PROBLEM))
         // One probe at five minutes; the next is not due until fifteen.
         assertEquals(1, run.count(EntityBootstrapWatchdogAction.PROBE))
     }
@@ -126,28 +122,22 @@ class EntityBootstrapWatchdogTest {
         assertEquals(listOf(32L, 62L, 122L, 242L, 482L).map { it * SECOND }, resyncTimes.take(5))
         // Then every 300 s from 782 s: ten more inside the hour.
         assertEquals(15, resyncTimes.size)
-        assertEquals(1, run.count(EntityBootstrapWatchdogAction.PRESENT_PROBLEM))
-        assertTrue(run.watchdog.gaveUp)
         assertEquals(0, run.count(EntityBootstrapWatchdogAction.PROBE))
 
         // A failed scan records a synchronization problem; the ladder keeps its place.
         run.actions.clear()
         run.poll(10 * 60 * SECOND, blockingIssues = 0, problem = EntityBootstrapProblem.SYNCHRONIZATION)
         assertEquals(2, run.count(EntityBootstrapWatchdogAction.RESYNC))
-        assertEquals(0, run.count(EntityBootstrapWatchdogAction.PRESENT_PROBLEM))
 
         // Home Assistant returns and the scan succeeds: the hold ends and the watchdog forgets.
         run.watchdog.reset()
         assertEquals(0, run.watchdog.resyncs)
-        assertFalse(run.watchdog.gaveUp)
     }
 
     @Test fun `a scan already running is never doubled by the ladder`() {
         val run = Run(watchdog())
         run.poll(5 * 60 * SECOND, blockingIssues = 0, syncRunning = true)
         assertEquals(0, run.count(EntityBootstrapWatchdogAction.RESYNC))
-        // The give-up honesty rung still fires: a scan that runs for minutes is a problem to show.
-        assertEquals(1, run.count(EntityBootstrapWatchdogAction.PRESENT_PROBLEM))
     }
 
     @Test fun `a probe never runs beside a scan and fires as soon as the scan is gone`() {
@@ -182,18 +172,16 @@ class EntityBootstrapWatchdogTest {
         run.poll(2 * 60 * SECOND, blockingIssues = 1, problem = EntityBootstrapProblem.AUTHENTICATION)
         assertFalse(run.watchdog.heldOnDecision)
         assertEquals(0, run.count(EntityBootstrapWatchdogAction.PROBE))
-        // Rebased at the transition (the first poll after the hour): first rung 30 s later, give-up at 90 s.
+        // Rebased at the transition (the first poll after the hour): first rung 30 s later.
         assertEquals(listOf(32L, 62L).map { HOUR + it * SECOND },
             run.actions.filter { it.second == EntityBootstrapWatchdogAction.RESYNC }.map { it.first })
-        assertEquals(1, run.count(EntityBootstrapWatchdogAction.PRESENT_PROBLEM))
     }
 
     @Test fun `a person retry restarts the ladder from the base rung`() {
         val run = Run(watchdog())
         run.poll(HOUR, blockingIssues = 0)
-        assertTrue(run.watchdog.gaveUp)
+        assertTrue(run.watchdog.resyncs > 0)
         run.watchdog.restart(run.nowMs)
-        assertFalse(run.watchdog.gaveUp)
         assertEquals(0, run.watchdog.resyncs)
         run.actions.clear()
         run.poll(31 * SECOND, blockingIssues = 0)
@@ -211,13 +199,10 @@ class EntityBootstrapWatchdogTest {
 
     @Test fun `intervals are validated`() {
         assertThrows(IllegalArgumentException::class.java) {
-            EntityBootstrapWatchdog(RETRY_CEILING_MS + 1, RETRY_CEILING_MS, PROBLEM_MS, PROBE_MS, PROBE_CEILING_MS)
+            EntityBootstrapWatchdog(RETRY_CEILING_MS + 1, RETRY_CEILING_MS, PROBE_MS, PROBE_CEILING_MS)
         }
         assertThrows(IllegalArgumentException::class.java) {
-            EntityBootstrapWatchdog(RETRY_MS, RETRY_CEILING_MS, PROBLEM_MS, PROBE_CEILING_MS + 1, PROBE_CEILING_MS)
-        }
-        assertThrows(IllegalArgumentException::class.java) {
-            EntityBootstrapWatchdog(RETRY_MS, RETRY_CEILING_MS, 0L, PROBE_MS, PROBE_CEILING_MS)
+            EntityBootstrapWatchdog(RETRY_MS, RETRY_CEILING_MS, PROBE_CEILING_MS + 1, PROBE_CEILING_MS)
         }
     }
 }

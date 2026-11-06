@@ -26,8 +26,7 @@ class ProximityCalibrationRuntimeTest {
 
     @Test fun setupRevokesOperationalPresenceOnceAndCancelRestoresIt() {
         val fixture = Fixture()
-        fixture.sample(100f)
-        fixture.advance(200, 100f)
+        fixture.settlePresence(100f)
         assertTrue(fixture.runtime.isPresenceReady())
         assertTrue(fixture.runtime.start())
         val during = fixture.advance(100, 100f)
@@ -37,8 +36,7 @@ class ProximityCalibrationRuntimeTest {
         assertFalse(during.deliberateGesture)
         assertEquals(ProximityReportGate.NONE, fixture.advance(100, 100f).reportMask)
         assertTrue(fixture.runtime.cancel(fixture.status().getString("sessionId")))
-        fixture.advance(100, 100f)
-        val restored = fixture.advance(200, 100f)
+        val restored = fixture.settlePresence(100f)
         assertTrue(fixture.runtime.isPresenceReady())
         assertEquals(false, restored.near)
         assertEquals(0, fixture.backing.writes)
@@ -176,6 +174,71 @@ class ProximityCalibrationRuntimeTest {
             elapsed = { now }, wall = { 1_800_000_000_000L + now })
         empty.observe(100f, now, true)
         assertEquals("calibration_required", JSONObject(empty.statusJson()).getString("state"))
+    }
+
+    /** Presence anchors survive the old fixed band; a reset still removes the person's override. */
+    @Test fun resetRemovesAWeakStoredPresenceCalibration() {
+        val backing = Backing(row(Calibration(mode = Mode.RANGED, clearRaw = 100f, nearRaw = 95f)))
+        val fixture = Fixture(backing, driftMargin = 10f)
+        assertFalse(fixture.status().getBoolean("calibrationDriftUnsafe"))
+        assertEquals("user", fixture.status().getString("calibrationSource"))
+        assertTrue(fixture.runtime.resetToProfile())
+        assertFalse(fixture.status().getBoolean("calibrationDriftUnsafe"))
+        assertEquals("profile", fixture.status().getString("calibrationSource"))
+        assertNull(backing.row)
+    }
+
+    /** Carrying the old revision key preserves weak presence without rewriting its measured anchors. */
+    @Test fun aCarriedWeakPresenceCalibrationLearnsItsRuntimeBand() {
+        val old = row(Calibration(mode = Mode.RANGED, clearRaw = 100f, nearRaw = 95f))
+            .copy(fingerprint = ProximityCalibrationRuntime.fingerprint("$PROFILE|rev-1|$SOURCE"))
+        val backing = Backing(old)
+        val carried = Fixture(backing, revision = "rev-1", driftMargin = 10f)
+        assertEquals("user", carried.status().getString("calibrationSource"))
+        assertFalse(carried.status().getBoolean("calibrationDriftUnsafe"))
+        assertEquals(false, carried.settlePresence(100f).near)
+        assertEquals(true, carried.settlePresence(95f).near)
+        assertEquals(old, backing.row)
+        assertEquals(0, backing.writes)
+    }
+
+    @Test fun acceptingWeakStoredPresenceDoesNotEnableAPreviouslyRefusedExplicitWave() {
+        val wave = WaveCalibration(clearRaw = 974f, nearRaw = 3_413f)
+        val saved = row(Calibration(mode = Mode.RANGED, clearRaw = 974f, nearRaw = 995f, wave = wave))
+        val fixture = Fixture(Backing(saved), driftMargin = 100f)
+        assertEquals("user", fixture.status().getString("calibrationSource"))
+        assertFalse(fixture.status().getBoolean("waveSupported"))
+        assertEquals(false, fixture.settlePresence(974f).near)
+        assertEquals(true, fixture.settlePresence(995f).near)
+        assertTrue(fixture.runtime.isPresenceReady())
+        assertFalse(fixture.runtime.isWaveReady())
+
+        fixture.settlePresence(wave.clearRaw)
+        assertFalse(fixture.advance(800, wave.nearRaw).deliberateGesture)
+        assertFalse(fixture.advance(300).deliberateGesture)
+        assertFalse(fixture.sample(wave.clearRaw).deliberateGesture)
+        assertFalse(fixture.advance(150).deliberateGesture)
+        assertEquals(saved, fixture.backing.row)
+        assertEquals(0, fixture.backing.writes)
+        assertEquals(0, fixture.backing.clears)
+    }
+
+    @Test fun setupCanReplaceWeakPresenceWithoutPersistingItsRuntimeNoise() {
+        val backing = Backing(row(Calibration(mode = Mode.RANGED, clearRaw = 974f, nearRaw = 995f)))
+        val fixture = Fixture(backing, driftMargin = 100f)
+        assertEquals("user", fixture.status().getString("calibrationSource"))
+        fixture.toReview(974f, 995f, null)
+        fixture.advance(1)
+        assertTrue(fixture.runtime.localAction("save"))
+        assertEquals("user", fixture.status().getString("calibrationSource"))
+        assertFalse(fixture.status().getBoolean("calibrationDriftUnsafe"))
+        assertEquals(1, backing.writes)
+        val saved = assertDecoded(assertRow(backing).snapshotJson)
+        assertEquals(974f, saved.clearRaw, 0f)
+        assertEquals(995f, saved.nearRaw, 0f)
+        fixture.settlePresence(974f)
+        fixture.settlePresence(995f)
+        assertEquals(1, backing.writes)
     }
 
     /** A restore writes the calibration to the store while the runtime runs; the reload takes it up at once,
@@ -467,7 +530,10 @@ class ProximityCalibrationRuntimeTest {
         fixture.advance(ProximityCalibrationEngine.COUNTDOWN_MS + 1_000)
         assertEquals("clear", fixture.stage())
         fixture.sample(100f, live = false, capture = true)
-        fixture.advance(ProximityCalibrationEngine.CAPTURE_HOLD_MS)
+        repeat((ProximityCalibrationEngine.CAPTURE_HOLD_MS / 250).toInt()) {
+            fixture.at(fixture.now + 250)
+            fixture.sample(100f, live = false, capture = true)
+        }
         assertEquals("near", fixture.stage())
         val operational = Fixture(Backing(row(binaryLegacy())))
         operational.sample(0f); operational.advance(200)
@@ -550,13 +616,13 @@ class ProximityCalibrationRuntimeTest {
 
     @Test fun presenceOnlyApproachAndWaveOnlyGesturePublishIndependentCapabilities() {
         val presence = Fixture(Backing(row(presenceOnly())))
-        presence.sample(100f); presence.advance(200)
+        presence.settlePresence(100f)
         assertTrue(presence.runtime.isLearnedSignal())
         assertTrue(presence.runtime.isPresenceReady())
         assertFalse(presence.runtime.isWaveReady())
-        presence.advance(800, 50f)
-        val approach = presence.advance(200)
-        assertTrue(approach.presenceApproach)
+        var approached = false
+        val approach = presence.settlePresence(50f) { approached = approached || it.presenceApproach }
+        assertTrue(approached)
         assertTrue(presence.runtime.isPresenceNear())
         assertEquals(true, approach.near)
         assertFalse(approach.deliberateGesture)
@@ -588,33 +654,109 @@ class ProximityCalibrationRuntimeTest {
         assertEquals(2, saved.version)
     }
 
-    @Test fun twentyCountCalibrationPublishesOccupiedAndClearAfterDebounce() {
+    @Test fun twentyCountCalibrationPublishesOccupiedAndClearFromFreshSustainedSamples() {
         val fixture = Fixture()
         fixture.toReview(220f, 240f, null)
         assertTrue(fixture.runtime.localAction("save"))
-        val debounce = assertDecoded(assertRow(fixture.backing).snapshotJson).debounceMs
 
-        fixture.sample(220f)
-        val initialClear = fixture.advance(debounce)
+        val initialClear = fixture.settlePresence(220f)
         assertTrue(fixture.runtime.isPresenceReady())
         assertTrue(fixture.status().getBoolean("presenceReady"))
         assertEquals(false, initialClear.near)
         assertEquals(0, initialClear.normalizedLevel)
 
         fixture.sample(240f)
-        assertEquals(false, fixture.advance(debounce - 1).near)
-        val occupied = fixture.advance(1)
+        assertEquals("a timer does not create fresh statistical evidence", false, fixture.advance(200).near)
+        val occupied = fixture.settlePresence(240f)
         assertTrue(fixture.runtime.isPresenceReady())
         assertEquals(true, occupied.near)
         assertEquals(100, occupied.normalizedLevel)
 
-        fixture.sample(220f)
-        assertEquals(true, fixture.advance(debounce - 1).near)
-        val clear = fixture.advance(1)
+        val clear = fixture.settlePresence(220f)
         assertTrue(fixture.runtime.isPresenceReady())
         assertEquals(false, clear.near)
         assertEquals(0, clear.normalizedLevel)
         fixture.runtime.close()
+    }
+
+    @Test fun archivedRangedReadingsNeverChangeTheSavedCalibrationOrBecomeWaveWake() {
+        val saved = row(keptRanged())
+        val fixture = Fixture(Backing(saved), driftMargin = 100f, keepStoredInsideDriftBand = true)
+        val start = fixture.now
+        val samples = ARCHIVED_RANGED_GAP.trim().split(Regex("""\s+""")).map { sample ->
+            val (time, raw) = sample.split(',')
+            time.toLong() to raw.toFloat()
+        }
+        assertEquals("user", fixture.status().getString("calibrationSource"))
+        assertFalse(fixture.status().getBoolean("calibrationDriftUnsafe"))
+        // The archive has no occupancy labels; it cannot prescribe when the room became clear.
+        for ((time, raw) in samples) {
+            fixture.at(start + time)
+            assertFalse("a raw snapshot must not become a wave at $time", fixture.sample(raw).deliberateGesture)
+        }
+        assertFalse(fixture.advance(300_000, 145f).deliberateGesture)
+        assertTrue(fixture.runtime.isPresenceReady())
+        assertFalse(fixture.runtime.isWaveReady())
+        assertEquals(saved, fixture.backing.row)
+        assertEquals(0, fixture.backing.writes)
+        assertEquals(0, fixture.backing.clears)
+    }
+
+    @Test fun rangedPresenceUsesSustainedSeparationInTheOldHysteresisGapAcrossSpansAndPolarities() {
+        for (model in listOf(keptRanged(), keptRanged().copy(clearRaw = 157f, nearRaw = 131f),
+            keptRanged().copy(nearRaw = 1_000f))) {
+            val saved = row(model)
+            val fixture = Fixture(Backing(saved), driftMargin = 100f, keepStoredInsideDriftBand = true)
+            assertEquals(false, fixture.settlePresence(model.clearRaw).near)
+            assertEquals(true, fixture.settlePresence(model.nearRaw).near)
+            val separated = model.clearRaw + (model.nearRaw - model.clearRaw) * .5f
+            repeat((240_000 / 250).toInt()) {
+                val held = fixture.advance(250, separated)
+                assertEquals("sustained separation for $model", true, held.near)
+                assertFalse(held.deliberateGesture)
+                assertFalse(held.presenceApproach)
+            }
+            val clear = fixture.settlePresence(model.clearRaw)
+            assertEquals(false, clear.near)
+            assertFalse(clear.deliberateGesture)
+            assertFalse(clear.presenceApproach)
+            assertEquals(saved, fixture.backing.row)
+            assertEquals(0, fixture.backing.writes)
+            assertEquals(0, fixture.backing.clears)
+        }
+    }
+
+    @Test fun binaryPresenceKeepsItsDebounceAndOnChangeHoldWithoutRewritingCalibration() {
+        val model = binaryLegacy()
+        val saved = row(model)
+        val fixture = Fixture(Backing(saved), driftMargin = 100f, keepStoredInsideDriftBand = true)
+        fixture.sample(model.nearRaw)
+        assertEquals(true, fixture.advance(model.debounceMs).near)
+        val held = fixture.advance(360_000)
+        assertEquals(true, held.near)
+        assertFalse(held.deliberateGesture)
+        fixture.sample(model.clearRaw)
+        assertEquals(false, fixture.advance(model.debounceMs).near)
+        assertEquals(saved, fixture.backing.row)
+        assertEquals(0, fixture.backing.writes)
+        assertEquals(0, fixture.backing.clears)
+    }
+
+    @Test fun restoredRangedCalibrationRequiresFreshPresenceEvidenceWithoutChangingTheRestoredRow() {
+        val fixture = Fixture(Backing(row(keptRanged())), driftMargin = 100f, keepStoredInsideDriftBand = true)
+        fixture.settlePresence(131f)
+        assertEquals(true, fixture.settlePresence(157f).near)
+        val restored = row(keptRanged().copy(nearRaw = 158f))
+        fixture.backing.inserted[key()] = restored
+        assertTrue(fixture.runtime.reloadStored())
+        assertNull(fixture.sample(131f).near)
+        assertFalse(fixture.runtime.isPresenceReady())
+        assertNull(fixture.advance(200).near)
+        assertEquals(false, fixture.settlePresence(131f).near)
+        assertEquals(true, fixture.settlePresence(158f).near)
+        assertEquals(restored, fixture.backing.inserted[key()])
+        assertEquals(0, fixture.backing.writes)
+        assertEquals(0, fixture.backing.clears)
     }
 
     @Test fun candidatePresenceNeverPublishesBeforeAtomicSave() {
@@ -680,12 +822,13 @@ class ProximityCalibrationRuntimeTest {
 
     private class Fixture(
         val backing: Backing = Backing(), source: String = SOURCE, profile: String = PROFILE,
-        private val pattern: WavePattern = WavePattern.SINGLE, revision: String? = null,
+        private val pattern: WavePattern = WavePattern.SINGLE, revision: String? = null, driftMargin: Float = 0f,
+        keepStoredInsideDriftBand: Boolean = false,
     ) {
         var now = 1_000L
         val runtime = ProximityCalibrationRuntime(source, profile, legacy(), Store(backing),
             elapsed = { now }, wall = { 1_800_000_000_000L + now }, requestedWavePattern = pattern,
-            profileRevision = revision)
+            profileRevision = revision, driftMargin = driftMargin, keepStoredInsideDriftBand = keepStoredInsideDriftBand)
         var session = ""
         fun status() = JSONObject(runtime.json())
         fun stage() = status().getString("stage")
@@ -711,7 +854,12 @@ class ProximityCalibrationRuntimeTest {
         }
         fun capture(raw: Float) {
             advance(ProximityCalibrationEngine.COUNTDOWN_MS, raw)
-            advance(ProximityCalibrationEngine.CAPTURE_HOLD_MS)
+            repeat((ProximityCalibrationEngine.CAPTURE_HOLD_MS / 250).toInt()) { advance(250, raw) }
+        }
+        fun settlePresence(raw: Float, observe: (ProximityCalibrationRuntime.Decision) -> Unit = {}): ProximityCalibrationRuntime.Decision {
+            var result = sample(raw)
+            repeat(24) { result = advance(250, raw); observe(result) }
+            return result
         }
         fun toReview(clear: Float, near: Float, hand: Float?) {
             begin(clear)
@@ -779,12 +927,53 @@ class ProximityCalibrationRuntimeTest {
         override fun close() { backing.closes++ }
     }
     companion object {
+        // Anonymized ranged-source capture: elapsed milliseconds since the final enter-level reading,
+        // then raw counts. Only consecutive unchanged raw values are omitted.
+        private val ARCHIVED_RANGED_GAP = """
+            0,148 304,144 912,146 1207,145 1508,143 1799,146 2102,144 2405,145 2698,144 3001,143 3311,144 3903,145
+            4205,144 5156,142 5449,141 5748,144 6043,142 6336,145 6639,143 6932,144 9763,142 10055,145 10358,144 10651,145
+            11261,146 11604,145 11915,144 12815,146 13119,145 13420,143 13716,146 14021,145 14319,142 14627,144 15226,145 15812,144
+            16718,142 17011,143 17326,144 17955,146 18262,145 18570,144 20027,143 20317,145 20623,143 20916,145 21222,144 21828,146
+            22122,142 22443,144 22725,145 25301,144 25880,143 26466,144 26758,142 27046,144 27649,143 28286,145 28894,143 29520,144
+            29829,145 30127,144 30427,145 30732,144 31368,146 31665,143 31980,144 32283,145 32586,144 32894,143 33206,144 33601,143
+            33906,144 34201,143 34500,145 34807,143 35113,144 35725,145 36109,143 36414,145 36717,143 37023,144 37636,142 37953,144
+            38283,143 38593,144 38906,143 41478,144 42123,142 42408,143 42693,144 42991,143 44555,146 44861,143 45162,145 45470,144
+            45778,142 46422,144 46721,143 47026,142 47341,144 47655,146 47971,142 48284,143 48596,144 48894,143 49203,145 49499,144
+            50141,143 50459,146 50754,145 51132,146 51485,145 51775,143 52367,146 52675,143 53001,142 53319,144 53630,143 53931,146
+            54260,144 54906,145 55222,143 55516,144 55807,142 56107,143 56723,142 57060,146 57366,143 57972,144 58285,143 59517,145
+            62096,143 62414,145 62721,143 63934,144 64242,143 64544,142 64849,146 65195,142 65501,144 65799,143 66400,144 66707,142
+            67016,143 67630,142 67932,145 68248,143 69177,142 69466,146 69765,144 70075,145 70365,142 70671,141 70968,144 71268,143
+            71585,147 71899,143 72489,144 73073,141 73365,144 73664,143 73963,145 74873,143 75485,145 78027,143 78327,144 78617,143
+            78910,144 79202,143 79503,145 79803,143 80100,142 80402,144 80995,145 81336,143 81638,145 81940,143 82232,144 82592,142
+            82898,143 83191,142 83495,144 84129,143 84711,144 85008,147 85314,142 85638,143 85932,145 86228,144 86535,145 86833,144
+            87441,146 87733,143 88025,142 88317,143 88612,145 89183,140 89556,143 89851,144 90437,143 90729,145 91033,144 91628,145
+            91919,143 92504,144 92787,143 93390,141 93695,147 93990,142 94296,143 94889,145 95196,142 95486,144 95786,143 96092,144
+            96396,143 96707,145 97015,142 97311,145 97615,141 97912,145 98508,144 99100,143 99396,142 99701,144 100302,143 100590,144
+            100901,142 101204,144 101495,143 101797,145 102110,142 102399,143 102696,144 103011,143 103307,144 103901,143 104203,144 104506,145
+            104798,143 105098,144 105406,142 105695,145 105999,143 106606,144 107236,143 107540,144 107829,145 108127,143 108440,144 109361,143
+            109668,147 109986,145 110292,144 110904,143 111199,144 111514,145 111810,143 112114,144 112414,146 112697,141 113000,145 113310,144
+            113603,145 114270,144 114581,141 114915,143 115222,142 115842,146 116138,145 116438,142 116790,145 117080,142 117368,143 118258,145
+            118549,143 118839,142 119129,143 119423,141 119719,144 120009,143 120636,144 120934,146 121235,144 121534,143 122114,142 122415,141
+            122711,144 123018,143 123635,142 123926,143 124534,146 124825,142 125128,146 125427,143 126025,144 126630,145 126923,143 127519,144
+            127817,143 128429,142 129031,146 129329,144 129934,143 130224,140 130525,146 130826,144 131724,141 132317,143 132622,144 133271,145
+            133561,144 133859,143 134452,142 134751,145 135054,146 135346,144 135919,142 136217,145 136501,144 136794,143 137076,144 137651,143
+            137949,145 138243,144 138545,142 138846,143 139440,144 140382,143 140679,144 140962,145 141244,144 142437,143 143039,144 143650,143
+            143945,146 144400,144 146967,142 147267,144 147862,146 148165,145 148481,143 149068,146 149362,144 149655,143 149956,146 150574,144
+            151182,143 152408,144 152701,145 152990,144 153294,143 153602,145 153901,143 154200,146 154495,142 154787,145 155071,144 155649,142
+            155988,145 156285,144 156917,143 157215,144 157506,146 157842,144 158151,143 158447,144 158752,147 159053,143 159346,144 159644,145
+            160245,144 160570,142 160895,145 161492,144 161784,145 162083,143 162365,145 162650,144 162962,143 163261,144 163560,143 163873,145
+            164165,144 165066,143 165376,142 165667,144 165951,143 166257,144 166555,143 166855,144 167156,141 167459,143 167767,144 168081,143
+            168384,141 168669,143 168975,144 169262,143 169564,144 169874,143 170458,144 170760,143 171659,145 171967,144 172274,143 172564,142
+            172867,144 173463,145 173784,144 174072,143 174377,142 174666,145 174962,144 175267,143 175561,144 175879,143 176163,144 176469,143
+            176767,144 177072,145 177663,143 177975,144 179321,143 179912,144 180220,146
+        """
         private const val SOURCE = "android-hal|same-misleading-range-metadata"
         private const val PROFILE = "profile-r1"
         private fun key(source: String = SOURCE) = ProximityCalibrationRuntime.calibrationKey(PROFILE, source)
         private fun legacy() = Calibration(version = 1, mode = Mode.RANGED, clearRaw = 100f, nearRaw = 50f)
         private fun binaryLegacy() = Calibration(version = 1, mode = Mode.BINARY, clearRaw = 0f, nearRaw = 1f)
         private fun presenceOnly() = Calibration(mode = Mode.RANGED, clearRaw = 100f, nearRaw = 50f)
+        private fun keptRanged() = Calibration(mode = Mode.RANGED, clearRaw = 131f, nearRaw = 157f)
         private fun row(value: Calibration, algorithm: Int = ProximityCalibrationRuntime.STORAGE_VERSION) = EntityCatalogStore.ProximityModelRow(
             key(), algorithm,
             "explicit-calibration-v${value.version}", ProximityCalibrationRuntime.encode(value), true, 1_800_000_000_000L)

@@ -6,16 +6,14 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.BufferedReader
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.EOFException
-import java.io.InputStreamReader
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 class DaemonStreamProtocolTest {
-    private fun replies(value: String) = BufferedReader(InputStreamReader(ByteArrayInputStream(value.toByteArray())))
+    private fun replies(value: String) = ByteArrayInputStream(value.toByteArray())
 
     @Test fun payloadIsOpenedAndWrittenOnlyAfterReady() {
         val output = ByteArrayOutputStream()
@@ -141,9 +139,9 @@ class DaemonStreamProtocolTest {
     }
 
     @Test fun deadlineCanBeCancelledWithoutRunningTimeoutAction() {
-        var timedOut = false
-        StreamDeadline(60_000L) { timedOut = true }.close()
-        assertFalse(timedOut)
+        val timedOut = CountDownLatch(1)
+        StreamDeadline(100L) { timedOut.countDown() }.close()
+        assertFalse(timedOut.await(1L, TimeUnit.SECONDS))
     }
 
     @Test fun deadlineRunsTimeoutAction() {

@@ -36,9 +36,12 @@ on:
 permissions:
   contents: read
 
+# Branch and PR updates supersede their predecessors. Main checks belong to a
+# commit, so later pushes cannot evict a release cut even while it is pending.
+# Tags, manual trials and schedules each retain their own independent run.
 concurrency:
-  group: android-instrumentation-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.sha || (github.event_name == 'pull_request' || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/'))) && 'latest' || github.run_id }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   instrumentation:
@@ -76,9 +79,11 @@ jobs:
 
       - name: Enable KVM group permissions
         run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
+          if [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
+            echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+            sudo udevadm control --reload-rules
+            sudo udevadm trigger --name-match=kvm
+          fi
 
       - name: Verify KVM acceleration for API 35
         if: matrix.api-level == 35
@@ -94,14 +99,136 @@ jobs:
           arch: x86_64
           profile: pixel_2
           disable-animations: true
+          # Keep all lines equally indented so YAML folds this into one shell command.
+          # The emulator action executes each parsed newline separately.
           script: >-
             bash -euo pipefail -c '
             adb install app/build/outputs/apk/debug/app-debug.apk;
             adb install app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk;
+            avd_adb() {
+            local qemu; qemu="$(timeout 10 adb -s "$ANDROID_SERIAL" shell getprop ro.kernel.qemu | tr -d "\r")" || return $?; test "$qemu" = 1 || return 1;
+            timeout 20 adb -s "$ANDROID_SERIAL" "$@";
+            };
+            launcher_anr_preflight() {
+            local label="$1" windows anrs;
+            [[ "$ANDROID_SERIAL" =~ ^emulator-[0-9]+$ ]] || return 1;
+            windows="$(avd_adb shell dumpsys window windows)"; test -n "$windows"; printf "%s\n" "$windows" > "$RUNNER_TEMP/$label-windows-before.txt";
+            anrs="$(printf "%s\n" "$windows" | grep -E "^  Window #[0-9]+ .*Application Not Responding:" || true)";
+            if [ -n "$anrs" ]; then
+            test "$(printf "%s\n" "$anrs" | wc -l)" -eq 1;
+            printf "%s\n" "$anrs" | grep -Eq "^  Window #[0-9]+ Window\\{[0-9a-f]+ u0 Application Not Responding: com\\.android\\.launcher3\\}:$";
+            avd_adb shell am force-stop --user 0 com.android.launcher3;
+            windows="$(avd_adb shell dumpsys window windows)"; test -n "$windows"; printf "%s\n" "$windows" > "$RUNNER_TEMP/$label-windows-after.txt";
+            if printf "%s\n" "$windows" | grep -Eq "^  Window #[0-9]+ .*Application Not Responding:"; then return 1; fi;
+            fi;
+            };
+            launcher_anr_preflight before-core;
             log="$RUNNER_TEMP/core-instrumentation.log";
             status=0;
+            adb logcat -c;
             adb shell am instrument -w -e annotation io.panelassistant.android.CoreInstrumentation io.panelassistant.android.test/androidx.test.runner.AndroidJUnitRunner > "$log" 2>&1 || status=$?;
             cat "$log";
+            if [ "$status" -ne 0 ] || grep -Eq "FAILURES!!!|Process crashed|INSTRUMENTATION_FAILED|shortMsg=|No tests found" "$log"; then adb logcat -d -b main,crash,system | tail -n 3000; fi;
             test "$status" -eq 0;
             if grep -Eq "FAILURES!!!|Process crashed|INSTRUMENTATION_FAILED|shortMsg=|No tests found" "$log"; then exit 1; fi;
-            grep -Eq "^OK \\([1-9][0-9]* tests?\\)[[:space:]]*$" "$log"'
+            grep -Eq "^OK \\([1-9][0-9]* tests?\\)[[:space:]]*$" "$log";
+            run_one() {
+            local selector="$1" label="$2" seconds="$3";
+            adb shell am force-stop io.panelassistant.android;
+            adb shell am force-stop io.panelassistant.android.test;
+            log="$RUNNER_TEMP/$label.log";
+            status=0;
+            timeout "$seconds" adb shell am instrument -w -e class "$selector" io.panelassistant.android.test/androidx.test.runner.AndroidJUnitRunner > "$log" 2>&1 || status=$?;
+            cat "$log";
+            if [ "$status" -ne 0 ] || grep -Eq "FAILURES!!!|Process crashed|INSTRUMENTATION_FAILED|shortMsg=|No tests found" "$log"; then adb logcat -d -b main,crash,system | tail -n 3000; fi;
+            test "$status" -eq 0;
+            if grep -Eq "FAILURES!!!|Process crashed|INSTRUMENTATION_FAILED|shortMsg=|No tests found" "$log"; then exit 1; fi;
+            grep -Eq "^OK \\(1 test\\)[[:space:]]*$" "$log";
+            };
+            launcher_anr_preflight before-overlay;
+            test "$(adb shell getprop ro.kernel.qemu | tr -d "\r")" = 1;
+            adb shell am force-stop io.panelassistant.android;
+            adb shell am force-stop io.panelassistant.android.test;
+            cleared="$(adb shell pm clear io.panelassistant.android | tr -d "\r")"; test "$cleared" = Success;
+            cleared="$(adb shell pm clear io.panelassistant.android.test | tr -d "\r")"; test "$cleared" = Success;
+            trap "adb shell appops set io.panelassistant.android SYSTEM_ALERT_WINDOW default" EXIT;
+            adb shell appops set io.panelassistant.android SYSTEM_ALERT_WINDOW allow;
+            log="$RUNNER_TEMP/overlay-wake-tap-instrumentation.log";
+            status=0;
+            adb logcat -c;
+            timeout 150 adb shell am instrument -w -e class io.panelassistant.android.control.OverlayWakeTapInstrumentedTest io.panelassistant.android.test/androidx.test.runner.AndroidJUnitRunner > "$log" 2>&1 || status=$?;
+            cat "$log";
+            if [ "$status" -ne 0 ] || grep -Eq "FAILURES!!!|Process crashed|INSTRUMENTATION_FAILED|shortMsg=|No tests found" "$log"; then adb logcat -d -b main,crash,system | tail -n 3000; fi;
+            test "$status" -eq 0;
+            if grep -Eq "FAILURES!!!|Process crashed|INSTRUMENTATION_FAILED|shortMsg=|No tests found" "$log"; then exit 1; fi;
+            grep -Eq "^OK \\(3 tests\\)[[:space:]]*$" "$log";
+            adb shell appops set io.panelassistant.android SYSTEM_ALERT_WINDOW default;
+            trap - EXIT;
+            if [ "${{ matrix.api-level }}" -ge 28 ]; then
+            for method in coldAdminLauncher coldMain coldDashboard coldConfigure coldProximityWizard; do
+            run_one "io.panelassistant.android.MainThreadSqliteInstrumentedTest#$method" "sqlite-$method" 90;
+            done;
+            fi;
+            adb shell ip -4 addr;
+            adb shell ip link;
+            run_one io.panelassistant.android.ClonedDiscoveryInstrumentedTest cloned-discovery 180;
+            test "$(adb shell pm clear io.panelassistant.android | tr -d "\r")" = Success;
+            test "$(adb shell pm clear io.panelassistant.android.test | tr -d "\r")" = Success;
+            run_one io.panelassistant.android.ScheduledInstallInstrumentedTest scheduled-install 150;
+            for method in urlWithoutTokenShowsPhysicalSignIn entityLearningWithoutTokenStillShowsPhysicalSignIn configuredTokenWaitsForTheUnansweredSetupQuestion; do
+            adb shell am force-stop io.panelassistant.android;
+            adb shell am force-stop io.panelassistant.android.test;
+            test "$(adb shell pm clear io.panelassistant.android | tr -d "\r")" = Success;
+            test "$(adb shell pm clear io.panelassistant.android.test | tr -d "\r")" = Success;
+            run_one "io.panelassistant.android.FirstRunSignInInstrumentedTest#$method" "first-run-sign-in-$method" 150;
+            done'
+
+      - name: Run all status surface cases on the smallest supported panel
+        if: matrix.api-level == 27
+        timeout-minutes: 20
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/root-status-avd"
+          export ANDROID_SERIAL=emulator-5582
+          mkdir -p "$ANDROID_AVD_HOME"
+          echo no | avdmanager create avd --force --name root-status --package "system-images;android-27;default;x86_64"
+          config="$ANDROID_AVD_HOME/root-status.avd/config.ini"
+          sed -i -E '/^(hw.lcd.(width|height|density)|hw.mainKeys|skin.(name|path)|showDeviceFrame)[[:space:]]*=/d' "$config"
+          cat >> "$config" <<'AVD'
+          hw.lcd.width = 480
+          hw.lcd.height = 480
+          hw.lcd.density = 160
+          hw.mainKeys = yes
+          skin.name = 480x480
+          skin.path = 480x480
+          showDeviceFrame = no
+          AVD
+          timeout --kill-after=5s 1100 "$ANDROID_HOME/emulator/emulator" -avd root-status -ports 5582,5583 -no-window -accel on -gpu swiftshader_indirect -no-audio -no-boot-anim -no-snapshot -memory 2048 -cores 2 > "$RUNNER_TEMP/status-emulator.log" 2>&1 &
+          emulator_pid=$!
+          trap 'timeout 10 adb emu kill >/dev/null 2>&1 || true; kill "$emulator_pid" 2>/dev/null || true; wait "$emulator_pid" || true' EXIT
+          timeout 180 adb wait-for-device
+          for _ in $(seq 1 120); do
+            if [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1 ]; then break; fi
+            sleep 2
+          done
+          test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1
+          test "$(adb shell getprop ro.kernel.qemu | tr -d '\r')" = 1
+          adb shell settings put secure immersive_mode_confirmations confirmed
+          test "$(adb shell settings get secure immersive_mode_confirmations | tr -d '\r')" = confirmed
+          adb shell settings put global window_animation_scale 0
+          adb shell settings put global transition_animation_scale 0
+          adb shell settings put global animator_duration_scale 0
+          adb shell settings put global policy_control immersive.full=io.panelassistant.android
+          adb shell wm size
+          adb shell wm density
+          adb install app/build/outputs/apk/debug/app-debug.apk
+          adb install app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          log="$RUNNER_TEMP/status-surface.log"
+          status=0
+          timeout 600 adb shell am instrument -w -e class io.panelassistant.android.StatusSurfaceInstrumentedTest io.panelassistant.android.test/androidx.test.runner.AndroidJUnitRunner > "$log" 2>&1 || status=$?
+          cat "$log"
+          if [ "$status" -ne 0 ] || grep -Eq 'FAILURES!!!|Process crashed|INSTRUMENTATION_FAILED|shortMsg=|No tests found' "$log"; then adb logcat -d -b main,crash,system | tail -n 3000; fi
+          test "$status" -eq 0
+          if grep -Eq 'FAILURES!!!|Process crashed|INSTRUMENTATION_FAILED|shortMsg=|No tests found' "$log"; then exit 1; fi
+          grep -Eq '^OK \(12 tests\)[[:space:]]*$' "$log"

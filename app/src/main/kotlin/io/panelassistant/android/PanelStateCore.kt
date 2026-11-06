@@ -382,8 +382,11 @@ internal class PanelStateCore(
             }
             if (observation.possible.zigbee) register("zigbee_router") {
                 if (!capabilityShape.current().live.zigbee) known("unknown")
-                else if (config.zigbeeRouterConfigured && !config.zigbeeRouterEnabled) known("OFF")
-                else known(if (zigbee.running()) "ON" else "OFF")
+                else when (zigbee.running()) {
+                    true -> known("ON")
+                    false -> known("OFF")
+                    null -> known("unknown")
+                }
             }
             if (observation.possible.zigbee) register("zigbee_gateway_health") {
                 if (!capabilityShape.current().live.zigbee) Observation.Unavailable
@@ -868,11 +871,9 @@ internal class PanelStateCore(
         "diag_boot" -> PanelMetrics.shared.bootTime()
         "diag_wifi_ssid" -> wifiDiagnostics(WifiDiagnosticDemand(
             ssid = true,
-            privilegedRoute = capabilityShape.current().live.networkAdb,
         )).ssid
         "diag_wifi_rssi" -> wifiDiagnostics(WifiDiagnosticDemand(
             rssi = true,
-            privilegedRoute = capabilityShape.current().live.networkAdb,
         )).rssiDbm?.toString()
         // Rolling outage counts keep their last reported value through a Wi-Fi dropout —
         // that dropout is exactly what they exist to report — so they are not WIFI_DIAGNOSTIC_KEYS.

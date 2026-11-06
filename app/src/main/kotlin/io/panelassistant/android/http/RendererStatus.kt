@@ -1,5 +1,6 @@
 package io.panelassistant.android.http
 
+import io.panelassistant.android.dashboard.RendererEntityHold
 import android.content.Context
 import io.panelassistant.android.Config
 import io.panelassistant.android.RendererAdmissionPresentation
@@ -45,6 +46,7 @@ internal fun rendererAdmission(
         themeEffectivePolicy = config.dashboardThemeEffective,
         ambientReason = ambient?.reason,
         ambientLevel = ambient?.level,
+        entityHold = RendererEntityHold.snapshot(),
     )
 }
 

@@ -21,10 +21,14 @@ internal data class DisplaySizingObservation(
  * so HA cards come out too big/small or text mis-sized vs desktop; iOS keeps these aligned, Android
  * panels frequently don't.
  *
- * Both persist across reboot (secure/system settings), so a one-shot set sticks. The active profile's
- * `appCanSu` value orders live su/helper attempts; it never suppresses the alternate route. The app's
+ * Both persist across reboot (secure/system settings), so a one-shot set sticks. Writes are rare and
+ * user-triggered: the active profile's `appCanSu` value orders their su/helper attempts, and the app's
  * own settings grants ([app]) come last, so a panel with root or the helper sizes exactly as before
  * and a panel with neither still can.
+ *
+ * Reads repeat (the management snapshot refreshes them), so they never use su: the app's own read
+ * answers first with no process at all, then the helper's `DENSITY`/`FONTSCALE`; when neither answers
+ * the value is unknown.
  */
 class DensityController(
     private val canSu: Boolean,
@@ -67,9 +71,8 @@ class DensityController(
         app = { app?.setDensity(null) == true },
     )
 
-    private fun readFontScale(privilege: PrivilegedRouteObservation? = null): Float = routedValue(
+    private fun readFontScale(privilege: PrivilegedRouteObservation? = null): Float = observedValue(
         privilege = privilege,
-        su = { parseRootScale(root.runOutput("settings get system font_scale 2>/dev/null")) },
         helper = { parseHelperScale((daemon.sendLong("FONTSCALE", 30_000L) as? DaemonLongResult.Reply)?.value) },
         app = { app?.fontScale() },
     ) ?: 1.0f
@@ -92,23 +95,11 @@ class DensityController(
         app = { app?.setFontScale(1.0f) == true },
     )
 
-    private fun densityState(privilege: PrivilegedRouteObservation? = null): DensityState? = routedValue(
+    private fun densityState(privilege: PrivilegedRouteObservation? = null): DensityState? = observedValue(
         privilege = privilege,
-        su = { parseRootDensity(root.runOutput("wm density 2>/dev/null")) },
         helper = { parseHelperDensity((daemon.sendLong("DENSITY", 30_000L) as? DaemonLongResult.Reply)?.value) },
         app = { app?.density()?.let { (base, override) -> DensityState(base, override) } },
     )
-
-    private fun parseRootDensity(reply: String?): DensityState? {
-        if (reply == null) return null
-        fun field(key: String): Int? = reply.lineSequence()
-            .firstOrNull { it.contains(key) }
-            ?.substringAfter(key)?.trim()?.toIntOrNull()
-        // `wm density` calls the reset reference "Physical density" even though it is Android's base
-        // logical density. Keep the parser label, but do not carry that misleading name upward.
-        val base = field("Physical density:") ?: return null
-        return DensityState(base, field("Override density:"))
-    }
 
     private fun parseHelperDensity(reply: String?): DensityState? {
         val match = DENSITY_REPLY.matchEntire(reply?.trim().orEmpty()) ?: return null
@@ -116,13 +107,6 @@ class DensityController(
         val base = match.groupValues[1].toIntOrNull() ?: return null
         val override = match.groupValues[2].takeUnless { it == "-" }?.toIntOrNull()
         return DensityState(base, override)
-    }
-
-    private fun parseRootScale(reply: String?): Float? {
-        if (reply == null) return null
-        val token = reply.trim()
-        if (token.isEmpty()) return null
-        return parseScaleToken(token)
     }
 
     private fun parseHelperScale(reply: String?): Float? {
@@ -148,17 +132,18 @@ class DensityController(
         return ShortOperationRouter.effect(*attempts) != null
     }
 
-    private fun <T : Any> routedValue(
+    /**
+     * A repeated read: the app's own read, then the helper; never su. The app route reads settings a
+     * firmware may refuse to an app (the hidden forced-density key), so a refusal falls through to the
+     * helper instead of failing the whole read.
+     */
+    private fun <T : Any> observedValue(
         privilege: PrivilegedRouteObservation? = null,
-        su: () -> T?,
         helper: () -> T?,
         app: () -> T?,
     ): T? {
-        val suAttempt = ValueAttempt(PrivilegeRoute.SU, su)
-        val helperAttempt = ValueAttempt(PrivilegeRoute.DAEMON, helper)
-        val appAttempt = ValueAttempt(PrivilegeRoute.APP, app)
-        val ordered = if (canSu) arrayOf(suAttempt, helperAttempt, appAttempt)
-        else arrayOf(helperAttempt, suAttempt, appAttempt)
+        val appRead = { runCatching(app).getOrNull() }
+        val ordered = arrayOf(ValueAttempt(PrivilegeRoute.APP, appRead), ValueAttempt(PrivilegeRoute.DAEMON, helper))
         val attempts = if (privilege == null) {
             ordered
         } else {

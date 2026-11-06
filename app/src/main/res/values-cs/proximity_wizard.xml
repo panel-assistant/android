@@ -4,6 +4,8 @@
     <string name="proximity_wizard_wave_twice_hint">Dvakrát rychle mávněte, pak se vzdalte.</string>
     <string name="proximity_wizard_normal_position">Vraťte se na své obvyklé místo</string>
     <string name="proximity_wizard_hands_down">Nechte ruce dole.</string>
+    <string name="proximity_wizard_presence_refused_hint">Senzor nedokáže spolehlivě rozpoznat, že tu stojíte, proto zůstane detekce přítomnosti vypnutá. Nechte ruce dole.</string>
+    <string name="proximity_wizard_speech_wave_baseline_refused">Senzor nedokázal spolehlivě rozpoznat, že stojíte na místě, odkud panel obvykle používáte, proto zůstane detekce přítomnosti vypnutá. Zůstaňte, kde jste, a nechte ruce dole. Dále místo toho otestuji mávnutí rukou.</string>
     <string name="proximity_wizard_review_wave_only">Přítomnost není dostupná.\nMávnutí ověřeno.</string>
     <string name="proximity_wizard_review_neither">Přítomnost ani mávnutí nebyly ověřeny. Vaše předchozí nastavení zůstane zachováno.</string>
     <string name="proximity_wizard_saved_wave_only">Nastavení mávnutí uloženo.\nDetekce přítomnosti není dostupná.</string>

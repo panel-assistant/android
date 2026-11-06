@@ -101,7 +101,7 @@ internal class SidebarRelayTest : io.panelassistant.android.testsupport.PanelRun
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val requests = PanelAssistantManagementRequests(
             scope,
-            PanelAssistantManagement.of({ error("no snapshot") }, { _, _ -> error("no settings") }, door, PanelAssistantBlobs(auth), serve),
+            PanelAssistantManagement.of({ error("no snapshot") }, { _, _ -> error("no settings") }, door, PanelAssistantBlobs(auth), serve = serve),
             PanelAssistantSession(5, TOKEN, listOf("management", "ui_subscribe", "ui_bundle"), "1.0.0"),
             { System.nanoTime() / 1_000_000 },
         )
@@ -325,6 +325,38 @@ internal class SidebarRelayTest : io.panelassistant.android.testsupport.PanelRun
                 assertEquals(listOf("pending_approval", "true"), listOf(interim.getString("outcome"), interim.get("interim").toString()))
                 val pending = LocalApprovalBroker.instance.pending().single()
                 assertEquals(listOf(SensitiveOperation.DEVICE_REBOOT, "user:$USER"), listOf(pending.operation, pending.peer))
+            }
+        } finally {
+            rig.close()
+        }
+    }
+
+    // A release check once reported that Deny on the approval card left the requester without an answer.
+    @Test fun inHardenedModeDenyingARelayedCommandsApprovalOnThePanelAnswersItsRequesterRefusedApprovalDenied() {
+        val rig = rig(
+            hasCamera = true,
+            deviceSecure = false,
+            configure = { assertTrue(it.setSecurityMode(io.panelassistant.android.Config.SecurityMode.HARDENED)) },
+        )
+        try {
+            Session({ rig.commands }).use { session ->
+                // The camera asks in either mode; a reboot asks only because the panel is Hardened.
+                for ((id, channel, value) in listOf(Triple("d1", "camera_enabled", true), Triple("d2", "reboot", null))) {
+                    session.deliver(command(id, channel, value))
+                    val interim = session.await("interim answer to $id") { it.optString("command_id") == id }
+                    assertEquals(listOf("pending_approval", "true"), listOf(interim.getString("outcome"), interim.get("interim").toString()))
+                    val pending = LocalApprovalBroker.instance.pending().single()
+                    assertEquals("user:$USER", pending.peer)
+                    // What the card's Deny button does.
+                    assertTrue(LocalApprovalBroker.instance.deny(pending.id))
+                    val answer = session.answer(id)
+                    assertEquals(
+                        "$channel answers its requester once denied",
+                        listOf(TOKEN, "refused", "approval_denied"),
+                        listOf(answer.getString("session"), answer.getString("outcome"), answer.getString("code")),
+                    )
+                }
+                assertFalse("a denied camera stays off", rig.config.cameraEnabled)
             }
         } finally {
             rig.close()

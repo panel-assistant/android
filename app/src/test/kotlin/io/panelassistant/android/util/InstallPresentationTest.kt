@@ -93,7 +93,6 @@ class InstallPresentationTest {
     }
 
     @Test fun installOutcomeKeepsLegacyConstructionAndAddsOptionalPresentation() {
-        assertEquals(InstallOutcome.Rejected("legacy"), InstallOutcome.Rejected("legacy"))
         assertNull((InstallOutcome.Retryable("legacy") as InstallOutcome.Failure).presentation)
         val presentation = InstallPresentation(
             "install-retryable-failure",

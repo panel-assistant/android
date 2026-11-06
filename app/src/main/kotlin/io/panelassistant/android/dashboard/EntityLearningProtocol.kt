@@ -282,7 +282,7 @@ object EntityLearningProtocol {
             val path = if (urlPath.isBlank() || urlPath == "lovelace") "/lovelace" else "/$urlPath"
             if (!seenPaths.add(path)) continue
             val title = dashboard.optString("title").trim().ifBlank {
-                if (path == "/lovelace") "Home" else path.removePrefix("/")
+                if (path == "/lovelace") "Overview" else path.removePrefix("/")
             }
             choices += HomeDashboardChoice(path, title, sanitizedIconName(dashboard.optString("icon")))
         }

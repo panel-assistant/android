@@ -65,7 +65,7 @@
     <string name="panel_not_set_up">Este painel ainda não está configurado.</string>
     <string name="panel_not_set_up_hint">Leia o código com o celular — leva cerca de dois minutos. Ou toque em %1$s para configurar nesta tela.</string>
     <string name="browser_engine_too_old">O mecanismo do navegador deste painel é antigo demais.</string>
-    <string name="browser_engine_too_old_hint">Os dashboards do Home Assistant precisam de um mais recente. Resolva isso na página de configuração em um navegador.</string>
+    <string name="browser_engine_too_old_hint">A configuração ainda pode ser concluída, mas os dashboards do Home Assistant precisam de um mais recente. A página de configuração em um navegador mostra como atualizá-lo.</string>
     <string name="choose_dashboard_app">Escolha um aplicativo de dashboard.</string>
     <string name="continue_setup_browser">Continue na página de configuração em um navegador.</string>
     <string name="connected_next_ha_address">Conectado. Próximo passo: o endereço do Home Assistant.</string>
@@ -202,4 +202,5 @@
     <string name="listening_on_port">Escutando em :%1$d</string>
     <string name="degraded_profile_startup">Degradado · falha ao iniciar o perfil</string>
     <string name="degraded_startup">Degradado · falha na inicialização</string>
+    <string name="approval_op_local_adb">Executar manutenção do painel</string>
 </resources>

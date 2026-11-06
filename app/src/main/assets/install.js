@@ -27,7 +27,7 @@
   var RESTORE_OUTCOME = Object.freeze({"succeeded":"install.restore_outcome.succeeded","partial":"install.restore_outcome.partial","failed":"install.restore_outcome.failed","skipped":"install.restore_outcome.skipped","rolled_back":"install.restore_outcome.rolled_back","rollback_failed":"install.restore_outcome.rollback_failed"});
   var RADIO_STATE = Object.freeze({"off":"install.radio_state.off","starting":"install.radio_state.starting","healthy":"install.radio_state.healthy","degraded_unjoined":"install.radio_state.degraded_unjoined","degraded_high_cpu":"install.radio_state.degraded_high_cpu","runaway":"install.radio_state.runaway","contained":"install.radio_state.contained","containment_failed":"install.radio_state.containment_failed","unknown":"install.radio_state.unknown"});
   var CONFIG_IMPORT_STATUS = Object.freeze({"too-large":"install.config_import_status.too_large","timeout":"install.config_import_status.timeout","bad-bundle":"install.config_import_status.bad_bundle","wrong-kind-or-schema":"install.config_import_status.wrong_kind_or_schema","bad-expected-cfg":"install.config_import_status.bad_expected_cfg","rejected":"install.config_import_status.rejected","dry_run":"install.config_import_status.dry_run","no-op":"install.config_import_status.no_op","stale-preview":"install.config_import_status.stale_preview","error":"install.config_import_status.error","database-compatibility-refused":"install.config_import_status.database_compatibility_refused","applied":"install.config_import_status.applied","partial":"install.config_import_status.partial","restored":"install.config_import_status.restored"});
-  var COMPONENT_LABEL = Object.freeze({paneld:'Panel Assistant',companion:'HA Companion',webview:'System WebView',apk:'APK'});
+  var COMPONENT_LABEL = Object.freeze({paneld:'Panel Assistant',companion:'Home Assistant Companion',webview:'System WebView',apk:'APK'});
   var POWER_PRESENTATION_STATE = Object.freeze({'status-power-at-risk':'at_risk','status-power-caution':'caution','status-power-unknown':'unknown'});
   function closedToken(table, value) {
     var raw = String(value == null ? '' : value), key = table[raw];
@@ -376,10 +376,10 @@
   // internal_url, then force-stop + relaunch the Companion.
   window.repairCompUrl = function (btn) {
     btn.disabled = true; var s = document.getElementById('cu-fix');
-    if (s) s.textContent = t('install.progress.companion_repairing', 'Repairing + relaunching the Companion…');
+    if (s) s.textContent = t('install.progress.companion_repairing', 'Repairing + relaunching Home Assistant Companion…');
     approved('companion.repair_url', {}, function (text) { if (s) s.textContent = text; }).then(function (d) {
       if (d.status === 'busy') { if (s) s.textContent = t('install.progress.operation_busy', 'Another operation is running — try again shortly.'); btn.disabled = false; return; }
-      if (s) setPresented(s, d.presentation, t('install.progress.companion_repair_started', 'Repair started — the Companion will relaunch; refresh this page in a few seconds to confirm.'));
+      if (s) setPresented(s, d.presentation, t('install.progress.companion_repair_started', 'Repair started — Home Assistant Companion will relaunch; refresh this page in a few seconds to confirm.'));
     }).catch(function (error) { if (s) s.textContent = requestFailure(error, t('install.progress.companion_repair_failed', 'Failed to start — check root.')); btn.disabled = false; });
   };
 
@@ -638,7 +638,7 @@
   };
 
   function pollApk() {
-    watchInstall(function () { apkMsg(t('install.apk.dynamic.installing', 'Installing…')); }, function (d) {
+    watchInstall(function (d) { apkMsg(presentation(d.presentation, t('install.apk.dynamic.installing', 'Installing…')).text); }, function (d) {
       var node = document.getElementById('apk-msg');
       if (node) { renderPresentedEvidence(node, d.presentation, d.message || 'done', 'install.apk.dynamic.result_label', 'Result:'); scheduleInstallColumnAlignment(); }
     }, function () { apkMsg(t('install.apk.dynamic.lost_contact', 'Lost contact.')); }, 50000);
@@ -703,7 +703,21 @@
     });
     scheduleInstallColumnAlignment();
   }
-  var rsFile = null;
+  var rsSelection = null, rsPreview = null;
+  function invalidateRestorePreview() {
+    rsSelection = null; rsPreview = null;
+    var prev = document.getElementById('rs-preview');
+    if (prev) prev.textContent = '';
+    scheduleInstallColumnAlignment();
+  }
+  var restorePassphrase = document.getElementById('rs-pw');
+  if (restorePassphrase) {
+    var passphraseChanged = function () {
+      if (rsSelection && restorePassphrase.value !== rsSelection.passphrase) invalidateRestorePreview();
+    };
+    restorePassphrase.addEventListener('input', passphraseChanged);
+    restorePassphrase.addEventListener('change', passphraseChanged);
+  }
 
   window.doBackup = function (btn) {
     var pw = (document.getElementById('bk-pw') || {}).value || '';
@@ -721,7 +735,9 @@
         var d = approvalAwareJson(r);
         if (r.outcome === 'applied' && r.result instanceof Blob) return r.result;
         if (r.outcome === 'applied') throw new Error(d.message || d.error || t('install.backup.dynamic.accepted_without_archive', 'Backup was accepted without an archive.'));
-        throw new Error(d.message || d.error || t('install.backup.dynamic.request_failed', 'request failed'));
+        var failure = new Error(d.message || d.error || t('install.backup.dynamic.request_failed', 'request failed'));
+        failure.presentation = d.presentation;
+        throw failure;
       }).then(function (b) {
         var a = document.createElement('a'), url = URL.createObjectURL(b);
         var switcher = document.getElementById('pswitch'), panelName = switcher && switcher.dataset && switcher.dataset.selfName;
@@ -733,7 +749,11 @@
         bkMsg(pw ? t('install.backup.dynamic.downloaded_encrypted', 'Backup downloaded (encrypted) — keep the passphrase.') : t('install.backup.dynamic.downloaded_plain', 'Backup downloaded (unencrypted ZIP).')); btn.disabled = false;
       }).catch(function (e) {
         if (e && e.approvalRequired) bkMsg(e.message);
-        else { renderFailure(document.getElementById('bk-msg'), 'install.backup.dynamic.backup_failed_prefix', 'Backup failed:', e && e.message); scheduleInstallColumnAlignment(); }
+        else {
+          if (e && e.presentation) renderPresentedEvidence(document.getElementById('bk-msg'), e.presentation, e.message, 'install.backup.dynamic.backup_failed_prefix', 'Backup failed:');
+          else renderFailure(document.getElementById('bk-msg'), 'install.backup.dynamic.backup_failed_prefix', 'Backup failed:', e && e.message);
+          scheduleInstallColumnAlignment();
+        }
         btn.disabled = false;
       });
   };
@@ -768,37 +788,44 @@
   // Pick a bundle → preview (dry run, non-destructive) → offer a Confirm restore. Passphrase only needed
   // for an encrypted bundle (the server says so if it is one and the field is blank).
   window.restorePick = function (input) {
-    rsFile = input.files && input.files[0]; if (!rsFile) return;
-    var pw = (document.getElementById('rs-pw') || {}).value || '';
+    invalidateRestorePreview();
+    var file = input.files && input.files[0]; if (!file) return;
+    var selection = Object.freeze({ file: file, passphrase: (document.getElementById('rs-pw') || {}).value || '' });
+    rsSelection = selection;
     var prev = document.getElementById('rs-preview');
     if (prev) { prev.innerHTML = '<p class="note">' + esc(t('install.backup.dynamic.restore_reading', 'Reading preview…')) + '</p>'; scheduleInstallColumnAlignment(); }
-    api('restore', { dry_run: 1, passphrase: pw, blob: rsFile }).then(function (d) {
-        if (!prev) return;
+    api('restore', { dry_run: 1, passphrase: selection.passphrase, blob: selection.file }).then(function (d) {
+        if (rsSelection !== selection || !prev) return;
         if (!d.ok) { var refusedFallback = d.error || t('install.backup.dynamic.restore_unreadable', 'could not read bundle'); prev.textContent = ''; var refusedNode = document.createElement('p'); refusedNode.className = 'note'; setPresented(refusedNode, d.presentation, refusedFallback); prev.appendChild(refusedNode); scheduleInstallColumnAlignment(); return; }
         var comp = d.companion_files ? pluralText('install.backup.preview_files.one', 'install.backup.preview_files.other', d.companion_files, '{package} ({count} file)', '{package} ({count} files)', { package: d.companion_pkg, count: String(d.companion_files) }) : t('install.backup.dynamic.preview_none', 'none');
         prev.innerHTML = '<table class="dt"><tr><th>' + esc(t('install.backup.dynamic.preview_panel', 'Panel')) + '</th><td>' + esc(d.panel_id) + '</td></tr>' +
           '<tr><th>' + esc(t('install.backup.dynamic.preview_config_keys', 'Config keys')) + '</th><td>' + esc(d.config_keys) + '</td></tr>' +
-          '<tr><th>' + esc(t('install.backup.dynamic.preview_companion', 'Companion login')) + '</th><td>' + esc(comp) + '</td></tr></table>' +
+          '<tr><th>' + esc(t('install.backup.dynamic.preview_companion', 'Home Assistant Companion login')) + '</th><td>' + esc(comp) + '</td></tr></table>' +
           // Only when the bundle marked itself incomplete. A healthy backup says nothing here, so the
           // warning cannot become background furniture the owner stops reading.
           (d.state_unavailable ? '<p class="note">⚠ ' + esc(t('install.backup.dynamic.preview_state_unavailable', 'This backup carries no panel state: the panel it came from could not read its own database. Restoring it will not bring panel state back.')) + '</p>' : '') +
           (d.config_warnings || []).map(function (warning) { return '<p class="note">⚠ ' + esc(warning) + '</p>'; }).join('') +
           '<button class="pbtn"' + hardenedApprovalA11yAttrs + ' style="margin-top:8px" onclick="restoreConfirm(this)">⚠ ' + esc(t('install.backup.dynamic.restore_now', 'Restore this bundle now')) + '</button>';
+        rsPreview = selection;
         scheduleInstallColumnAlignment();
       }).catch(function () {
+        if (rsSelection !== selection) return;
         if (prev) prev.innerHTML = '<p class="note">' + esc(t('install.backup.dynamic.preview_failed', 'Preview failed.')) + '</p>';
         scheduleInstallColumnAlignment();
       });
   };
 
   window.restoreConfirm = function (btn) {
-    if (!rsFile) return;
-    if (!confirm(t('install.backup.dynamic.restore_confirm', 'Restore overwrites this panel\'s config and Companion login. Continue?'))) return;
+    var selection = rsPreview;
+    if (!selection || selection !== rsSelection || !btn || btn.parentNode !== document.getElementById('rs-preview')) return;
+    var input = document.getElementById('rs-file');
     var pw = (document.getElementById('rs-pw') || {}).value || '';
+    if (!input || input.files[0] !== selection.file || pw !== selection.passphrase) { invalidateRestorePreview(); return; }
+    if (!confirm(t('install.backup.dynamic.restore_confirm', 'Restore overwrites this panel\'s config and Home Assistant Companion login. Continue?'))) return;
     btn.disabled = true; bkMsg(t('install.backup.dynamic.restoring', 'Restoring…'));
-    approved('restore', { passphrase: pw, blob: rsFile }, bkMsg).then(function (d) {
+    approved('restore', { passphrase: selection.passphrase, blob: selection.file }, bkMsg).then(function (d) {
         if (d.status === 'busy') { bkMsg(t('install.progress.operation_busy', 'Another operation is running — try again shortly.')); btn.disabled = false; return; }
-        if (d.status !== 'started') { bkMsg(t('install.progress.could_not_start', 'Could not start: {status}', { status: closedToken(COMPONENT_STATUS, d.status || 'error') })); btn.disabled = false; return; }
+        if (d.status !== 'started') { setPresented(document.getElementById('bk-msg'), d.presentation, t('install.progress.could_not_start', 'Could not start: {status}', { status: closedToken(COMPONENT_STATUS, d.status || 'error') })); scheduleInstallColumnAlignment(); btn.disabled = false; return; }
         pollRestore();
       }).catch(function (error) { bkMsg(requestFailure(error, t('install.backup.dynamic.restore_start_failed', 'Restore failed to start.'))); btn.disabled = false; });
   };
@@ -865,7 +892,7 @@
     // Compare resolved URLs, not pathnames: behind Panel Assistant's proxy the base is not the origin root.
     var path, tame = 'tame', density = 'display.density';
     try {
-      path = new URL(form.action, document.baseURI).pathname;
+      path = new URL(form.getAttribute('action'), document.baseURI).pathname;
       path = /\/tame$/.test(path) ? tame : /\/display\/density$/.test(path) ? density : null;
     } catch (_) { return; }
     if (!path) return;
@@ -892,7 +919,8 @@
       var target = installCardHref(path === tame ? '#cfg-tame' : '#cfg-display');
       setTimeout(function () { location.href = target; }, path === tame ? 1800 : 900);
     }).catch(function (error) {
-      note.textContent = error && error.message ? error.message : t('install.backup.dynamic.form_failed', 'Could not apply this change.');
+      if (error && error.approvalRequired) note.textContent = error.message;
+      else renderFailure(note, 'install.backup.dynamic.form_failed', 'Could not apply this change.', error && error.message ? error.message : error);
       if (submitter && submitter.id === 'tame-package-submit' && typeof updateTamePackageSubmit === 'function') {
         updateTamePackageSubmit();
       } else if (submitter) submitter.disabled = false;

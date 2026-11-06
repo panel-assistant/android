@@ -47,6 +47,9 @@ import io.panelassistant.android.panelassistant.PanelAssistantCommand
 import io.panelassistant.android.panelassistant.PanelAssistantValueKind
 import io.panelassistant.android.panelassistant.decode
 import io.panelassistant.android.panelassistant.PanelAssistantCommandResult
+import io.panelassistant.android.platform.Daemon
+import io.panelassistant.android.platform.HelperRelayClass
+import io.panelassistant.android.platform.HelperGpioState
 import io.panelassistant.android.platform.RootShell
 import io.panelassistant.android.setAutoSleep
 import io.panelassistant.android.state.SoftwareTarget
@@ -194,6 +197,8 @@ internal abstract class PanelRuntimeRig {
         manageTable: io.panelassistant.android.ManageTable = io.panelassistant.android.ManageTable(),
         manageFamilies: Map<String, io.panelassistant.android.ManageFamily> = io.panelassistant.android.ManageFamilies.DEFAULT,
         approvalPollMs: Long = 1_000,
+        /** Where the dispatcher writes its command outcome lines. */
+        commandLog: io.panelassistant.android.CommandLog = io.panelassistant.android.CommandLog.Android,
         /** Whether the reboot takes the panel down: the helper's REBOOT AWAIT ends without an answer, as on a
          *  panel going down. Otherwise it falls to root, which a JVM cannot reboot. */
         rebootSucceeds: Boolean = true,
@@ -209,10 +214,12 @@ internal abstract class PanelRuntimeRig {
         screenOffTimeout: io.panelassistant.android.control.ScreenTimeoutController? = null,
         brightnessSetting: io.panelassistant.android.control.BrightnessSetting? = null,
         /** The screen-off route a profile declares, the backlight the screen controller reads (a test
-         *  moves its level as a vendor brightness writer would) and the root shell it powers it through. */
+         *  moves its level as a vendor brightness writer would), the root shell it powers it through when
+         *  no helper answers, and the root helper that reads and powers it. */
         screenOff: ScreenOff = ScreenOff.BRIGHTNESS_ZERO,
         screenBacklight: FakeBacklight = FakeBacklight(160),
         screenRoot: RootShell = FakeRootShell(),
+        screenDaemon: io.panelassistant.android.platform.Daemon = FakeDaemon(),
         /** Boot-chime hardware; null keeps the inert controller. When given, the controller persists its
          *  setting in this rig's Config, as production does. */
         bootChimeHardware: BootChimeHardware? = null,
@@ -270,13 +277,14 @@ internal abstract class PanelRuntimeRig {
         val relay = RelayController(
             fakeProfile(relayBase = RELAY_BASE, buttonLedGpioBase = LED_GPIO_BASE),
             sysfs,
+            sysfs.observations(),
         )
         val brightness = if (brightnessSetting != null) {
-            BrightnessController(context, FakeRootShell(), FakeDaemon(), setting = brightnessSetting)
-        } else screenOffTimeout?.let { BrightnessController(context, FakeRootShell(), FakeDaemon(), screenTimeout = it) }
-            ?: BrightnessController(context, FakeRootShell(), FakeDaemon())
+            BrightnessController(context, FakeDaemon(), setting = brightnessSetting)
+        } else screenOffTimeout?.let { BrightnessController(context, FakeDaemon(), screenTimeout = it) }
+            ?: BrightnessController(context, FakeDaemon())
         val screen = ScreenController(
-            if (brightnessSetting != null) brightness else screenBacklight, FakeScreenPower(), screenRoot, FakeDaemon(), FakeWakeTap(),
+            if (brightnessSetting != null) brightness else screenBacklight, FakeScreenPower(), screenRoot, screenDaemon, FakeWakeTap(),
             screenOff, nap = {}, accessibility = io.panelassistant.android.control.FakeDreamAccessibility(false),
         )
         val companion = "io.homeassistant.companion.android.minimal"
@@ -425,6 +433,7 @@ internal abstract class PanelRuntimeRig {
             manageTable = manageTable,
             manageFamilies = manageFamilies,
             approvalPollMs = approvalPollMs,
+            commandLog = commandLog,
         )
         return Rig(
             tmp, config, sysfs, core, commands, storage, storageReads, updateSources, autoSleepConfigChanges,
@@ -501,6 +510,17 @@ internal abstract class PanelRuntimeRig {
 
         fun blockNextWrite(path: String) {
             blockPath = path
+        }
+
+        fun observations(): Daemon = object : Daemon by FakeDaemon() {
+            override fun relayCount(relayClass: HelperRelayClass) = if (relayClass.sysfsBase == RELAY_BASE) 2 else 0
+            private fun value(path: String): Boolean? = if (path == unreadable) null else when (nodes[path]) {
+                "1" -> true
+                "0" -> false
+                else -> null
+            }
+            override fun relayRead(relayClass: HelperRelayClass, relay: Int) = value("${relayClass.sysfsBase}/relay$relay")
+            override fun gpioRead(pin: Int, timeoutMs: Long) = HelperGpioState(value("/sys/class/gpio/gpio$pin/value"), null)
         }
 
         override fun available() = true

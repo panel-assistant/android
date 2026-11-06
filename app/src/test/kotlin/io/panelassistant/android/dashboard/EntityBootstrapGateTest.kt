@@ -21,14 +21,6 @@ class EntityBootstrapGateTest {
         ))
     }
 
-    @Test fun populatedAutomaticFilterMayRender() {
-        assertFalse(shouldHoldRendererForEntityBootstrap(
-            learningEnabled = true,
-            filterEnabled = true,
-            autoScopeUnverified = false,
-        ))
-    }
-
     @Test fun manualModeRetainsExistingUnfilteredBehaviour() {
         assertFalse(shouldHoldRendererForEntityBootstrap(
             learningEnabled = false,

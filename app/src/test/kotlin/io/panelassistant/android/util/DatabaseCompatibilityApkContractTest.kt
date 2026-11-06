@@ -37,12 +37,16 @@ class DatabaseCompatibilityApkContractTest {
             ),
         )
         // Source-text reason: the merged manifest is the shipped APK metadata contract the installer reads.
-        val merged = TestSources.appFile(
-            "build/intermediates/merged_manifests/debug/processDebugManifest/AndroidManifest.xml",
-        ).readText()
+        val merged = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }.newDocumentBuilder()
+            .parse(TestSources.appFile("build/intermediates/merged_manifests/debug/processDebugManifest/AndroidManifest.xml"))
+        val android = "http://schemas.android.com/apk/res/android"
+        val nodes = merged.getElementsByTagName("meta-data")
+        val values = (0 until nodes.length).map { nodes.item(it) as Element }
+            .filter { (it.parentNode as? Element)?.tagName == "application" }
+            .filter { it.getAttributeNS(android, "name") == DatabaseCompatibilityApkContract.METADATA_NAME }
+            .map { it.getAttributeNS(android, "value") }
 
-        assertTrue(merged.contains("android:name=\"${DatabaseCompatibilityApkContract.METADATA_NAME}\""))
-        assertTrue(merged.contains("android:value=\"$expected\""))
+        assertEquals("the application must carry exactly one database compatibility contract", listOf(expected), values)
     }
 
     @Test fun mergedManifestAlsoCarriesBothContractsUnderTheNamesThePreviousInstallerReads() {

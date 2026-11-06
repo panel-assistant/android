@@ -47,7 +47,7 @@ browserTest('Auto-sleep requires an assigned Area before OFF can be switched ON'
   assert.equal(await toggle.getAttribute('aria-checked'), 'false');
 
   firstPrerequisite.resolve(json({ eligible: false, phase: 'unassigned', area_name: null }));
-  await page.getByText('Assign this panel to a Home Assistant Area before enabling Auto sleep.').waitFor();
+  await page.getByText('Assign this panel to a Home Assistant Area before enabling Auto-sleep.').waitFor();
   assert.equal(await toggle.getAttribute('aria-disabled'), 'true');
   assert.match(await page.locator('#cfg-auto_sleep').innerText(), /Turn the screen off when nobody is around/);
   assert.doesNotMatch(await page.locator('[data-config-group="Auto-sleep"] h2').innerText(), /Android\/app behaviour/);
@@ -1368,7 +1368,7 @@ browserTest('Auto-sleep Area refresh retains A until B is complete and converges
   await page.locator('#cfg-friendly_name input').fill('Uncommitted panel name');
   areaName = null;
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
-  await page.getByText('Assign this panel to a Home Assistant Area before enabling Auto sleep.').waitFor();
+  await page.getByText('Assign this panel to a Home Assistant Area before enabling Auto-sleep.').waitFor();
   const toggle = page.locator('#cfg-auto_sleep [role=switch]');
   assert.equal(await toggle.getAttribute('aria-checked'), 'false');
   assert.equal(await toggle.getAttribute('aria-disabled'), 'true');

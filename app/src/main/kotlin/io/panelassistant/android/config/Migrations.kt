@@ -97,10 +97,15 @@ object Migrations {
                 values.putIfAbsent(SettingsRegistry.ADDRESS_FAMILY_KEY, it)
             }
         },
-        // Schema 16 turns Home Assistant navigation hiding off for new panels; Config.migrateLiveStore keeps it
-        // on for an existing panel that never chose. A bundle needs nothing: exports and revisions carry every
-        // setting's effective value, and a hand-written partial bundle leaves an absent setting as it is.
+        // Schema 16 changed the fresh-install default only; schema 17 supersedes its live-store policy.
         Migration { },
+        // Old backups and profiles must not restore the former default as a new owner choice.
+        // An omitted key in a partial import still means leave the target's current choice alone.
+        Migration { values ->
+            if (values.containsKey(SettingsRegistry.NATIVE_KIOSK_KEY)) {
+                values[SettingsRegistry.NATIVE_KIOSK_KEY] = "false"
+            }
+        },
     )
 
     /**
