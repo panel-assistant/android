@@ -22,6 +22,7 @@
 #define LIVE_LINK "/tmp/.hapaneld-helper-live-test.link"
 #define OWNER "/tmp/.hapaneld-guard-db-test/.owner.lock"
 #define BOOT "/tmp/.hapaneld-guard-db-test.boot-id"
+#define REPLACEMENT "/tmp/.hapaneld-guard-db-test/replacement.v1"
 #define NONCE "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
 #define NEW_BUILD "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
 
@@ -119,7 +120,72 @@ static void issue_retire(char sha[65]) {
         fail("retire receipt");
 }
 
+/* A boot-owned helper may have an unrelated, stale file at LIVE. Retirement must refuse before
+ * writing a fence or exiting: its supervisor cannot grant a lease for that other executable. */
+static int foreign_live_retirement(void) {
+    unlink(REPLACEMENT);
+    guard_test_reset();
+    unlink(BOOT);
+    int boot = open(BOOT, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+    static const char boot_id[] = "123e4567-e89b-12d3-a456-426614174000";
+    if (boot < 0) fail("refusal boot open");
+    write_all(boot, boot_id, sizeof boot_id - 1);
+    if (fsync(boot) != 0 || close(boot) != 0) fail("refusal boot sync");
+    char executable[4096];
+    ssize_t length = readlink("/proc/self/exe", executable, sizeof executable - 1);
+    if (length <= 0 || (size_t)length >= sizeof executable - 1) fail("refusal executable");
+    executable[length] = '\0';
+    copy_file(executable, LIVE);
+    int staged = open(STAGE, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0700);
+    static const char candidate[] = "distinct-staged-helper";
+    if (staged < 0) fail("refusal stage open");
+    write_all(staged, candidate, sizeof candidate - 1);
+    if (fchmod(staged, 0700) || fsync(staged) || close(staged)) fail("refusal stage sync");
+    char sha[65], live_sha[65], after_sha[65];
+    file_sha(STAGE, sha);
+    file_sha(LIVE, live_sha);
+    if (guard_test_reconcile() != 0) fail("refusal guard init");
+    guard_maintenance_set_supervisor_owner();
+    guard_test_set_supervised(1);
+    int pair[2];
+    if (socketpair(AF_UNIX, SOCK_STREAM, 0, pair) != 0) fail("refusal socketpair");
+    pid_t child = fork();
+    if (child < 0) fail("refusal fork");
+    if (child == 0) {
+        close(pair[1]);
+        char line[512];
+        snprintf(line, sizeof line, "GUARDRETIRE APP %s %s %s", NONCE, sha, NEW_BUILD);
+        conn_ctx ctx = { .fd = pair[0], .caller = HELPER_CALLER_ROOT };
+        dispatch(&ctx, line);
+        _exit(0);
+    }
+    close(pair[0]);
+    char response[256] = {0};
+    ssize_t used = read(pair[1], response, sizeof response - 1);
+    close(pair[1]);
+    int status = 0;
+    int waited = waitpid(child, &status, 0) == child;
+    int held = used > 0 && waited && WIFEXITED(status) && WEXITSTATUS(status) == 0 &&
+        strcmp(response, "ERR HOLD topology\n") == 0 && access(REPLACEMENT, F_OK) != 0;
+    file_sha(LIVE, after_sha);
+    held = held && strcmp(live_sha, after_sha) == 0;
+    file_sha(STAGE, after_sha);
+    held = held && strcmp(sha, after_sha) == 0;
+    if (!held) {
+        printf("FAIL: foreign serving inode refuses retirement before publication (got %s)\n", response);
+        unlink(REPLACEMENT);
+        guard_test_reset();
+        return 1;
+    }
+    require_caps("OK GUARDCAPS 1 PREPARE DEFINE STREAM ACTION HEALTH REFUSAL STATUS EVIDENCE CANCEL RETIRE JOURNAL SUPERVISED TERMINAL_RETIRE\n",
+                 "foreign live refusal retains service");
+    guard_test_reset();
+    puts("foreign live retirement refusal passed");
+    return 0;
+}
+
 static int coordinator(const char *old_binary, const char *new_binary) {
+    if (foreign_live_retirement() != 0) return 1;
     guard_test_reset();
     unlink(BOOT);
     int boot = open(BOOT, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
@@ -193,6 +259,7 @@ static int new_role(const char *nonce) {
 }
 
 int main(int argc, char **argv) {
+    if (argc == 1) return foreign_live_retirement();
     if (argc == 3 && strcmp(argv[1], "--fixture-stage") == 0) return stage_role(argv[2]);
     if (argc == 3 && strcmp(argv[1], "--fixture-new") == 0) return new_role(argv[2]);
     if (argc == 2 && strcmp(argv[1], "--fixture-old") == 0) return old_role();

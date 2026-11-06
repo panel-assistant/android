@@ -5460,6 +5460,11 @@ static void cmd_guardretire_app(conn_ctx *ctx, const char *args) {
         &replacement.new_dev, &replacement.new_ino) == 0 &&
         strcmp(replacement.new_sha, tokens[2]) == 0 &&
         strcmp(replacement.old_sha, replacement.new_sha) != 0;
+    const char *refusal = "replacement";
+    if (valid && replacement_old_caller_exact(&replacement) != 0) {
+        valid = 0;
+        refusal = "topology";
+    }
     if (valid) valid = seal_app_helper_stage_at(parent, replacement.new_bytes,
         replacement.new_sha, replacement.new_dev, replacement.new_ino) == 0;
     if (parent >= 0) close(parent);
@@ -5470,7 +5475,7 @@ static void cmd_guardretire_app(conn_ctx *ctx, const char *args) {
         (void)release_helper_transaction_lock(&transaction_lock);
         pthread_mutex_unlock(&package_gate);
         error_reply(ctx, published == GUARD_PUBLISH_INDETERMINATE ? "INDETERMINATE" : "HOLD",
-                    "replacement");
+                    refusal);
         return;
     }
     (void)release_helper_transaction_lock(&transaction_lock);
