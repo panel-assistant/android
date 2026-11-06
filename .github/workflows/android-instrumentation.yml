@@ -105,6 +105,24 @@ jobs:
             bash -euo pipefail -c '
             adb install app/build/outputs/apk/debug/app-debug.apk;
             adb install app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk;
+            avd_adb() {
+            local qemu; qemu="$(timeout 10 adb -s "$ANDROID_SERIAL" shell getprop ro.kernel.qemu | tr -d "\r")" || return $?; test "$qemu" = 1 || return 1;
+            timeout 20 adb -s "$ANDROID_SERIAL" "$@";
+            };
+            launcher_anr_preflight() {
+            local label="$1" windows anrs;
+            [[ "$ANDROID_SERIAL" =~ ^emulator-[0-9]+$ ]] || return 1;
+            windows="$(avd_adb shell dumpsys window windows)"; test -n "$windows"; printf "%s\n" "$windows" > "$RUNNER_TEMP/$label-windows-before.txt";
+            anrs="$(printf "%s\n" "$windows" | grep -E "^  Window #[0-9]+ .*Application Not Responding:" || true)";
+            if [ -n "$anrs" ]; then
+            test "$(printf "%s\n" "$anrs" | wc -l)" -eq 1;
+            printf "%s\n" "$anrs" | grep -Eq "^  Window #[0-9]+ Window\\{[0-9a-f]+ u0 Application Not Responding: com\\.android\\.launcher3\\}:$";
+            avd_adb shell am force-stop --user 0 com.android.launcher3;
+            windows="$(avd_adb shell dumpsys window windows)"; test -n "$windows"; printf "%s\n" "$windows" > "$RUNNER_TEMP/$label-windows-after.txt";
+            if printf "%s\n" "$windows" | grep -Eq "^  Window #[0-9]+ .*Application Not Responding:"; then return 1; fi;
+            fi;
+            };
+            launcher_anr_preflight before-core;
             log="$RUNNER_TEMP/core-instrumentation.log";
             status=0;
             adb logcat -c;
@@ -127,6 +145,7 @@ jobs:
             if grep -Eq "FAILURES!!!|Process crashed|INSTRUMENTATION_FAILED|shortMsg=|No tests found" "$log"; then exit 1; fi;
             grep -Eq "^OK \\(1 test\\)[[:space:]]*$" "$log";
             };
+            launcher_anr_preflight before-overlay;
             test "$(adb shell getprop ro.kernel.qemu | tr -d "\r")" = 1;
             adb shell am force-stop io.panelassistant.android;
             adb shell am force-stop io.panelassistant.android.test;
