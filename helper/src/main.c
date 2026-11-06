@@ -587,6 +587,13 @@ static int run_supervisor_entry(char **argv) {
 }
 
 int main(int argc, char **argv) {
+    if (argc >= 2 && strcmp(argv[1], "--reconcile-stale-replacement") == 0) {
+        int result = argc == 2 && geteuid() == 0
+            ? guard_maintenance_reconcile_stale_replacement() : -1;
+        puts(result == 1 ? "STALE_REPLACEMENT RECONCILED" :
+             result == 0 ? "STALE_REPLACEMENT NONE" : "STALE_REPLACEMENT HOLD");
+        return result < 0 ? 3 : 0;
+    }
     if (argc == 2 && strcmp(argv[1], "--adb-recovery") == 0) return adb_recovery_main();
     if (argc == 2 && strcmp(argv[1], "--version") == 0) {
         puts(helper_identity());

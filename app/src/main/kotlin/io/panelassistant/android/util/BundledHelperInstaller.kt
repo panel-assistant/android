@@ -71,25 +71,6 @@ internal object BundledHelperInstaller {
         }
         val stagedBuildId = BuildConfig.HELPER_BUILD_ID
             .takeIf(GuardDbMaintenanceProtocol::validSha256) ?: return Result.FAILED
-        val statusProbe = GuardDbMaintenance.client.statusProbe()
-        val replacementMode = bundledHelperReplacementMode(statusProbe) ?: return Result.BLOCKED_ACTIVE
-        val incumbentBuildId = if (replacementMode == BundledHelperReplacementMode.FRESH_INSTALL) {
-            null
-        } else {
-            HelperClient.installedBuildId()?.takeIf { it != stagedBuildId } ?: return Result.FAILED
-        }
-        // GUARDSELF binds /proc/self/exe to the app-owned live inode. A boot helper may expose
-        // Guard while an unrelated /data/local copy exists; only the serving app-owned copy may retire.
-        val incumbentIdentity = if (replacementMode == BundledHelperReplacementMode.GUARDED_RETIRE) {
-            GuardDbMaintenance.client.selfIdentity()
-        } else null
-        val priorRecordReply = Su.runOutputLong(
-            bundledLegacyTakeoverRecordReadCommand(),
-            INSTALL_TIMEOUT_MS,
-        )
-        val priorRecord = priorRecordReply?.let {
-            parseBundledLegacyTakeoverRecord(it) ?: return Result.FAILED
-        }
         val asset = helperAssetName(Build.SUPPORTED_ABIS.asIterable()) ?: return Result.SKIPPED
         // A journal the deleted installers left before this APK arrived can no longer stop its helper.
         val appInstalledAt = runCatching {
@@ -100,6 +81,23 @@ internal object BundledHelperInstaller {
         return try {
             context.assets.open(asset).use { input -> staged.outputStream().use(input::copyTo) }
             val expectedSha256 = AppInstaller.sha256(staged)
+            // Reacquire authority after native reconciliation. Staging still independently proves
+            // the replacement namespace empty before it can touch any candidate bytes.
+            val statusProbe = bundledHelperReplacementStatusAfterRecovery(staged, expectedSha256)
+                ?: return Result.FAILED
+            val replacementMode = bundledHelperReplacementMode(statusProbe) ?: return Result.BLOCKED_ACTIVE
+            val incumbentBuildId = if (replacementMode == BundledHelperReplacementMode.FRESH_INSTALL) {
+                null
+            } else {
+                HelperClient.installedBuildId()?.takeIf { it != stagedBuildId } ?: return Result.FAILED
+            }
+            val incumbentIdentity = if (replacementMode == BundledHelperReplacementMode.GUARDED_RETIRE) {
+                GuardDbMaintenance.client.selfIdentity()
+            } else null
+            val priorRecordReply = Su.runOutputLong(bundledLegacyTakeoverRecordReadCommand(), INSTALL_TIMEOUT_MS)
+            val priorRecord = priorRecordReply?.let {
+                parseBundledLegacyTakeoverRecord(it) ?: return Result.FAILED
+            }
             installBundledHelperReplacement(
                 replacementMode, stagedBuildId, incumbentBuildId, incumbentIdentity, priorRecord,
                 stage = {

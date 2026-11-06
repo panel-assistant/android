@@ -48,7 +48,7 @@ TEST_BINS := $(BUILD)/adb-recovery $(BUILD)/uninstall-supervisor $(BUILD)/unit $
 test:
 	$(MAKE) test-units
 
-test-units: $(BUILD)/adb-ensure-boundary $(BUILD)/gfxinfo-boundary $(BUILD)/gfxinfo-exec $(BUILD)/cdp-state-boundary $(BUILD)/sysfs-read-boundary $(BUILD)/adb-state-boundary $(BUILD)/adb-exec $(BUILD)/wifi-boundary $(BUILD)/wifi-exec $(BUILD)/zigbee-boundary $(BUILD)/zigbee-role-exec $(TEST_BINS)
+test-units: $(BUILD)/stale-replacement-cli $(BUILD)/adb-ensure-boundary $(BUILD)/gfxinfo-boundary $(BUILD)/gfxinfo-exec $(BUILD)/cdp-state-boundary $(BUILD)/sysfs-read-boundary $(BUILD)/adb-state-boundary $(BUILD)/adb-exec $(BUILD)/wifi-boundary $(BUILD)/wifi-exec $(BUILD)/zigbee-boundary $(BUILD)/zigbee-role-exec $(TEST_BINS)
 	$(MAKE) adb-recovery-retirement-test
 	$(MAKE) adb-recovery-replacement-test
 	$(BUILD)/adb-recovery
@@ -57,6 +57,7 @@ test-units: $(BUILD)/adb-ensure-boundary $(BUILD)/gfxinfo-boundary $(BUILD)/gfxi
 	test "$$($(BUILD)/hapaneld-helper --version)" = "HELPER version=1.15.0 proto=1.15"
 	$(BUILD)/companion-boundary
 	$(BUILD)/guard-maintenance-boundary
+	$(BUILD)/stale-replacement-cli
 	$(BUILD)/guard-maintenance-gates
 	$(BUILD)/replacement-lease-old $(BUILD)/replacement-lease-old $(BUILD)/replacement-lease-new
 	$(BUILD)/sysexec-fd-boundary
@@ -92,6 +93,14 @@ $(BUILD)/companion-boundary: $(CORE_SRCS) $(STUB) test/companion_boundary.c | $(
 $(BUILD)/guard-maintenance-boundary: $(CORE_SRCS) $(STUB) test/guard_boundary_harness.h test/guard_maintenance_boundary.c | $(BUILD)
 	$(CC) $(CFLAGS) -DHAPANELD_TEST -DHAPANELD_TEST_SKIP_SELF_BINDING -DHAPANELD_BUILD_ID='"$(TEST_BUILD_ID)"' -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) \
 		test/guard_maintenance_boundary.c $(LDLIBS) -o $@
+
+$(BUILD)/stale-replacement-boundary: $(CORE_SRCS) $(STUB) test/guard_boundary_harness.h test/guard_maintenance_boundary.c | $(BUILD)
+	$(CC) $(CFLAGS) -DHAPANELD_TEST -DHAPANELD_TEST_SKIP_SELF_BINDING -DHAPANELD_TEST_STALE_ONLY -DHAPANELD_BUILD_ID='"$(TEST_BUILD_ID)"' -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) \
+		test/guard_maintenance_boundary.c $(LDLIBS) -o $@
+
+$(BUILD)/stale-replacement-cli: $(CORE_SRCS) $(STUB) $(SRC_DIR)/main.c test/guard_boundary_harness.h test/stale_replacement_cli.c | $(BUILD)
+	$(CC) $(CFLAGS) -DHAPANELD_TEST -DHAPANELD_BUILD_ID='"$(TEST_BUILD_ID)"' -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) \
+		test/stale_replacement_cli.c $(LDLIBS) -o $@
 
 $(BUILD)/guard-maintenance-gates: $(CORE_SRCS) $(STUB) test/guard_boundary_harness.h test/guard_maintenance_gates.c | $(BUILD)
 	$(CC) $(CFLAGS) -DHAPANELD_TEST -DHAPANELD_TEST_SKIP_SELF_BINDING -DHAPANELD_BUILD_ID='"$(TEST_BUILD_ID)"' -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) \

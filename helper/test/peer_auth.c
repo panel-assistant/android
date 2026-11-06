@@ -54,6 +54,7 @@ int guard_maintenance_replacement_supervisor_adopt_app(const char nonce[65]) {
 int guard_maintenance_replacement_worker_commit_app(const char nonce[65]) {
     (void)nonce; return -1;
 }
+int guard_maintenance_reconcile_stale_replacement(void) { return -1; }
 int guard_maintenance_replacement_startup_reconcile_app(char nonce[65]) {
     (void)nonce; return 0;
 }

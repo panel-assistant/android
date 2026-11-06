@@ -563,6 +563,117 @@ static void begin_granted_replacement(char nonce[65]) {
         "cut fixture grants and exports owner lease\n");
 }
 
+static void stale_fixture(int granted) {
+    guard_test_drop_runtime();
+    (void)unlink(CUSTODY "/replacement.v1");
+    (void)unlink(CUSTODY "/.replacement.v1.tmp");
+    setup();
+    if (granted) {
+        char nonce[65];
+        begin_granted_replacement(nonce);
+        close(GUARD_REPLACEMENT_LEASE_FD);
+    } else begin_requested_replacement();
+    guard_test_drop_runtime();
+    static const char next_boot[] = "123e4567-e89b-12d3-a456-426614174001";
+    write_file_mode(BOOT_FILE, next_boot, sizeof next_boot - 1, 0600);
+}
+
+static void test_stale_replacement_refusal_matrix(void) {
+    for (int which = 0; which < 16; which++) {
+        stale_fixture(which & 1);
+        switch (which) {
+        case 0: {
+            static const char same_boot[] = "123e4567-e89b-12d3-a456-426614174000";
+            write_file_mode(BOOT_FILE, same_boot, sizeof same_boot - 1, 0600); break;
+        }
+        case 1: write_file_mode(BOOT_FILE, "invalid", 7, 0600); break;
+        case 2: write_file_mode(CUSTODY "/manifest.v1", "owned", 5, 0600); break;
+        case 3: write_file_mode(CUSTODY "/.replacement.v1.tmp", "owned", 5, 0600); break;
+        case 4: write_file_mode(HELPER_PREVIOUS, "owned", 5, 0700); break;
+        case 5: write_file_mode(HELPER_PREVIOUS ".tmp", "owned", 5, 0700); break;
+        case 6: write_file_mode(HELPER_LIVE, "bad-old-app-helper-binary",
+                               sizeof "bad-old-app-helper-binary" - 1, 0700); break;
+        case 7: write_file_mode(HELPER_STAGE, "bad-new-app-helper-binary",
+                               sizeof "bad-new-app-helper-binary" - 1, 0700); break;
+        case 8: CHECK(chmod(HELPER_STAGE, 0600) == 0, "stale stage mode fixture\n"); break;
+        case 9: write_file_mode(CUSTODY "/replacement.v1", "invalid", 7, 0600); break;
+        case 10: CHECK(chmod(CUSTODY "/.owner.lock", 0644) == 0,
+                       "stale owner mode fixture\n"); break;
+        case 11: CHECK(unlink(HELPER_LIVE) == 0 && mkfifo(HELPER_LIVE, 0700) == 0,
+                       "stale live FIFO fixture\n"); break;
+        case 12: CHECK(unlink(HELPER_STAGE) == 0 && mkfifo(HELPER_STAGE, 0700) == 0,
+                       "stale stage FIFO fixture\n"); break;
+        case 13: write_shared_lock_pid(getpid()); break;
+        case 14: CHECK(link(HELPER_STAGE, HELPER_PREVIOUS) == 0,
+                       "stale hardlink fixture\n"); break;
+        case 15: CHECK(chmod(CUSTODY "/replacement.v1", 0644) == 0,
+                       "stale journal mode fixture\n"); break;
+        }
+        CHECK(guard_maintenance_reconcile_stale_replacement() < 0 &&
+              access(CUSTODY "/replacement.v1", F_OK) == 0,
+            "stale recovery holds unsafe or conflicting custody case=%d\n", which);
+        if (which == 10) {
+            struct stat owner;
+            CHECK(lstat(CUSTODY "/.owner.lock", &owner) == 0 &&
+                  (owner.st_mode & 0777) == 0644,
+                "stale recovery does not repair unsafe owner metadata\n");
+        }
+        if (which == 13) { unlink(SHARED_LOCK_PID); rmdir(SHARED_LOCK); }
+        unlink(HELPER_PREVIOUS ".tmp");
+    }
+    (void)unlink(CUSTODY "/replacement.v1");
+    (void)unlink(CUSTODY "/.replacement.v1.tmp");
+}
+
+static void test_stale_replacement_live_owner_and_postswap_hold(void) {
+    stale_fixture(0);
+    int owned = open(CUSTODY "/.owner.lock", O_RDWR | O_NOFOLLOW | O_CLOEXEC);
+    CHECK(owned >= 0 && flock(owned, LOCK_EX | LOCK_NB) == 0,
+        "stale external owner acquires custody\n");
+    CHECK(guard_maintenance_reconcile_stale_replacement() < 0 &&
+          access(CUSTODY "/replacement.v1", F_OK) == 0,
+        "stale recovery cannot retire a live owner's journal\n");
+    if (owned >= 0) close(owned);
+    for (int swapped = 0; swapped < 2; swapped++) {
+        guard_test_drop_runtime();
+        (void)unlink(CUSTODY "/replacement.v1");
+        setup();
+        char nonce[65];
+        begin_granted_replacement(nonce);
+        guard_test_set_fault(swapped ? GUARD_TEST_FAULT_REPLACEMENT_AFTER_SWAP :
+                                       GUARD_TEST_FAULT_REPLACEMENT_AFTER_BACKUP);
+        CHECK(guard_maintenance_replacement_stage_app(nonce) != 0,
+            "stale post-swap refusal fixture cut\n");
+        guard_test_set_fault(GUARD_TEST_FAULT_NONE);
+        close(GUARD_REPLACEMENT_LEASE_FD);
+        guard_test_drop_runtime();
+        static const char next_boot[] = "123e4567-e89b-12d3-a456-426614174001";
+        write_file_mode(BOOT_FILE, next_boot, sizeof next_boot - 1, 0600);
+        CHECK(guard_maintenance_reconcile_stale_replacement() < 0 &&
+              access(CUSTODY "/replacement.v1", F_OK) == 0 &&
+              access(HELPER_PREVIOUS, F_OK) == 0,
+            "stale recovery preserves backup-durable and swapped custody phase=%d\n", swapped);
+    }
+}
+
+static void test_stale_replacement_durability(void) {
+    const enum guard_test_fault cuts[] = { GUARD_TEST_FAULT_STALE_REPLACEMENT_UNLINK,
+                                          GUARD_TEST_FAULT_STALE_REPLACEMENT_DIR_SYNC };
+    for (size_t i = 0; i < sizeof cuts / sizeof cuts[0]; i++) {
+        stale_fixture(1);
+        guard_test_set_fault(cuts[i]);
+        CHECK(guard_maintenance_reconcile_stale_replacement() < 0,
+            "stale cleanup never reports success before durable journal retirement cut=%zu\n", i);
+        CHECK(file_equals(HELPER_LIVE, "cut-old-app-helper-binary", sizeof "cut-old-app-helper-binary" - 1) &&
+              file_equals(HELPER_STAGE, "cut-new-app-helper-binary", sizeof "cut-new-app-helper-binary" - 1),
+            "stale cleanup faults preserve both helper binaries\n");
+        guard_test_set_fault(GUARD_TEST_FAULT_NONE);
+        guard_test_drop_runtime();
+        CHECK(guard_maintenance_reconcile_stale_replacement() == (i == 0 ? 1 : 0),
+            "stale cleanup retries only exact remaining journal or exact empty namespace\n");
+    }
+}
+
 static void test_replacement_backup_cut_recovers_exact_old(void) {
     setup();
     char nonce[65];
@@ -2310,6 +2421,17 @@ static void test_root_drives_a_bound_plan(void) {
 int main(void) {
     exec_from_canonical_helper();
     signal(SIGPIPE, SIG_IGN);
+#ifdef HAPANELD_TEST_STALE_ONLY
+    if (1) {
+#else
+    if (getenv("GUARD_TEST_STALE_ONLY")) {
+#endif
+        test_stale_replacement_refusal_matrix();
+        test_stale_replacement_live_owner_and_postswap_hold();
+        test_stale_replacement_durability();
+        guard_test_reset();
+        return failures ? 1 : 0;
+    }
     if (getenv("GUARD_TEST_PLAN_ONLY")) {
         test_plan_stream_restart_roundtrip();
         return failures ? 1 : 0;
@@ -2327,6 +2449,9 @@ int main(void) {
     test_replacement_fence_and_same_lease_app_swap();
     test_replacement_export_refuses_foreign_fd3();
     test_replacement_adopt_closes_previous_owner_fd();
+    test_stale_replacement_refusal_matrix();
+    test_stale_replacement_live_owner_and_postswap_hold();
+    test_stale_replacement_durability();
     test_replacement_backup_cut_recovers_exact_old();
     test_replacement_build_mismatch_aborts_before_swap();
     test_replacement_swap_cut_resumes_exact_new();

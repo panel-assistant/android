@@ -5297,6 +5297,135 @@ static int previous_helper_bytes_exact(int parent, const guard_replacement *repl
         strcmp(sha, replacement->old_sha) == 0 ? 0 : -1;
 }
 
+/* This separate bootstrap is deliberately narrower than same-boot lease recovery. A reboot
+ * invalidates the lease, not the durable identity evidence. Only the untouched pre-swap pair
+ * can be aborted; every other Guard artifact or topology remains owned recovery state. */
+static int stale_replacement_namespace_exact(int dir) {
+    int fd = openat(dir, ".", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    DIR *stream = fd >= 0 ? fdopendir(fd) : NULL;
+    if (!stream) { if (fd >= 0) close(fd); return 0; }
+    int exact = 1;
+    unsigned entries = 0;
+    errno = 0;
+    for (struct dirent *entry = readdir(stream); entry; entry = readdir(stream)) {
+        if (++entries > 16 || (strcmp(entry->d_name, ".") != 0 &&
+            strcmp(entry->d_name, "..") != 0 &&
+            strcmp(entry->d_name, GUARD_OWNER_LOCK) != 0 &&
+            strcmp(entry->d_name, GUARD_REPLACEMENT) != 0)) { exact = 0; break; }
+        errno = 0;
+    }
+    if (errno != 0) exact = 0;
+    closedir(stream);
+    return exact;
+}
+
+static int stale_helper_identity_exact(int parent, const char *name,
+                                       uint64_t bytes, const char *sha,
+                                       uint64_t dev, uint64_t ino) {
+    int fd = openat(parent, name, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC);
+    struct stat before, after, named;
+    char actual[65];
+    int exact = fd >= 0 && fstat(fd, &before) == 0 && S_ISREG(before.st_mode) &&
+        before.st_uid == 0 && before.st_gid == 0 && before.st_nlink == 1 &&
+        (before.st_mode & 07777) == 0700 && bytes > 0 &&
+        bytes <= GUARD_REPLACEMENT_MAX_BINARY_BYTES && (uint64_t)before.st_size == bytes &&
+        (uint64_t)before.st_dev == dev && (uint64_t)before.st_ino == ino &&
+        hapaneld_sha256_fd(fd, bytes, actual) == 0 && strcmp(actual, sha) == 0 &&
+        fstat(fd, &after) == 0 && fstatat(parent, name, &named, AT_SYMLINK_NOFOLLOW) == 0 &&
+        stat_identity_unchanged_strict(&before, &after) &&
+        stat_identity_unchanged_strict(&before, &named);
+    if (fd >= 0) close(fd);
+    return exact;
+}
+
+static int stale_replacement_read(int dir, guard_replacement *replacement) {
+    int fd = openat(dir, GUARD_REPLACEMENT, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC);
+    struct stat before, after, named;
+    char bytes[GUARD_MAX_RECORD_BYTES];
+    int exact = fd >= 0 && fstat(fd, &before) == 0 && S_ISREG(before.st_mode) &&
+        before.st_uid == 0 && before.st_gid == 0 && before.st_nlink == 1 &&
+        (before.st_mode & 07777) == 0600 && before.st_size > 0 &&
+        before.st_size < (off_t)sizeof bytes;
+    size_t used = 0;
+    while (exact && used < (size_t)before.st_size) {
+        ssize_t count = read(fd, bytes + used, (size_t)before.st_size - used);
+        if (count < 0 && errno == EINTR) continue;
+        if (count <= 0) { exact = 0; break; }
+        used += (size_t)count;
+    }
+    bytes[used] = '\0';
+    exact = exact && fstat(fd, &after) == 0 &&
+        fstatat(dir, GUARD_REPLACEMENT, &named, AT_SYMLINK_NOFOLLOW) == 0 &&
+        stat_identity_unchanged_strict(&before, &after) &&
+        stat_identity_unchanged_strict(&before, &named) &&
+        deserialize_replacement(bytes, used, replacement) == 0;
+    if (fd >= 0) close(fd);
+    return exact;
+}
+
+static int stale_owner_metadata_safe(int dir) {
+    struct stat st;
+    if (fstatat(dir, GUARD_OWNER_LOCK, &st, AT_SYMLINK_NOFOLLOW) != 0)
+        return errno == ENOENT;
+    return S_ISREG(st.st_mode) && st.st_uid == 0 && st.st_gid == 0 &&
+        st.st_nlink == 1 && (st.st_mode & 07777) == 0600;
+}
+
+int guard_maintenance_reconcile_stale_replacement(void) {
+    if (geteuid() != 0) return -1;
+    helper_transaction_lock transaction;
+    if (acquire_helper_transaction_lock(&transaction) != HELPER_TRANSACTION_LOCK_ACQUIRED)
+        return -1;
+    pthread_mutex_lock(&guard_lock);
+    /* Do not chmod an unsafe existing namespace, block on a directory flock, or touch a
+     * live owner's lease. The fixed bootstrap holds transaction -> directory -> owner. */
+    int parent = open_app_helper_parent();
+    int dir = -1, result = -1;
+    struct stat directory, journal, journal_after;
+    if (parent < 0 || (mkdirat(parent, GUARD_DIR_NAME, 0700) != 0 && errno != EEXIST))
+        goto done;
+    dir = openat(parent, GUARD_DIR_NAME, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (dir < 0 || fstat(dir, &directory) != 0 || !S_ISDIR(directory.st_mode) ||
+        directory.st_uid != 0 || directory.st_gid != 0 ||
+        (directory.st_mode & 07777) != 0700 || flock(dir, LOCK_EX | LOCK_NB) != 0 ||
+        !stale_owner_metadata_safe(dir) || acquire_owner_lock(dir) != 0 ||
+        !retirement_owner_lock_exact(dir)) goto done;
+    int present = known_file_present(dir, GUARD_REPLACEMENT);
+    if (present == 0) {
+        if (empty_inventory_safe(dir)) result = 0;
+        goto done;
+    }
+    guard_replacement replacement;
+    char boot[65];
+    if (present != 1 || !stale_replacement_namespace_exact(dir) ||
+        fstatat(dir, GUARD_REPLACEMENT, &journal, AT_SYMLINK_NOFOLLOW) != 0 ||
+        !S_ISREG(journal.st_mode) || journal.st_uid != 0 || journal.st_gid != 0 ||
+        (journal.st_mode & 07777) != 0600 || journal.st_nlink != 1 ||
+        !stale_replacement_read(dir, &replacement) ||
+        current_boot_nonce(boot) != 0 || strcmp(boot, replacement.boot) == 0 ||
+        !((replacement.phase == GUARD_REPLACEMENT_REQUESTED && replacement.generation == 1) ||
+          (replacement.phase == GUARD_REPLACEMENT_GRANTED && replacement.generation == 2)) ||
+        known_file_present(parent, GUARD_APP_HELPER_PREVIOUS) != 0 ||
+        known_file_present(parent, GUARD_APP_HELPER_PREVIOUS_TMP) != 0 ||
+        !stale_helper_identity_exact(parent, GUARD_APP_HELPER_LIVE, replacement.old_bytes,
+            replacement.old_sha, replacement.old_dev, replacement.old_ino) ||
+        !stale_helper_identity_exact(parent, GUARD_APP_HELPER_STAGE, replacement.new_bytes,
+            replacement.new_sha, replacement.new_dev, replacement.new_ino) ||
+        fstatat(dir, GUARD_REPLACEMENT, &journal_after, AT_SYMLINK_NOFOLLOW) != 0 ||
+        !stat_identity_unchanged_strict(&journal, &journal_after) ||
+        !stale_replacement_namespace_exact(dir)) goto done;
+    if (!TEST_FAULT(GUARD_TEST_FAULT_STALE_REPLACEMENT_UNLINK) &&
+        unlinkat(dir, GUARD_REPLACEMENT, 0) == 0 &&
+        !TEST_FAULT(GUARD_TEST_FAULT_STALE_REPLACEMENT_DIR_SYNC) && fsync(dir) == 0)
+        result = 1;
+done:
+    if (dir >= 0) close(dir);
+    if (parent >= 0) close(parent);
+    pthread_mutex_unlock(&guard_lock);
+    if (release_helper_transaction_lock(&transaction) != 0) result = -1;
+    return result;
+}
+
 int guard_maintenance_replacement_startup_reconcile_app(char nonce[65]) {
     if (!nonce) return -1;
     nonce[0] = '\0';

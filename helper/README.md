@@ -291,3 +291,20 @@ The process scan is limited to8192 total directory entries, including non-PID en
 `GFXINFO SELF` derives the target package from the authenticated app identity table and executes only `/system/bin/dumpsys gfxinfo io.panelassistant.android`, without flags, under a two-second deadline and the fixed clean child environment. Root/operator and unauthenticated callers have no SELF package and receive `ERR`; caller packages, PIDs, reset/framestats flags, and extra arguments are rejected before capture. This intentionally runs one fixed platform command, with no shell or su fallback.
 
 The capture must finish successfully, fit within 128 KiB plus an overflow probe, contain no NUL, and end in a newline. Exactly one ordered complete primary `Stats since:`, `Total frames rendered:`, and `Janky frames:` summary is accepted. Separately named legacy-jank and unrelated lines are ignored; missing, duplicated, malformed, or multiple-process summaries and failure lines produce `ERR`. Exactly one positive-PID process header must identify the fixed package. Decimal counters reject signs, leading zeros, overflow, and trailing garbage; epoch supports the full unsigned 64-bit range, counts the unsigned 32-bit range, and janky cannot exceed total. The AOSP two-decimal percentage presentation is checked for shape and omitted from the reply; older zero-frame `nan` presentations are conservatively unavailable. The canonical newline-terminated frame is at most 128 bytes. These are cumulative counters; this operation does not reset HWUI state or report interval percentiles.
+
+
+`--reconcile-stale-replacement` is a fixed, root-only bootstrap command with no arguments.
+It returns exactly `STALE_REPLACEMENT RECONCILED`, `STALE_REPLACEMENT NONE`, or
+`STALE_REPLACEMENT HOLD`, followed by one newline; HOLD has nonzero exit status.
+It acquires the shared helper transaction lock and exclusive Guard directory/owner custody.
+Only a valid prior-boot REQUESTED/generation1 or GRANTED/generation2 journal with exact recorded
+root:root0700 single-link old live and new staged binary identities can be retired. The Guard
+namespace must contain only its owner lock and that journal; previous copies, temporary records,
+active owners, malformed state, current-boot records, and later phases remain HOLD.
+The command preserves both binaries, removes the journal last, and requires directory fsync before
+reporting reconciliation. It never promotes or launches either binary and does not change normal
+supervisor startup or same-boot lease recovery. An authenticated app bootstrap must run the exact
+bundled helper from a separate verified recovery slot, preserving the transaction's staged file,
+then recheck the ordinary install authority. File hashing is bounded to16MiB per recorded binary;
+callers must bound the bootstrap process lifetime. This is recovery of interrupted helper
+replacement, not authorization to discard Guard plans, settings, or database custody.
