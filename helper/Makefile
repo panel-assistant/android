@@ -52,7 +52,7 @@ test-units: $(TEST_BINS)
 	$(BUILD)/adb-recovery
 	$(BUILD)/uninstall-supervisor
 	$(BUILD)/unit
-	test "$$($(BUILD)/hapaneld-helper --version)" = "HELPER version=1.3.1 proto=1.3"
+	test "$$($(BUILD)/hapaneld-helper --version)" = "HELPER version=1.4.0 proto=1.4"
 	$(BUILD)/companion-boundary
 	$(BUILD)/guard-maintenance-boundary
 	$(BUILD)/guard-maintenance-gates
