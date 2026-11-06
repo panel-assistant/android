@@ -99,6 +99,8 @@ jobs:
           arch: x86_64
           profile: pixel_2
           disable-animations: true
+          # Keep all lines equally indented so YAML folds this into one shell command.
+          # The emulator action executes each parsed newline separately.
           script: >-
             bash -euo pipefail -c '
             adb install app/build/outputs/apk/debug/app-debug.apk;
@@ -113,17 +115,17 @@ jobs:
             if grep -Eq "FAILURES!!!|Process crashed|INSTRUMENTATION_FAILED|shortMsg=|No tests found" "$log"; then exit 1; fi;
             grep -Eq "^OK \\([1-9][0-9]* tests?\\)[[:space:]]*$" "$log";
             run_one() {
-              local selector="$1" label="$2" seconds="$3";
-              adb shell am force-stop io.panelassistant.android;
-              adb shell am force-stop io.panelassistant.android.test;
-              log="$RUNNER_TEMP/$label.log";
-              status=0;
-              timeout "$seconds" adb shell am instrument -w -e class "$selector" io.panelassistant.android.test/androidx.test.runner.AndroidJUnitRunner > "$log" 2>&1 || status=$?;
-              cat "$log";
-              if [ "$status" -ne 0 ] || grep -Eq "FAILURES!!!|Process crashed|INSTRUMENTATION_FAILED|shortMsg=|No tests found" "$log"; then adb logcat -d -b main,crash,system | tail -n 3000; fi;
-              test "$status" -eq 0;
-              if grep -Eq "FAILURES!!!|Process crashed|INSTRUMENTATION_FAILED|shortMsg=|No tests found" "$log"; then exit 1; fi;
-              grep -Eq "^OK \\(1 test\\)[[:space:]]*$" "$log";
+            local selector="$1" label="$2" seconds="$3";
+            adb shell am force-stop io.panelassistant.android;
+            adb shell am force-stop io.panelassistant.android.test;
+            log="$RUNNER_TEMP/$label.log";
+            status=0;
+            timeout "$seconds" adb shell am instrument -w -e class "$selector" io.panelassistant.android.test/androidx.test.runner.AndroidJUnitRunner > "$log" 2>&1 || status=$?;
+            cat "$log";
+            if [ "$status" -ne 0 ] || grep -Eq "FAILURES!!!|Process crashed|INSTRUMENTATION_FAILED|shortMsg=|No tests found" "$log"; then adb logcat -d -b main,crash,system | tail -n 3000; fi;
+            test "$status" -eq 0;
+            if grep -Eq "FAILURES!!!|Process crashed|INSTRUMENTATION_FAILED|shortMsg=|No tests found" "$log"; then exit 1; fi;
+            grep -Eq "^OK \\(1 test\\)[[:space:]]*$" "$log";
             };
             test "$(adb shell getprop ro.kernel.qemu | tr -d "\r")" = 1;
             adb shell am force-stop io.panelassistant.android;
@@ -142,9 +144,9 @@ jobs:
             adb shell appops set io.panelassistant.android SYSTEM_ALERT_WINDOW default;
             trap - EXIT;
             if [ "${{ matrix.api-level }}" -ge 28 ]; then
-              for method in coldAdminLauncher coldMain coldDashboard coldConfigure coldProximityWizard; do
-                run_one "io.panelassistant.android.MainThreadSqliteInstrumentedTest#$method" "sqlite-$method" 90;
-              done;
+            for method in coldAdminLauncher coldMain coldDashboard coldConfigure coldProximityWizard; do
+            run_one "io.panelassistant.android.MainThreadSqliteInstrumentedTest#$method" "sqlite-$method" 90;
+            done;
             fi;
             adb shell ip -4 addr;
             adb shell ip link;
@@ -153,11 +155,11 @@ jobs:
             test "$(adb shell pm clear io.panelassistant.android.test | tr -d "\r")" = Success;
             run_one io.panelassistant.android.ScheduledInstallInstrumentedTest scheduled-install 150;
             for method in urlWithoutTokenShowsPhysicalSignIn entityLearningWithoutTokenStillShowsPhysicalSignIn configuredTokenWaitsForTheUnansweredSetupQuestion; do
-              adb shell am force-stop io.panelassistant.android;
-              adb shell am force-stop io.panelassistant.android.test;
-              test "$(adb shell pm clear io.panelassistant.android | tr -d "\r")" = Success;
-              test "$(adb shell pm clear io.panelassistant.android.test | tr -d "\r")" = Success;
-              run_one "io.panelassistant.android.FirstRunSignInInstrumentedTest#$method" "first-run-sign-in-$method" 150;
+            adb shell am force-stop io.panelassistant.android;
+            adb shell am force-stop io.panelassistant.android.test;
+            test "$(adb shell pm clear io.panelassistant.android | tr -d "\r")" = Success;
+            test "$(adb shell pm clear io.panelassistant.android.test | tr -d "\r")" = Success;
+            run_one "io.panelassistant.android.FirstRunSignInInstrumentedTest#$method" "first-run-sign-in-$method" 150;
             done'
 
       - name: Run all status surface cases on the smallest supported panel
