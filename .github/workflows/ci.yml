@@ -34,10 +34,10 @@ jobs:
   # runs on Actions-compatible runners that expand job matrices before any job has run and cannot read
   # a matrix or runner list computed at run time. Both jobs share one step list.
   #
-  # Blacksmith: while the Actions variable CI_RUNNER is `blacksmith`, pushes made by a person (branch or
-  # tag) run the heavier jobs in this repository's workflows on `blacksmith-4vcpu-ubuntu-2404` instead of
+  # Blacksmith: while the Actions variable CI_RUNNER is `blacksmith`, pushes and manual runs made by a person
+  # run the heavier jobs in this repository's workflows on `blacksmith-4vcpu-ubuntu-2404` instead of
   # `ubuntu-24.04`, and `auto` below sends the Android build there instead of the project runner. Pull
-  # requests, schedules, manual dispatches and anything a bot starts stay GitHub-hosted. Unset the
+  # requests, schedules and anything a bot starts stay GitHub-hosted. Unset the
   # variable to stop using Blacksmith; runners without the variable never see it.
   #
   # CI_ANDROID_RUNNER (repository variable) or the dispatch input selects `hosted`, `self-hosted` or
@@ -68,7 +68,7 @@ jobs:
             reason="pull requests always build on hosted runners"
           else
             case "$MODE" in
-              auto) if [ "$CI_RUNNER" = blacksmith ] && [ "$EVENT" = push ] && [[ "$ACTOR" != *'[bot]' && "$TRIGGERING_ACTOR" != *'[bot]' ]]; then MODE=blacksmith; fi ;;
+              auto) if [ "$CI_RUNNER" = blacksmith ] && [[ "$EVENT" = push || "$EVENT" = workflow_dispatch ]] && [[ "$ACTOR" != *'[bot]' && "$TRIGGERING_ACTOR" != *'[bot]' ]]; then MODE=blacksmith; fi ;;
             esac
             case "$MODE" in
               hosted) reason="CI_ANDROID_RUNNER is hosted" ;;
@@ -354,10 +354,10 @@ jobs:
     name: Android ${{ matrix.name }}
     needs: android-runner
     if: needs.android-runner.outputs.choice == 'hosted'
-    # The runner here repeats the selector's choice: Blacksmith only for a push by a person, when its MODE
+    # The runner here repeats the selector's choice: Blacksmith only for a push or manual run by a person, when its MODE
     # resolves to auto (dispatch input first, then CI_ANDROID_RUNNER) and CI_RUNNER is blacksmith. A runs-on cannot read the selector's
     # output on runners that expand jobs before any job runs, so the precedence is restated, not shared.
-    runs-on: ${{ github.event_name == 'push' && !endsWith(github.actor, '[bot]') && !endsWith(github.triggering_actor, '[bot]') && vars.CI_RUNNER == 'blacksmith' && (github.event.inputs.android_runner != '' && github.event.inputs.android_runner != 'repository setting' && github.event.inputs.android_runner || vars.CI_ANDROID_RUNNER || 'auto') == 'auto' && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04' }}
+    runs-on: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !endsWith(github.actor, '[bot]') && !endsWith(github.triggering_actor, '[bot]') && vars.CI_RUNNER == 'blacksmith' && (github.event.inputs.android_runner != '' && github.event.inputs.android_runner != 'repository setting' && github.event.inputs.android_runner || vars.CI_ANDROID_RUNNER || 'auto') == 'auto' && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04' }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -379,7 +379,7 @@ jobs:
     name: Fixture browser tests
     needs: [build-self-hosted, build]
     if: always() && (needs.build.result == 'success' || needs.build-self-hosted.result == 'success')
-    runs-on: ${{ github.event_name == 'push' && !endsWith(github.actor, '[bot]') && !endsWith(github.triggering_actor, '[bot]') && vars.CI_RUNNER == 'blacksmith' && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04' }}
+    runs-on: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !endsWith(github.actor, '[bot]') && !endsWith(github.triggering_actor, '[bot]') && vars.CI_RUNNER == 'blacksmith' && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -466,7 +466,7 @@ jobs:
     name: Helper units
     needs: changes
     if: needs.changes.outputs.host == 'true'
-    runs-on: ${{ github.event_name == 'push' && !endsWith(github.actor, '[bot]') && !endsWith(github.triggering_actor, '[bot]') && vars.CI_RUNNER == 'blacksmith' && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04' }}
+    runs-on: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !endsWith(github.actor, '[bot]') && !endsWith(github.triggering_actor, '[bot]') && vars.CI_RUNNER == 'blacksmith' && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -516,7 +516,7 @@ jobs:
 
   dependency-integrity:
     name: Dependency integrity
-    runs-on: ${{ github.event_name == 'push' && !endsWith(github.actor, '[bot]') && !endsWith(github.triggering_actor, '[bot]') && vars.CI_RUNNER == 'blacksmith' && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04' }}
+    runs-on: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !endsWith(github.actor, '[bot]') && !endsWith(github.triggering_actor, '[bot]') && vars.CI_RUNNER == 'blacksmith' && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
