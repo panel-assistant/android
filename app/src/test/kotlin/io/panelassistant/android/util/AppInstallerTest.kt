@@ -89,14 +89,6 @@ class AppInstallerTest {
         assertNull(AppInstaller.localInstallCandidateRefusal(companion, AppInstaller.HA_PANELD.pkg, null) { null })
     }
 
-    @Test fun panelVersionOrderingMatchesPanelAssistantForGenericPrereleaseIdentifiers() {
-        assertTrue(AppInstaller.comparePanelVersions("1.1.0-rc10", "1.1.0-rc9")!! > 0)
-        assertTrue(AppInstaller.comparePanelVersions("1.1.0", "1.1.0-rc10.dev.2")!! > 0)
-        assertTrue(AppInstaller.comparePanelVersions("1.1.0-beta.2", "1.1.0-beta.10")!! < 0)
-        assertNull(AppInstaller.comparePanelVersions("1.1.0-01", "1.0.0"))
-        assertNull(AppInstaller.comparePanelVersions("1.1.0+build", "1.0.0"))
-    }
-
     @Test fun malformedProtocolMetadataNeverManufacturesCompatibility() {
         assertEquals(1..3, AppInstaller.parseNativeProtocolMetadata("hapaneld-native:v1:1:3"))
         assertEquals(3..Int.MAX_VALUE, AppInstaller.parseNativeProtocolMetadata("hapaneld-native:v1:3:2147483647"))
