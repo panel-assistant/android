@@ -824,6 +824,8 @@ class DashboardActivity : AppCompatActivity() {
         val explicitNavigate = BuiltinDashboard.navPath != null
         val superseded = BuiltinDashboard.consumeSupersededReload()
         when {
+            RendererRebuildCause.ROUTE in causes || RendererRebuildCause.ENDPOINT in causes ->
+                statusScreens.announceDeliberateRestart("reconnecting to Home Assistant")
             RendererRebuildCause.ENTITY_FILTER in causes -> statusScreens.announceDeliberateRestart(
                 getString(R.string.optimizing_entities_restart),
                 learning = superseded == BuiltinDashboard.LEARNING_RELOAD_REASON,
@@ -876,6 +878,7 @@ class DashboardActivity : AppCompatActivity() {
                 AdmissionOutcome.BRIDGE_HANDSHAKE_MISSED,
             )
         }
+        override fun recoveryStarting() { statusScreens.announceDeliberateRestart("reconnecting to Home Assistant") }
         override fun escalate(step: HandshakeRecoveryStep) { escalateHandshakeRecovery(step) }
         override fun reloadTarget(): Boolean = this@DashboardActivity.reloadTarget()
     })
@@ -1106,9 +1109,15 @@ class DashboardActivity : AppCompatActivity() {
             return
         }
         if (frontendConnected || !pacer.screenAwake) return // frozen page reconnects itself on wake
-        Log.i(TAG, "network regained while frontend not connected — reloading immediately")
-        pacer.retryPolicy.reset() // a changed environment deserves a fresh fast cadence if HA is still starting
-        pacer.reload("network regained")
+        if (phase != RendererPhase.RECONNECTING) {
+            // A route returning is not HA's websocket reconnecting. Keep the live document and its
+            // existing watchdog deadline while the frontend retries its own connection in place.
+            Log.i(TAG, "network regained — keeping dashboard for frontend reconnect")
+            return
+        }
+        // A failed main-frame load left a local reconnecting document, not a live HA page.
+        statusScreens.announceDeliberateRestart("reconnecting to Home Assistant")
+        pacer.reload("network regained over broken page")
     }
 
     /** Pull-to-refresh: a full `WebView.reload()` re-boots the entire frontend app (seconds of blank),

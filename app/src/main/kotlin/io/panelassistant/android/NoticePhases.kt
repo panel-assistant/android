@@ -15,6 +15,7 @@ internal fun reloadNoticeReason(reason: String): Int? = when (reason) {
     io.panelassistant.android.control.BuiltinDashboard.LEARNING_RELOAD_REASON, "updating the entity filter" ->
         R.string.reload_optimising_entities
     "applying your settings", "clearing the dashboard’s stored data", "" -> R.string.reload_applying_changes
+    "reconnecting to Home Assistant" -> R.string.dashboard_reconnecting
     else -> null
 }
 
