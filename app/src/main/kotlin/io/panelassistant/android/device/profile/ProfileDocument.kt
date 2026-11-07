@@ -26,7 +26,15 @@ data class ProfileDocument(
     val soc: ProfileSoc? = null,
     /** Registry setting keys with typed YAML defaults; validation retains the original scalar types. */
     val settingDefaults: Map<String, Any?> = emptyMap(),
+    val logging: ProfileLogging = ProfileLogging(),
 )
+
+/** Profiles select bounded core-owned rules, never arbitrary patterns or executable filters. */
+data class ProfileLogging(val knownNoise: List<String> = emptyList()) {
+    companion object {
+        val KNOWN_RULES: Set<String> = setOf("selinux-permissive")
+    }
+}
 
 data class ProfileProvenance(
     val author: String,

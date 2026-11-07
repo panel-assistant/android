@@ -77,6 +77,7 @@ object ProfileMetadata {
             field("display_name", "string", true, "Human-readable panel name."),
             field("soc_class", "string", true, "Human-readable SoC family."),
             field("setting_defaults", "object", false, "Defaults keyed by the settings reference's persistent setting keys. Values must use the setting's YAML scalar type and declared range; unknown, retired, read-only, transient and machine-owned keys are refused. Stored choices always win, including a choice equal to the app default. Profile changes affect only absent keys. Identity, migrations, owner-scoped state and live controllers retain their existing authority; network ADB remains off in Hardened mode, and an untouched vendor Zigbee gateway is never stopped by a default."),
+            field("logging.known_noise", "string[]", false, "Core-owned vendor log-noise rule IDs. Rules must be unique; profiles cannot supply patterns. Empty or absent applies no rules.", ProfileLogging.KNOWN_RULES.sorted()),
             field("soc.model", "string", false, "Profile-evidenced SoC model; never runtime-fetched."),
             field("soc.introduced_year", "integer", false, "Public introduction year when evidenced."),
             field("soc.cpu_cores[].architecture", "string", true, "CPU core architecture, for example Arm Cortex-A55."),
