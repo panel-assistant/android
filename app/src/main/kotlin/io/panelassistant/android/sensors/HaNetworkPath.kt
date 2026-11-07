@@ -45,16 +45,14 @@ internal enum class HaNetworkPathSeverity(val wireValue: String) {
 /**
  * Rolling classification of the network path between this panel and its configured Home Assistant.
  *
- * Measures the path the product actually uses: the round trip of a Home Assistant WebSocket `ping`
- * on the app's own authenticated socket. No ICMP, no subprocess, no root. Pure and time-injected in
- * the `HaLifecycle` style: every observation carries its own monotonic millisecond, so nothing here
- * can be satisfied or defeated by real elapsed time, and the bounded window ages state out by itself.
+ * Carries the proven echo verdict and its own evidence together. When echo probing is unavailable
+ * or unproven, the Home Assistant WebSocket's application pings supply the fallback path verdict.
+ * Pure and time-injected: every observation carries its monotonic millisecond.
  *
- * Policy. TWO classifications come out of one measurement, and only the first is entitled to a
- * prominent warning:
- *  - [Snapshot.severity], the PATH: WARNING when network loss exceeds [SEVERE_LOSS_PERCENT] of the
- *    probes in the [WINDOW_MS] window, SEVERE after [SEVERE_CONSECUTIVE_FAILURES] consecutive
- *    network failures. Latency cannot raise it at all.
+ * Only the path classification is entitled to a prominent warning:
+ *  - [Snapshot.severity], the PATH: the proven echo verdict, or socket loss in [WINDOW_MS] with a
+ *    two-event floor and [SEVERE_CONSECUTIVE_FAILURES] consecutive network failures raising SEVERE.
+ *    Socket latency cannot raise it.
  *  - [Snapshot.responsiveness], HOW FAST HOME ASSISTANT ANSWERS: WARNING over [WARN_P95_MS],
  *    SEVERE over [SEVERE_P95_MS]. Reported everywhere as a performance number, prominent nowhere.
  *  - one isolated miss or one isolated spike is diagnostic evidence only and never alarms;
@@ -62,7 +60,7 @@ internal enum class HaNetworkPathSeverity(val wireValue: String) {
  *
  * Why latency is not a path verdict: the round trip also contains Home Assistant's event-loop time
  * and this panel's own thread scheduling, neither of which is the network. Both are real and worth
- * showing; neither is evidence about the Wi-Fi. A true layer-3 probe is a separate, queued lane.
+ * showing; neither is evidence about the Wi-Fi. The echo owner supplies its separate measurement.
  *
  * The "exceeds p95" and "exceeds loss" tests are both written as [exceedsShare]: at least two events
  * AND more than five percent of the window. Nearest-rank p95 over fewer than twenty samples IS the
@@ -410,9 +408,9 @@ internal object HaNetworkPathPresentation {
             PathProbeCause.NONE -> ""
         }
         val echo = snap.echo
-        val measurement = if (echo == null) " ha_net_source=socket" else
-            " ha_net_source=echo ha_net_echo_n=${echo.sent} ha_net_echo_miss=${echo.sent - echo.received}" +
-                " ha_net_echo_p95=${echo.p95Ms} ha_net_echo_bursts=${echo.bursts}"
+        // Compact to fit health readers with a 512-byte body limit alongside discovery identity.
+        val measurement = if (echo == null) "" else
+            " ha_net_echo=${echo.sent},${echo.sent - echo.received},${echo.p95Ms},${echo.bursts}"
         return " ha_net=${snap.severity.wireValue}$cause$measurement ha_resp=${snap.responsiveness.wireValue} " +
             "ha_net_p95=${snap.p95Ms} ha_net_n=${snap.probes} " +
             "ha_net_miss=${snap.networkFailures} ha_net_age=${snap.lastRoundTripAgeMs}"

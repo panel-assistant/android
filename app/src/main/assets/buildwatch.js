@@ -274,16 +274,17 @@
     var mc = t.match(/ha_net_n=(\d+)/);
     var mm = t.match(/ha_net_miss=(\d+)/);
     var ma = t.match(/ha_net_age=(-?\d+)/);
-    var msr = t.match(/(?:^|\s)ha_net_source=(\S+)/);
-    function echoInteger(name) {
-      var match = t.match(new RegExp("(?:^|\\s)ha_net_echo_" + name + "=(-?\\d+)(?:\\s|$)"));
-      var value = match ? Number(match[1]) : null;
-      return Number.isSafeInteger(value) ? value : null;
-    }
-    var echo = { n: echoInteger("n"), miss: echoInteger("miss"), p95: echoInteger("p95"), bursts: echoInteger("bursts") };
-    if (echo.n === null || echo.n <= 0 || echo.miss === null || echo.miss < 0 || echo.miss > echo.n ||
-        echo.p95 === null || echo.p95 < -1 || echo.bursts === null || echo.bursts <= 0) echo = null;
-    haNetBanner(mn ? mn[1] : "", mrs ? mrs[1] : "", mp ? parseInt(mp[1], 10) : -1, mc ? parseInt(mc[1], 10) : 0, mm ? parseInt(mm[1], 10) : 0, ma ? parseInt(ma[1], 10) : -1, mcz ? mcz[1] : "", msr ? msr[1] : "", echo);
+    // One compact tuple keeps /health within older USB readers' line bound. Its presence selects
+    // echo evidence; a malformed or duplicate tuple must never fall back to socket figures.
+    var echoTokens = t.match(/(?:^|\s)ha_net_echo=\S*/g);
+    var tuple = echoTokens && echoTokens.length === 1
+      ? /^\s*ha_net_echo=(\d+),(\d+),(-?\d+),(\d+)$/.exec(echoTokens[0]) : null;
+    var echo = tuple ? { n: Number(tuple[1]), miss: Number(tuple[2]), p95: Number(tuple[3]), bursts: Number(tuple[4]) } : null;
+    if (echo && (!Number.isSafeInteger(echo.n) || echo.n <= 0 ||
+        !Number.isSafeInteger(echo.miss) || echo.miss < 0 || echo.miss > echo.n ||
+        !Number.isSafeInteger(echo.p95) || echo.p95 < -1 ||
+        !Number.isSafeInteger(echo.bursts) || echo.bursts <= 0)) echo = null;
+    haNetBanner(mn ? mn[1] : "", mrs ? mrs[1] : "", mp ? parseInt(mp[1], 10) : -1, mc ? parseInt(mc[1], 10) : 0, mm ? parseInt(mm[1], 10) : 0, ma ? parseInt(ma[1], 10) : -1, mcz ? mcz[1] : "", echoTokens ? (echo ? "echo" : "invalid") : "", echo);
     var mb = t.match(/build=(\S+)/);
     if (mb && LB && mb[1] !== LB) {
       if (dirty()) banner("shell.new_version.installed", "A newer Panel Assistant is installed"); else location.reload();

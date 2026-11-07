@@ -285,12 +285,12 @@ test('echo evidence uses localized source-specific numbers and preserves transla
   };
   const rig = await loadBuildwatch({ translations, locale: 'de' });
   const socket = ' ha_resp=healthy ha_net_p95=9 ha_net_n=30 ha_net_miss=0';
-  await rig.poll('ha_net=severe ha_net_cause=latency ha_net_source=echo' + socket
-    + ' ha_net_echo_n=2000 ha_net_echo_miss=0 ha_net_echo_p95=4200 ha_net_echo_bursts=6');
+  await rig.poll('ha_net=severe ha_net_cause=latency' + socket
+    + ' ha_net_echo=2000,0,4200,6');
   assert.equal(noticeText(rig.ids.hanetbar), '路径非常慢 — 回声 4.200 毫秒；丢失 0/2.000；6 轮');
   assert.equal(rig.ids.hanetcell.textContent, '非常慢 — 回声 4.200 毫秒；丢失 0/2.000；6 轮');
-  await rig.poll('ha_net=severe ha_net_cause=loss ha_net_source=echo' + socket
-    + ' ha_net_echo_n=5 ha_net_echo_miss=5 ha_net_echo_p95=-1 ha_net_echo_bursts=1');
+  await rig.poll('ha_net=severe ha_net_cause=loss' + socket
+    + ' ha_net_echo=5,5,-1,1');
   assert.match(noticeText(rig.ids.hanetbar), /回声无回复；丢失 5\/5；1 轮/);
   assert.match(rig.ids.hanetcell.textContent, /回声无回复；丢失 5\/5；1 轮/);
   assert.doesNotMatch(rig.ids.hanetcell.textContent, /p95 9|last 5 min/);
@@ -307,17 +307,17 @@ browserTest('echo loss and latency display their own evidence in the real page',
   const page = await browser.newPage();
   const socket = ' ha_resp=healthy ha_net_p95=9 ha_net_n=30 ha_net_miss=0';
   const cases = [
-    ['ha_net=severe ha_net_cause=loss ha_net_source=echo' + socket
-      + ' ha_net_echo_n=5 ha_net_echo_miss=2 ha_net_echo_p95=12 ha_net_echo_bursts=1',
+    ['ha_net=severe ha_net_cause=loss' + socket
+      + ' ha_net_echo=5,2,12,1',
     'failing; p95 12 ms, 2 of 5 network checks missed across 1 bursts', true],
-    ['ha_net=severe ha_net_cause=latency ha_net_source=echo' + socket
-      + ' ha_net_echo_n=5 ha_net_echo_miss=0 ha_net_echo_p95=500 ha_net_echo_bursts=1',
+    ['ha_net=severe ha_net_cause=latency' + socket
+      + ' ha_net_echo=5,0,500,1',
     'very slow; p95 500 ms, 0 of 5 network checks missed across 1 bursts', true],
-    ['ha_net=healthy ha_net_source=echo' + socket
-      + ' ha_net_echo_n=5 ha_net_echo_miss=0 ha_net_echo_p95=12 ha_net_echo_bursts=1',
+    ['ha_net=healthy' + socket
+      + ' ha_net_echo=5,0,12,1',
     'healthy; p95 12 ms, 0 of 5 network checks missed across 1 bursts', false],
-    ['ha_net=severe ha_net_cause=loss ha_net_source=future' + socket, '', false],
-    ['ha_net=severe ha_net_cause=loss ha_net_source=echo' + socket, '', false],
+    ['ha_net=severe ha_net_cause=loss ha_net_echo=future' + socket, '', false],
+    ['ha_net=severe ha_net_cause=loss ha_net_echo=' + socket, '', false],
     ['', '', false],
   ];
   for (const [health, expected, visible] of cases) {
