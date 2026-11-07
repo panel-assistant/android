@@ -31,7 +31,7 @@ class HaNetworkPathProbeVerdictTest {
 
         // The echo probe measures a slow path. Nothing about the socket has changed, and under the
         // socket rules alone this panel would still read healthy — which is the whole defect.
-        path.onPathProbeVerdict(HaNetworkPathSeverity.SEVERE, PathProbeCause.LATENCY)
+        path.onPathProbeVerdict(verdict(HaNetworkPathSeverity.SEVERE, PathProbeCause.LATENCY))
         val snap = path.snapshot(t)
         assertEquals(HaNetworkPathSeverity.SEVERE, snap.severity)
         assertEquals(PathProbeCause.LATENCY, snap.cause)
@@ -48,7 +48,7 @@ class HaNetworkPathProbeVerdictTest {
         path.onFailure(t, HaPathFailureKind.NETWORK)
         assertEquals("the socket alone would call this severe", HaNetworkPathSeverity.SEVERE, path.snapshot(t).severity)
 
-        path.onPathProbeVerdict(HaNetworkPathSeverity.HEALTHY, PathProbeCause.NONE)
+        path.onPathProbeVerdict(verdict(HaNetworkPathSeverity.HEALTHY, PathProbeCause.NONE))
         val snap = path.snapshot(t)
         assertEquals(HaNetworkPathSeverity.HEALTHY, snap.severity)
         assertFalse(snap.degraded)
@@ -63,10 +63,10 @@ class HaNetworkPathProbeVerdictTest {
         path.onFailure(t, HaPathFailureKind.NETWORK); t += interval
         path.onFailure(t, HaPathFailureKind.NETWORK)
 
-        path.onPathProbeVerdict(HaNetworkPathSeverity.HEALTHY, PathProbeCause.NONE)
+        path.onPathProbeVerdict(verdict(HaNetworkPathSeverity.HEALTHY, PathProbeCause.NONE))
         assertEquals(HaNetworkPathSeverity.HEALTHY, path.snapshot(t).severity)
 
-        path.onPathProbeVerdict(null, PathProbeCause.NONE)
+        path.onPathProbeVerdict(null)
         val snap = path.snapshot(t)
         assertEquals("the socket rules come back", HaNetworkPathSeverity.SEVERE, snap.severity)
         assertEquals(PathProbeCause.LOSS, snap.cause)
@@ -74,7 +74,7 @@ class HaNetworkPathProbeVerdictTest {
 
     @Test fun aLayer3VerdictNeverSurvivesTheSocketGoingAway() {
         val t = healthySocket()
-        path.onPathProbeVerdict(HaNetworkPathSeverity.SEVERE, PathProbeCause.LATENCY)
+        path.onPathProbeVerdict(verdict(HaNetworkPathSeverity.SEVERE, PathProbeCause.LATENCY))
         assertTrue(path.snapshot(t).degraded)
         // No socket, nothing to describe: a stale path verdict must not outlive the session it
         // belongs to, exactly as the socket-derived one does not.
@@ -89,10 +89,16 @@ class HaNetworkPathProbeVerdictTest {
         // whichever instrument produced the verdict.
         val settling = HaNetworkPath(processStartElapsedMs = 0L)
         settling.onSocketState(HaSocketState.LIVE)
-        settling.onPathProbeVerdict(HaNetworkPathSeverity.SEVERE, PathProbeCause.LATENCY)
+        settling.onPathProbeVerdict(verdict(HaNetworkPathSeverity.SEVERE, PathProbeCause.LATENCY))
         val snap = settling.snapshot(HaNetworkPath.STARTUP_SETTLE_MS - 1L)
         assertTrue(snap.settling)
         assertEquals(HaNetworkPathSeverity.HEALTHY, snap.severity)
         assertFalse(snap.degraded)
     }
+    private fun verdict(severity: HaNetworkPathSeverity, cause: PathProbeCause): PathProbeHistory.Verdict {
+        val history = PathProbeHistory()
+        history.record(PathBurst(0L, 5, 5, List(5) { 500L }))
+        return PathProbeHistory.Verdict(severity, cause, history.aggregate())
+    }
+
 }

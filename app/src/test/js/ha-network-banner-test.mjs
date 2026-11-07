@@ -195,4 +195,44 @@ await poll(base + ' ha_net=warning ha_resp=healthy ha_net_p95=30 ha_net_n=30 ha_
 assert.ok(/going missing/.test(ids.hanetbar.textContent), ids.hanetbar.textContent);
 assert.ok(/2 of 30 probes missed/.test(ids.hanetcell.textContent), ids.hanetcell.textContent);
 
+// An echo verdict carries its own evidence; the old socket fields keep their wire meaning.
+const socketEvidence = ' ha_resp=healthy ha_net_p95=9 ha_net_n=30 ha_net_miss=0';
+const echoEvidence = ' ha_net_echo=5,2,12,1';
+await poll(base + ' ha_net=severe ha_net_cause=loss' + socketEvidence + echoEvidence);
+assert.match(notice(ids.hanetbar).text, /2 of 5 network checks missed across 1 bursts/);
+assert.equal(ids.hanetcell.textContent, 'failing; p95 12 ms, 2 of 5 network checks missed across 1 bursts');
+assert.doesNotMatch(ids.hanetbar.textContent + ids.hanetcell.textContent, /p95 9 ms|no misses|last 5 min/);
+await poll(base + ' ha_net=severe ha_net_cause=latency' + socketEvidence
+  + ' ha_net_echo=5,0,500,1');
+assert.match(notice(ids.hanetbar).text, /very slow/);
+assert.match(notice(ids.hanetbar).text, /p95 500 ms, 0 of 5 network checks missed across 1 bursts/);
+assert.equal(ids.hanetcell.textContent, 'very slow; p95 500 ms, 0 of 5 network checks missed across 1 bursts');
+assert.doesNotMatch(ids.hanetbar.textContent + ids.hanetcell.textContent, /p95 9 ms|last 5 min/);
+await poll(base + ' ha_net=healthy' + socketEvidence + echoEvidence);
+assert.equal(ids.hanetbar.style.display, 'none');
+assert.equal(ids.hanetcell.textContent, 'healthy; p95 12 ms, 2 of 5 network checks missed across 1 bursts');
+await poll(base + ' ha_net=severe ha_net_cause=loss' + socketEvidence
+  + ' ha_net_echo=5,5,-1,1');
+assert.match(ids.hanetcell.textContent, /no reply, 5 of 5 network checks missed across 1 bursts/);
+// Empty, malformed, or future echo tuples must never borrow the socket numbers.
+for (const suffix of [
+  ' ha_net_echo=future', ' ha_net_echo=constructor', ' ha_net_echo=__proto__',
+  ' ha_net_echo=', ' ha_net_echo=5,2,500', ' ha_net_echo=5,2,500,1,0',
+  ' ha_net_echo=5,2,500,0', ' ha_net_echo=5,2,-2,1',
+  ' ha_net_echo=9007199254740992,2,500,1',
+  ' ha_net_echo=5,2,500,1 ha_net_echo=5,2,500,1',
+  ' ha_net_echo=5,6,500,1',
+]) {
+  await poll(base + ' ha_net=severe ha_net_cause=loss' + socketEvidence + suffix);
+  assert.equal(ids.hanetbar.style.display, 'none');
+  assert.equal(ids.hanetcell.textContent, '');
+}
+await poll(base + ' ha_net=severe ha_net_cause=loss' + socketEvidence + echoEvidence);
+await poll(base);
+assert.equal(ids.hanetbar.style.display, 'none');
+assert.equal(ids.hanetcell.textContent, '');
+// An absent tuple retains the socket-only legacy positive control.
+await poll(base + ' ha_net=warning ha_net_cause=loss ha_resp=healthy ha_net_p95=30 ha_net_n=30 ha_net_miss=2');
+assert.equal(ids.hanetcell.textContent, 'losing probes; p95 30 ms, 2 of 30 probes missed in the last 5 min');
+
 console.log('ha network banner cases passed');

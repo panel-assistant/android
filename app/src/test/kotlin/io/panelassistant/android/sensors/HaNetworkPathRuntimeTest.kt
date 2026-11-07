@@ -246,7 +246,7 @@ class HaNetworkPathRuntimeTest {
     @Test fun theDiagLineIsTerseHostFreeAndAlwaysPresent() {
         val snap = degraded(HaNetworkPathSeverity.SEVERE, misses = 3, p95 = 4_200L)
         assertEquals(
-            "[ha-network] state=severe cause=loss responsiveness=severe measuring=true socket=live window=5m probes=30 " +
+            "[ha-network] state=severe cause=loss source=socket responsiveness=severe measuring=true socket=live window=5m probes=30 " +
                 "round_trips=27 p50=35 p95=4200 " +
                 "max=5900 jitter=310 loss=10.0% consecutive=0 server_errors=1 auth_errors=0 last_reply_age=4000",
             HaNetworkPathPresentation.diagnosticLine(snap),

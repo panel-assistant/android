@@ -45,16 +45,14 @@ internal enum class HaNetworkPathSeverity(val wireValue: String) {
 /**
  * Rolling classification of the network path between this panel and its configured Home Assistant.
  *
- * Measures the path the product actually uses: the round trip of a Home Assistant WebSocket `ping`
- * on the app's own authenticated socket. No ICMP, no subprocess, no root. Pure and time-injected in
- * the `HaLifecycle` style: every observation carries its own monotonic millisecond, so nothing here
- * can be satisfied or defeated by real elapsed time, and the bounded window ages state out by itself.
+ * Carries the proven echo verdict and its own evidence together. When echo probing is unavailable
+ * or unproven, the Home Assistant WebSocket's application pings supply the fallback path verdict.
+ * Pure and time-injected: every observation carries its monotonic millisecond.
  *
- * Policy. TWO classifications come out of one measurement, and only the first is entitled to a
- * prominent warning:
- *  - [Snapshot.severity], the PATH: WARNING when network loss exceeds [SEVERE_LOSS_PERCENT] of the
- *    probes in the [WINDOW_MS] window, SEVERE after [SEVERE_CONSECUTIVE_FAILURES] consecutive
- *    network failures. Latency cannot raise it at all.
+ * Only the path classification is entitled to a prominent warning:
+ *  - [Snapshot.severity], the PATH: the proven echo verdict, or socket loss in [WINDOW_MS] with a
+ *    two-event floor and [SEVERE_CONSECUTIVE_FAILURES] consecutive network failures raising SEVERE.
+ *    Socket latency cannot raise it.
  *  - [Snapshot.responsiveness], HOW FAST HOME ASSISTANT ANSWERS: WARNING over [WARN_P95_MS],
  *    SEVERE over [SEVERE_P95_MS]. Reported everywhere as a performance number, prominent nowhere.
  *  - one isolated miss or one isolated spike is diagnostic evidence only and never alarms;
@@ -62,7 +60,7 @@ internal enum class HaNetworkPathSeverity(val wireValue: String) {
  *
  * Why latency is not a path verdict: the round trip also contains Home Assistant's event-loop time
  * and this panel's own thread scheduling, neither of which is the network. Both are real and worth
- * showing; neither is evidence about the Wi-Fi. A true layer-3 probe is a separate, queued lane.
+ * showing; neither is evidence about the Wi-Fi. The echo owner supplies its separate measurement.
  *
  * The "exceeds p95" and "exceeds loss" tests are both written as [exceedsShare]: at least two events
  * AND more than five percent of the window. Nearest-rank p95 over fewer than twenty samples IS the
@@ -107,8 +105,7 @@ internal class HaNetworkPath(
      * it is present it IS the path verdict. The socket-derived loss rules remain for panels whose
      * platform denies the probe, which is the only reason they are still here.
      */
-    private var probeSeverity: HaNetworkPathSeverity? = null
-    private var probeCause: PathProbeCause = PathProbeCause.NONE
+    private var probeVerdict: PathProbeHistory.Verdict? = null
 
     /**
      * Follow the shared socket's own state. Measurement is owned by an AUTHENTICATED socket, not by
@@ -136,6 +133,7 @@ internal class HaNetworkPath(
                 samples.clear()
                 consecutiveNetworkFailures = 0
                 lastRoundTripAtMs = -1L
+                probeVerdict = null
             }
         }
     }
@@ -153,9 +151,8 @@ internal class HaNetworkPath(
      * with nothing measured yet. Null restores the socket-derived rules rather than clearing the
      * verdict, so a panel that loses its probe is no worse off than one that never had it.
      */
-    fun onPathProbeVerdict(severity: HaNetworkPathSeverity?, cause: PathProbeCause) {
-        probeSeverity = severity
-        probeCause = if (severity == null) PathProbeCause.NONE else cause
+    fun onPathProbeVerdict(verdict: PathProbeHistory.Verdict?) {
+        probeVerdict = verdict
     }
 
     /** One probe answered: [rttMs] is the send-to-decode round trip on the monotonic clock. */
@@ -221,7 +218,7 @@ internal class HaNetworkPath(
         // has a verdict it IS the path verdict — including a latency one, because an echo carries no
         // server time and no scheduling of ours. The socket rules below survive only for panels
         // whose platform refuses the probe.
-        val fromProbe = probeSeverity.takeIf { measuring && !settling }
+        val fromProbe = probeVerdict?.severity.takeIf { measuring && !settling }
         val severity = fromProbe ?: when {
             !measuring || settling -> HaNetworkPathSeverity.HEALTHY
             consecutive >= severeConsecutiveFailures -> HaNetworkPathSeverity.SEVERE
@@ -229,7 +226,7 @@ internal class HaNetworkPath(
             else -> HaNetworkPathSeverity.HEALTHY
         }
         val cause = when {
-            fromProbe != null -> probeCause
+            fromProbe != null -> requireNotNull(probeVerdict).cause
             severity == HaNetworkPathSeverity.HEALTHY -> PathProbeCause.NONE
             else -> PathProbeCause.LOSS
         }
@@ -261,6 +258,7 @@ internal class HaNetworkPath(
             jitterMs = jitter(rtts),
             lossPercent = if (probes == 0) 0.0 else networkFailures * 100.0 / probes,
             consecutiveFailures = consecutive,
+            echo = if (fromProbe != null) probeVerdict?.evidence else null,
             lastRoundTripAgeMs = if (lastRoundTripAtMs < 0L) -1L else (nowMs - lastRoundTripAtMs).coerceAtLeast(0L),
         )
     }
@@ -294,6 +292,8 @@ internal class HaNetworkPath(
         val lossPercent: Double,
         val consecutiveFailures: Int,
         val lastRoundTripAgeMs: Long,
+        /** Evidence belonging to the echo verdict; null when the socket rules own the verdict. */
+        val echo: PathProbeHistory.Aggregate? = null,
     ) {
         /**
          * True while a surface has a PROMINENT warning to show. Deliberately reads [severity] only:
@@ -400,15 +400,18 @@ internal object HaNetworkPathPresentation {
     fun healthToken(snap: HaNetworkPath.Snapshot?): String {
         if (snap == null || !snap.measuring) return ""
         if (snap.settling) return " ha_net=settling"
-        // ha_net is the PATH verdict; ha_resp is how fast Home Assistant answers. ha_net_p95 keeps its
-        // name because it is documented wire, but it has only ever been the round trip, which is now
-        // classified by ha_resp rather than by ha_net.
+        // Keep the documented socket aggregates; echo verdicts carry separate, explicitly scoped
+        // evidence from the same snapshot. Never reinterpret a socket field as an echo measurement.
         val cause = when (snap.cause) {
             PathProbeCause.LATENCY -> " ha_net_cause=latency"
             PathProbeCause.LOSS -> " ha_net_cause=loss"
             PathProbeCause.NONE -> ""
         }
-        return " ha_net=${snap.severity.wireValue}$cause ha_resp=${snap.responsiveness.wireValue} " +
+        val echo = snap.echo
+        // Keep this additive suffix small alongside discovery identity and lifecycle tokens.
+        val measurement = if (echo == null) "" else
+            " ha_net_echo=${echo.sent},${echo.sent - echo.received},${echo.p95Ms},${echo.bursts}"
+        return " ha_net=${snap.severity.wireValue}$cause$measurement ha_resp=${snap.responsiveness.wireValue} " +
             "ha_net_p95=${snap.p95Ms} ha_net_n=${snap.probes} " +
             "ha_net_miss=${snap.networkFailures} ha_net_age=${snap.lastRoundTripAgeMs}"
     }
@@ -432,7 +435,7 @@ internal object HaNetworkPathPresentation {
             snap.severity == HaNetworkPathSeverity.WARNING -> "losing probes"
             else -> "failing"
         }
-        if (snap.cause == PathProbeCause.LATENCY) {
+        if (snap.cause == PathProbeCause.LATENCY && snap.echo == null) {
             val responsiveness = responsivenessClause(snap).removeSuffix("; ")
             return if (responsiveness.isEmpty()) path else "$path; $responsiveness"
         }
@@ -467,6 +470,10 @@ internal object HaNetworkPathPresentation {
      * remembered reply says so rather than reading like a fresh connect.
      */
     fun evidence(snap: HaNetworkPath.Snapshot): String {
+        snap.echo?.let { echo ->
+            val p95 = if (echo.p95Ms < 0L) "no reply" else "p95 ${ms(echo.p95Ms)}"
+            return "$p95, ${echo.sent - echo.received} of ${echo.sent} network checks missed across ${echo.bursts} bursts"
+        }
         val minutes = snap.windowMs / 60_000L
         if (snap.probes == 0) {
             return if (snap.lastRoundTripAgeMs < 0L) "no probes yet in the last $minutes min"
@@ -502,7 +509,11 @@ internal object HaNetworkPathPresentation {
         if (snap == null) return "[ha-network] state=unowned"
         if (!snap.measuring) return "[ha-network] state=idle measuring=false"
         if (snap.settling) return "[ha-network] state=settling measuring=true"
-        return "[ha-network] state=${snap.severity.wireValue} cause=${snap.cause.name.lowercase()} " +
+        val echo = snap.echo
+        val measurement = if (echo == null) "source=socket " else
+            "source=echo echo_sent=${echo.sent} echo_received=${echo.received} echo_p95=${echo.p95Ms} " +
+                "echo_bursts=${echo.bursts} "
+        return "[ha-network] state=${snap.severity.wireValue} cause=${snap.cause.name.lowercase()} " + measurement +
             "responsiveness=${snap.responsiveness.wireValue} " +
             "measuring=true " +
             "socket=${if (snap.socketLive) "live" else "reconnecting"} window=${snap.windowMs / 60_000L}m " +
@@ -525,6 +536,16 @@ internal object HaNetworkPathPresentation {
                 },
             )
         if (snap != null && snap.measuring) {
+            if (!snap.settling) {
+                val echo = snap.echo
+                val evidence = JSONObject()
+                    .put("source", if (echo == null) "socket" else "echo")
+                    .put("probes", echo?.sent ?: snap.probes)
+                    .put("network_failures", echo?.let { it.sent - it.received } ?: snap.networkFailures)
+                    .put("p95_ms", echo?.p95Ms ?: snap.p95Ms)
+                if (echo == null) evidence.put("window_ms", snap.windowMs) else evidence.put("bursts", echo.bursts)
+                json.put("cause", snap.cause.name.lowercase(java.util.Locale.ROOT)).put("evidence", evidence)
+            }
             json.put("responsiveness", if (snap.settling) "settling" else snap.responsiveness.wireValue)
                 .put("settling", snap.settling)
                 .put("socket", if (snap.socketLive) "live" else "reconnecting")

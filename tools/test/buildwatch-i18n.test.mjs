@@ -275,6 +275,68 @@ test('layer-3 latency uses the closed localized matrix without borrowing WebSock
   }
 });
 
+test('echo evidence uses localized source-specific numbers and preserves translated verdicts', async () => {
+  const translations = {
+    'shell.runtime.ha_network_echo_evidence': '回声 {p95Ms} 毫秒；丢失 {missCount}/{probeCount}；{burstCount} 轮',
+    'shell.runtime.ha_network_echo_no_reply': '回声无回复；丢失 {missCount}/{probeCount}；{burstCount} 轮',
+    'shell.runtime.ha_network_with_evidence': '{verdict} — {evidence}',
+    'shell.runtime.ha_network.banner_latency_severe': '路径非常慢',
+    'dashboard.runtime.ha_network_latency_severe': '非常慢',
+  };
+  const rig = await loadBuildwatch({ translations, locale: 'de' });
+  const socket = ' ha_resp=healthy ha_net_p95=9 ha_net_n=30 ha_net_miss=0';
+  await rig.poll('ha_net=severe ha_net_cause=latency' + socket
+    + ' ha_net_echo=2000,0,4200,6');
+  assert.equal(noticeText(rig.ids.hanetbar), '路径非常慢 — 回声 4.200 毫秒；丢失 0/2.000；6 轮');
+  assert.equal(rig.ids.hanetcell.textContent, '非常慢 — 回声 4.200 毫秒；丢失 0/2.000；6 轮');
+  await rig.poll('ha_net=severe ha_net_cause=loss' + socket
+    + ' ha_net_echo=5,5,-1,1');
+  assert.match(noticeText(rig.ids.hanetbar), /回声无回复；丢失 5\/5；1 轮/);
+  assert.match(rig.ids.hanetcell.textContent, /回声无回复；丢失 5\/5；1 轮/);
+  assert.doesNotMatch(rig.ids.hanetcell.textContent, /p95 9|last 5 min/);
+});
+
+browserTest('echo loss and latency display their own evidence in the real page', async t => {
+  let line = '';
+  const harness = await startHarness(path => path === '/health'
+    ? { headers: { 'content-type': 'text/plain' }, body: line } : undefined,
+  () => `<!doctype html><html><head>${i18nBridge()}</head><body><div id="hanetbar"></div><div id="hanetcell"></div><script src="/assets/buildwatch.js"></script></body></html>`);
+  let browser;
+  t.after(async () => { await browser?.close(); harness.server.closeAllConnections?.(); await new Promise(done => harness.server.close(done)); });
+  browser = await chromium.launch({ executablePath: chrome, headless: true });
+  const page = await browser.newPage();
+  const socket = ' ha_resp=healthy ha_net_p95=9 ha_net_n=30 ha_net_miss=0';
+  const cases = [
+    ['ha_net=severe ha_net_cause=loss' + socket
+      + ' ha_net_echo=5,2,12,1',
+    'failing; p95 12 ms, 2 of 5 network checks missed across 1 bursts', true],
+    ['ha_net=severe ha_net_cause=latency' + socket
+      + ' ha_net_echo=5,0,500,1',
+    'very slow; p95 500 ms, 0 of 5 network checks missed across 1 bursts', true],
+    ['ha_net=healthy' + socket
+      + ' ha_net_echo=5,0,12,1',
+    'healthy; p95 12 ms, 0 of 5 network checks missed across 1 bursts', false],
+    ['ha_net=severe ha_net_cause=loss ha_net_echo=future' + socket, '', false],
+    ['ha_net=severe ha_net_cause=loss ha_net_echo=' + socket, '', false],
+    ['', '', false],
+  ];
+  for (const [health, expected, visible] of cases) {
+    line = health;
+    const response = page.waitForResponse(reply => new URL(reply.url()).pathname === '/health');
+    await page.goto(harness.url);
+    await (await response).finished();
+    await page.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
+    await page.waitForFunction(value => document.getElementById('hanetcell').textContent === value, expected);
+    assert.equal(await page.locator('#hanetcell').textContent(), expected);
+    assert.equal(await page.locator('#hanetbar').isVisible(), visible);
+    if (visible) {
+      const banner = await page.locator('#hanetbar .notice-text').textContent();
+      assert.match(banner, /network checks missed across 1 bursts/);
+      assert.doesNotMatch(banner, /p95 9 ms|no misses|last 5 min/);
+    }
+  }
+});
+
 test('the version banner creates a safe localized reload link and preserves English when untranslated', async () => {
   const translations = {
     'shell.new_version.installed': '已安装新版本',

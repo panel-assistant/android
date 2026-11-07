@@ -4,6 +4,8 @@ import io.panelassistant.android.sensors.HaNetworkPath
 import io.panelassistant.android.sensors.HaNetworkPathPresentation
 import io.panelassistant.android.sensors.HaNetworkPathSeverity
 import io.panelassistant.android.sensors.HaSocketState
+import io.panelassistant.android.sensors.PathProbeHistory
+import io.panelassistant.android.sensors.PathBurst
 import io.panelassistant.android.sensors.PathProbeCause
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -16,7 +18,7 @@ class HaNetworkChipVisibilityTest {
         val path = HaNetworkPath()
         path.onSocketState(HaSocketState.LIVE)
         path.onRoundTrip(0L, 12L)
-        path.onPathProbeVerdict(HaNetworkPathSeverity.WARNING, PathProbeCause.LATENCY)
+        path.onPathProbeVerdict(verdict(HaNetworkPathSeverity.WARNING, PathProbeCause.LATENCY))
         val incident = path.snapshot(0L)
         assertTrue(incident.degraded)
 
@@ -38,4 +40,10 @@ class HaNetworkChipVisibilityTest {
         assertFalse(visibility.update(degraded = false, enabled = true))
         assertTrue(visibility.update(degraded = true, enabled = true))
     }
+    private fun verdict(severity: HaNetworkPathSeverity, cause: PathProbeCause): PathProbeHistory.Verdict {
+        val history = PathProbeHistory()
+        history.record(PathBurst(0L, 5, 5, List(5) { 500L }))
+        return PathProbeHistory.Verdict(severity, cause, history.aggregate())
+    }
+
 }

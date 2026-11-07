@@ -72,4 +72,6 @@
     <string name="voice_step_understood">Understood</string>
     <string name="voice_step_answered">Answered</string>
     <string name="voice_heard">“%1$s”</string>
+    <string name="network_chip_echoes_lost">%1$d of %2$d network checks to Home Assistant lost across %3$d bursts</string>
+    <string name="network_chip_echo_time">Network checks to Home Assistant take %1$s at p95</string>
 </resources>

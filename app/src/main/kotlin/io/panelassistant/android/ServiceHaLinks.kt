@@ -81,8 +81,8 @@ internal class ServiceHaLinks(
             // diagnostics line nobody reads until they are already debugging.
             // Guarded: the probe is constructed first, and a diagnostic must never be the thing
             // that crashes the service it is diagnosing.
-            onVerdict = { severity, cause ->
-                if (::haNetworkPath.isInitialized) haNetworkPath.onPathProbeVerdict(severity, cause)
+            onVerdict = { verdict ->
+                if (::haNetworkPath.isInitialized) haNetworkPath.onPathProbeVerdict(verdict)
             },
         )
         haExactEntityStream = HaExactEntityStreamOwner(
