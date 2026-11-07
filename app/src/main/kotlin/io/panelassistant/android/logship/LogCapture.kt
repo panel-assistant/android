@@ -5,6 +5,9 @@ import io.panelassistant.android.metrics.FeatureCostOperation
 import io.panelassistant.android.metrics.FeatureCostOutcome
 import io.panelassistant.android.metrics.FeatureCostRegistry
 import io.panelassistant.android.metrics.FeatureCosts
+import io.panelassistant.android.util.BoundedLaunchGate
+import io.panelassistant.android.util.MonotonicDeadline
+import io.panelassistant.android.util.runBoundedLaunch
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -96,6 +99,7 @@ class LogCapture(
     private var restartRepeats = 0L
     private var dumpFlight: DumpFlight? = null
     private var dumpProcess: Process? = null
+    private val dumpLaunchGate = BoundedLaunchGate()
     private var activeViewers = 0
 
     // Each start() gets its own Run so a stop→start race can never orphan the new subprocess.
@@ -291,7 +295,17 @@ class LogCapture(
 
     private fun runDump(lines: Int): List<String> {
         helperDump?.let { source -> return LongLogcatRecords.collect(source(lines), ::redact).takeLast(lines) }
-        val p = processStarter(dumpCmd(lines))
+        val deadline = MonotonicDeadline(dumpTimeoutMs)
+        // Bound process creation itself. A starter that ignores interruption retains its lease;
+        // a process returned after abandonment is destroyed before the collector can read it.
+        val p = runBoundedLaunch(
+            deadline = deadline,
+            threadName = "ha-paneld-log-dump-launch",
+            gate = dumpLaunchGate,
+            launch = { processStarter(dumpCmd(lines)) },
+            destroy = { it.destroyForcibly() },
+            consume = { it },
+        ) ?: return emptyList()
         val admitted = synchronized(this) {
             if (closed) false else {
                 dumpProcess = p
@@ -330,7 +344,8 @@ class LogCapture(
         }
 
         try {
-            if (!p.waitFor(dumpTimeoutMs, TimeUnit.MILLISECONDS)) {
+            val remainingMs = deadline.remainingMs()
+            if (remainingMs <= 0L || !p.waitFor(remainingMs, TimeUnit.MILLISECONDS)) {
                 runCatching { p.destroy() }
                 if (!p.waitFor(DUMP_DESTROY_GRACE_MS, TimeUnit.MILLISECONDS)) {
                     runCatching { p.destroyForcibly() }
