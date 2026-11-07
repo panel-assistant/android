@@ -1,6 +1,9 @@
 package io.panelassistant.android.util
 
 import android.net.LocalSocket
+import android.system.ErrnoException
+import android.system.Os
+import android.system.OsConstants
 import android.util.Log
 import io.panelassistant.android.BuildConfig
 import io.panelassistant.android.platform.Daemon
@@ -18,6 +21,7 @@ import io.panelassistant.android.platform.HelperZigbeeState
 import java.io.BufferedInputStream
 import java.io.ByteArrayInputStream
 import java.io.File
+import java.io.FileDescriptor
 import java.io.InputStream
 import java.io.IOException
 import java.net.SocketTimeoutException
@@ -754,7 +758,9 @@ private class LocalSocketHelperSession(
 ) : HelperCommandSession {
     private val input = socket.inputStream
     private val output = socket.outputStream
-    private val logcatReader = HelperLogcatLineReader(BufferedInputStream(input, 4096))
+    private val logcatReader = HelperLogcatLineReader(
+        BufferedInputStream(HelperLogcatSocketInputStream(socket.fileDescriptor), 4096),
+    )
 
     override fun bootstrap(command: String, deadline: MonotonicDeadline): HelperBootstrapReply =
         exchangeHelperBootstrap(command, input, output, { socket.soTimeout = it }, deadline)
@@ -904,7 +910,18 @@ internal class HelperLogcatLineReader(private val input: InputStream) {
 
     fun readLine(): String? {
         while (true) {
-            val next = input.read()
+            val next = try {
+                input.read()
+            } catch (failure: ErrnoException) {
+                // LocalSocket's JNI reader reports an idle SO_RCVTIMEO as a plain IOException
+                // with strerror text. Use Os.read for this stream so the idle errno stays typed.
+                // Keep `used` intact: a timeout can arrive in the middle of a UTF-8 source line.
+                // Linux uses the same errno for EWOULDBLOCK; Android exposes EAGAIN publicly.
+                if (failure.errno == OsConstants.EAGAIN) {
+                    throw SocketTimeoutException("helper logcat idle read").apply { initCause(failure) }
+                }
+                throw IOException("helper logcat read failed", failure)
+            }
             if (next < 0) {
                 if (used != 0) throw IOException("partial helper logcat line")
                 return null
@@ -917,6 +934,19 @@ internal class HelperLogcatLineReader(private val input: InputStream) {
             if (used == bytes.size) throw IOException("helper logcat line exceeds bound")
             bytes[used++] = next.toByte()
         }
+    }
+}
+
+/** Log streams carry no ancillary file descriptors; read with typed errno instead of JNI strerror. */
+private class HelperLogcatSocketInputStream(private val descriptor: FileDescriptor) : InputStream() {
+    private val single = ByteArray(1)
+
+    override fun read(): Int = if (read(single, 0, 1) < 0) -1 else single[0].toInt() and 0xff
+
+    override fun read(bytes: ByteArray, offset: Int, length: Int): Int {
+        if (length == 0) return 0
+        val count = Os.read(descriptor, bytes, offset, length)
+        return if (count == 0) -1 else count
     }
 }
 

@@ -698,7 +698,7 @@ class PaneldService : Service() {
         // Shared demand-driven logcat captures (one producer and redaction pass per source): app,
         // system and browser feed the sink and their live viewers. System uses the helper exclusively.
         // Idle-stopped — no logcat runs until something subscribes.
-        logCaptureApp = LogCapture.app(scope)
+        logCaptureApp = LogCapture.app(scope) { profile.knownLogNoise }
         logCaptureSystem = LogCapture.system(
             scope,
             helperLines = { emit ->
@@ -718,6 +718,7 @@ class PaneldService : Service() {
                 }
             },
             helperDump = HelperClient::logcatDump,
+            knownNoise = { profile.knownLogNoise },
         )
         // The dashboard's JavaScript console, read over a CDP relay the user started. Off unless log
         // shipping is configured, and never in Hardened mode, where the relay itself is refused.

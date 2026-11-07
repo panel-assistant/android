@@ -1,8 +1,10 @@
 schema: 2
 id: shelly-wall-display-x2i
-version: 2.7.0
+version: 2.7.1
 display_name: Shelly Wall Display X2i
 soc_class: rk3326
+logging:
+  known_noise: [selinux-permissive]
 soc:
   model: Rockchip RK3326
   introduced_year: 2018
@@ -37,7 +39,7 @@ metadata:
     - Home Assistant's Shelly integration reaches Shelly's own launcher on port 8021, which listens only after its main screen has been created once. While Panel Assistant is Home, the app creates it once after each boot beneath a full-screen cover and returns to the dashboard; this needs the draw-over-apps grant, and without it the Shelly integration stays unavailable until Shelly's launcher is opened.
     - The panel declares camera features that no camera backs; ha-paneld offers the camera only when Android enumerates one, so no suppression is declared here.
 requires:
-  min_core_version: 1.0.0-preview1
+  min_core_version: 1.0.0
   drivers:
     - relay.sysfs
     - screen.vendor-rpc
