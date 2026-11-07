@@ -307,6 +307,80 @@ static void shell_tests(void) {
     CHECK(!read_result&&!strcmp(reply,"RESULT 0 0 0 43"),"platform command receives fixed Android roots without inherited classpath");
     char package[44]={0};CHECK(!exact_read(fd,package,43)&&!strcmp(package,"package:/system/framework/framework-res.apk"),"platform package response survives the production shell environment");close(fd);
 }
+/* Adversarial request framing against the real owner. Every reply must be one of the protocol's
+ * fixed answers (or a close), malformed SHELL framing must never execute its program, and the owner
+ * must still answer afterwards. A well-formed request with the same program is the positive control
+ * that proves the sentinel check can go red. */
+static int allowed_reply(const char *reply) {
+    return !strcmp(reply,"ERR") || !strcmp(reply,"OK") || !strcmp(reply,"HELD") || !strcmp(reply,"BUSY") ||
+        !strncmp(reply,"READY 1 ",8) || !strncmp(reply,"RESULT ",7);
+}
+static void send_framed_reply(const char *header, const char *payload, size_t payload_size, int *bad_reply, char *reply, size_t reply_size) {
+    reply[0]=0;
+    int fd=connect_owner(); if(fd<0){*bad_reply=1;return;}
+    (void)send(fd,header,strlen(header),MSG_NOSIGNAL);
+    if(payload_size)(void)send(fd,payload,payload_size,MSG_NOSIGNAL);
+    shutdown(fd,SHUT_WR);
+    read_deadline=now_ms()+3000;
+    if(read_line(fd,reply,reply_size))reply[0]=0;
+    else if(!allowed_reply(reply)){fprintf(stderr,"unexpected reply '%s' to '%.60s'\n",reply,header);*bad_reply=1;}
+    close(fd);
+}
+static void send_framed(const char *header, const char *payload, size_t payload_size, int *bad_reply) {
+    char reply[160]; send_framed_reply(header,payload,payload_size,bad_reply,reply,sizeof reply);
+}
+static void wait_executors_idle(void) {
+    for(int i=0;i<300 && command_worker()>1;i++)usleep(10000);
+}
+static void malformed_request_tests(void) {
+    char sentinel[600],program[700],header[200];int bad_reply=0;
+    snprintf(sentinel,sizeof sentinel,"%s",fixture_path("malformed-executed"));
+    snprintf(program,sizeof program,"touch '%s'",sentinel);
+    size_t n=strlen(program);
+    char *with_nul=malloc(n+2); if(!with_nul)abort(); memcpy(with_nul,program,n); with_nul[n]=0; with_nul[n+1]='x';
+    /* expect: "ERR" for a refused header, "" for a close with no reply (framing or payload refused). */
+    struct { const char *format; size_t declared; size_t sent; const char *payload; const char *expect; } cases[]={
+        {"SHELL 0 %zu\n",n,n,program,"ERR"}, {"SHELL 180001 %zu\n",n,n,program,"ERR"},
+        {"SHELL 1000 0\n",0,n,program,"ERR"}, {"SHELL 1000 65537\n",0,n,program,"ERR"},
+        {"SHELL 1000 %zu x\n",n,n,program,"ERR"}, {"SHELL 1000\n",0,n,program,"ERR"},
+        {"shell 1000 %zu\n",n,n,program,"ERR"}, {"SHELLX 1000 %zu\n",n,n,program,"ERR"},
+        {"SHELL 1000 %zu\n",n,n-1,program,""}, {"SHELL 1000 %zu\n",n+2,n+2,with_nul,""},
+        {"SHELL 1000 %zu\r\n",n,n,program,""}, {"SHELL\t1000\t%zu\x01\n",n,n,program,""},
+    };
+    unlink(sentinel);
+    for(size_t i=0;i<sizeof cases/sizeof cases[0];i++){
+        snprintf(header,sizeof header,cases[i].format,cases[i].declared);
+        char reply[160];
+        send_framed_reply(header,cases[i].payload,cases[i].sent,&bad_reply,reply,sizeof reply);
+        wait_executors_idle();
+        if(strcmp(reply,cases[i].expect)){fprintf(stderr,"malformed case %zu replied '%s', want '%s'\n",i,reply,cases[i].expect);
+            CHECK(0,"malformed SHELL framing is refused with the fixed reply");}
+        if(access(sentinel,F_OK)==0){fprintf(stderr,"malformed case %zu executed: %.60s",i,header);unlink(sentinel);
+            CHECK(0,"malformed SHELL framing never executes its program");}
+    }
+    /* Overlong and control-byte lines are closed without a reply. */
+    char overlong[400];memset(overlong,'S',sizeof overlong-2);overlong[sizeof overlong-2]='\n';overlong[sizeof overlong-1]=0;
+    send_framed(overlong,NULL,0,&bad_reply);
+    /* Deterministic pseudo-random lines over the protocol's own alphabet. */
+    static const char alphabet[]="SHELLARMBEATRECOVERSTATUS 0123456789abcdef\t-+x";
+    unsigned seed=0x5eed1234u;
+    for(int i=0;i<300;i++){
+        char line[200];size_t length=(seed=seed*1103515245u+12345u)%170;
+        for(size_t k=0;k<length;k++){seed=seed*1103515245u+12345u;line[k]=alphabet[(seed>>16)%(sizeof alphabet-1)];}
+        line[length]='\n';line[length+1]=0;
+        send_framed(line,NULL,0,&bad_reply);
+    }
+    wait_executors_idle();
+    CHECK(!bad_reply,"adversarial framing receives only fixed protocol replies");
+    CHECK(access(sentinel,F_OK)!=0,"adversarial framing never executes a program");
+    char reply[160];
+    CHECK(!request("STATUS\n",reply,sizeof reply)&&!strncmp(reply,"READY 1 ",8),"owner still answers after adversarial framing");
+    CHECK(network_is("running"),"adversarial framing leaves the unarmed network route open");
+    snprintf(header,sizeof header,"SHELL 1000 %zu\n",n);
+    send_framed(header,program,n,&bad_reply);wait_executors_idle();
+    CHECK(access(sentinel,F_OK)==0,"positive control: well-formed SHELL executes the same program");
+    unlink(sentinel);free(with_nul);
+}
 static void clear_custody_receipts(void) {
     DIR *directory = opendir(getenv("HAPANELD_ADB_FIXTURE")); struct dirent *entry;
     while (directory && (entry = readdir(directory))) {
@@ -407,7 +481,7 @@ int main(int argc,char **argv) {
     if (mkdir(fixture_path("no_backup"),0700)) abort();
     if (mkdir(APP_DATA,0700) || mkdir(APP_USER_DATA,0700)) abort();
     custody_tests(); heartbeat_tests(); absent_data_test(); managed_absent_trigger_test();
-    start();unauthorized_test();shell_tests();worker_death_test();stop();start();arm();
+    start();unauthorized_test();shell_tests();malformed_request_tests();worker_death_test();stop();start();arm();
     int slow=connect_owner();write_all(slow,"S",1);
     long long slow_deadline = now_ms() + 1200;
     while (!network_is("running") && now_ms() < slow_deadline) usleep(10000);
