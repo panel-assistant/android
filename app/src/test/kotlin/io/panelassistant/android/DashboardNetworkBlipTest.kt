@@ -85,7 +85,7 @@ class DashboardNetworkBlipTest {
         assertEquals("the existing 90-second grace survives network regain", emptyList<String>(), navigation)
         SystemClock.advanceSensorTest(1_100)
         assertEquals("one bounded recovery", listOf("reload"), navigation)
-        assertEquals("fallback uses the existing reload Notice", listOf("reconnecting to Home Assistant"), rig.reloadNotices)
+        assertEquals("fallback uses the existing reload Notice", listOf(RECONNECT_RELOAD_REASON), rig.reloadNotices)
         assertTrue("Notice precedes navigation", page.calls.indexOf("notice") < page.calls.indexOf("reload"))
         regain()
         assertEquals("duplicate availability adds no recovery", listOf("reload"), navigation)
@@ -119,7 +119,7 @@ class DashboardNetworkBlipTest {
         rig.relaunch(null)
         assertEquals("route recovery retires the old renderer once", 1, navigation.count { it == "destroy" })
         assertEquals("route recovery starts one replacement", 1, builds)
-        assertEquals("route recovery announces before replacing the document", listOf("reconnecting to Home Assistant"), rig.reloadNotices)
+        assertEquals("route recovery announces before replacing the document", listOf(RECONNECT_RELOAD_REASON), rig.reloadNotices)
         assertTrue(page.calls.indexOf("notice") < page.calls.indexOf("destroy"))
         SystemClock.advanceSensorTest(100_000)
         assertEquals("the retired watchdog cannot reload the old page", 0, navigation.count { it == "reload" })
@@ -130,7 +130,7 @@ class DashboardNetworkBlipTest {
         (rig.get("shownPage") as ShownPageTracker).forget()
         regain()
         assertEquals(listOf("loadUrl $HA/lovelace?external_auth=1"), navigation)
-        assertEquals(listOf("reconnecting to Home Assistant"), rig.reloadNotices)
+        assertEquals(listOf(RECONNECT_RELOAD_REASON), rig.reloadNotices)
     }
 
     @Test fun aDarkPageWaitsForWakeRatherThanReloadingOnNetworkRegain() {
@@ -149,7 +149,7 @@ class DashboardNetworkBlipTest {
         rig.relaunch(null)
         assertEquals(1, navigation.count { it == "destroy" })
         assertEquals(1, builds)
-        assertEquals(listOf("reconnecting to Home Assistant"), rig.reloadNotices)
+        assertEquals(listOf(RECONNECT_RELOAD_REASON), rig.reloadNotices)
         SystemClock.advanceSensorTest(100_000)
         assertEquals(0, navigation.count { it == "reload" })
     }

@@ -117,6 +117,7 @@ class NoticeTest {
         assertEquals(R.string.reload_applying_changes, reloadNoticeReason("applying your settings"))
         assertEquals(R.string.reload_applying_changes, reloadNoticeReason("clearing the dashboard’s stored data"))
         assertEquals(R.string.reload_applying_changes, reloadNoticeReason(""))
+        assertEquals(R.string.dashboard_reconnecting, reloadNoticeReason(RECONNECT_RELOAD_REASON))
         assertNull("another caller's reason is shown as given", reloadNoticeReason("restoring a backup"))
     }
 

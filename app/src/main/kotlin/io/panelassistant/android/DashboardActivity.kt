@@ -825,7 +825,7 @@ class DashboardActivity : AppCompatActivity() {
         val superseded = BuiltinDashboard.consumeSupersededReload()
         when {
             RendererRebuildCause.ROUTE in causes || RendererRebuildCause.ENDPOINT in causes ->
-                statusScreens.announceDeliberateRestart("reconnecting to Home Assistant")
+                statusScreens.announceDeliberateRestart(RECONNECT_RELOAD_REASON)
             RendererRebuildCause.ENTITY_FILTER in causes -> statusScreens.announceDeliberateRestart(
                 getString(R.string.optimizing_entities_restart),
                 learning = superseded == BuiltinDashboard.LEARNING_RELOAD_REASON,
@@ -878,7 +878,7 @@ class DashboardActivity : AppCompatActivity() {
                 AdmissionOutcome.BRIDGE_HANDSHAKE_MISSED,
             )
         }
-        override fun recoveryStarting() { statusScreens.announceDeliberateRestart("reconnecting to Home Assistant") }
+        override fun recoveryStarting() { statusScreens.announceDeliberateRestart(RECONNECT_RELOAD_REASON) }
         override fun escalate(step: HandshakeRecoveryStep) { escalateHandshakeRecovery(step) }
         override fun reloadTarget(): Boolean = this@DashboardActivity.reloadTarget()
     })
@@ -1116,7 +1116,7 @@ class DashboardActivity : AppCompatActivity() {
             return
         }
         // A failed main-frame load left a local reconnecting document, not a live HA page.
-        statusScreens.announceDeliberateRestart("reconnecting to Home Assistant")
+        statusScreens.announceDeliberateRestart(RECONNECT_RELOAD_REASON)
         pacer.reload("network regained over broken page")
     }
 
