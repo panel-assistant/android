@@ -8,6 +8,7 @@ import io.panelassistant.android.control.PowerSafetyAdvisoryAction
 import io.panelassistant.android.control.ZigbeeHealthSnapshot
 import io.panelassistant.android.control.zigbeeHealthPresentation
 import io.panelassistant.android.i18n.AppLocale
+import io.panelassistant.android.i18n.formatNamedTemplate
 
 /** One advisory decided once: the page draws it with [html]; the status `warnings[]` carries [wire] and
  *  `warning_severities[]` carries the severity. Title, detail and action are pre-escaped HTML. */
@@ -76,9 +77,7 @@ internal fun storageNotice(storage: HealthAudit.StoragePresentation, strings: Ap
         "status-storage-database-failure" -> "install.presentation.status_storage_database_failure" to NoticeSeverity.ACTION_NEEDED
         else -> return null
     }
-    val rendered = presentation.params.entries.fold(strings.get(key)) { text, (name, value) ->
-        text.replace("{$name}", value)
-    }
+    val rendered = formatNamedTemplate(strings.get(key), presentation.params)
     val spec = titled(severity, rendered)
     // The measured summary and action are English runtime text: appended to the catalogue detail
     // wherever the page itself is English, so the figures and the escalation step are never lost.

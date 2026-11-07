@@ -1,0 +1,38 @@
+[
+  {
+    "name": "ordinary value",
+    "template": "Connected to {service}",
+    "values": [["service", "Home Assistant"]],
+    "expected": "Connected to Home Assistant"
+  },
+  {
+    "name": "repeated original token",
+    "template": "{value} / {value}",
+    "values": [["value", "ready"]],
+    "expected": "ready / ready"
+  },
+  {
+    "name": "unknown token remains visible",
+    "template": "{known} {missing}",
+    "values": [["known", "ready"]],
+    "expected": "ready {missing}"
+  },
+  {
+    "name": "dashboard path contains another placeholder",
+    "template": "{configured} shows {shown}",
+    "values": [["configured", "/missing?x={shown}"], ["shown", "/lovelace"]],
+    "expected": "/missing?x={shown} shows /lovelace"
+  },
+  {
+    "name": "values cannot expand each other in either order",
+    "template": "{first} / {second}",
+    "values": [["first", "{second}"], ["second", "{first}"]],
+    "expected": "{second} / {first}"
+  },
+  {
+    "name": "inserted bytes remain literal",
+    "template": "Value: {value}; other: {other}",
+    "values": [["value", "$& $1 \\ \" ' / <b>& π\n{other}"], ["other", "done"]],
+    "expected": "Value: $& $1 \\ \" ' / <b>& π\n{other}; other: done"
+  }
+]
