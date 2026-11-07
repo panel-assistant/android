@@ -187,15 +187,15 @@ class HaNetworkPathRuntimeTest {
         val idle = HaNetworkPath().snapshot(0L)
         assertEquals("", HaNetworkPathPresentation.healthToken(idle))
         val snap = degraded(HaNetworkPathSeverity.SEVERE, misses = 3, p95 = 4_200L)
-        assertEquals(" ha_net=severe ha_net_cause=loss ha_resp=severe ha_net_p95=4200 ha_net_n=30 ha_net_miss=3 ha_net_age=4000", HaNetworkPathPresentation.healthToken(snap))
+        assertEquals(" ha_net=severe ha_net_cause=loss ha_net_source=socket ha_resp=severe ha_net_p95=4200 ha_net_n=30 ha_net_miss=3 ha_net_age=4000", HaNetworkPathPresentation.healthToken(snap))
         val healthy = degraded(HaNetworkPathSeverity.HEALTHY, misses = 0, p95 = 23L)
         assertEquals(
-            " ha_net=healthy ha_resp=healthy ha_net_p95=23 ha_net_n=30 ha_net_miss=0 ha_net_age=4000",
+            " ha_net=healthy ha_net_source=socket ha_resp=healthy ha_net_p95=23 ha_net_n=30 ha_net_miss=0 ha_net_age=4000",
             HaNetworkPathPresentation.healthToken(healthy),
         )
         val fresh = HaNetworkPath().apply { onSocketState(HaSocketState.LIVE) }.snapshot(0L)
         assertEquals(
-            " ha_net=healthy ha_resp=healthy ha_net_p95=-1 ha_net_n=0 ha_net_miss=0 ha_net_age=-1",
+            " ha_net=healthy ha_net_source=socket ha_resp=healthy ha_net_p95=-1 ha_net_n=0 ha_net_miss=0 ha_net_age=-1",
             HaNetworkPathPresentation.healthToken(fresh),
         )
     }
@@ -246,7 +246,7 @@ class HaNetworkPathRuntimeTest {
     @Test fun theDiagLineIsTerseHostFreeAndAlwaysPresent() {
         val snap = degraded(HaNetworkPathSeverity.SEVERE, misses = 3, p95 = 4_200L)
         assertEquals(
-            "[ha-network] state=severe cause=loss responsiveness=severe measuring=true socket=live window=5m probes=30 " +
+            "[ha-network] state=severe cause=loss source=socket responsiveness=severe measuring=true socket=live window=5m probes=30 " +
                 "round_trips=27 p50=35 p95=4200 " +
                 "max=5900 jitter=310 loss=10.0% consecutive=0 server_errors=1 auth_errors=0 last_reply_age=4000",
             HaNetworkPathPresentation.diagnosticLine(snap),

@@ -36975,6 +36975,48 @@
       "softMaxChars": 220,
       "hardMaxChars": 320
     },
+    "shell.runtime.ha_network_echo_evidence": {
+      "text": "p95 {p95Ms} ms, {missCount} of {probeCount} network checks missed across {burstCount} bursts",
+      "sourceHash": "e0be4e0f11a38e2bb80f14fc572e87f6c58ed19239d135c9ab19a13748b4b00c",
+      "surface": "shell",
+      "context": "Network path verdict evidence from the same echo measurement. Counts cover recent adaptive bursts, never the socket five-minute window.",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [
+        "{p95Ms}",
+        "{missCount}",
+        "{probeCount}",
+        "{burstCount}"
+      ],
+      "frozen": [
+        "{p95Ms}",
+        "{missCount}",
+        "{probeCount}",
+        "{burstCount}"
+      ],
+      "softMaxChars": 150,
+      "hardMaxChars": 240
+    },
+    "shell.runtime.ha_network_echo_no_reply": {
+      "text": "no reply, {missCount} of {probeCount} network checks missed across {burstCount} bursts",
+      "sourceHash": "bdd1a4e418c8f95e7f9470f012c6f1497656821a6ea2ce4df4051d7f2ed97362",
+      "surface": "shell",
+      "context": "Network path verdict evidence from the same echo measurement. Counts cover recent adaptive bursts, never the socket five-minute window.",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [
+        "{missCount}",
+        "{probeCount}",
+        "{burstCount}"
+      ],
+      "frozen": [
+        "{missCount}",
+        "{probeCount}",
+        "{burstCount}"
+      ],
+      "softMaxChars": 150,
+      "hardMaxChars": 240
+    },
     "shell.runtime.ha_network_evidence_no_answer": {
       "text": "no probe answered in the last 5 min; last reply {lastReplyAge} ago",
       "sourceHash": "61d66bd6d22069ccd67549427d92a05db60734b8063501a0fed935a5887cbf81",
@@ -37106,6 +37148,24 @@
       ],
       "softMaxChars": 64,
       "hardMaxChars": 92
+    },
+    "shell.runtime.ha_network_with_evidence": {
+      "text": "{verdict}; {evidence}",
+      "sourceHash": "df42587b95447408d7bf60f413e8cb0921c3523565e128b86c4c07893776ae37",
+      "surface": "shell",
+      "context": "Network path verdict evidence from the same echo measurement. Counts cover recent adaptive bursts, never the socket five-minute window.",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [
+        "{verdict}",
+        "{evidence}"
+      ],
+      "frozen": [
+        "{verdict}",
+        "{evidence}"
+      ],
+      "softMaxChars": 150,
+      "hardMaxChars": 240
     }
   }
 }
