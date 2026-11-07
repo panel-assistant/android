@@ -22,7 +22,7 @@ enum class WakeOutcome { WOKEN, ALREADY_ON, STALE_GENERATION, ACTUATION_FAILED }
 
 enum class SleepOutcome { APPLIED, REFUSED }
 
-/** Ownership proof for one screen-off transition created by an automatic policy. */
+/** Recovery ownership for one automatic off or visible safety dim; not proof that sleep applied. */
 @JvmInline
 value class AutomaticOffEpoch internal constructor(internal val generation: Long)
 
@@ -387,6 +387,10 @@ class ScreenController(
     fun sleepAutomatically(): AutomaticOffEpoch? =
         if (sleepInternal(automatic = true) == SleepOutcome.APPLIED) automaticEpochOrNull() else null
 
+    /** A refused off may still have dimmed the screen. Keep its recovery separate from sleep proof. */
+    @Synchronized
+    fun automaticRecoveryEpoch(): AutomaticOffEpoch? = automaticEpochOrNull()
+
     private fun sleepInternal(automatic: Boolean): SleepOutcome {
         var androidSleepRefusal: String? = null
         var helperRefusedOff = false
@@ -508,7 +512,6 @@ class ScreenController(
             noteObservedDark(intendedOffGeneration)
             SleepOutcome.APPLIED
         } else {
-            automaticOffGeneration = 0L
             rendererAsleep = false
             BuiltinDashboard.onScreenAwake(true)
             SleepOutcome.REFUSED
@@ -534,7 +537,6 @@ class ScreenController(
             "the declared route was refused ($reason); dimmed to the never-blank floor instead",
         )
         Log.w(TAG, "screen-off with $reason — dimming to floor (never-blank; saved=$savedLevel)")
-        automaticOffGeneration = 0L
         return SleepOutcome.REFUSED
     }
 

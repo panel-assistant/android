@@ -756,6 +756,7 @@ class AutoSleepControllerTest {
     @Test fun visibleNoOverlayFallbackNeverReportsOrLearnsAnAutomaticSleep() = runTest {
         val h = virtualHarness(wakeTapAvailable = false)
         try {
+            val awakeLevel = h.backlight.getBrightness()
             val request = h.start()
             h.offer(aggregate(request, 0L, HaPresenceValue.OFF))
             h.await { h.status().getString("phase") == "live" }
@@ -770,7 +771,43 @@ class AutoSleepControllerTest {
             h.now.addAndGet(MINUTE)
             h.controller.noteTouchForTest(h.now.get(), h.screen.currentOffGeneration())
             h.settle()
+            assertFalse("touch must release the automatic dim", h.screen.isIntendedOff())
+            assertEquals("touch must restore the pre-dim brightness", awakeLevel, h.backlight.getBrightness())
             assertTrue("touching a visible fallback is not a premature wake", h.learning.corrections.isEmpty())
+        } finally { h.closeWithVirtualTime(::runCurrent) }
+    }
+
+    @Test fun disablingAutoSleepRestoresItsRefusedVisibleDim() = runTest {
+        val h = virtualHarness(wakeTapAvailable = false)
+        try {
+            val awakeLevel = h.backlight.getBrightness()
+            h.prepareAutomaticSleep()
+            assertTrue(h.backlight.getBrightness() in 1 until awakeLevel)
+
+            h.setEnabled(false)
+            h.settle()
+
+            assertFalse("disabling must release the automatic dim", h.screen.isIntendedOff())
+            assertEquals(awakeLevel, h.backlight.getBrightness())
+            assertFalse(h.screenChanges.contains(false))
+            assertTrue(h.learning.corrections.isEmpty())
+        } finally { h.closeWithVirtualTime(::runCurrent) }
+    }
+
+    @Test fun disablingAutoSleepLeavesALaterManualDimAlone() = runTest {
+        val h = virtualHarness(wakeTapAvailable = false)
+        try {
+            h.prepareAutomaticSleep()
+            assertEquals(SleepOutcome.REFUSED, h.screen.sleep())
+            val manualLevel = h.backlight.getBrightness()
+
+            h.setEnabled(false)
+            h.settle()
+
+            assertTrue("manual OFF owns the later dim", h.screen.isIntendedOff())
+            assertEquals(manualLevel, h.backlight.getBrightness())
+            assertFalse(h.screenChanges.contains(false))
+            assertTrue(h.learning.corrections.isEmpty())
         } finally { h.closeWithVirtualTime(::runCurrent) }
     }
 
