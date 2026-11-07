@@ -14,6 +14,17 @@ import org.junit.Test
 import java.util.Base64
 
 internal class PanelAssistantChannelCatalogTest : PanelRuntimeRig() {
+    @Test fun writableNumberDescriptorsProjectTheirRegisteredDomain() {
+        val numbers = SettingsRegistry.settable().filter { it.ha?.component == "number" }
+        assertTrue(numbers.any { it.key == "dashboard_idle_return_min" })
+        numbers.forEach { spec ->
+            val json = requireNotNull(PanelAssistantChannelCatalog.describe(spec.ha!!.channel)).toJson()
+            assertEquals(spec.key, requireNotNull(spec.min), json.getDouble("min"), 0.0)
+            assertEquals(spec.key, requireNotNull(spec.max), json.getDouble("max"), 0.0)
+            assertEquals(spec.key, spec.step ?: 1.0, json.getDouble("step"), 0.0)
+        }
+    }
+
     @Test fun theFormerSnapshotImageIsRetiredInsteadOfDescribed() {
         assertNull(PanelAssistantChannelCatalog.describe("camera_snapshot"))
         assertTrue("camera_snapshot" in PanelAssistantChannelCatalog.RETIRED_CHANNELS)

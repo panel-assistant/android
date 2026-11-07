@@ -652,7 +652,7 @@ class Config private constructor(
     val cameraKbps: Int get() = intPrefInRange("camera_kbps")
 
     /** Exposure bias in stops; the owner clamps it to whatever range the sensor advertises. */
-    val cameraExposureEv: Float get() = floatPref("camera_exposure").coerceIn(-2f, 2f)
+    val cameraExposureEv: Float get() = floatPref("camera_exposure")
 
     // Experimental Android dashboard lock: hide system bars and return from other apps/Recents so a casual
     // user does not remain away from the dashboard. Persisted, off by default, with recovery routes and a
