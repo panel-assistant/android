@@ -15,12 +15,6 @@ class HtmlUiCatalogueContractTest {
     // Source-text reason: loads the shipped i18n catalogues and page scripts' literal key/fallback pairs as catalogue input.
     private val catalogue = JSONObject(File(assets, "i18n/en.json").readText()).getJSONObject("strings")
     private val releaseTargetLocales = AppLocale.RELEASE_LOCALES.filterNot { it == AppLocale.ENGLISH }
-    // Echo evidence ships in English pending its separate translation pass.
-    private val deferredEchoEvidenceKeys = setOf(
-        "shell.runtime.ha_network_echo_evidence",
-        "shell.runtime.ha_network_echo_no_reply",
-        "shell.runtime.ha_network_with_evidence",
-    )
 
     @Test fun `shell Dashboard Configure Profiles and Entities literal keys are present and owned by their source surface`() {
         val buildwatch = File(assets, "buildwatch.js").readText()
@@ -73,8 +67,8 @@ class HtmlUiCatalogueContractTest {
             val target = TargetCatalogue.parse(File(assets, "i18n/$locale.json").readText(), source)
             assertEquals(
                 "$locale target keys must exactly match the reviewed English source catalogue",
-                source.strings.keys - deferredEchoEvidenceKeys,
-                target.strings.keys - deferredEchoEvidenceKeys,
+                source.strings.keys - DEFERRED_ECHO_EVIDENCE_KEYS,
+                target.strings.keys - DEFERRED_ECHO_EVIDENCE_KEYS,
             )
         }
     }

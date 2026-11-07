@@ -408,7 +408,7 @@ internal object HaNetworkPathPresentation {
             PathProbeCause.NONE -> ""
         }
         val echo = snap.echo
-        // Compact to fit health readers with a 512-byte body limit alongside discovery identity.
+        // Keep this additive suffix small alongside discovery identity and lifecycle tokens.
         val measurement = if (echo == null) "" else
             " ha_net_echo=${echo.sent},${echo.sent - echo.received},${echo.p95Ms},${echo.bursts}"
         return " ha_net=${snap.severity.wireValue}$cause$measurement ha_resp=${snap.responsiveness.wireValue} " +

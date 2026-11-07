@@ -274,7 +274,7 @@
     var mc = t.match(/ha_net_n=(\d+)/);
     var mm = t.match(/ha_net_miss=(\d+)/);
     var ma = t.match(/ha_net_age=(-?\d+)/);
-    // One compact tuple keeps /health within older USB readers' line bound. Its presence selects
+    // One compact tuple keeps the additive /health evidence small. Its presence selects
     // echo evidence; a malformed or duplicate tuple must never fall back to socket figures.
     var echoTokens = t.match(/(?:^|\s)ha_net_echo=\S*/g);
     var tuple = echoTokens && echoTokens.length === 1
