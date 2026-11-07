@@ -38,7 +38,9 @@ jobs:
   # run the heavier jobs in this repository's workflows on `blacksmith-4vcpu-ubuntu-2404` instead of
   # `ubuntu-24.04`, and `auto` below sends the Android build there instead of the project runner. Pull
   # requests, schedules and anything a bot starts stay GitHub-hosted. Unset the
-  # variable to stop using Blacksmith; runners without the variable never see it.
+  # variable to stop using Blacksmith; runners without the variable never see it. The jobs on a release's
+  # critical path (the Android builds, helper units, lint, instrumentation) take the runner named by
+  # CI_BLACKSMITH_HEAVY_RUNNER (a larger Blacksmith size), or the 4-vCPU size when it is unset.
   #
   # CI_ANDROID_RUNNER (repository variable) or the dispatch input selects `hosted`, `self-hosted` or
   # `auto` (the default). `auto` asks the API for an online project runner using RUNNER_ADMIN_TOKEN, a
@@ -68,11 +70,10 @@ jobs:
             reason="pull requests always build on hosted runners"
           else
             case "$MODE" in
-              auto) if [ "$CI_RUNNER" = blacksmith ] && [[ "$EVENT" = push || "$EVENT" = workflow_dispatch ]] && [[ "$ACTOR" != *'[bot]' && "$TRIGGERING_ACTOR" != *'[bot]' ]]; then MODE=blacksmith; fi ;;
+              auto) if [ "$CI_RUNNER" = blacksmith ] && [[ "$EVENT" = push || "$EVENT" = workflow_dispatch ]] && [[ "$ACTOR" != *'[bot]' && "$TRIGGERING_ACTOR" != *'[bot]' ]]; then blacksmith=1; fi ;;
             esac
             case "$MODE" in
               hosted) reason="CI_ANDROID_RUNNER is hosted" ;;
-              blacksmith) reason="CI_RUNNER is blacksmith, so the Android build runs on Blacksmith" ;;
               self-hosted) choice=self-hosted; reason="CI_ANDROID_RUNNER is self-hosted" ;;
               auto)
                 if [ -z "$RUNNER_STATUS_TOKEN" ]; then
@@ -83,9 +84,13 @@ jobs:
                       -H "Authorization: Bearer $RUNNER_STATUS_TOKEN" -H 'Accept: application/vnd.github+json' \
                       "https://api.github.com/repos/$REPOSITORY/actions/runners?per_page=100" || true)"
                   status="${status:-000}"
-                  if [ "$status" = 200 ] && online="$(jq '[.runners[] | select(.status == "online" and ([.labels[].name] | index("ms01-i9")))] | length' runners.json)"; then
+                  # With Blacksmith on, the project runner is used only while one of its runners is idle: it is
+                  # the fastest for this one build, but a busy one would queue it, and Blacksmith never queues.
+                  if [ "$status" = 200 ] && online="$(jq --argjson idle "${blacksmith:-0}" '[.runners[] | select(.status == "online" and ([.labels[].name] | index("ms01-i9")) and ($idle == 0 or .busy == false))] | length' runners.json)"; then
                     if [ "$online" -gt 0 ]; then
-                      choice=self-hosted; reason="$online project runner(s) online"
+                      choice=self-hosted; reason="$online project runner(s) online${blacksmith:+ and idle}"
+                    elif [ -n "${blacksmith:-}" ]; then
+                      reason="no project runner is idle, so the Android build runs on Blacksmith"
                     else
                       reason="no project runner is online"
                     fi
@@ -357,7 +362,7 @@ jobs:
     # The runner here repeats the selector's choice: Blacksmith only for a push or manual run by a person, when its MODE
     # resolves to auto (dispatch input first, then CI_ANDROID_RUNNER) and CI_RUNNER is blacksmith. A runs-on cannot read the selector's
     # output on runners that expand jobs before any job runs, so the precedence is restated, not shared.
-    runs-on: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !endsWith(github.actor, '[bot]') && !endsWith(github.triggering_actor, '[bot]') && vars.CI_RUNNER == 'blacksmith' && (github.event.inputs.android_runner != '' && github.event.inputs.android_runner != 'repository setting' && github.event.inputs.android_runner || vars.CI_ANDROID_RUNNER || 'auto') == 'auto' && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04' }}
+    runs-on: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !endsWith(github.actor, '[bot]') && !endsWith(github.triggering_actor, '[bot]') && vars.CI_RUNNER == 'blacksmith' && (github.event.inputs.android_runner != '' && github.event.inputs.android_runner != 'repository setting' && github.event.inputs.android_runner || vars.CI_ANDROID_RUNNER || 'auto') == 'auto' && (vars.CI_BLACKSMITH_HEAVY_RUNNER || 'blacksmith-4vcpu-ubuntu-2404') || 'ubuntu-24.04' }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -466,7 +471,7 @@ jobs:
     name: Helper units
     needs: changes
     if: needs.changes.outputs.host == 'true'
-    runs-on: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !endsWith(github.actor, '[bot]') && !endsWith(github.triggering_actor, '[bot]') && vars.CI_RUNNER == 'blacksmith' && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04' }}
+    runs-on: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !endsWith(github.actor, '[bot]') && !endsWith(github.triggering_actor, '[bot]') && vars.CI_RUNNER == 'blacksmith' && (vars.CI_BLACKSMITH_HEAVY_RUNNER || 'blacksmith-4vcpu-ubuntu-2404') || 'ubuntu-24.04' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
