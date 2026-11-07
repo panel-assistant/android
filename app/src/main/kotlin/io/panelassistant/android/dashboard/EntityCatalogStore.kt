@@ -14,13 +14,20 @@ import io.panelassistant.android.metrics.FeatureCostOutcome
 import io.panelassistant.android.metrics.FeatureCosts
 import io.panelassistant.android.storage.DatabaseBusyRetry
 import io.panelassistant.android.storage.StorageHealthRuntime
+import io.panelassistant.android.util.Cached
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.Writer
 
 /** Bounded, derived entity/catalog evidence. Credentials are never stored here. */
-class EntityCatalogStore(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, null, VERSION) {
+class EntityCatalogStore internal constructor(
+    context: Context,
+    databaseUsageNowMs: () -> Long,
+    measureUsage: (EntityCatalogStore) -> DatabaseUsage,
+) : SQLiteOpenHelper(context, DATABASE_NAME, null, VERSION) {
+    constructor(context: Context) : this(context, Cached.MONOTONIC_MS, { it.measureDatabaseUsage() })
+
     /** Held for the config vault: a freshly created database may need configuration restored into it. */
     internal val appContext: Context = context.applicationContext ?: context
     internal val databaseTarget: File = context.getDatabasePath(DATABASE_NAME)
@@ -40,9 +47,7 @@ class EntityCatalogStore(context: Context) : SQLiteOpenHelper(context, DATABASE_
         busyRetryAbandoned = true
         super.close()
     }
-    internal val databaseBytesCacheLock = Any()
-    internal var databaseBytesCachedAt = Long.MIN_VALUE
-    internal var databaseUsageCachedValue = DatabaseUsage(0L, 0L, 0)
+    internal val databaseUsageCache = Cached(10_000L, databaseUsageNowMs) { measureUsage(this) }
 
     /**
      * Report a completed catalog/history mutation, or latch its original SQLite failure and rethrow.

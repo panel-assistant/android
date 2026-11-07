@@ -34,7 +34,6 @@ import io.panelassistant.android.storage.walReclamationStillPending
 import java.io.File
 
 private const val SOFT_LIMIT_BYTES = 128L * 1024 * 1024
-private const val DATABASE_BYTES_CACHE_MS = 10_000L
 /** Rows per maintenance chunk: small enough that one chunk's lock hold stays well under a
  *  concurrent writer's busy timeout, large enough that a full purge stays a few dozen chunks. */
 private const val MAINTENANCE_CHUNK_ROWS = 1_000
@@ -86,7 +85,7 @@ private fun EntityCatalogStore.maintainSoftLimit(now: Long): Boolean {
         val db = writableDatabase
         val incrementalVacuum = ensureIncrementalAutoVacuum(db)
         fun refreshUsage(): Long = measureDatabaseUsage(db).also {
-            updateDatabaseUsageCache(now, it)
+            updateDatabaseUsageCache(it)
         }.usedBytes
         observedBytes = refreshUsage()
         if (observedBytes > SOFT_LIMIT_BYTES) {
@@ -532,15 +531,7 @@ private fun EntityCatalogStore.applyRollupPressureTier(db: SQLiteDatabase, tier:
     }
 }
 
-fun EntityCatalogStore.databaseUsage(now: Long = System.currentTimeMillis()): DatabaseUsage {
-    synchronized(databaseBytesCacheLock) {
-        if (databaseBytesCachedAt != Long.MIN_VALUE && now >= databaseBytesCachedAt &&
-            now - databaseBytesCachedAt < DATABASE_BYTES_CACHE_MS) {
-            return databaseUsageCachedValue
-        }
-    }
-    return measureDatabaseUsage().also { updateDatabaseUsageCache(now, it) }
-}
+fun EntityCatalogStore.databaseUsage(): DatabaseUsage = databaseUsageCache.get()
 
 /**
  * Bounded, path-free health evidence for the filesystem containing the database that SQLite
@@ -622,12 +613,11 @@ private fun EntityCatalogStore.readStorageHealthObservation(
     )
 }
 
-private fun EntityCatalogStore.updateDatabaseUsageCache(now: Long, usage: DatabaseUsage) = synchronized(databaseBytesCacheLock) {
-    databaseBytesCachedAt = now
-    databaseUsageCachedValue = usage
-}
+/** Publish only after measurement has closed its cursors and released SQLite transactions.
+ * Cached.set may wait for a diagnostic measurement, which acquires SQLite resources itself. */
+internal fun EntityCatalogStore.updateDatabaseUsageCache(usage: DatabaseUsage) = databaseUsageCache.set(usage)
 
-private fun EntityCatalogStore.measureDatabaseUsage(db: SQLiteDatabase = readableDatabase): DatabaseUsage {
+internal fun EntityCatalogStore.measureDatabaseUsage(db: SQLiteDatabase = readableDatabase): DatabaseUsage {
     fun pragma(name: String): Long = db.rawQuery("PRAGMA $name", null).use { c ->
         if (c.moveToFirst()) c.getLong(0) else 0L
     }
