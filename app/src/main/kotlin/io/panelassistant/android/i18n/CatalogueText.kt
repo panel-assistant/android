@@ -10,7 +10,7 @@ internal class CatalogueText(
     private vararg val values: Pair<String, Any>,
 ) {
     fun render(strings: Strings): String =
-        values.fold(strings.get(key)) { text, (name, value) ->
-            text.replace("{$name}", if (value is CatalogueText) value.render(strings) else value.toString())
-        }
+        formatNamedTemplate(strings.get(key), values.associate { (name, value) ->
+            name to if (value is CatalogueText) value.render(strings) else value.toString()
+        })
 }

@@ -1,6 +1,7 @@
 package io.panelassistant.android.http
 
 import io.panelassistant.android.RendererAdmissionPresentation
+import io.panelassistant.android.i18n.formatNamedTemplate
 import io.panelassistant.android.i18n.Strings as AppStrings
 
 /** Translate only closed, exact runtime states. Evidence-bearing and backend-origin detail remains verbatim. */
@@ -184,7 +185,7 @@ private fun runtimeValueFamily(value: String, strings: AppStrings): String {
 }
 
 internal fun formattedString(strings: AppStrings, key: String, vararg values: Pair<String, String>): String =
-    values.fold(strings.get(key)) { text, (name, value) -> text.replace("{$name}", value) }
+    formatNamedTemplate(strings.get(key), values.toMap())
 
 internal fun localizedProximitySummary(summary: String, strings: AppStrings): String = when (summary) {
     "No proximity source" -> strings.get("dashboard.proximity.no_source")
