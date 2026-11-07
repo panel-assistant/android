@@ -36,7 +36,7 @@ defaults:
 jobs:
   # The rest of tools/test: behaviour tests and the layout gate's own negative controls, in three shards.
   suite:
-    runs-on: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.actor != 'dependabot[bot]' && vars.CI_RUNNER == 'blacksmith' && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04' }}
+    runs-on: ${{ github.event_name == 'push' && !endsWith(github.actor, '[bot]') && !endsWith(github.triggering_actor, '[bot]') && vars.CI_RUNNER == 'blacksmith' && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04' }}
     container:
       image: mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea
       options: --ipc=host
@@ -80,7 +80,7 @@ jobs:
 
   # Each job runs a group of one browser's pages two at a time, each in its own process and fixture server.
   layout:
-    runs-on: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.actor != 'dependabot[bot]' && vars.CI_RUNNER == 'blacksmith' && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04' }}
+    runs-on: ${{ github.event_name == 'push' && !endsWith(github.actor, '[bot]') && !endsWith(github.triggering_actor, '[bot]') && vars.CI_RUNNER == 'blacksmith' && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04' }}
     container:
       image: mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea
       options: --ipc=host

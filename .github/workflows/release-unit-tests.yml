@@ -20,7 +20,7 @@ jobs:
   release-unit-tests:
     name: Android release unit tests
     if: github.repository == 'panel-assistant/android'
-    runs-on: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.actor != 'dependabot[bot]' && vars.CI_RUNNER == 'blacksmith' && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04' }}
+    runs-on: ${{ github.event_name == 'push' && !endsWith(github.actor, '[bot]') && !endsWith(github.triggering_actor, '[bot]') && vars.CI_RUNNER == 'blacksmith' && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04' }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
