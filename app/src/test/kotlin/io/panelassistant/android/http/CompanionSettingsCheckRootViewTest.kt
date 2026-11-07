@@ -126,6 +126,21 @@ class CompanionSettingsCheckRootViewTest {
         assertFalse("no 'could not be inspected' banner: $banner", "could not be inspected" in banner)
     }
 
+    /** Android 10 and earlier, or a root shell outside the app's namespace: the ordinary path is used,
+     *  even where a mirror directory also exists. */
+    @Test fun aVisibleDataDirectoryIsReadDirectly() {
+        File(view, "data_mirror/data_ce/null/0/$pkg").mkdirs()
+        File(view, "data/data/$pkg/databases").mkdirs()
+        File(view, "data/data/$pkg/databases/HomeAssistantDB").writeText("db")
+        installSqlite3("1\u001f\u001fhttps://ha.example")
+
+        val observed = observations().companionServerCache.get()
+
+        assertEquals(CompanionDb.Probe.SUCCEEDED, observed.probe)
+        assertEquals(CompanionDb.UrlStatus(needsRepair = true, affected = 1), observed.status)
+        assertTrue("the repair banner, not the probe one", "could not be inspected" !in banner(observed))
+    }
+
     @Test fun aCompanionDatabaseInNeitherViewStillReportsTheOrdinaryPath() {
         File(view, "data/data/io.panelassistant.android").mkdirs()
         installSqlite3("unused")
