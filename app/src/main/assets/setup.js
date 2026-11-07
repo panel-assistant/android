@@ -736,10 +736,17 @@
     function refreshCustomNote() {
       var root = dashboardRootOf(typed.home_dashboard);
       var unknown = root && hdCatalog && hdCatalog.queried && items.length && !seen[root];
-      customNote.textContent = unknown
+      var noteText = unknown
         ? i18nText("setup.dashboard.path.unknown", "{root} is not a dashboard this account can see — the panel will fall back to its default until that dashboard exists.", { root: root })
         : i18nText("setup.dashboard.path.help", "A path on this Home Assistant, starting with a dashboard from the list.");
-      customNote.classList.toggle("warn", !!unknown);
+      if (unknown) {
+        window.HaNotice.fill(customNote, "warning", "", noteText);
+        customNote.classList.add("notice-inline", "hd-area-note", "hd-custom-note");
+      } else {
+        customNote.className = "hd-area-note hd-custom-note";
+        customNote.removeAttribute("data-severity");
+        customNote.textContent = noteText;
+      }
     }
     customInput.addEventListener("input", function () {
       typed.home_dashboard = customInput.value.trim();
@@ -893,7 +900,11 @@
     var counting = !!ef.counting;
     // Once settled, the server's verdict is authoritative — it is the one bound to the confidence tag.
     var level = counting ? efLevelOf(efShown) : (ef.level || "green");
-    v.className = "ef-verdict " + level;
+    var severity = level === "red" ? "action_needed" : level === "amber" ? "warning" : "note";
+    var pill = document.getElementById("ef-severity");
+    pill.parentNode.setAttribute("data-severity", severity);
+    pill.textContent = i18nText("shell.notice.severity." + severity,
+      severity === "action_needed" ? "Action needed" : severity === "warning" ? "Warning" : "Note");
     if (counting) {
       head.textContent = level === "red" ? i18nText("setup.filter.counting.red", "Heading past what this panel can keep up with")
         : level === "amber" ? i18nText("setup.filter.counting.amber", "Filtering is looking worthwhile")
@@ -908,8 +919,8 @@
     var body = [
       el("p", { class: "wiz-lead", text: i18nText("setup.filter.lead", "Home Assistant will send this panel a live update for every entity it can see. Filtering cuts that down to the ones your dashboard actually uses.") }),
       el("div", { class: "ef-verdict", id: "ef-verdict" }, [
-        el("p", { class: "ef-verdict-head" }, [
-          el("span", { class: "ef-dot" }),
+        el("p", { class: "notice notice-inline ef-verdict-head" }, [
+          el("span", { class: "notice-pill", id: "ef-severity" }),
           el("b", { id: "ef-head" }),
         ]),
         el("div", { class: "ef-facts" }, [
