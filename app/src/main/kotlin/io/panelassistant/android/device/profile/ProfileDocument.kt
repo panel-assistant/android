@@ -281,7 +281,11 @@ data class ProfileInput(
     val evdevButtons: List<ProfileEvdevButton> = emptyList(),
     /** False declares a panel with no physical keys; null (the key absent) is unknown. */
     val hasPhysicalButtons: Boolean? = null,
+    val proximityKeys: ProfileProximityKeys? = null,
 )
+
+/** Linux key pulses surfaced by Android's accessibility input filter. */
+data class ProfileProximityKeys(val deviceName: String, val nearCode: Int, val farCode: Int)
 
 data class ProfileEvdevButton(
     val node: String,
@@ -292,6 +296,8 @@ data class ProfileEvdevButton(
     /** When true, the up edge is reported too, as a distinct `<event_type>_RELEASED` event. Off by
      *  default, so a button stays press-only unless its profile opts in. */
     val release: Boolean = false,
+    /** Exact Android InputDevice name; selects the rootless route instead of a fixed node. */
+    val deviceName: String? = null,
 )
 
 data class ProfileCpu(val governors: Map<String, String>? = null)

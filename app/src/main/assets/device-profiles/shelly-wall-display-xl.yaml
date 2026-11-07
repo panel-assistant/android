@@ -1,0 +1,101 @@
+schema: 2
+id: shelly-wall-display-xl
+version: 1.0.0
+display_name: Shelly Wall Display XL
+soc_class: Unconfirmed
+metadata:
+  author: ha-paneld maintainers
+  source: https://panel-assistant.io/go/docs?page=hardware/shelly-wall-display
+  license: Apache-2.0
+  maturity: experimental
+  limitations:
+    - Named button and proximity inputs are based on XL Linux input captures. Android accessibility delivery on the XL still needs live-hardware confirmation.
+    - Proximity uses gpio_keys F5 near and F6 far pulses. The polarity is inferred from the reported captures; calibrate on the panel before using proximity actions.
+    - Screen and Stargate service routes follow the shared modern Shelly firmware behavior; runtime checks determine availability.
+requires:
+  min_core_version: 0.9.5-rc1
+  drivers:
+    - screen.vendor-rpc
+    - sensor.android
+    - input.android-keys
+match:
+  priority: 980
+  fallback: false
+  any:
+    - priority: 980
+      all:
+        - field: model
+          op: equals
+          values: [blake]
+    - priority: 980
+      all:
+        - field: device
+          op: equals
+          values: [blake]
+platform:
+  # The application UID is sandboxed; privileged operations use the helper route.
+  su_form: none
+  app_can_su: false
+  # Projected from the X2i: the Stargate firmware ignores the Recents key.
+  has_recents: false
+  # Stargate replaces Android's navigation bar on every Shelly Wall Display.
+  has_native_navbar: false
+  launcher:
+    # Shelly's Stargate registers as Home but offers no route to Android Settings.
+    # The Launcher button skips it and opens the admin launcher, which lists it as an app.
+    vendor_home_packages:
+      - cloud.shelly.stargate
+    # Projected from the X2i: the same Stargate serves Home Assistant's Shelly RPC on TCP 8021 only
+    # once its MainActivity exists. The app checks the port first, so a model that already listens is left alone.
+    vendor_service:
+      activity: cloud.shelly.stargate/.activities.MainActivity
+      port: 8021
+hardware:
+  led:
+    mechanism: none
+    transfer: identity
+  # Projected from the X2i: Stargate's Ui.Screen.Set, confirmed on the backlight node. Falls back to
+  # the screen timeout, then to dimming when Android does not sleep or the secure-settings grant is missing.
+  screen_off: vendor-rpc
+  has_button_backlight: false
+sensors:
+  light_technology: Ambient light
+  cht8305: false
+  room_temp_offset_c: 0.0
+identity:
+  manufacturer: Shelly
+  model: Wall Display XL
+  model_label_strategy: display-name
+input:
+  evdev_buttons:
+    - device_name: adc-keys
+      code: 59
+      grab: false
+      event_type: KEYCODE_F1
+    - device_name: adc-keys
+      code: 60
+      grab: false
+      event_type: KEYCODE_F2
+    - device_name: adc-keys
+      code: 61
+      grab: false
+      event_type: KEYCODE_F3
+    - device_name: adc-keys
+      code: 62
+      grab: false
+      event_type: KEYCODE_F4
+    - device_name: rk805 pwrkey
+      code: 68
+      grab: false
+      event_type: KEYCODE_F10
+  proximity_keys:
+    device_name: gpio_keys
+    near_code: 63
+    far_code: 64
+cpu: {}
+display: {}
+provisioning:
+  software: {}
+  display: {}
+  packages: []
+  recipes: []

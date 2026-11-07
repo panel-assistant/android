@@ -63,8 +63,10 @@ object EvdevButtonClient {
     /** Idempotent. No-op when [buttons] is empty (panels with no evdev-instrumented buttons). */
     @Synchronized
     fun start(buttons: List<EvdevButton>) {
-        if (active != null || buttons.isEmpty()) return
-        val r = Run(buttons.toList())
+        AccessibilityKeyRouter.buttons = buttons.filter { it.deviceName != null }
+        val helperButtons = buttons.filter { it.deviceName == null }
+        if (active != null || helperButtons.isEmpty()) return
+        val r = Run(helperButtons)
         r.thread = Thread({ run(r) }, "evdev-buttons").apply { isDaemon = true }
         active = r
         state = State.CONNECTING
@@ -74,6 +76,7 @@ object EvdevButtonClient {
     }
 
     fun stop() {
+        AccessibilityKeyRouter.buttons = emptyList()
         // Invalidate delivery before closing the socket. A replacement runtime may start even if an
         // old platform read takes longer than the bounded join; that stale run cannot emit into it.
         val r = synchronized(this) {
