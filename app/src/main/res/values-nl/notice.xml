@@ -55,4 +55,5 @@
     <string name="voice_step_answered">Beantwoord</string>
     <string name="voice_heard">„%1$s”</string>
     <string name="network_chip_echoes_lost">%1$d van %2$d netwerkcontroles naar Home Assistant verloren over %3$d reeksen</string>
+    <string name="network_chip_echo_time">Netwerkcontroles naar Home Assistant duren %1$s bij p95</string>
 </resources>

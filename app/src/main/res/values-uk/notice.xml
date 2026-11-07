@@ -55,4 +55,5 @@
     <string name="voice_step_answered">Відповідено</string>
     <string name="voice_heard">«%1$s»</string>
     <string name="network_chip_echoes_lost">Втрачено %1$d із %2$d перевірок мережі до Home Assistant за %3$d серій</string>
+    <string name="network_chip_echo_time">Перевірки мережі до Home Assistant тривають %1$s на p95</string>
 </resources>

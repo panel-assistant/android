@@ -55,4 +55,5 @@
     <string name="voice_step_answered">Beantwortet</string>
     <string name="voice_heard">„%1$s“</string>
     <string name="network_chip_echoes_lost">%1$d von %2$d Netzwerkprüfungen an Home Assistant über %3$d Messreihen verloren</string>
+    <string name="network_chip_echo_time">Netzwerkprüfungen an Home Assistant dauern %1$s bei p95</string>
 </resources>
