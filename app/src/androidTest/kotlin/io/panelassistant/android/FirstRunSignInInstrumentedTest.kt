@@ -68,8 +68,10 @@ class FirstRunSignInInstrumentedTest {
             assertFalse("The regression input must be before renderer readiness", config.builtInRendererReady())
             assertFalse(config.setupEverCompleted)
             assertFalse(config.setupEntityFilterAnswered)
-            // On a panel the service listens long before this activity starts. A cold test process can show
-            // sign-in first, and the retried load then never surfaced the page to UI Automator (2026-11-07).
+            // On a panel the service starts at boot and listens long before this activity. A cold test process
+            // could show sign-in first, and the retried load then never surfaced the page to UI Automator
+            // (2026-11-07); Android 8.1 starts no service until something asks.
+            PaneldService.start(InstrumentationRegistry.getInstrumentation().targetContext)
             assertTrue("The panel's local HTTP server must listen before sign-in starts", localServerListens(config.httpPort))
             ActivityScenario.launch<DashboardActivity>(
                 Intent(Intent.ACTION_MAIN).setClass(
