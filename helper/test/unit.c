@@ -1488,6 +1488,18 @@ static void test_screencap_command(void) {
           "SCREENCAP requests one PNG capture with exact structural argv\n");
 }
 
+// Verb matching is exact: a known verb as a prefix, a known verb with a suffix, or a case variant
+// must reach no handler.
+static void test_dispatch_exact_verb(void) {
+    char out[256];
+    static const char *const near_misses[] = { "PINGX", "PIN", "ping", "LOGCATDUMPX 5", "OFFX" };
+    for (size_t i = 0; i < sizeof near_misses / sizeof near_misses[0]; i++) {
+        dispatch_reply(near_misses[i], out, sizeof out);
+        CHECK(strcmp(out, "ERR\n") == 0, "dispatch matches verbs exactly, not by prefix ('%s' got '%s')\n",
+              near_misses[i], out);
+    }
+}
+
 static void test_line_accumulator(void) {
     char out[256];
 
@@ -2580,6 +2592,10 @@ int main(int argc, char **argv) {
         sleep(30);
         return 0;
     }
+    test_dispatch_exact_verb();
+    // Every later case dispatches through the same table; an inexact matcher would route them to
+    // the wrong handlers, so stop with this verdict rather than a cascade or a signal exit.
+    if (failures) return 1;
     test_guard_test_parent();
     guard_test_reset();
     CHECK(guard_test_reconcile() == 0, "Guard package gate initializes empty for legacy unit cases\n");
