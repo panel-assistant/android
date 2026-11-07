@@ -6,6 +6,8 @@ import io.panelassistant.android.dashboard.EntityBootstrapProblem
  * What each native panel screen puts in its [Notice]'s slots, decided without Android so every phase is
  * assertable at the seam the screen calls (`NoticeTest`). The screens turn these into words and views.
  */
+internal const val RECONNECT_RELOAD_REASON = "dashboard-reconnect"
+
 /**
  * The reload notice's line for a deliberate reload's [reason], or null to show the caller's own reason.
  * The two reasons the panel itself gives most are worded as sentences of their own.
@@ -15,6 +17,7 @@ internal fun reloadNoticeReason(reason: String): Int? = when (reason) {
     io.panelassistant.android.control.BuiltinDashboard.LEARNING_RELOAD_REASON, "updating the entity filter" ->
         R.string.reload_optimising_entities
     "applying your settings", "clearing the dashboard’s stored data", "" -> R.string.reload_applying_changes
+    RECONNECT_RELOAD_REASON -> R.string.dashboard_reconnecting
     else -> null
 }
 
