@@ -882,7 +882,7 @@ class ScreenControllerTest {
 
         assertFalse(sleep.isAlive)
         assertFalse(wake.isAlive)
-        assertEquals(listOf("SCREEN OFF", "SCREEN ON"), daemon.sent.toList())
+        assertEquals(listOf("SCREEN OFF", "SCREEN ON"), daemon.sent.filter { it.startsWith("SCREEN ") })
         assertFalse(sc.isIntendedOff())
     }
 
@@ -1343,12 +1343,12 @@ class ScreenControllerTest {
         assertEquals(1, power.pulses)
     }
 
-    @Test fun ensureOnWakesANoninteractiveDeviceWhateverTheBacklightReads() {
+    @Test fun ensureOnReportsRefusalWhenTheWakePulseLeavesAndroidNoninteractive() {
         val sc = brightnessZero()
         backlight.level = 200
         power.interactive = false   // Android slept on its own; the node still reads powered
-        assertEquals(WakeOutcome.WOKEN, sc.ensureOn())
-        assertEquals("the wakelock pulse is what brings Android back", 1, power.pulses)
+        assertEquals(WakeOutcome.ACTUATION_FAILED, sc.ensureOn())
+        assertEquals("a wake pulse was attempted", 1, power.pulses)
     }
 
     @Test fun ensureOnTreatsAnUnknownReadingAsDark() {
@@ -1365,7 +1365,7 @@ class ScreenControllerTest {
         assertEquals(0, power.pulses)
 
         val (dark, _) = controller(daemon = mapOf("BLPOWER" to "4", "SCREEN ON" to "OK"))
-        assertEquals("bl_power off with a positive brightness is still dark", WakeOutcome.WOKEN, dark.ensureOn())
+        assertEquals("an acknowledged wake that leaves bl_power off is refused", WakeOutcome.ACTUATION_FAILED, dark.ensureOn())
         assertEquals(1, power.pulses)
     }
 
@@ -1461,6 +1461,7 @@ class ScreenControllerTest {
         assertEquals(RouteSelection(ScreenOff.SCREEN_TIMEOUT, ScreenOff.SCREEN_TIMEOUT, ScreenController.REASON_DECLARED), sc.routeSelection())
         assertTrue("a true sleep never touches the brightness", backlight.calls.isEmpty())
 
+        power.interactive = true // model Android responding to the wake pulse
         sc.wake()
         assertEquals("the displaced timeout is back", 300_000, power.timeoutMs)
         assertEquals(1, power.pulses)
@@ -1510,6 +1511,7 @@ class ScreenControllerTest {
         assertEquals(ScreenOff.DEVICE_ADMIN, selection.selected)
         assertTrue(selection.reason, selection.reason.contains("WRITE_SETTINGS"))
 
+        power.interactive = true // model Android responding to the wake pulse
         sc.wake()
         assertEquals(1, power.pulses)
         assertFalse(sc.isIntendedOff())

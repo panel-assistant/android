@@ -678,12 +678,13 @@ object SettingsRegistry {
             label = "Idle return to home (min)", default = "0", min = 0.0, max = 1440.0,
             scope = Scope.PORTABLE,
             liveApply = true,
-            ha = haEntity("number", "dashboard_idle_return") {
-                range(0, 1440, 1)
+        ).let { spec ->
+            spec.copy(ha = haEntity("number", "dashboard_idle_return") {
+                range(requireNotNull(spec.min).toInt(), requireNotNull(spec.max).toInt(), 1)
                 unit("min")
                 entityCategory("config")
-            },
-        ),
+            })
+        },
         SettingSpec(
             key = "ha_url", type = SettingType.STRING, group = "Dashboard",
             renderer = RendererApply.READMIT,

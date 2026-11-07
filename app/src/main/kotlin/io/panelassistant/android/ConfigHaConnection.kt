@@ -288,7 +288,10 @@ fun Config.setBorrowedRendererSettings(
     setHaRefreshToken(refreshToken)
     setHaTokenExpiry(tokenExpiry)
     setHaClientId(clientId)
-    zoom?.let(::setDashboardZoom)
+    zoom?.let { borrowed ->
+        val spec = specOf("dashboard_zoom")
+        setDashboardZoom(borrowed.coerceIn(requireNotNull(spec.min).toInt(), requireNotNull(spec.max).toInt()))
+    }
     edit { putBoolean("renderer_launch_pending", true) }
 }
 

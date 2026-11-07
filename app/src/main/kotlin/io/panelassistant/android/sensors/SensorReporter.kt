@@ -33,6 +33,7 @@ internal data class ProximitySourcePolicy(
 internal enum class ProximityAcquisition {
     VI530X,
     GPIO,
+    ANDROID_KEYS,
     ANDROID_HAL,
     STK_RAW,
     ABSENT,
@@ -43,7 +44,9 @@ internal fun proximityAcquisition(
     proximityGpio: Int?,
     hasHal: Boolean,
     hasStkRaw: Boolean = false,
+    hasKeyProximity: Boolean = false,
 ): ProximityAcquisition = when {
+    hasKeyProximity -> ProximityAcquisition.ANDROID_KEYS
     hasVi530x -> ProximityAcquisition.VI530X
     proximityGpio != null -> ProximityAcquisition.GPIO
     hasHal && hasStkRaw -> ProximityAcquisition.STK_RAW
@@ -57,7 +60,7 @@ internal fun proximitySourcePolicy(
     acquisition: ProximityAcquisition,
     halReportingMode: Int?,
 ): ProximitySourcePolicy = ProximitySourcePolicy(
-    sparseLearning = acquisition == ProximityAcquisition.GPIO,
+    sparseLearning = acquisition == ProximityAcquisition.GPIO || acquisition == ProximityAcquisition.ANDROID_KEYS,
     onChangeHalLiveness = acquisition == ProximityAcquisition.ANDROID_HAL &&
         halReportingMode == Sensor.REPORTING_MODE_ON_CHANGE,
     legacySeedEligible = acquisition == ProximityAcquisition.ANDROID_HAL &&
@@ -186,6 +189,7 @@ class SensorReporter(
         proximityGpio = proximityGpio,
         hasHal = proximitySensor != null,
         hasStkRaw = stkRawReader.isPresent(),
+        hasKeyProximity = profile.proximityKeys != null,
     )
     private val proximityPolicy = proximitySourcePolicy(
         proximityAcquisition,
@@ -214,6 +218,7 @@ class SensorReporter(
     private var roomClimateRefresh: AsyncRoomClimateSnapshot? = null
     private var roomClimateExecutor: ScheduledExecutorService? = null
     private var gpioClient: GpioProximityClient? = null
+    private var keyProximitySubscription: AutoCloseable? = null
     private var vi530xClient: Vi530xProximityClient? = null
     private var proximitySampleCount = 0
     private var cadenceClassified = false
@@ -594,7 +599,16 @@ class SensorReporter(
             lightAvailability.registered(registered)
         }
         if (hasProximity() && !initializeProximitySource(run, { activeRun === run }) {
-                if (proximityAcquisition == ProximityAcquisition.VI530X) {
+                if (proximityAcquisition == ProximityAcquisition.ANDROID_KEYS) {
+                    keyProximitySubscription = io.panelassistant.android.input.AccessibilityKeyRouter.subscribeProximity(
+                        checkNotNull(profile.proximityKeys),
+                        onUnavailable = {
+                            handler.post { if (run.isOpen() && activeRun === run) deliverUnavailable(run) }
+                        },
+                    ) { raw ->
+                        handler.post { if (run.isOpen() && activeRun === run) handleProximity(raw, run) }
+                    }
+                } else if (proximityAcquisition == ProximityAcquisition.VI530X) {
                     val client = Vi530xProximityClient(
                         onValue = { raw ->
                             handler.post {
@@ -870,6 +884,7 @@ class SensorReporter(
             ProximityAcquisition.STK_RAW -> StkRawProximityReader.SOURCE_IDENTITY
             ProximityAcquisition.VI530X -> "helper-vi530x"
             ProximityAcquisition.GPIO -> "helper-gpio:${checkNotNull(proximityGpio)}"
+            ProximityAcquisition.ANDROID_KEYS -> "android-keys:${checkNotNull(profile.proximityKeys)}"
             ProximityAcquisition.ANDROID_HAL -> proximitySensor?.let { sensor ->
                 listOf(
                     "android-hal",
@@ -914,6 +929,8 @@ class SensorReporter(
         humidityActivation = null
         gpioClient?.stop()
         gpioClient = null
+        keyProximitySubscription?.close()
+        keyProximitySubscription = null
         vi530xClient?.stop()
         vi530xClient = null
         listener?.let { sm.unregisterListener(it) }

@@ -50,6 +50,9 @@ internal class DashboardRendererPacer(private val main: Handler, private val hos
         /** Show the "Home Assistant is not responding" block for a handshake that never came. */
         fun blockHandshakeMissed()
 
+        /** Announce a failed frontend's recovery before any replacement navigation. */
+        fun recoveryStarting() {}
+
         /** A reload has already failed several times in a row: do more than reload. */
         fun escalate(step: HandshakeRecoveryStep)
 
@@ -71,6 +74,7 @@ internal class DashboardRendererPacer(private val main: Handler, private val hos
     // awake: a screen-off pauses JS timers, so a paused WebView could never complete the handshake and the
     // watchdog would just reload-loop all night behind a dark panel.
     private val watchdog = Runnable { onWatchdogTimeout() }
+    private var awaitingFrontendReconnect = false
 
     // After a screen-off reload (memory shed), let the fresh page load with timers LIVE for a settle
     // window, then freeze — so we never reload into a frozen WebView, but also never leave it churning
@@ -112,6 +116,7 @@ internal class DashboardRendererPacer(private val main: Handler, private val hos
 
     /** The WebView is going away (a teardown or a dead renderer): nothing of its may fire later. */
     fun stop() {
+        awaitingFrontendReconnect = false
         main.removeCallbacks(watchdog)
         main.removeCallbacks(darkSettle)
     }
@@ -270,6 +275,7 @@ internal class DashboardRendererPacer(private val main: Handler, private val hos
      *  network-regain reload): reset the connected state + arm the handshake watchdog — but only while the
      *  screen is awake, since a paused WebView can't run the JS that completes the handshake. */
     fun loadStarted(handshakeMs: Long = INITIAL_HANDSHAKE_MS) {
+        awaitingFrontendReconnect = false
         wakeMediaRecovery.invalidate()
         host.loadStarting()
         lastFullLoadAt = SystemClock.elapsedRealtime()
@@ -318,6 +324,7 @@ internal class DashboardRendererPacer(private val main: Handler, private val hos
      * over, and a wake that came while it was still loading gets its media check now.
      */
     fun onConnected(generation: Long) {
+        awaitingFrontendReconnect = false
         main.removeCallbacks(watchdog)
         retryPolicy.escalatedTo?.let { reached ->
             Log.i(
@@ -336,6 +343,10 @@ internal class DashboardRendererPacer(private val main: Handler, private val hos
      *  reload — but only while awake (a frozen WebView can't reconnect; wake re-arms the handshake watchdog). */
     fun onDisconnected(wasConnected: Boolean, what: String) {
         if (screenAwake && host.phase != RendererPhase.AUTH_LATCHED) {
+            // Repeated websocket events belong to the same outage. They must neither shorten the
+            // connected page's grace to the initial retry delay nor extend it indefinitely.
+            if (awaitingFrontendReconnect) return
+            awaitingFrontendReconnect = wasConnected
             val delay = retryPolicy.connectionFailureDelay(wasConnected)
             Log.i(TAG, "frontend '$what' — arming retry watchdog in ${delay}ms (wasConnected=$wasConnected)")
             armWatchdog(delay)
@@ -352,6 +363,7 @@ internal class DashboardRendererPacer(private val main: Handler, private val hos
             host.blockHandshakeMissed()
             return
         }
+        host.recoveryStarting()
         if (step != HandshakeRecoveryStep.RELOAD) {
             host.escalate(step)
             return

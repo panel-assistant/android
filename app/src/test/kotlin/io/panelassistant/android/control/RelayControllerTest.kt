@@ -29,6 +29,63 @@ class RelayControllerTest {
     private fun controller(wire: ZigbeeReadFixture, root: RootShell = FakeRootShell(), primary: String? = base, fallbacks: List<String> = emptyList(), leds: Int? = null) =
         RelayController(fakeProfile(relayBase = primary, relayBaseFallbacks = fallbacks, buttonLedGpioBase = leds), root, wire.client)
 
+    private fun directController(wire: ZigbeeReadFixture, root: RootShell, primary: String? = base, writable: Boolean = true, readable: Boolean = true): RelayController =
+        RelayController(fakeProfile(relayBase = primary), root, wire.client, relayFile = { path ->
+            object : File(sysfs.root, path.removePrefix("/sys/class/")) {
+                override fun canWrite() = writable && super.canWrite()
+                override fun canRead() = readable && super.canRead()
+            }
+        })
+
+    @Test fun accessibleDeclaredRelaysWorkWithoutHelperOrRootAndReadFreshPhysicalState() {
+        val nodes = sysfs.newFolder("strelay")
+        val first = File(nodes, "relay1").apply { writeText("0\n") }
+        val second = File(nodes, "relay2").apply { writeText("1\n") }
+        val wire = wire().apply { missing = true }; val root = FakeRootShell(available = false)
+        val relay = directController(wire, root)
+        assertEquals(2, relay.count())
+        assertEquals(false, relay.read(1)); assertEquals(true, relay.read(2))
+        assertTrue(relay.set(1, true)); assertEquals("1", first.readText())
+        second.writeText("0\n"); assertEquals(false, relay.read(2))
+        first.writeText("unknown"); assertNull(relay.read(1))
+        assertFalse(relay.set(0, true)); assertFalse(relay.set(3, true))
+        first.delete(); first.mkdir(); assertFalse(relay.set(1, false)); assertNull(relay.read(1))
+        assertTrue(root.ran.isEmpty()); assertTrue(root.outputRan.isEmpty()); assertEquals(0, root.availabilityChecks)
+        assertTrue(wire.bytes.isEmpty())
+    }
+
+    @Test fun directAccessRequiresDeclaredSupportedBaseAndWritableReadableBinaryNodes() {
+        val nodes = sysfs.newFolder("strelay")
+        File(nodes, "relay1").writeText("0")
+        File(nodes, "relay2").writeText("1")
+        val custom = sysfs.newFolder("custom")
+        File(custom, "relay1").writeText("0")
+        for (primary in listOf(null, "/sys/class/custom", base)) {
+            val wire = wire().apply { missing = true }; val root = FakeRootShell(available = false)
+            val relay = directController(wire, root, primary, writable = false)
+            assertEquals(0, relay.count()); assertFalse(relay.set(1, true)); assertNull(relay.read(1))
+            assertEquals("0", File(nodes, "relay1").readText()); assertTrue(root.ran.isEmpty())
+        }
+        for (primary in listOf(null, "/sys/class/custom")) {
+            val relay = directController(wire().apply { missing = true }, FakeRootShell(available = false), primary)
+            assertEquals(0, relay.count()); assertFalse(relay.set(1, true))
+        }
+        assertEquals(0, directController(wire().apply { missing = true }, FakeRootShell(available = false), readable = false).count())
+        File(nodes, "relay2").writeText("invalid")
+        assertEquals(0, directController(wire().apply { missing = true }, FakeRootShell(available = false)).count())
+    }
+
+    @Test fun inaccessibleDirectNodesRetainHelperTopologyAndPrivilegedWrites() {
+        val nodes = sysfs.newFolder("strelay")
+        File(nodes, "relay1").writeText("0")
+        val wire = wire().apply { count("STRELAY", "1"); value("STRELAY", 1, "1") }
+        val root = FakeRootShell()
+        val relay = directController(wire, root, writable = false)
+        assertEquals(1, relay.count()); assertEquals(true, relay.read(1)); assertTrue(relay.set(1, true))
+        assertEquals("0", File(nodes, "relay1").readText())
+        assertEquals(listOf("printf '%s' '1' > $base/relay1"), root.ran)
+    }
+
     @Test fun primaryAndFallbackOrderDeterminesBothCountAndWriteBase() {
         for (primary in listOf("0", "?", "1")) {
             val wire = wire().apply { count("STRELAY", primary); count("ST_RELAY", "2") }

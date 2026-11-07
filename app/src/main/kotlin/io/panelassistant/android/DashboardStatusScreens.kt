@@ -51,6 +51,7 @@ internal class DashboardStatusScreens(
     private val postWaiting: (Runnable, Long) -> Unit = { tick, delay -> main.postDelayed(tick, delay) },
     private val cancelWaiting: (Runnable) -> Unit = { main.removeCallbacks(it) },
     private val paintWaitingHero: (TextView, String) -> Unit = { view, text -> view.text = text },
+    private val paintReloadCard: (AppCompatActivity, View?, String) -> View = ::showReloadCard,
 ) {
     interface Host {
         val activityOwner: Long
@@ -161,7 +162,7 @@ internal class DashboardStatusScreens(
             Log.i(TAG, "learning restart not announced again (${if (!host.hasWeb) "no dashboard shown" else "learning window open"})")
             return
         }
-        reloadNotice = showReloadCard(activity, reloadNotice, reloadNoticeReason(reason)?.let(activity::getString) ?: reason)
+        reloadNotice = paintReloadCard(activity, reloadNotice, reloadNoticeReason(reason)?.let(activity::getString) ?: reason)
     }
 
     fun clearReloadNotice() { reloadNotice?.let { (it.parent as? ViewGroup)?.removeView(it) }; reloadNotice = null }

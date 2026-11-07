@@ -17,7 +17,7 @@ package io.panelassistant.android.sensors
 internal fun proximityDriftMargin(acquisition: ProximityAcquisition): Float = when (acquisition) {
     ProximityAcquisition.STK_RAW -> 300f
     ProximityAcquisition.ANDROID_HAL -> 100f
-    ProximityAcquisition.VI530X, ProximityAcquisition.GPIO, ProximityAcquisition.ABSENT -> 0f
+    ProximityAcquisition.VI530X, ProximityAcquisition.GPIO, ProximityAcquisition.ANDROID_KEYS, ProximityAcquisition.ABSENT -> 0f
 }
 
 /**

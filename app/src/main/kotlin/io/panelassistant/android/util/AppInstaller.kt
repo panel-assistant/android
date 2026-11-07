@@ -221,36 +221,6 @@ object AppInstaller {
         return null
     }
 
-    /** Mirror PA's finite SemVer grammar and rc10-after-rc9 identifier ordering. */
-    internal fun comparePanelVersions(candidate: String, installed: String): Int? {
-        fun parts(value: String): Pair<List<java.math.BigInteger>, List<String>>? {
-            if (value.length > 64 || !Regex("^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?$").matches(value)) return null
-            val suffix = value.substringAfter('-', "")
-            val identifiers = if (suffix.isEmpty()) emptyList() else suffix.split('.')
-            if (identifiers.any { it.isEmpty() || (it.all(Char::isDigit) && it.length > 1 && it.startsWith('0')) }) return null
-            return value.substringBefore('-').split('.').map { it.toBigInteger() } to identifiers
-        }
-        val left = parts(candidate) ?: return null
-        val right = parts(installed) ?: return null
-        for (i in 0..2) left.first[i].compareTo(right.first[i]).takeIf { it != 0 }?.let { return it }
-        if (left.second.isEmpty() || right.second.isEmpty()) {
-            return left.second.isEmpty().compareTo(right.second.isEmpty())
-        }
-        fun identifier(value: String): Triple<Int, String, java.math.BigInteger> {
-            if (value.all(Char::isDigit)) return Triple(0, "", value.toBigInteger())
-            val stem = value.trimEnd { it in '0'..'9' }
-            val digits = value.removePrefix(stem)
-            return Triple(1, stem, if (digits.isEmpty()) (-1).toBigInteger() else digits.toBigInteger())
-        }
-        for (i in 0 until minOf(left.second.size, right.second.size)) {
-            val a = identifier(left.second[i]); val b = identifier(right.second[i])
-            val comparison = a.first.compareTo(b.first).takeIf { it != 0 }
-                ?: a.second.compareTo(b.second).takeIf { it != 0 } ?: a.third.compareTo(b.third)
-            if (comparison != 0) return comparison
-        }
-        return left.second.size.compareTo(right.second.size)
-    }
-
     @Suppress("DEPRECATION")
     private fun currentPanelUpdateRefusal(context: Context, candidate: ApkInfo): String? {
         panelUpdateRefusal(panelUpdatePolicy(), candidate.nativeProtocolRange, candidate.version,

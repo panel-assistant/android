@@ -8,46 +8,45 @@
   --text-bright:#fff;--text-soft:#ccc;--tab:#bbb;--dim:#888;--accent:#9af;--accent2:#9cf;--ok-dim:#8a8;
   --icon:#7c8a99;--icon-dim:#6a7a8a;--hover:#1a1a1a;--knob:#eee;--disabled-bg:#222;--disabled-fg:#666;
   --shadow:#000;--shimA:#141414;--shimB:#1f1f1f;--plot:#0d0d0d;--vtagrec-bg:#1f4d2e;--vtagrec-fg:#8fe0a8;
-  --setup-bg:#3a2f10;--setup-bd:#7a5a2a;--setup-fg:#f5c451;--setup-link:#ffd97a;--crit-bg:#3a1512;
-  --crit-fg:#ffb3a6;--crit-link:#ffc9bf;--info-bg:#12233a;--info-bd:#2a557a;--info-fg:#9cc4ee;
-  --info-link:#bcd9f5;--api-desc:#667;--api-error:#d9534f;--api-ok:#5ad18a;
-  --autobright-band:rgba(74,158,255,.15);--autobright-grid:#343a44;--autobright-label:#888;
-  --backup-plain-warn:#c88;--cap-degraded:#d9a528;--cap-none:#d04a3b;--cap-ok:#48c774;--cfglink:#4a6a8a;
-  --chart-bg:#0d0d0d;--chart-blocked:#f5a623;--chart-cpu:#4a9eff;--chart-expected:#f1bd52;--chart-gpu:#f5a623;
-  --chart-grid:#383838;--chart-interaction:#d04a3b;--chart-label:#888;--chart-observed:#4a9eff;
-  --chart-proposed:#b77cff;--chart-ram:#48c774;--chart-updates:#4a9eff;--edge-crit:#e05a48;
-  --edge-info:#3d7fd0;--fact-warn:#f5c451;--fg-bad:#d04a3b;--fg-faint:#666;--fg-muted:#888;--fg-ok:#48c774;
-  --fg-warn:#d9a528;--highlight:#4a9eff;--install-rule:#2a2a2a;--link:#9cf;--listbox-shadow:rgba(0,0,0,.28);
-  --log-error:#f07868;--log-info:#cfcfcf;--log-verbose:#777;--log-warn:#f5c451;--primary-text:#fff;
-  --pkg-active:#3fb950;--pkg-dialog-bg:#1a1a1a;--pkg-dialog-border:#333;--pkg-dialog-fg:#eee;
-  --pkg-divider:#222;--pkg-note:#9aa;--pkg-protected:#777;--primary:#2557a7;--profile-danger-border:#8b342f;
-  --profile-danger-fg:#ffb3a6;--profile-editor-active-line:rgba(127,153,204,.09);
-  --profile-editor-selection:rgba(77,121,195,.35);--profile-issue-error:#d05248;--profile-issue-info:#4284bb;
-  --profile-issue-warning:#c6952d;--profile-modal-backdrop:rgba(0,0,0,.66);
-  --profile-modal-shadow:rgba(0,0,0,.5);--profile-ok-fg:#9ee5ad;--pswitch-border:#2a3550;
-  --pswitch-border-hover:#4a6ba0;--screenshot-backdrop:rgba(0,0,0,.72);--screenshot-error:#e07868;
-  --screenshot-frame-bg:#000;--self-row-border:#2a2a2a;--shot-failed-fg:#a88;--sleep-allow:#9aafc2;
-  --sleep-allow-fg:#172533;--sleep-blocked-a:#a33b3b;--sleep-blocked-b:#5b2626;--sleep-detected:#c89a18;
-  --sleep-detected-fg:#17130a;--sleep-hold:#287dcc;--sleep-inhibited-stripe:#f1bd52;--sleep-interval-fg:#fff;
-  --sleep-loading-overlay:rgba(18,22,28,.76);--sleep-off:#68727f;--sleep-off-fg:#f4f6f8;
-  --sleep-policy-lane:rgba(74,158,255,.11);--status-bad:#d34b42;--status-ok:#45a65a;--status-warn:#c58a16;
-  --uninstall-select-bg:#1c1c1c;--uninstall-select-border:#444;--uninstall-select-fg:#eee;
-  --api-response-fg:#cdd;}
+  --setup-bg:#3a2f10;--setup-fg:#f5c451;--setup-link:#ffd97a;--crit-bg:#3a1512;--crit-fg:#ffb3a6;
+  --crit-link:#ffc9bf;--info-bg:#12233a;--info-bd:#2a557a;--info-fg:#9cc4ee;--info-link:#bcd9f5;
+  --api-desc:#667;--api-error:#d9534f;--api-ok:#5ad18a;--autobright-band:rgba(74,158,255,.15);
+  --autobright-grid:#343a44;--autobright-label:#888;--backup-plain-warn:#c88;--cap-degraded:#d9a528;
+  --cap-none:#d04a3b;--cap-ok:#48c774;--cfglink:#4a6a8a;--chart-bg:#0d0d0d;--chart-blocked:#f5a623;
+  --chart-cpu:#4a9eff;--chart-expected:#f1bd52;--chart-gpu:#f5a623;--chart-grid:#383838;
+  --chart-interaction:#d04a3b;--chart-label:#888;--chart-observed:#4a9eff;--chart-proposed:#b77cff;
+  --chart-ram:#48c774;--chart-updates:#4a9eff;--edge-crit:#e05a48;--edge-info:#3d7fd0;--fact-warn:#f5c451;
+  --fg-bad:#d04a3b;--fg-faint:#666;--fg-muted:#888;--fg-ok:#48c774;--fg-warn:#d9a528;--highlight:#4a9eff;
+  --install-rule:#2a2a2a;--link:#9cf;--listbox-shadow:rgba(0,0,0,.28);--log-error:#f07868;--log-info:#cfcfcf;
+  --log-verbose:#777;--log-warn:#f5c451;--primary-text:#fff;--pkg-active:#3fb950;--pkg-dialog-bg:#1a1a1a;
+  --pkg-dialog-border:#333;--pkg-dialog-fg:#eee;--pkg-divider:#222;--pkg-note:#9aa;--pkg-protected:#777;
+  --primary:#2557a7;--profile-danger-border:#8b342f;--profile-danger-fg:#ffb3a6;
+  --profile-editor-active-line:rgba(127,153,204,.09);--profile-editor-selection:rgba(77,121,195,.35);
+  --profile-issue-error:#d05248;--profile-issue-info:#4284bb;--profile-issue-warning:#c6952d;
+  --profile-modal-backdrop:rgba(0,0,0,.66);--profile-modal-shadow:rgba(0,0,0,.5);--profile-ok-fg:#9ee5ad;
+  --pswitch-border:#2a3550;--pswitch-border-hover:#4a6ba0;--screenshot-backdrop:rgba(0,0,0,.72);
+  --screenshot-error:#e07868;--screenshot-frame-bg:#000;--self-row-border:#2a2a2a;--shot-failed-fg:#a88;
+  --sleep-allow:#9aafc2;--sleep-allow-fg:#172533;--sleep-blocked-a:#a33b3b;--sleep-blocked-b:#5b2626;
+  --sleep-detected:#c89a18;--sleep-detected-fg:#17130a;--sleep-hold:#287dcc;--sleep-inhibited-stripe:#f1bd52;
+  --sleep-interval-fg:#fff;--sleep-loading-overlay:rgba(18,22,28,.76);--sleep-off:#68727f;
+  --sleep-off-fg:#f4f6f8;--sleep-policy-lane:rgba(74,158,255,.11);--status-bad:#d34b42;--status-ok:#45a65a;
+  --status-warn:#c58a16;--uninstall-select-bg:#1c1c1c;--uninstall-select-border:#444;
+  --uninstall-select-fg:#eee;--api-response-fg:#cdd;}
 @media (prefers-color-scheme: light){:root:not([data-theme=dark]),:host(:not([theme=dark])){color-scheme:light;
   --bg:#f2f3f5;--card:#fff;--card-head:#e7ebef;--input-bg:#f6f7f9;--input-bg2:#fafbfc;--card-border:#d9dde3;
   --divider:#e4e7ec;--config-divider:#e4e7ec;--border:#c9cfd7;--border2:#c4cad2;--border-strong:#b6bec8;
   --text:#1b2430;--text-bright:#000;--text-soft:#2c3644;--tab:#4a5462;--dim:#6a7480;--accent:#1e56a8;
   --accent2:#0b6a8e;--ok-dim:#3f7d49;--icon:#5b6b7a;--icon-dim:#74818f;--hover:#e9ecef;--knob:#fff;
   --disabled-bg:#e2e5e9;--disabled-fg:#9aa3ad;--shadow:rgba(0,0,0,.18);--shimA:#e8eaee;--shimB:#f6f7f9;
-  --plot:#e8ecf0;--vtagrec-bg:#d9efe0;--vtagrec-fg:#1f6b3a;--setup-bg:#fcf4dc;--setup-bd:#e3cf94;
-  --setup-fg:#7a5a10;--setup-link:#8a6400;--crit-bg:#fceceb;--crit-fg:#a02c20;--crit-link:#7c1f16;
-  --info-bg:#e9f1fb;--info-bd:#b9d2ec;--info-fg:#26567e;--info-link:#1a4468;}}
+  --plot:#e8ecf0;--vtagrec-bg:#d9efe0;--vtagrec-fg:#1f6b3a;--setup-bg:#fcf4dc;--setup-fg:#7a5a10;
+  --setup-link:#8a6400;--crit-bg:#fceceb;--crit-fg:#a02c20;--crit-link:#7c1f16;--info-bg:#e9f1fb;
+  --info-bd:#b9d2ec;--info-fg:#26567e;--info-link:#1a4468;}}
 :root[data-theme=light],:host([theme=light]){color-scheme:light;
   --bg:#f2f3f5;--card:#fff;--card-head:#e7ebef;--input-bg:#f6f7f9;--input-bg2:#fafbfc;--card-border:#d9dde3;
   --divider:#e4e7ec;--config-divider:#e4e7ec;--border:#c9cfd7;--border2:#c4cad2;--border-strong:#b6bec8;
   --text:#1b2430;--text-bright:#000;--text-soft:#2c3644;--tab:#4a5462;--dim:#6a7480;--accent:#1e56a8;
   --accent2:#0b6a8e;--ok-dim:#3f7d49;--icon:#5b6b7a;--icon-dim:#74818f;--hover:#e9ecef;--knob:#fff;
   --disabled-bg:#e2e5e9;--disabled-fg:#9aa3ad;--shadow:rgba(0,0,0,.18);--shimA:#e8eaee;--shimB:#f6f7f9;
-  --plot:#e8ecf0;--vtagrec-bg:#d9efe0;--vtagrec-fg:#1f6b3a;--setup-bg:#fcf4dc;--setup-bd:#e3cf94;
-  --setup-fg:#7a5a10;--setup-link:#8a6400;--crit-bg:#fceceb;--crit-fg:#a02c20;--crit-link:#7c1f16;
-  --info-bg:#e9f1fb;--info-bd:#b9d2ec;--info-fg:#26567e;--info-link:#1a4468;}
+  --plot:#e8ecf0;--vtagrec-bg:#d9efe0;--vtagrec-fg:#1f6b3a;--setup-bg:#fcf4dc;--setup-fg:#7a5a10;
+  --setup-link:#8a6400;--crit-bg:#fceceb;--crit-fg:#a02c20;--crit-link:#7c1f16;--info-bg:#e9f1fb;
+  --info-bd:#b9d2ec;--info-fg:#26567e;--info-link:#1a4468;}

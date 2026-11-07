@@ -973,8 +973,9 @@ internal class AutoSleepController private constructor(
         if (admission != Admission.OPEN || !configured.enabled || aggregate.phase != HaPresencePhase.LIVE) return
         when {
             next.output == AutoSleepOutput.ALLOW_SLEEP && !screen.isIntendedOff() && !manualSuppression -> {
-                automaticEpoch = screen.sleepAutomatically()
-                automaticEpoch?.let {
+                val slept = screen.sleepAutomatically()
+                automaticEpoch = slept ?: screen.automaticRecoveryEpoch()
+                slept?.let {
                     reduce(AutoSleepEvent.AutomaticSleepRecorded(eventTime()), actuate = false)
                     onScreenChanged(false)
                 }
