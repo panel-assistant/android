@@ -265,7 +265,7 @@ class ScreenControllerVendorRpcTest {
         )
         sc.sleep()
         wakeTap.fireTap()
-        assertFalse(sc.isIntendedOff())
+        assertTrue("a known-dark wake retains the OFF owner for retry", sc.isIntendedOff())
         assertTrue(wakeTap.armed)
     }
 

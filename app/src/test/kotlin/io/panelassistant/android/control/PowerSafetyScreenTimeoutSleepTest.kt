@@ -107,8 +107,9 @@ class PowerSafetyScreenTimeoutSleepTest {
         power.canWrite = false
         power.canWriteSecure = false
 
-        screen.wake()
+        // Model Android responding to the wake pulse before ScreenController confirms it.
         power.interactive = true
+        screen.wake()
 
         assertEquals("precondition: the failed restore kept its record", Int.MAX_VALUE, displaced.displacedMs)
         assertReportsTheShortTimeout("awake")
