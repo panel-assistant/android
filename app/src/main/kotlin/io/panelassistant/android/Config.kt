@@ -862,7 +862,7 @@ class Config private constructor(
 
     /** Built-in renderer: dashboard page zoom %. 100 matches the HA Companion's default sizing (which
      *  scales the page by device density), so a switched-over panel keeps its layout. */
-    val dashboardZoom: Int get() = intPref("dashboard_zoom")
+    val dashboardZoom: Int get() = intPrefInRange("dashboard_zoom")
     fun setDashboardZoom(pct: Int) { edit { putInt("dashboard_zoom", pct) } }
 
     /** Exact owner-scoped filter state for full backup and local config revisions. Derived SQLite
@@ -1001,7 +1001,7 @@ class Config private constructor(
     val logShipSystemEnabled: Boolean get() = boolPref("log_ship_system_enabled")
     /** Sink host (the log collector to ship to). Empty => shipping stays inert regardless of the flag. */
     val logShipHost: String get() = stringPref("log_ship_host")
-    val logShipPort: Int get() = intPref("log_ship_port")
+    val logShipPort: Int get() = intPrefInRange("log_ship_port")
     /**
      * Transport: "syslog-tcp" (RFC5424 over a stream, the default because it reports its own failures),
      * "syslog-udp" (RFC5426, what a stock collector listens for on 514) or "http" (NDJSON POST). Normalized on read so a value
