@@ -826,7 +826,7 @@ class PaneldService : Service() {
                     refreshToken = login.refreshToken,
                     tokenExpiry = login.expirySec,
                     clientId = CompanionDb.COMPANION_CLIENT_ID,
-                    zoom = CompanionDb.readPageZoom(this, Su)?.coerceIn(50, 300),
+                    zoom = CompanionDb.readPageZoom(this, Su),
                 )
             },
             persist = { borrowed ->

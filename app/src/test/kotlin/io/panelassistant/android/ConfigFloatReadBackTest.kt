@@ -14,6 +14,18 @@ class ConfigFloatReadBackTest {
     private val exposure = requireNotNull(SettingsRegistry.spec("camera_exposure"))
     private val roomOffset = requireNotNull(SettingsRegistry.spec("room_temp_offset"))
 
+    @Test fun exposureRuntimeAndReadBackShareTheRegisteredDomain() {
+        val lower = requireNotNull(exposure.min).toFloat()
+        val upper = requireNotNull(exposure.max).toFloat()
+        listOf(lower - 1f, lower, (lower + upper) / 2f, upper, upper + 1f, Float.NaN,
+            Float.NEGATIVE_INFINITY, Float.POSITIVE_INFINITY).forEach { persisted ->
+            val expected = if (persisted.isFinite() && persisted in lower..upper) persisted else exposure.default.toFloat()
+            val config = configWith(exposure.key, persisted)
+            assertEquals("runtime persisted=$persisted", expected, config.cameraExposureEv)
+            assertEquals("readback persisted=$persisted", expected, config.getRaw(exposure).toFloat())
+        }
+    }
+
     @Test fun legacyOutOfRangeFloatsReadBackAsTheCanonicalDefault() {
         listOf(-3f, 3f).forEach { persisted ->
             val config = configWith("camera_exposure", persisted)

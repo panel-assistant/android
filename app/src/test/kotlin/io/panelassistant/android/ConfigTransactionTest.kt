@@ -1573,6 +1573,24 @@ class ConfigTransactionTest {
         assertEquals("new-refresh", prefs.values["ha_refresh_token"])
     }
 
+    @Test fun borrowedRendererZoomSaturatesToTheRegisteredDomainInTheConnectionCommit() {
+        val spec = requireNotNull(SettingsRegistry.spec("dashboard_zoom"))
+        val lower = requireNotNull(spec.min).toInt()
+        val upper = requireNotNull(spec.max).toInt()
+        listOf(Int.MIN_VALUE, lower - 1, lower, 125, upper, upper + 1, Int.MAX_VALUE, null).forEach { borrowed ->
+            val prefs = fakePreferences(initial = mapOf("dashboard_zoom" to 100))
+            val config = Config(prefs.instance)
+            assertTrue(config.setBorrowedRendererSettings("http://ha:8123/", "access", "refresh", 1234L, "client", borrowed))
+            assertEquals(borrowed?.coerceIn(lower, upper) ?: 100, config.dashboardZoom)
+            assertEquals("http://ha:8123", config.haUrl)
+            assertEquals("access", prefs.values["ha_token"])
+            assertEquals("refresh", prefs.values["ha_refresh_token"])
+            assertEquals(1234L, prefs.values["ha_token_expiry"])
+            assertEquals("client", prefs.values["ha_client_id"])
+            assertEquals(true, prefs.values["renderer_launch_pending"])
+        }
+    }
+
     @Test fun borrowedRendererConnectionAndZoomPublishInOneCommit() {
         val prefs = fakePreferences(initial = mapOf("dashboard_zoom" to 100))
         val config = Config(prefs.instance)
