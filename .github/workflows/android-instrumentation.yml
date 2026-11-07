@@ -46,7 +46,7 @@ concurrency:
 jobs:
   instrumentation:
     name: API ${{ matrix.api-level }}
-    runs-on: ${{ github.event_name == 'push' && !endsWith(github.actor, '[bot]') && !endsWith(github.triggering_actor, '[bot]') && vars.CI_RUNNER == 'blacksmith' && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04' }}
+    runs-on: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !endsWith(github.actor, '[bot]') && !endsWith(github.triggering_actor, '[bot]') && vars.CI_RUNNER == 'blacksmith' && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04' }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
