@@ -74,7 +74,7 @@ object AppState {
             val editor = preferences(context, namespace).edit()
             var staged = 0
             namespaceRows.forEach { row ->
-                val value = runCatching { decodeRestoredValue(row.type, row.valueText) }.getOrNull()
+                val value = runCatching { decodeStateValue(row.type, row.valueText) }.getOrNull()
                     ?: return@forEach
                 when (value) {
                     is String -> editor.putString(row.key, value)
@@ -90,18 +90,6 @@ object AppState {
             if (staged > 0 && editor.commit()) applied += staged
         }
         return applied
-    }
-
-    private fun decodeRestoredValue(type: String, text: String?): Any = when (type) {
-        "string" -> text.orEmpty()
-        "int" -> text.orEmpty().toInt()
-        "long" -> text.orEmpty().toLong()
-        "float" -> text.orEmpty().toFloat()
-        "boolean" -> text == "1"
-        "string_set" -> JSONArray(text.orEmpty()).let { json ->
-            buildSet { repeat(json.length()) { add(json.getString(it)) } }
-        }
-        else -> error("unsupported persisted state type $type")
     }
 
     /**
@@ -878,7 +866,7 @@ private class SqliteNamespacePersistence(
             arrayOf(namespace),
         ).use { cursor ->
             while (cursor.moveToNext()) {
-                values[cursor.getString(0)] = decode(cursor.getString(1), cursor.getString(2))
+                values[cursor.getString(0)] = decodeStateValue(cursor.getString(1), cursor.getString(2))
             }
         }
         return values
@@ -976,19 +964,19 @@ private class SqliteNamespacePersistence(
         else -> error("unsupported state type ${value.javaClass.name}")
     }
 
-    private fun decode(type: String, text: String?): Any = when (type) {
-        "string" -> text.orEmpty()
-        "int" -> text.orEmpty().toInt()
-        "long" -> text.orEmpty().toLong()
-        "float" -> text.orEmpty().toFloat()
-        "boolean" -> text == "1"
-        "string_set" -> JSONArray(text.orEmpty()).let { json ->
-            buildSet { repeat(json.length()) { add(json.getString(it)) } }
-        }
-        else -> error("unsupported persisted state type $type")
-    }
-
     private companion object {
         const val REVISION_RETENTION = 256
     }
+}
+
+private fun decodeStateValue(type: String, text: String?): Any = when (type) {
+    "string" -> text.orEmpty()
+    "int" -> text.orEmpty().toInt()
+    "long" -> text.orEmpty().toLong()
+    "float" -> text.orEmpty().toFloat()
+    "boolean" -> text == "1"
+    "string_set" -> JSONArray(text.orEmpty()).let { json ->
+        buildSet { repeat(json.length()) { add(json.getString(it)) } }
+    }
+    else -> error("unsupported persisted state type $type")
 }
