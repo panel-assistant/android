@@ -334,7 +334,7 @@ class BundledProfileParityTest {
         }
 
         assertEquals(
-            EXPECTED_BUNDLED_IDS - setOf("generic", "meta-portal", "meta-portal-10-gen2", "shelly-wall-display", "shelly-wall-display-v2"),
+            EXPECTED_BUNDLED_IDS - setOf("generic", "meta-portal", "meta-portal-10-gen2", "shelly-wall-display", "shelly-wall-display-v2", "shelly-wall-display-xl"),
             featureBearing.map { it.document.id }.toSet(),
         )
         featureBearing.forEach { source ->
@@ -900,7 +900,7 @@ class BundledProfileParityTest {
         ResolutionFixture("exact model", DeviceFacts("TPA10", "unrelated", ""), "tpa10"),
         ResolutionFixture("exact device", DeviceFacts("unrelated", "tpa10", ""), "tpa10"),
         ResolutionFixture("exact rk3566 device", DeviceFacts("unrelated", "rk3566_t", ""), "zx-smt156"),
-        ResolutionFixture("modern display codename", DeviceFacts("blake", "", ""), "shelly-wall-display-v2"),
+        ResolutionFixture("XL display codename", DeviceFacts("blake", "", ""), "shelly-wall-display-xl"),
         ResolutionFixture("modern display sku", DeviceFacts("rk3326", "SAWD-5A1XX10EU0", ""), "shelly-wall-display-v2"),
         ResolutionFixture("X2i as the bench unit reports itself", DeviceFacts("Jenna", "Jenna", "shelly_x2_1.0.0"), "shelly-wall-display-x2i"),
         ResolutionFixture("legacy display codename", DeviceFacts("stargate", "", ""), "shelly-wall-display"),
@@ -1068,6 +1068,7 @@ class BundledProfileParityTest {
             "nspanel-pro",
             "s9e",
             "shelly-wall-display-v2",
+            "shelly-wall-display-xl",
             "shelly-wall-display-x2i",
             "shelly-wall-display",
             "smt1019",
@@ -1082,7 +1083,8 @@ class BundledProfileParityTest {
             "nspanel-pro.yaml" to "1865621fc603342cde28875b5a9a071c8e5ae4f46800eba8c76b97847c6db9c6",
             "s9e.yaml" to "d3f82fdeb52e73bb891121d1589a31d2ff8b60ea35bbbd78b3799dd720cc6da2",
             "shelly-wall-display-v2.yaml" to "68520dc16295d169039c61f02df9aa38a39c28f47da6cefe7cb01b9d3caa117b",
-            "shelly-wall-display-x2i.yaml" to "64c39b0945d815395acb99467c4efa82ee630626eeea6871ff3a3a39aae50c9f",
+            "shelly-wall-display-xl.yaml" to "1474a50218cfde7715f0f41ddd2d294bf3f362a655b3e28ab13ba41ccf61e984",
+            "shelly-wall-display-x2i.yaml" to "9644ee34e605938afd8df285165135285fa44b42abe79ef7af47f4a8ac45e6fa",
             "shelly-wall-display.yaml" to "67a9ba15bbed9156e564a7dd543f92102499d156d34cea7edd018dfe6979a62b",
             "smt1019.yaml" to "ccf23e819f3e5eea79a5f7efab3bfd38331cedfd40b6185f3ced915b4ac845a1",
             "tpa10.yaml" to "0d7fabc9fff76e7949c4575aec7b75a6e73facf44ac98af928c2ff06280c4d75",
@@ -1117,6 +1119,9 @@ class BundledProfileParityTest {
         )
 
         /** Branch-level collisions belong here; matrix-level cross-profile collisions are pinned above. */
-        val BRANCH_WITNESS_COLLISIONS: Map<BranchWitnessKey, String> = emptyMap()
+        val BRANCH_WITNESS_COLLISIONS: Map<BranchWitnessKey, String> = mapOf(
+            BranchWitnessKey("shelly-wall-display-v2", 0, 0, "blake") to "shelly-wall-display-xl",
+            BranchWitnessKey("shelly-wall-display-v2", 1, 0, "blake") to "shelly-wall-display-xl",
+        )
     }
 }

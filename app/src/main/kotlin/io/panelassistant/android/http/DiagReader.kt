@@ -98,7 +98,7 @@ object DiagReader {
         val a11y = a11yEnabled(ctx)
         val showButtons = showHardwareButtonsCapability(profile)
         val buttonHealth = if (showButtons) {
-            ButtonCaptureHealth.evaluate(a11y, profile.evdevButtons.size, EvdevButtonClient.snapshot(), pkg)
+            ButtonCaptureHealth.evaluate(a11y, profile.evdevButtons.count { it.deviceName == null }, EvdevButtonClient.snapshot(), pkg)
         } else {
             null
         }
@@ -271,7 +271,7 @@ object DiagReader {
         "state" to note(if (running) "daemon_running" else "daemon_needed"),
         "detail" to when {
             !profile.appCanSu -> note("daemon_sandbox_path")
-            profile.evdevButtons.isNotEmpty() -> note("daemon_buttons", "count" to profile.evdevButtons.size)
+            profile.evdevButtons.any { it.deviceName == null } -> note("daemon_buttons", "count" to profile.evdevButtons.count { it.deviceName == null })
             profile.hasButtonBacklight -> note("daemon_button_backlight")
             else -> note("daemon_hardware")
         },
@@ -498,7 +498,8 @@ object DiagReader {
 
     internal fun evdevRequestDescription(profile: DeviceProfile): String? =
         profile.evdevButtons.takeIf { it.isNotEmpty() }?.joinToString(",") {
-            "${it.node}:${if (it.sw) "SW" else "KEY"}/${it.code}:${if (it.grab) "grab" else "watch"}"
+            if (it.deviceName != null) "${it.deviceName}:KEY/${it.code}:accessibility"
+            else "${it.node}:${if (it.sw) "SW" else "KEY"}/${it.code}:${if (it.grab) "grab" else "watch"}"
         }
 
     /** Compact device uptime from elapsed-realtime ms, e.g. "3d2h", "5h12m", "47m", "23s". */

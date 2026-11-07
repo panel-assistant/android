@@ -1,6 +1,6 @@
 schema: 2
 id: shelly-wall-display-x2i
-version: 2.6.1
+version: 2.7.0
 display_name: Shelly Wall Display X2i
 soc_class: rk3326
 soc:
@@ -26,8 +26,8 @@ metadata:
     - Jenna 2.8.3-48174502c, build vJenna.9a5979d, Android 11
   limitations:
     - Recents is declared absent because the firmware ignores the Recents key from both a foreground app and Settings; only Back and Home are offered.
-    - On-board relays are present at /sys/class/strelay and switch real contacts, but ha-paneld drives relays through its privileged route, so no relay capability is offered on this unprivileged panel.
-    - Relay terminals are inert while the panel is powered over USB instead of mains, so any future relay support must state that condition.
+    - On-board relays at /sys/class/strelay are offered only when the app can read and write their nodes. The tested unit has permissive SELinux; an enforcing build may refuse access despite writable node modes.
+    - Relay terminals are inert while the panel is powered over USB instead of mains.
     - Evidence comes from one unit, exercised on factory firmware 2.5.4, again after updating it to 2.7.4, and for selected operations on 2.8.2 and 2.8.3. The measured 2.7.4 update installed a Shelly device-owner policy and left the launcher, sensors and adb posture unchanged; the vendor launcher was a protected package that could not be disabled on either tested firmware.
     - Shelly documents Uninstall all updates under Settings → Reset device for modern models, including X2i, since firmware 2.8.0. It returns only to the one vendor-app version shipped with that unit; arbitrary downgrades and full Android restoration are not established. On the tested unit it was exercised once, returning 2.8.0-beta2 to the factory 2.5.4 build.
     - Returning to a shipped vendor-app version older than 2.6.2 always resets factory defaults. Settings may also be reset on other units; save a configuration backup before recovery.
@@ -39,6 +39,7 @@ metadata:
 requires:
   min_core_version: 1.0.0-preview1
   drivers:
+    - relay.sysfs
     - screen.vendor-rpc
     - sensor.android
 match:
@@ -85,6 +86,7 @@ platform:
   vendor_mdns:
     - ShellyWallDisplay-*._shelly._tcp
 hardware:
+  relay_base: /sys/class/strelay
   led:
     mechanism: none
     transfer: identity
