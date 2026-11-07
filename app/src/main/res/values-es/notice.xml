@@ -54,4 +54,5 @@
     <string name="voice_step_understood">Entendido</string>
     <string name="voice_step_answered">Respondido</string>
     <string name="voice_heard">«%1$s»</string>
+    <string name="network_chip_echoes_lost">%1$d de %2$d comprobaciones de red a Home Assistant perdidas en %3$d ráfagas</string>
 </resources>

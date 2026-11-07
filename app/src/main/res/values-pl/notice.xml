@@ -54,4 +54,5 @@
     <string name="voice_step_understood">Zrozumiano</string>
     <string name="voice_step_answered">Odpowiedziano</string>
     <string name="voice_heard">„%1$s”</string>
+    <string name="network_chip_echoes_lost">Utracono %1$d z %2$d kontroli sieci do Home Assistant w %3$d seriach</string>
 </resources>

@@ -54,4 +54,5 @@
     <string name="voice_step_understood">Begrepen</string>
     <string name="voice_step_answered">Beantwoord</string>
     <string name="voice_heard">„%1$s”</string>
+    <string name="network_chip_echoes_lost">%1$d van %2$d netwerkcontroles naar Home Assistant verloren over %3$d reeksen</string>
 </resources>

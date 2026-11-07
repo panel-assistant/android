@@ -54,4 +54,5 @@
     <string name="voice_step_understood">Pochopeno</string>
     <string name="voice_step_answered">Zodpovězeno</string>
     <string name="voice_heard">„%1$s“</string>
+    <string name="network_chip_echoes_lost">%1$d z %2$d kontrol sítě směrem k Home Assistant se ztratilo během %3$d sérií</string>
 </resources>
