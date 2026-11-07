@@ -2,6 +2,7 @@ package io.panelassistant.android
 
 import android.content.Intent
 import android.net.ConnectivityManager
+import android.os.SystemClock
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -9,8 +10,11 @@ import androidx.test.uiautomator.By
 import androidx.test.uiautomator.Condition
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
+import java.io.IOException
 import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.ServerSocket
+import java.net.Socket
 import java.net.SocketException
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
@@ -64,6 +68,9 @@ class FirstRunSignInInstrumentedTest {
             assertFalse("The regression input must be before renderer readiness", config.builtInRendererReady())
             assertFalse(config.setupEverCompleted)
             assertFalse(config.setupEntityFilterAnswered)
+            // On a panel the service listens long before this activity starts. A cold test process can show
+            // sign-in first, and the retried load then never surfaced the page to UI Automator (2026-11-07).
+            assertTrue("The panel's local HTTP server must listen before sign-in starts", localServerListens(config.httpPort))
             ActivityScenario.launch<DashboardActivity>(
                 Intent(Intent.ACTION_MAIN).setClass(
                     InstrumentationRegistry.getInstrumentation().targetContext,
@@ -72,12 +79,11 @@ class FirstRunSignInInstrumentedTest {
             ).use {
                 assertTrue(
                     "The real Activity must display the local HA authorization page before any entity hold",
+                    // One query per poll: a node held across a reload goes stale and throws out of the wait.
                     device.wait(
                         Condition<UiDevice, Boolean> { current ->
-                            current.findObjects(By.clazz("android.webkit.WebView")).any { webView ->
-                                webView.hasObject(By.text(SignInServer.MARKER)) ||
-                                    webView.hasObject(By.desc(SignInServer.MARKER))
-                            }
+                            current.hasObject(By.clazz("android.webkit.WebView").hasDescendant(By.text(SignInServer.MARKER))) ||
+                                current.hasObject(By.clazz("android.webkit.WebView").hasDescendant(By.desc(SignInServer.MARKER)))
                         },
                         30_000,
                     ),
@@ -89,6 +95,19 @@ class FirstRunSignInInstrumentedTest {
                 assertEquals("", config.haRefreshToken)
             }
         }
+    }
+
+    private fun localServerListens(port: Int): Boolean {
+        val deadline = SystemClock.uptimeMillis() + 20_000
+        while (SystemClock.uptimeMillis() < deadline) {
+            try {
+                Socket().use { it.connect(InetSocketAddress("127.0.0.1", port), 500) }
+                return true
+            } catch (_: IOException) {
+                SystemClock.sleep(200)
+            }
+        }
+        return false
     }
 
     private fun freshConfig(): Pair<UiDevice, Config> {
