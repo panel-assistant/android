@@ -106,6 +106,15 @@ internal object ProfileValidator {
         }
         boundedRequiredText(document.displayName, "display_name")
         boundedRequiredText(document.socClass, "soc_class")
+        if (document.logging.knownNoise.size > ProfileLogging.KNOWN_RULES.size) {
+            reject("logging.known_noise", "At most ${ProfileLogging.KNOWN_RULES.size} known noise rules are allowed.")
+        }
+        val seenNoiseRules = mutableSetOf<String>()
+        document.logging.knownNoise.forEachIndexed { index, rule ->
+            val path = "logging.known_noise[$index]"
+            if (rule !in ProfileLogging.KNOWN_RULES) reject(path, "Unknown log noise rule '$rule'.")
+            if (!seenNoiseRules.add(rule)) reject(path, "Log noise rules must be unique.")
+        }
         val settingDefaults = mutableMapOf<String, String>()
         document.settingDefaults.forEach { (key, value) ->
             val admitted = settingDefault(key, value)

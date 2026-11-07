@@ -26,6 +26,7 @@ class DataDeviceProfile internal constructor(
     override val id = document.id
     override val displayName = document.displayName
     override val socClass = document.socClass
+    override val knownLogNoise = document.logging.knownNoise.toSet()
     override val settingDefaults = document.settingDefaults.mapValues { (key, value) ->
         (ProfileValidator.settingDefault(key, value) as? Validation.Ok)?.normalized
             ?: error("Invalid setting default '$key' in an unvalidated profile.")

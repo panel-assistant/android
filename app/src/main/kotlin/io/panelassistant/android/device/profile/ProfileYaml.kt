@@ -168,7 +168,7 @@ internal object ProfileYaml {
 
     private val ROOT_KEYS = setOf(
         "schema", "id", "version", "display_name", "soc_class", "soc", "metadata", "requires", "match", "platform", "hardware",
-        "sensors", "identity", "input", "cpu", "display", "provisioning", "setting_defaults",
+        "sensors", "identity", "input", "cpu", "display", "provisioning", "setting_defaults", "logging",
     )
 
     private const val MAX_EVENTS = 20_000
@@ -188,6 +188,7 @@ private class SchemaReader(private val issues: MutableList<ProfileIssue>) {
             "author", "source", "license", "maturity", "tested_firmware", "limitations", "links",
         ), required = true).orEmpty()
         val soc = map(root["soc"], "soc", setOf("model", "introduced_year", "cpu_cores"))
+        val logging = map(root["logging"], "logging", setOf("known_noise"), required = root.containsKey("logging"))
         val requires = map(root["requires"], "requires", setOf("min_core_version", "drivers"), required = true).orEmpty()
         val match = map(root["match"], "match", setOf("priority", "fallback", "any"), required = true).orEmpty()
         val platform = map(root["platform"], "platform", setOf("su_form", "app_can_su", "has_recents", "has_native_navbar", "launcher", "vendor_mdns"), required = true).orEmpty()
@@ -254,6 +255,12 @@ private class SchemaReader(private val issues: MutableList<ProfileIssue>) {
             version = string(root, "version", "$", required = true).orEmpty(),
             displayName = string(root, "display_name", "$", required = true).orEmpty(),
             socClass = string(root, "soc_class", "$", required = true).orEmpty(),
+            logging = ProfileLogging(
+                knownNoise = stringList(
+                    logging?.get("known_noise"), "logging.known_noise",
+                    required = logging?.containsKey("known_noise") == true,
+                ),
+            ),
             settingDefaults = map(
                 root["setting_defaults"], "setting_defaults", emptySet(),
                 required = root.containsKey("setting_defaults"), allowAnyKeys = true,
@@ -739,6 +746,7 @@ internal fun ProfileDocument.toYamlMap(): Map<String, Any?> = linkedMapOf(
     "display_name" to displayName,
     "soc_class" to socClass,
     "setting_defaults" to settingDefaults.takeIf { it.isNotEmpty() },
+    "logging" to logging.knownNoise.takeIf { it.isNotEmpty() }?.let { linkedMapOf("known_noise" to it) },
     "soc" to soc?.let {
         linkedMapOf(
             "model" to it.model,

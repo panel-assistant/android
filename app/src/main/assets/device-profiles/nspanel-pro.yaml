@@ -1,8 +1,10 @@
 schema: 2
 id: nspanel-pro
-version: 2.0.4
+version: 2.0.5
 display_name: Sonoff NSPanel Pro
 soc_class: PX30 / rk3326
+logging:
+  known_noise: [selinux-permissive]
 soc:
   model: Rockchip RK3326
   introduced_year: 2018
@@ -23,8 +25,8 @@ metadata:
   limitations:
     - The NSPanel Pro Gen2 relay layout is not represented by this profile.
 requires:
-  # display.geometry needs the 0.9.8-rc2 parser; older cores reject the field.
-  min_core_version: 0.9.8-rc2
+  # logging.known_noise needs the 1.0.0 parser; older cores reject the field.
+  min_core_version: 1.0.0
   drivers:
     - access.toolbox-su
     - radio.siliconlabs-host

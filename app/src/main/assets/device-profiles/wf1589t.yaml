@@ -1,8 +1,10 @@
 schema: 2
 id: wf1589t
-version: 2.0.4
+version: 2.0.5
 display_name: Electron WF1589T
 soc_class: rk3576
+logging:
+  known_noise: [selinux-permissive]
 soc:
   model: Rockchip RK3576
   introduced_year: 2024
@@ -24,7 +26,7 @@ metadata:
   limitations:
     - The LED uses a conservative transfer until its per-channel response is measured.
 requires:
-  min_core_version: 0.9.5-rc1
+  min_core_version: 1.0.0
   drivers:
     - access.android-su
     - input.evdev
