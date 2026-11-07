@@ -1,34 +1,31 @@
-# hapaneld-helper sanitizer smoke harness
+# Helper parser fuzzing
 
-This harness feeds malformed and adversarial bytes through the daemon's real command parser and handlers under AddressSanitizer, UndefinedBehaviorSanitizer, and LeakSanitizer. It is a reproducible developer smoke test, not independent security validation, a coverage-guided fuzzer, or a semantic correctness oracle.
-
-## Run
+The existing deterministic sanitizer smoke and the clang libFuzzer target share `fuzz_parser.c`, the real production `CORE_SRCS`, `dispatch()` and `server_serve()`. libFuzzer uses sanitizer coverage feedback to retain inputs and mutate the corpus. Both modes enable AddressSanitizer, UndefinedBehaviorSanitizer and leak detection.
 
 ```bash
-./helper/fuzz/run.sh            # corpus + length boundaries + 100,000 deterministic random inputs
-./helper/fuzz/run.sh 1000000    # optional longer smoke run
-make -C helper fuzz             # same thing, via the Makefile
+./helper/fuzz/run.sh                    # deterministic corpus, bounds and 100,000 random inputs
+./helper/fuzz/run.sh 1000               # shorter smoke run
+./helper/fuzz/run.sh --libfuzzer 30      # bounded coverage-guided run, seconds excluding compilation
+CLANG=clang-18 ./helper/fuzz/run.sh --libfuzzer 300
+make -C helper fuzz                     # deterministic smoke
 ```
 
-Only `gcc` is needed. A clean run ends with `SANITIZER SMOKE OK` and exit 0; a sanitizer-visible overflow, out-of-bounds access, undefined behaviour, or leak aborts with a diagnostic. A clean run does not prove that every path was reached or that accepted commands have the correct semantics.
+Smoke needs GCC (or `CC=clang`); coverage-guided execution needs a host clang with compiler-rt/libFuzzer. Both need Python 3 and Linux. `CLANG` selects the coverage-guided compiler; the Android NDK compiler is not a substitute for a matching host toolchain.
 
-## What it does
+`seeds.py` builds seeds for every verb in `src/commands.def`, refusing a new verb until its syntax seed or no-argument declaration is supplied. Each verb gets syntax, missing/extra arguments, NUL, CRLF, numeric overflow, shell metacharacter and line-boundary cases. Additional valid variants and multiline Guard prepare/define/stream/cancel seeds reach beyond empty-argument rejection. The generated `build/corpus-summary.tsv` lists the seed count and classes per verb; this measures corpus construction, not reached behavior. `build/commands.dict` provides verbs and structured tokens to libFuzzer. The deterministic driver also retains its original adversarial corpus and exercises every manifest verb around `MAX_LINE` and at 4096/65536 bytes.
 
-`fuzz_parser.c` links the production capability, parser, and transport modules with `test/sysexec_stub.c`. The stub replaces real command execution, pipes, thread spawning, and reboot at the link boundary. `src/commands.def` supplies both the live dispatch table and the random-input verb bias, preventing a command from being wired into production while remaining absent from that bias.
+libFuzzer writes evolved inputs under `build/corpus/` and crash/timeout artifacts under `build/artifacts/`. Preserve those files with the compiler version, source revision and sanitizer diagnostic when reporting a failure. Reproduce an artifact without a timed mutation campaign:
 
-- The bounded line accumulator in `server_serve()`, including split reads, overlong-line dropping, and `MAX_LINE` boundaries.
-- Exact-match dispatch, argument parsing, command construction, and validators reached by the supplied inputs.
-- A hand-written adversarial corpus, deterministic cases around parser length boundaries, and fixed-seed pseudo-random byte streams biased toward every live command verb.
+```bash
+./helper/fuzz/run.sh --replay helper/fuzz/build/artifacts/crash-<hash>
+```
 
-The fixed seed makes regressions reproducible but also limits exploration: repeated runs with the same iteration count exercise the same inputs. Iteration count is therefore a runtime parameter, not an assurance score.
+Additional libFuzzer flags may follow the seconds limit, such as `-runs=10000`, `-seed=1234` or `-minimize_crash=1`. A seed makes a fixed binary/corpus replayable; compiler changes and previously evolved corpus entries change exploration. The time limit applies to the fuzz engine, including initial corpus loading, and permits completion of the current input. The per-input timeout is ten seconds.
 
-## Scope
+## Host isolation and scope
 
-The harness does not test:
+`test/sysexec_stub.c` replaces command execution, captured commands, streaming subprocesses, thread spawning and reboot. That stub alone is insufficient: the real handlers also perform filesystem operations directly. `sandbox.c` therefore interposes those calls while the target runs. Fixed `/tmp` test paths map into a fresh private directory beneath `build/sandbox.*`; relative `*at` operations require a directory fd inside that root and reject parent traversal. Other filesystem opens and directory walks fail closed. Device ioctls, peer sockets, process signalling (except the signal-0 liveness probe of the parent, which the Guard supervision gate needs), process/thread creation, executable launch, hard links and ownership/xattr changes are refused. This prevents Guard, install staging, GPIO, sysfs and device paths from mutating shared host fixtures or hardware. Startup verifies refusal boundaries and requires successful private Guard initialization.
 
-- Peer authentication, the accept loop, process lifecycle, or the production `sysexec` implementation.
-- Semantic correctness of replies, command ordering, resource ownership, or failure propagation; deterministic unit and integration tests own those assertions.
-- Concurrency, connection admission, idle timeouts, or races between handlers.
-- Coverage-guided mutation, corpus evolution, coverage thresholds, independent implementation, or third-party review.
+The sandbox resets between direct dispatch and socket execution and between inputs, so persistent state from one input cannot make a saved crash depend on a previous input. Multiline socket inputs can create and read private Guard records within that one input. An input that starts with a NUL byte instead carries persisted Guard records (`[selector][length, 2 bytes big-endian][body]` repeated, ended by selector `0xFF`, then command lines). The harness appends the production checksum trailer, writes the records into the private Guard directory, reruns startup reconciliation and serves the commands, so mutation reaches the record deserializers instead of stopping at checksum verification. `record-*` seeds are written at startup from records the real handlers produced. Manifest-backed states additionally need staged APK, baseline and settings files with matching hashes, which this mode does not synthesize; the Guard boundary tests own those states. The prefilled socket and nonblocking replies avoid harness deadlocks from stream commands, reply floods and overlong inputs. This deliberately does not model backpressure or concurrent clients. The syscall boundary applies only while running the target; libFuzzer retains normal access to its corpus and artifacts. The command-capture stub may use its own anonymous temporary streams.
 
-The stub makes host-effecting calls succeed or fail according to test rules, which can hide behaviours that depend on the real operating system. Those behaviours require native unit tests, Android integration tests, hardware exercises, or independent review rather than stronger claims about this harness.
+A clean run reports only that exercised paths produced no sanitizer-visible fault. It does not establish semantic correctness, authentication, safe real subprocesses, concurrency, Android behavior or hardware effects. The controlled filesystem is a testing seam, not an operating-system security sandbox for untrusted binaries. Parsers requiring real device/sysfs/procfs data, authenticated accept-loop behavior, and later Guard installation/health/replacement states still need their dedicated native and integration tests. Per-verb seeds and increased sanitizer coverage do not prove all paths were reached.
