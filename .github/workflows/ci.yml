@@ -495,7 +495,9 @@ jobs:
 
   host-contracts:
     name: Host contracts
-    runs-on: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.actor != 'dependabot[bot]' && vars.CI_RUNNER == 'blacksmith' && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04' }}
+    # Stays on GitHub-hosted runners: the release descriptor sandbox it tests needs Landlock ABI 3, which
+    # Blacksmith's kernel does not provide.
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
