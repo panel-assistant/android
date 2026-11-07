@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import test from 'node:test';
 import { chromium, webkit } from 'playwright-core';
 import { i18nBridge } from './fixtures/i18n-bridge.mjs';
 import { browserTest, chrome, json, root } from './fixtures/browser-harness.mjs';
@@ -1958,10 +1959,10 @@ function dashboardHarness(options = {}) {
   return { state, routes };
 }
 
-async function openDashboardPicker(t, options = {}) {
+async function openDashboardPicker(t, options = {}, browserType = chromium) {
   const { state, routes } = dashboardHarness(options);
   const harness = await startHarness(routes);
-  const browser = await chromium.launch({ executablePath: chrome, headless: true });
+  const browser = await browserType.launch(browserType === chromium ? { executablePath: chrome, headless: true } : { headless: true });
   const page = await browser.newPage(options.viewport ? { viewport: options.viewport } : {});
   // Roomier than this file's usual 1.5s: these walks make several round trips (catalogue fetch, then a
   // send per transition), and one run timed out at 2s while a Gradle gate was saturating the machine.
@@ -2123,34 +2124,51 @@ browserTest('A malformed Custom path left behind never blocks a later Auto or li
   assert.equal(await page.locator('#cfg-home_dashboard .cfg-row-message').count(), 0);
 });
 
-browserTest('The client never refuses a dashboard route the server would accept', async (t) => {
-  // Shared matrix, not a second opinion. Two independently maintained expressions once agreed as
-  // strings while differing in behaviour, so both sides read tools/test/fixtures/dashboard-path-parity.json.
-  // Exact parity is unreachable — the server percent-decodes to reject traversal and a client
-  // expression cannot — so the contract is one-directional: the client may be a superset, never
-  // stricter. A stricter client blocks a legal route, worst when the catalogue is unavailable and
-  // Custom is the only way in.
-  const matrix = JSON.parse(await readFile(join(process.cwd(), 'fixtures', 'dashboard-path-parity.json'), 'utf8'));
-  const { select, input } = await openDashboardPicker(t, { current: '/alpha' });
-  await select.selectOption('__custom__');
-
-  const refused = [];
-  for (const route of matrix.serverAccepts) {
-    await input.fill(route);
-    if (!(await input.evaluate((el) => el.checkValidity()))) refused.push(route);
-  }
-  assert.deepEqual(refused, [], 'client refused routes the server admits');
-
-  // The client is a superset by design, so it is not asked to mirror every server refusal — only to
-  // catch the shapes worth stopping before the round trip. Deciding traversal needs decoding it does
-  // not do, which is precisely why the server stays the authority.
-  const admitted = [];
-  for (const route of matrix.clientMustReject) {
-    await input.fill(route);
-    if (await input.evaluate((el) => el.checkValidity())) admitted.push(route);
-  }
-  assert.deepEqual(admitted, [], 'client admitted routes it must catch before the round trip');
-});
+// Shared with Setup and the Kotlin authority. Browser acceptance of the explicitly listed
+// server refusals is advisory only: this harness records requests, not server validation.
+for (const [engine, browserType] of [['Chromium', chromium], ['WebKit', webkit]]) {
+  test(`Configure dashboard route corpus preserves advisory validity, root notes and posted values in ${engine}`, async (t) => {
+    const matrix = JSON.parse(await readFile(new URL('./fixtures/dashboard-path-parity.json', import.meta.url), 'utf8'));
+    const { page, select, input, state } = await openDashboardPicker(t, { current: '/initial' }, browserType);
+    const reset = async () => {
+      state.current = '/initial';
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await page.waitForFunction(() => document.querySelector('#cfg-home_dashboard select option[value="__custom__"]'));
+      await select.selectOption('__custom__');
+    };
+    for (const route of [...matrix.serverAccepts, ...matrix.clientAcceptsServerRejects]) {
+      await reset();
+      await input.fill(route);
+      assert.equal(await input.evaluate((el) => el.checkValidity()), true, route);
+      const before = state.posts.length;
+      await sentOnce(page, () => input.press('Tab'));
+      assert.deepEqual(state.posts.slice(before), [route.trim()], `exact submitted route: ${route}`);
+    }
+    for (const route of [...matrix.clientMustReject, ...matrix.meansAccountDefault]) {
+      await reset();
+      await input.fill(route);
+      assert.equal(await input.evaluate((el) => el.checkValidity()), false, `invalid Custom: ${route}`);
+      const before = state.posts.length;
+      await input.press('Tab');
+      await page.locator('#cfg-home_dashboard .cfg-row-message').waitFor();
+      assert.equal(state.posts.length, before, `invalid Custom must not post: ${route}`);
+    }
+    for (const { path, unknownRoot } of matrix.rootNotes) {
+      await reset();
+      await input.fill(path);
+      const note = page.locator('#cfg-home_dashboard-path-note');
+      assert.equal(await note.evaluate((el) => el.classList.contains('warn') || el.dataset.severity === 'warning'), !!unknownRoot, path);
+      const explanation = await note.evaluate((el) => (el.querySelector('.notice-detail') || el).textContent);
+      if (unknownRoot) assert.ok(explanation.startsWith(`${unknownRoot} `), path);
+      else assert.match(explanation, /^A path on this Home Assistant/);
+    }
+    // Following the account default is an explicit choice, never an empty Custom answer.
+    await reset();
+    const before = state.posts.length;
+    await sentOnce(page, () => select.selectOption(''));
+    assert.deepEqual(state.posts.slice(before), ['']);
+  });
+}
 
 // --- Entities page: catalogue search feedback (issue #114) -----------------------------------------
 //

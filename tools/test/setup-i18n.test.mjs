@@ -17,6 +17,83 @@ const STAGES = [
   'identity', 'renderer', 'ha_url', 'ha_credentials', 'home_dashboard', 'entity_filter', 'render_proof',
 ];
 
+for (const [engine, browserType] of [['Chromium', chromium], ['WebKit', webkit]]) {
+  test(`Setup dashboard route corpus preserves advisory checks and submitted values in ${engine}`, async (t) => {
+    const matrix = JSON.parse(await readFile(new URL('./fixtures/dashboard-path-parity.json', import.meta.url), 'utf8'));
+    const rig = await openRig(t, {
+      initialJourney: journey('home_dashboard', { home_dashboard: { value: '/alpha' } }),
+      locale: 'en',
+      dashboards: {
+        queried: true,
+        items: [
+          { group: 'dashboard', path: '/alpha', title: 'Alpha' },
+          { group: 'dashboard', path: '/lovelace', title: 'Overview' },
+        ],
+        default: { explicit: true, path: '/alpha' },
+      },
+    }, '/', browserType);
+    const select = rig.page.locator('#wiz-home_dashboard');
+    const input = rig.page.locator('#wiz-home_dashboard_custom');
+    const primary = rig.page.locator('button.wiz-primary');
+    const note = rig.page.locator('#wiz-home_dashboard_custom_note');
+    const posts = () => rig.state.requests.filter((request) => request.method === 'POST');
+
+    async function resetCustom(path) {
+      await rig.page.goto(rig.url, { waitUntil: 'domcontentloaded', timeout: 5_000 });
+      await select.locator('option[value="__custom__"]').waitFor({ state: 'attached' });
+      await select.selectOption('__custom__');
+      await input.fill(path);
+    }
+
+    for (const path of [...matrix.serverAccepts, ...matrix.clientAcceptsServerRejects]) {
+      await resetCustom(path);
+      assert.equal(await primary.isEnabled(), true, `${engine} accepts Custom ${JSON.stringify(path)}`);
+      const before = posts().length;
+      const answered = rig.page.waitForResponse((response) =>
+        response.url().endsWith('/api/v1/setup/home-dashboard') && response.request().method() === 'POST');
+      await primary.click();
+      await answered;
+      const sent = posts().slice(before);
+      assert.deepEqual(sent.map((request) => request.path), ['/api/v1/config', '/api/v1/setup/home-dashboard'], path);
+      assert.deepEqual([...new URLSearchParams(sent[0].body)], [['home_dashboard', path.trim()]], path);
+      assert.equal(new URLSearchParams(sent[1].body).has('home_dashboard'), false, 'the setup answer never carries a picker sentinel');
+    }
+
+    for (const path of [...matrix.clientMustReject, ...matrix.meansAccountDefault]) {
+      await resetCustom(path);
+      assert.equal(await primary.isDisabled(), true, `${engine} refuses Custom ${JSON.stringify(path)}`);
+      const before = posts().length;
+      // Dispatching bypasses the disabled button so the submit handler's own refusal is exercised too.
+      const noPost = rig.page.waitForRequest((request) => request.method() === 'POST', { timeout: 150 });
+      await primary.dispatchEvent('click');
+      await assert.rejects(noPost, /Timeout/);
+      assert.equal(posts().length, before, `${engine} does not post ${JSON.stringify(path)}`);
+    }
+
+    for (const { path, unknownRoot } of matrix.rootNotes) {
+      await resetCustom(path);
+      assert.equal(await note.evaluate((element) => element.classList.contains('warn') || element.dataset.severity === 'warning'), !!unknownRoot, path);
+      const explanation = await note.evaluate((el) => (el.querySelector('.notice-detail') || el).textContent);
+      assert.equal(explanation, unknownRoot
+        ? `${unknownRoot} is not a dashboard this account can see — the panel will fall back to its default until that dashboard exists.`
+        : 'A path on this Home Assistant, starting with a dashboard from the list.', path);
+    }
+
+    await resetCustom('/alpha/view');
+    await select.selectOption('');
+    assert.equal(await input.isVisible(), false);
+    assert.equal(await primary.isEnabled(), true, 'follow-default stays distinct from an empty Custom path');
+    const before = posts().length;
+    const answered = rig.page.waitForResponse((response) =>
+      response.url().endsWith('/api/v1/setup/home-dashboard') && response.request().method() === 'POST');
+    await primary.click();
+    await answered;
+    const sent = posts().slice(before);
+    assert.deepEqual(sent.map((request) => request.path), ['/api/v1/config', '/api/v1/setup/home-dashboard']);
+    assert.deepEqual([...new URLSearchParams(sent[0].body)], [['home_dashboard', '']]);
+  });
+}
+
 function journey(next, overrides = {}) {
   const statuses = overrides.statuses || {};
   return {

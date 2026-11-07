@@ -537,7 +537,7 @@
       function validateCustom() {
         var typedPath = customInput.value.trim();
         customInput.setCustomValidity(
-          !typedPath || cfg.wellFormedDashboardPath(typedPath) ? ""
+          cfg.wellFormedDashboardPath(typedPath) ? ""
             : cfg.i18nText("configure.dashboard.path_invalid", "Enter a dashboard path such as /dashboard-name/tab-name."),
         );
       }
