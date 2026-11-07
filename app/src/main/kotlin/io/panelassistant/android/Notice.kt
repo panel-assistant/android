@@ -150,6 +150,7 @@ internal class Notice(
         visibility = if (noticeShowsBuild(BuildConfig.VERSION_NAME)) View.VISIBLE else View.GONE
     }
     private val body = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+    private var brandLayout: LinearLayout? = null
 
     /** The card. The caller places it: an overlay in the dashboard's frame, a full-screen host centred. */
     val view: LinearLayout = LinearLayout(context).apply {
@@ -186,6 +187,7 @@ internal class Notice(
             gravity = Gravity.CENTER_VERTICAL
             addView(lockup, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             addView(pill)
+            brandLayout = this
         }
     }
 
@@ -195,6 +197,22 @@ internal class Notice(
      */
     fun setPill(word: CharSequence, warn: Boolean = false) {
         pillText.text = word
+        brandLayout?.let { row ->
+            val pillWidth = pillText.paint.measureText(word.toString()) + pill.paddingLeft + pill.paddingRight + px(DOT + 8f)
+            val stacked = word.isNotBlank() && px(MARK * WORDMARK_ASPECT) + pillWidth > innerWidthPx
+            row.orientation = if (stacked) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
+            row.gravity = if (stacked) Gravity.START else Gravity.CENTER_VERTICAL
+            row.getChildAt(0).layoutParams = LinearLayout.LayoutParams(
+                if (stacked) ViewGroup.LayoutParams.MATCH_PARENT else 0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, if (stacked) 0f else 1f,
+            )
+            pillText.maxLines = if (stacked) Int.MAX_VALUE else 1
+            pillText.ellipsize = if (stacked) null else android.text.TextUtils.TruncateAt.END
+            pill.layoutParams = LinearLayout.LayoutParams(
+                if (stacked) ViewGroup.LayoutParams.MATCH_PARENT else ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { if (stacked) topMargin = px(8f) }
+        }
         val dot = if (!warn) colours.accent
         else if (backdropDark) PanelTokens.Chip.LIGHT.warningBorder else PanelTokens.Chip.DARK.warningBorder
         (pillDot.background as GradientDrawable).setColor(dot)
@@ -228,7 +246,6 @@ internal class Notice(
     /** One number (a countdown, a count) at the hero size, or a word at the smaller hero size. */
     fun hero(value: CharSequence, word: Boolean = false): TextView = text(HERO_NUMBER, colours.text, PanelFont.light(context)).apply {
         tag = HERO_TAG
-        maxLines = if (word) 2 else 1
         fontFeatureSettings = "tnum"
         letterSpacing = -0.01f
         setHero(this, value, word)
@@ -237,7 +254,13 @@ internal class Notice(
     /** Switch a hero between a number and a word without rebuilding it. */
     fun setHero(hero: TextView, value: CharSequence, word: Boolean) {
         hero.text = value
+        hero.maxLines = if (word) 2 else 1
+        hero.setAutoSizeTextTypeWithDefaults(TextView.AUTO_SIZE_TEXT_TYPE_NONE)
         hero.setTextSize(TypedValue.COMPLEX_UNIT_PX, (if (word) HERO_WORD else HERO_NUMBER) * textScale)
+        if (!word) {
+            // Keep every digit on one line when the requested font is wider than the card.
+            hero.setAutoSizeTextTypeUniformWithConfiguration(1, hero.textSize.toInt().coerceAtLeast(2), 1, TypedValue.COMPLEX_UNIT_PX)
+        }
     }
 
     /**
@@ -318,7 +341,7 @@ internal class Notice(
                 }
             }
         }
-        val names = labels.map { label -> text(LABEL, colours.muted).apply { text = label; maxLines = 1 } }
+        val names = labels.map { label -> text(LABEL, colours.muted).apply { text = label; ellipsize = null } }
         fun row(children: List<View>, height: Int) = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             children.forEachIndexed { i, child ->

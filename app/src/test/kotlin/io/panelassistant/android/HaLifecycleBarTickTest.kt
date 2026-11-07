@@ -1,6 +1,7 @@
 package io.panelassistant.android
 
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import io.panelassistant.android.DashboardRendererRig.Companion.allocate
 import io.panelassistant.android.control.BuiltinDashboard
@@ -46,6 +47,7 @@ class HaLifecycleBarTickTest {
         val args = ctor.parameterTypes.map { type ->
             when (type) {
                 Notice::class.java -> notice
+                ScrollView::class.java -> allocate(ScrollView::class.java)
                 TextView::class.java -> allocate(TextView::class.java)
                 NoticeTrack::class.java -> allocate(NoticeTrack::class.java)
                 Function1::class.java -> onVisibilityChanged

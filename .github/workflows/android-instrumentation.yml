@@ -231,4 +231,4 @@ jobs:
           if [ "$status" -ne 0 ] || grep -Eq 'FAILURES!!!|Process crashed|INSTRUMENTATION_FAILED|shortMsg=|No tests found' "$log"; then adb logcat -d -b main,crash,system | tail -n 3000; fi
           test "$status" -eq 0
           if grep -Eq 'FAILURES!!!|Process crashed|INSTRUMENTATION_FAILED|shortMsg=|No tests found' "$log"; then exit 1; fi
-          grep -Eq '^OK \(8 tests\)[[:space:]]*$' "$log"
+          grep -Eq '^OK \(12 tests\)[[:space:]]*$' "$log"
