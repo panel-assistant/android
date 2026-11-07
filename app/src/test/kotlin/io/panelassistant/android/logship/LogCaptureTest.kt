@@ -456,6 +456,91 @@ class LogCaptureTest {
         }
     }
 
+    @Test fun blockedDumpLaunchReturnsWithinBudgetAndDisposesLateProcessBeforeRetry() {
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val starts = AtomicInteger()
+        val late = GateProcess("late\n")
+        val healthy = GateProcess("recovered\n").also { it.finish() }
+        val cap = LogCapture(
+            CoroutineScope(Dispatchers.IO), listOf("unused"), { listOf("dump") },
+            dumpTimeoutMs = 1_000,
+            processStarter = {
+                if (starts.incrementAndGet() == 1) {
+                    entered.countDown()
+                    while (release.count > 0) {
+                        try { release.await() } catch (_: InterruptedException) { }
+                    }
+                    late
+                } else healthy
+            },
+        )
+        val executor = Executors.newSingleThreadExecutor()
+        try {
+            val result = executor.submit<List<String>> { cap.dump() }
+            assertTrue(entered.await(2, TimeUnit.SECONDS))
+            assertTrue("owning dump must return while launch is still blocked", result.get(3, TimeUnit.SECONDS).isEmpty())
+            val retry = executor.submit<List<String>> { cap.dump() }
+            assertTrue("retry while launch is wedged must fail within its budget", retry.get(3, TimeUnit.SECONDS).isEmpty())
+            assertEquals("a blocked starter must retain launch custody", 1, starts.get())
+            release.countDown()
+            await { late.forcedDestroys.get() > 0 }
+            assertEquals(listOf("recovered"), cap.dump())
+            assertEquals(2, starts.get())
+        } finally {
+            release.countDown()
+            cap.close()
+            executor.shutdownNow()
+        }
+    }
+
+    @Test fun closeDuringBlockedDumpLaunchDisposesLateProcessAndKeepsCaptureClosed() {
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val late = GateProcess("must-not-escape\n")
+        val cap = LogCapture(
+            CoroutineScope(Dispatchers.IO), listOf("unused"), { listOf("dump") },
+            dumpTimeoutMs = 1_000,
+            processStarter = {
+                entered.countDown()
+                while (release.count > 0) {
+                    try { release.await() } catch (_: InterruptedException) { }
+                }
+                late
+            },
+        )
+        val executor = Executors.newSingleThreadExecutor()
+        try {
+            val result = executor.submit<List<String>> { cap.dump() }
+            assertTrue(entered.await(2, TimeUnit.SECONDS))
+            cap.close()
+            assertTrue(result.get(3, TimeUnit.SECONDS).isEmpty())
+            release.countDown()
+            await { late.forcedDestroys.get() > 0 }
+            assertTrue(cap.dump().isEmpty())
+            assertTrue(cap.snapshot().isEmpty())
+        } finally {
+            release.countDown()
+            cap.close()
+            executor.shutdownNow()
+        }
+    }
+
+    @Test fun timedOutDumpRetainsPartialRedactedOutput() {
+        val process = GateProcess("before-timeout\npassword=hunter2secret\n", terminateOnDestroy = false)
+        val cap = LogCapture(
+            CoroutineScope(Dispatchers.IO), listOf("unused"), { listOf("dump") },
+            dumpTimeoutMs = 1_000,
+            processStarter = { process },
+        )
+        try {
+            assertEquals(listOf("before-timeout", "password=***"), cap.dump())
+            assertTrue(process.forcedDestroys.get() > 0)
+        } finally {
+            cap.close()
+        }
+    }
+
     @Test fun interruptedDumpReaderCannotCrashTheProcess() {
         val input = InterruptingInputStream()
         val uncaught = AtomicReference<Throwable?>()
