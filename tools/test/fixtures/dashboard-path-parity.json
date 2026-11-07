@@ -43,6 +43,7 @@
     " /?kiosk "
   ],
   "clientMustReject": [
+    "wall%2fpanel",
     "https://ha.example/wall-panel",
     "HTTPS://ha.example/wall-panel",
     "javascript:alert(1)",
@@ -54,5 +55,38 @@
     "/_alpha",
     "/-alpha"
   ],
-  "clientSupersetNote": "Routes such as `null` and percent-escaped traversal are refused by the server only. Deciding them needs decoding the client does not do, so they are the authority's job and the client is permitted to admit them."
+  "clientSupersetNote": "Routes such as `null` and percent-escaped traversal are refused by the server only. Deciding them needs decoding the client does not do, so they are the authority's job and the client is permitted to admit them.",
+  "clientAcceptsServerRejects": [
+    "null",
+    "/alpha/../evil",
+    "/alpha/%2e%2e/evil",
+    "/alpha/%2Foutside",
+    "/alpha/%2"
+  ],
+  "rootNotes": [
+    {
+      "path": "/alpha/view?kiosk=1#main",
+      "unknownRoot": ""
+    },
+    {
+      "path": "  /dashboard-name/tab-name?x=1#view  ",
+      "unknownRoot": "/dashboard-name"
+    },
+    {
+      "path": "alpha/view",
+      "unknownRoot": ""
+    },
+    {
+      "path": "/a_b-c9/x",
+      "unknownRoot": "/a_b-c9"
+    },
+    {
+      "path": "https://ha.example/wall-panel",
+      "unknownRoot": ""
+    },
+    {
+      "path": "/#view",
+      "unknownRoot": ""
+    }
+  ]
 }
