@@ -2060,10 +2060,10 @@ browserTest('A view under an unknown dashboard warns but is still sent', async (
   await input.fill('/dashboard-test/alpha');
   // The renderer would silently fall back to the account default here, so the warning is the only
   // thing standing between the user and a panel showing the wrong dashboard for no visible reason.
-  await assert.doesNotReject(row.locator('.hd-custom-note.warn').waitFor());
+  await assert.doesNotReject(row.locator('.hd-custom-note .notice-pill').getByText('Warning', { exact: true }).waitFor());
 
   await input.fill('/alpha/upper-floor');
-  await assert.doesNotReject(row.locator('.hd-custom-note:not(.warn)').waitFor());
+  assert.equal(await row.locator('.hd-custom-note .notice-pill').count(), 0);
 
   // …and an unknown root must never block the send: the dashboard may not exist yet.
   await input.fill('/dashboard-test/alpha');

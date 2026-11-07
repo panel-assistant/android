@@ -625,8 +625,17 @@
     var settled = chartContent && chartContent.getAttribute("data-settled") === "true";
     if (message) {
       var nextMessage = autoSleepHistoryMessage();
-      if (message.textContent !== nextMessage) message.textContent = nextMessage;
-      message.classList.toggle("error", !!cfg.autoSleepHistoryError);
+      if (cfg.autoSleepHistoryError) {
+        var detail = message.querySelector(".notice-detail");
+        if (!detail || detail.textContent !== nextMessage) {
+          window.HaNotice.fill(message, "warning", "", nextMessage);
+          message.classList.add("notice-inline", "autobright-message");
+        }
+      } else {
+        message.className = "autobright-message";
+        message.removeAttribute("data-severity");
+        if (message.textContent !== nextMessage) message.textContent = nextMessage;
+      }
     }
     for (var index = 0; index < windowButtons.length; index += 1) {
       var selected = Number(windowButtons[index].getAttribute("data-hours")) === cfg.autoSleepHistoryHours;
