@@ -408,7 +408,14 @@ internal class PanelCommandDispatcher(
             // Both keep the panel on its dashboard, so kiosk lock allows them.
             "dashboard" -> { system.endDream(); system.launchHome(config.dashboardPackage) }
             // The dashboard swallows Android's Back, so in front it goes to its own previous page or says it has none.
-            "back" -> if (!((if (BuiltinDashboard.foreground) BuiltinDashboard.back() else null) ?: goBack())) throw LiveSettingUnavailableException(channel)
+            "back" -> {
+                if (screen.ensureOn() == io.panelassistant.android.control.WakeOutcome.ACTUATION_FAILED) {
+                    throw LiveSettingUnavailableException("screen")
+                }
+                if (!((if (BuiltinDashboard.foreground) BuiltinDashboard.back() else null) ?: goBack())) {
+                    throw LiveSettingUnavailableException(channel)
+                }
+            }
             "reboot" -> {
                 system.requireRebootAllowed()
                 authorizeRemoteSensitive(
@@ -428,8 +435,9 @@ internal class PanelCommandDispatcher(
     private fun handleScreen(light: CommandValue.Light) {
         val command = io.panelassistant.android.control.ScreenCommandPolicy.parse(light)
         if (!command.on) {
-            screen.sleep()
+            val outcome = screen.sleep()
             core.publishScreenOff()
+            if (outcome != io.panelassistant.android.control.SleepOutcome.APPLIED) throw ScreenSleepRefusalException()
             return
         }
         // Capture explicit intent before wake completion can reapply automatic control.
@@ -1484,6 +1492,8 @@ internal class SensitiveApprovalPendingException(val approvalId: String, message
 /** A remote command Hardened mode refuses outright, with no approval that could allow it. */
 internal class HardenedModeRefusalException(message: String) : IllegalStateException(message)
 
+internal class ScreenSleepRefusalException : IllegalStateException("screen off was refused")
+
 /** How a command handler's outcome reads on the native transport. */
 internal fun panelAssistantCommandResult(failure: Exception?): PanelAssistantCommandResult = when (failure) {
     null -> PanelAssistantCommandResult.Applied
@@ -1492,6 +1502,8 @@ internal fun panelAssistantCommandResult(failure: Exception?): PanelAssistantCom
         PanelAssistantCommandResult.Refused(PanelAssistantCommandProcessor.CODE_REFUSED_HARDENED)
     is DeviceCredentialRebootRefusalException ->
         PanelAssistantCommandResult.Refused(PanelAssistantCommandProcessor.CODE_NOT_COMMANDABLE)
+    is ScreenSleepRefusalException ->
+        PanelAssistantCommandResult.Refused(PanelAssistantCommandProcessor.CODE_HARDWARE_UNAVAILABLE)
     is LiveSettingUnavailableException ->
         PanelAssistantCommandResult.Failed(PanelAssistantCommandProcessor.CODE_HARDWARE_UNAVAILABLE)
     is IllegalArgumentException -> PanelAssistantCommandResult.Refused(PanelAssistantCommandProcessor.CODE_INVALID_VALUE)

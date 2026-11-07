@@ -217,7 +217,9 @@ internal abstract class PanelRuntimeRig {
          *  moves its level as a vendor brightness writer would), the root shell it powers it through when
          *  no helper answers, and the root helper that reads and powers it. */
         screenOff: ScreenOff = ScreenOff.BRIGHTNESS_ZERO,
-        screenBacklight: FakeBacklight = FakeBacklight(160),
+        screenBacklight: io.panelassistant.android.control.Backlight = FakeBacklight(160),
+        screenPower: io.panelassistant.android.platform.ScreenPower = FakeScreenPower(),
+        screenWakeTap: io.panelassistant.android.platform.WakeTap = FakeWakeTap(),
         screenRoot: RootShell = FakeRootShell(),
         screenDaemon: io.panelassistant.android.platform.Daemon = FakeDaemon(),
         /** Boot-chime hardware; null keeps the inert controller. When given, the controller persists its
@@ -284,7 +286,7 @@ internal abstract class PanelRuntimeRig {
         } else screenOffTimeout?.let { BrightnessController(context, FakeDaemon(), screenTimeout = it) }
             ?: BrightnessController(context, FakeDaemon())
         val screen = ScreenController(
-            if (brightnessSetting != null) brightness else screenBacklight, FakeScreenPower(), screenRoot, screenDaemon, FakeWakeTap(),
+            if (brightnessSetting != null) brightness else screenBacklight, screenPower, screenRoot, screenDaemon, screenWakeTap,
             screenOff, nap = {}, accessibility = io.panelassistant.android.control.FakeDreamAccessibility(false),
         )
         val companion = "io.homeassistant.companion.android.minimal"
