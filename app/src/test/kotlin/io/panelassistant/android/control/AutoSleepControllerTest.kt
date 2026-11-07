@@ -753,14 +753,77 @@ class AutoSleepControllerTest {
         h.closeWithVirtualTime(::runCurrent)
     }
 
-    @Test fun rawTouchCanCausallyWakeTheVisibleNoOverlayFallback() {
-        Harness(wakeTapAvailable = false).use { h ->
-            val epoch = h.sleepAutomatically()
-            h.controller.noteTouchForTest(h.now.get(), epoch.generation)
+    @Test fun visibleNoOverlayFallbackNeverReportsOrLearnsAnAutomaticSleep() = runTest {
+        val h = virtualHarness(wakeTapAvailable = false)
+        try {
+            val awakeLevel = h.backlight.getBrightness()
+            val request = h.start()
+            h.offer(aggregate(request, 0L, HaPresenceValue.OFF))
+            h.await { h.status().getString("phase") == "live" }
+            h.now.set(15 * MINUTE)
+            h.controller.advanceToForTest(h.now.get())
+            h.settle()
 
-            h.await { h.learning.corrections.size == 1 }
+            assertEquals(ScreenOff.BRIGHTNESS_ZERO, h.screen.routeSelection().selected)
+            assertTrue("the fallback remains visible", h.backlight.getBrightness() > 0)
+            assertFalse("a visible fallback must not report screen OFF", h.screenChanges.contains(false))
+
+            h.now.addAndGet(MINUTE)
+            h.controller.noteTouchForTest(h.now.get(), h.screen.currentOffGeneration())
+            h.settle()
+            assertFalse("touch must release the automatic dim", h.screen.isIntendedOff())
+            assertEquals("touch must restore the pre-dim brightness", awakeLevel, h.backlight.getBrightness())
+            assertTrue("touching a visible fallback is not a premature wake", h.learning.corrections.isEmpty())
+        } finally { h.closeWithVirtualTime(::runCurrent) }
+    }
+
+    @Test fun disablingAutoSleepRestoresItsRefusedVisibleDim() = runTest {
+        val h = virtualHarness(wakeTapAvailable = false)
+        try {
+            val awakeLevel = h.backlight.getBrightness()
+            h.prepareAutomaticSleep()
+            assertTrue(h.backlight.getBrightness() in 1 until awakeLevel)
+
+            h.setEnabled(false)
+            h.settle()
+
+            assertFalse("disabling must release the automatic dim", h.screen.isIntendedOff())
+            assertEquals(awakeLevel, h.backlight.getBrightness())
+            assertFalse(h.screenChanges.contains(false))
+            assertTrue(h.learning.corrections.isEmpty())
+        } finally { h.closeWithVirtualTime(::runCurrent) }
+    }
+
+    @Test fun disablingAutoSleepLeavesALaterManualDimAlone() = runTest {
+        val h = virtualHarness(wakeTapAvailable = false)
+        try {
+            h.prepareAutomaticSleep()
+            assertEquals(SleepOutcome.REFUSED, h.screen.sleep())
+            val manualLevel = h.backlight.getBrightness()
+
+            h.setEnabled(false)
+            h.settle()
+
+            assertTrue("manual OFF owns the later dim", h.screen.isIntendedOff())
+            assertEquals(manualLevel, h.backlight.getBrightness())
+            assertFalse(h.screenChanges.contains(false))
+            assertTrue(h.learning.corrections.isEmpty())
+        } finally { h.closeWithVirtualTime(::runCurrent) }
+    }
+
+    @Test fun confirmedAutomaticSleepReportsOffAndLearnsItsPrematureTapWake() = runTest {
+        val h = virtualHarness()
+        try {
+            h.prepareAutomaticSleep()
+            h.settle()
+            assertEquals(listOf(false), h.screenChanges.toList())
+
+            h.now.addAndGet(MINUTE)
+            h.wakeTap.fireTap()
+            h.settle()
             assertFalse(h.screen.isIntendedOff())
-        }
+            assertEquals(1, h.learning.corrections.size)
+        } finally { h.closeWithVirtualTime(::runCurrent) }
     }
 
     @Test fun sourceWakeThenTouchNeverManufacturesTapProof() = runTest {
@@ -1314,8 +1377,10 @@ class AutoSleepControllerTest {
         onNoArea: (Long) -> Unit = {},
         source: String = "home_assistant",
         inheritedDark: Boolean = false,
+        wakeTapAvailable: Boolean = true,
     ) = Harness(this, StandardTestDispatcher(testScheduler), enabled = enabled, source = source,
-        onNoArea = onNoArea, drive = { runCurrent() }, inheritedDark = inheritedDark)
+        onNoArea = onNoArea, drive = { runCurrent() }, inheritedDark = inheritedDark,
+        wakeTapAvailable = wakeTapAvailable)
 
     private class Harness(
         scopeOverride: CoroutineScope? = null,

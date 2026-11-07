@@ -419,6 +419,8 @@ internal class ServiceDisplay(
                 autoBright.noteExternalBrightness(level, BrightnessPreferenceOrigin.ANDROID_SYSTEM, prior)
             },
             background = { task -> scope.launch(brightnessObserverLane) { task() } },
+            captureOffGeneration = screen::currentOffGeneration,
+            handleWhileOff = screen::noteBrightnessWhileOff,
         )
         service.contentResolver.registerContentObserver(
             Settings.System.getUriFor(Settings.System.SCREEN_BRIGHTNESS),

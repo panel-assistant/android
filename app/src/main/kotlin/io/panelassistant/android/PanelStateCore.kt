@@ -773,6 +773,7 @@ internal class PanelStateCore(
             }
             onCapabilitiesObserved?.invoke(capabilityObservation)
         }
+        screen.maintainBrightnessZeroOff()
         val observedOffGeneration = screen.currentOffGeneration()
         val physicallyDark = screen.observedDark()
         if (physicallyDark == true) screen.noteObservedDark(observedOffGeneration)
