@@ -144,6 +144,8 @@ internal class ProximityCalibrationEngine(
     private var ambientLastSample: Long? = null
 
     @Synchronized fun current(): Result = result()
+    /** The source has proved it reports a range: a ranged calibration or a fresh non-binary reading. */
+    @Synchronized fun observedRanged(): Boolean = observedNonBinary || calibration?.mode == Mode.RANGED
     @Synchronized fun needsTick(heldEvidence: Boolean = false): Boolean = active() || detector?.needsTick(heldEvidence) == true || waveDetector?.needsTick() == true || pendingOperationalPulse != null
     @Synchronized fun releaseGestureCooldown() { operationalCooldownUntil = 0L; waveDetector?.releaseCooldown() }
 
@@ -215,6 +217,7 @@ internal class ProximityCalibrationEngine(
             return result()
         }
         if (!live) { generation++; pendingOperationalPulse = null }
+        if (calibrationLive && raw != 0f && raw != 1f) observedNonBinary = true
         if (detector == null && calibrationLive &&
             (calibration?.mode == Mode.RANGED || observedSourceMode == Mode.RANGED || raw != 0f && raw != 1f)) {
             observeAmbientQuiet(raw, now)
@@ -243,6 +246,19 @@ internal class ProximityCalibrationEngine(
             return result()
         }
         return loseSource(now, "Sensor connection lost. Your previous calibration is unchanged.")
+    }
+
+    /**
+     * Runs a calibration learned in use without a setup session: presence keeps the given quiet band, so the
+     * change of anchors does not restart noise learning. Ignored while setup runs.
+     */
+    @Synchronized fun adopt(calibration: Calibration, quiet: ProximityPresenceBand.QuietBand?, now: Long): Result {
+        if (!admit(now) || active()) return result()
+        this.calibration = calibration
+        detector = calibration.takeIf { it.presenceSupported }?.let { PresenceDetector(it, quiet ?: detector?.learnedQuiet()) }
+        waveDetector = createWaveDetector(calibration)
+        generation++; resetOperational()
+        return result()
     }
 
     @Synchronized fun reset(calibration: Calibration?, now: Long): Result {

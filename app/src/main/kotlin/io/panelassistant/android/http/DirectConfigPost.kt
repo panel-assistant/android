@@ -5,7 +5,8 @@ import io.panelassistant.android.Config
 import io.panelassistant.android.DashboardIdleReturnPolicy
 import io.panelassistant.android.NativeLocale
 import io.panelassistant.android.autoSleep
-import io.panelassistant.android.autoSleepSource
+import io.panelassistant.android.PresenceMode
+import io.panelassistant.android.presenceMode
 import io.panelassistant.android.dashboardEntityLearningEnabled
 import io.panelassistant.android.haAuthSnapshot
 import io.panelassistant.android.haOriginChanges
@@ -101,10 +102,10 @@ internal class DirectConfigPost(
         // this complete effective snapshot before persistence, so a concurrent save cannot bypass an
         // Area prerequisite or hardened approval by changing the value while this request waits.
         val admissionBaselineHash = io.panelassistant.android.config.ConfigHash.of(directMutationValues())
-        val requestedAutoSleepSource = p["auto_sleep_source"] ?: config.autoSleepSource
+        val requestedAutoSleepSource = p[PresenceMode.KEY] ?: config.presenceMode.wire
         val requestedAutoSleep = p["auto_sleep"]?.let(SettingValue::parseBool) ?: config.autoSleep
         val enablingAutoSleep = autoSleepRequiresHaAdmission(
-            config.autoSleep, config.autoSleepSource, requestedAutoSleep, requestedAutoSleepSource,
+            config.autoSleep, config.presenceMode.wire, requestedAutoSleep, requestedAutoSleepSource,
         )
         var autoSleepPrerequisiteOwner: HaAuthOwner? = null
         var prerequisiteDeviceUid: String? = null
@@ -324,7 +325,7 @@ internal class DirectConfigPost(
                     if (autoSleepPrerequisiteOwner != null &&
                         (config.haAuthSnapshot().stableOwner() != autoSleepPrerequisiteOwner ||
                             config.deviceUid != prerequisiteDeviceUid || config.panelId != prerequisitePanelId ||
-                            (config.autoSleep && config.autoSleepSource == "home_assistant"))
+                            (config.autoSleep && config.presenceMode == PresenceMode.HOME_ASSISTANT))
                     ) {
                         autoSleepPrerequisiteStale = true
                         return@synchronizedTransaction false

@@ -381,6 +381,33 @@ class HaPresenceProtocolTest {
         assertEquals(listOf(HaPresenceValue.OFF, HaPresenceValue.ON, HaPresenceValue.UNAVAILABLE), parsed.map { it.value })
     }
 
+    @Test fun `picker candidates span every Area and include helpers`() {
+        val rows = HaPresenceProtocol.projectAllCandidates(
+            response(JSONArray().put(device("hall-device", "hall", "zha-hall"))),
+            response(JSONArray()
+                .put(JSONObject().put("area_id", "hall").put("name", "Hall"))
+                .put(JSONObject().put("area_id", "kitchen").put("name", "Kitchen"))),
+            JSONObject().put("result", JSONObject().put("entities", JSONArray()
+                .put(JSONObject().put("ei", "binary_sensor.hall_motion").put("di", "hall-device").put("pl", "zha"))
+                .put(JSONObject().put("ei", "binary_sensor.kitchen_zone").put("ai", "kitchen").put("pl", "group"))
+                .put(JSONObject().put("ei", "binary_sensor.loose").put("pl", "template"))
+                .put(JSONObject().put("ei", "binary_sensor.door").put("di", "hall-device").put("pl", "zha")))),
+            JSONArray()
+                .put(state("binary_sensor.hall_motion", "on", "motion"))
+                .put(state("binary_sensor.kitchen_zone", "off", "occupancy"))
+                .put(state("binary_sensor.loose", "off", "presence"))
+                .put(state("binary_sensor.door", "off", "door")),
+        )
+        assertEquals(
+            listOf(
+                listOf("binary_sensor.hall_motion", "Hall", "motion", "zha"),
+                listOf("binary_sensor.kitchen_zone", "Kitchen", "occupancy", "group"),
+                listOf("binary_sensor.loose", "", "presence", "template"),
+            ),
+            rows.map { listOf(it.entityId, it.areaName, it.deviceClass, it.platform) },
+        )
+    }
+
     private fun response(result: JSONArray) = JSONObject().put("result", result)
 
     private fun device(id: String, area: String, identifier: String) = JSONObject()

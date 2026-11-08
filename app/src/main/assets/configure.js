@@ -101,8 +101,8 @@
     if (any(["auto_brightness", "auto_brightness_minimum_percent", "auto_brightness_maximum_percent", "auto_brightness_response_percent", "auto_brightness_ha_entity"])) {
       cfg.loadAutoBrightnessData(true);
     }
-    if (any(["auto_sleep", "auto_sleep_source"]) && !haChanged) cfg.invalidateAutoSleepData(false);
-    if ((haChanged || any(["auto_sleep", "auto_sleep_source"])) && cfg.values.auto_sleep === "true") setTimeout(cfg.loadAutoSleepData, 0);
+    if (any(["auto_sleep", "presence_mode"]) && !haChanged) cfg.invalidateAutoSleepData(false);
+    if ((haChanged || any(["auto_sleep", "presence_mode"])) && cfg.values.auto_sleep === "true") setTimeout(cfg.loadAutoSleepData, 0);
     if (haChanged) {
       cfg.scheduleAutoSleepPrerequisite();
       cfg.loadHaUserStatus();

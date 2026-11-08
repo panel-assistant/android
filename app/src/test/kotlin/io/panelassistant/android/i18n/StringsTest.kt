@@ -188,8 +188,8 @@ class StringsTest {
         assertEquals(listOf("de"), Strings(source, complete).languages(setOf("settings.")))
         assertEquals(listOf("de", "en"), Strings(source, complete).languages(setOf("profiles.")))
         assertEquals(
-            "new echo evidence retains English until its separate translation pass",
-            listOf("de", "en"),
+            "the translated shell surface uses only German",
+            listOf("de"),
             Strings(source, complete).languages(setOf("shell.")),
         )
         val promotedKey = partial.strings.values.single { it.state == TranslationState.MACHINE_CROSS_CHECKED }.key

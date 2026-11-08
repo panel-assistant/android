@@ -109,8 +109,9 @@
     });
   }
 
-  function autoSleepUsesPanel() { return cfg.values.auto_sleep_source === "panel"; }
-  function autoSleepUsesTouch() { return cfg.values.auto_sleep_source === "touch"; }
+  // Automatic, Manual and Hybrid all use this panel's proximity sensor; Off uses touch inactivity.
+  function autoSleepUsesPanel() { var m = cfg.values.presence_mode; return m === "automatic" || m === "manual" || m === "hybrid"; }
+  function autoSleepUsesTouch() { return cfg.values.presence_mode === "off"; }
   // The touch source fetches no status: its summary comes from the setting itself, the moment it changes.
   function currentAutoSleepSummaryModel() {
     if (autoSleepUsesTouch()) return autoSleepSummaryModel();
@@ -308,10 +309,116 @@
       cfg.el("div", {
         id: "auto-sleep-history-message", class: "autobright-message", role: "status", "aria-live": "polite",
         text: autoSleepHistoryMessage()
-      })
+      }),
+      presenceSourcesNode()
     ]);
     drawAutoSleepChart(chart, true);
     return panel;
+  }
+
+  // Owner-chosen presence sensors. Any choice replaces the automatic Area guess; "Back to automatic"
+  // clears it. The picker is one pop-up menu grouped by Home Assistant Area.
+  function presenceSourcesNode() {
+    var box = cfg.el("div", { id: "auto-sleep-chosen", class: "auto-sleep-chosen" });
+    renderPresenceSources(box);
+    if (!cfg.autoSleepPresenceSources && !cfg.autoSleepPresenceSourcesLoading) loadPresenceSources();
+    return box;
+  }
+
+  function rerenderPresenceSources() {
+    var box = document.getElementById("auto-sleep-chosen");
+    if (box) renderPresenceSources(box);
+  }
+
+  function loadPresenceSources() {
+    cfg.autoSleepPresenceSourcesLoading = true;
+    window.PaneldTransport.request("auto_sleep.presence_sources").then(function (reply) {
+      if (reply.outcome !== "applied") throw new Error(String(reply.code || reply.outcome));
+      cfg.autoSleepPresenceSources = reply.result;
+      cfg.autoSleepPresenceSourcesError = "";
+    }).catch(function () {
+      cfg.autoSleepPresenceSourcesError = cfg.i18nText("configure.auto_sleep.sensors_unavailable", "The Home Assistant sensor list is unavailable.");
+    }).then(function () {
+      cfg.autoSleepPresenceSourcesLoading = false;
+      rerenderPresenceSources();
+    });
+  }
+
+  function savePresenceSources(ids) {
+    if (cfg.autoSleepPresenceSourcesSaving) return;
+    cfg.autoSleepPresenceSourcesSaving = true;
+    cfg.autoSleepPresenceSourcesError = "";
+    rerenderPresenceSources();
+    window.PaneldTransport.request("auto_sleep.presence_sources.choose", { entity_ids: ids }).then(function (reply) {
+      if (reply.outcome !== "applied") throw new Error(String(reply.code || reply.outcome));
+      cfg.autoSleepPresenceSourcesSaving = false;
+      cfg.autoSleepPresenceSources = null;
+      invalidateAutoSleepData();
+      loadAutoSleepData();
+      loadPresenceSources();
+    }).catch(function () {
+      cfg.autoSleepPresenceSourcesSaving = false;
+      cfg.autoSleepPresenceSourcesError = cfg.i18nText("configure.auto_sleep.sensors_save_failed", "Could not save the sensor choice.");
+      rerenderPresenceSources();
+    });
+  }
+
+  function renderPresenceSources(box) {
+    box.textContent = "";
+    var data = cfg.autoSleepPresenceSources;
+    box.appendChild(cfg.el("strong", { text: cfg.i18nText("configure.auto_sleep.sensors_heading", "Activity sensors") }));
+    if (cfg.autoSleepPresenceSourcesError) box.appendChild(cfg.el("div", { class: "autobright-message", role: "status", text: cfg.autoSleepPresenceSourcesError }));
+    if (!data) {
+      if (!cfg.autoSleepPresenceSourcesError) box.appendChild(cfg.el("div", { class: "autobright-message", text: cfg.i18nText("configure.auto_sleep.sensors_loading", "Loading Home Assistant sensors…") }));
+      return;
+    }
+    var busy = !!cfg.autoSleepPresenceSourcesSaving;
+    var chosen = Array.isArray(data.chosen) ? data.chosen : [];
+    var chosenIds = chosen.map(function (row) { return row.entity_id; });
+    var noArea = cfg.i18nText("configure.auto_sleep.sensors_no_area", "No area");
+    if (!chosen.length) {
+      box.appendChild(cfg.el("div", { class: "hint", text: cfg.i18nText("configure.auto_sleep.sensors_automatic", "Automatic: motion, occupancy and presence sensors in this panel’s Area.") }));
+    } else {
+      box.appendChild(cfg.el("div", { class: "hint", text: cfg.i18nText("configure.auto_sleep.sensors_chosen", "Only the sensors you chose are used.") }));
+      var list = cfg.el("ul", { class: "auto-sleep-chosen-list" });
+      chosen.forEach(function (row) {
+        var detail = row.missing
+          ? cfg.i18nText("configure.auto_sleep.sensors_missing", "Not found in Home Assistant")
+          : (row.area_name || noArea);
+        var remove = cfg.el("button", { type: "button", text: cfg.i18nText("configure.auto_sleep.sensors_remove", "Remove"),
+          "aria-label": cfg.i18nText("configure.auto_sleep.sensors_remove_label", "Remove {name}", { name: row.name || row.entity_id }) });
+        remove.disabled = busy;
+        remove.onclick = function () {
+          savePresenceSources(chosenIds.filter(function (id) { return id !== row.entity_id; }));
+        };
+        list.appendChild(cfg.el("li", {}, [cfg.el("span", { text: (row.name || row.entity_id) + " · " + detail }), remove]));
+      });
+      box.appendChild(list);
+    }
+    var candidates = (Array.isArray(data.candidates) ? data.candidates : []).filter(function (row) {
+      return chosenIds.indexOf(row.entity_id) < 0;
+    });
+    var select = cfg.el("select", { "aria-label": cfg.i18nText("configure.auto_sleep.sensors_add", "Add a sensor") });
+    select.appendChild(cfg.el("option", { value: "", text: cfg.i18nText("configure.auto_sleep.sensors_add_placeholder", "Add a sensor…") }));
+    var groups = {};
+    var order = [];
+    candidates.forEach(function (row) {
+      var area = row.area_name || noArea;
+      if (!groups[area]) { groups[area] = cfg.el("optgroup", { label: area }); order.push(area); }
+      groups[area].appendChild(cfg.el("option", { value: row.entity_id, text: row.name || row.entity_id }));
+    });
+    order.forEach(function (area) { select.appendChild(groups[area]); });
+    select.disabled = busy || !candidates.length || chosenIds.length >= 16;
+    select.addEventListener("change", function () {
+      if (select.value) savePresenceSources(chosenIds.concat([select.value]));
+    });
+    box.appendChild(select);
+    if (chosen.length) {
+      var automatic = cfg.el("button", { type: "button", text: cfg.i18nText("configure.auto_sleep.sensors_automatic_button", "Back to automatic") });
+      automatic.disabled = busy;
+      automatic.onclick = function () { savePresenceSources([]); };
+      box.appendChild(automatic);
+    }
   }
 
   function updateAutoSleepSummary() {

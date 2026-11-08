@@ -202,6 +202,71 @@ internal object HaPresenceProtocol {
     }
 
     /**
+     * Every motion/occupancy/presence binary_sensor in the installation, for the owner's sensor picker
+     * and for owner-chosen sources. Area is the entity's own Area, else its device's, else blank
+     * (presented as "No area"). Helpers are included: an owner may aggregate a zone into one entity.
+     */
+    fun projectAllCandidates(
+        deviceResponse: JSONObject,
+        areaResponse: JSONObject,
+        entityResponse: JSONObject,
+        states: JSONArray,
+    ): List<HaPresenceCandidate> {
+        val devices = rows(deviceResponse.optJSONArray("result"), "device registry")
+        val areaNames = rows(areaResponse.optJSONArray("result"), "area registry").mapNotNull { row ->
+            registryIdOrNull(row, "area_id", "id")?.let { id ->
+                id to row.optString("name").safeName().takeUnless(::isLiteralNullAreaName).orEmpty()
+            }
+        }.toMap()
+        val entities = entityResponse.optJSONObject("result")?.optJSONArray("entities")
+            ?: entityResponse.optJSONArray("result")
+            ?: throw HaProtocolException("Home Assistant entity registry is incomplete")
+        val deviceAreas = devices.mapNotNull { device ->
+            registryIdOrNull(device, "id", "device_id")?.let { id ->
+                id to device.optString("area_id").trim().lowercase(Locale.ROOT)
+            }
+        }.toMap()
+        require(states.length() <= MAX_STATE_ROWS) { "Home Assistant state list is too large" }
+        require(entities.length() <= MAX_ENTITY_ROWS) { "Home Assistant entity registry is too large" }
+        val registry = linkedMapOf<String, JSONObject>()
+        for (index in 0 until entities.length()) {
+            val row = entities.optJSONObject(index) ?: continue
+            val entityId = row.optString("ei").ifBlank { row.optString("entity_id") }.trim().lowercase(Locale.ROOT)
+            if (entityId.startsWith("binary_sensor.") && validEntityId(entityId)) registry[entityId] = row
+        }
+        val projected = ArrayList<HaPresenceCandidate>()
+        for (index in 0 until states.length()) {
+            val state = states.optJSONObject(index) ?: continue
+            val entityId = state.optString("entity_id").trim().lowercase(Locale.ROOT)
+            if (!entityId.startsWith("binary_sensor.") || !validEntityId(entityId)) continue
+            val attributes = state.optJSONObject("attributes") ?: JSONObject()
+            val deviceClass = attributes.optString("device_class").trim().lowercase(Locale.ROOT)
+            if (deviceClass !in candidateClasses) continue
+            // A state without a registry row (for example a YAML template) is still a valid owner choice.
+            val row = registry[entityId] ?: JSONObject()
+            val deviceId = row.optString("di").ifBlank { row.optString("device_id") }.trim().lowercase(Locale.ROOT)
+            val platform = row.optString("pl").ifBlank { row.optString("platform") }.trim().lowercase(Locale.ROOT)
+            val areaId = row.optString("ai").ifBlank { row.optString("area_id") }
+                .trim().lowercase(Locale.ROOT).ifBlank { deviceAreas[deviceId].orEmpty() }
+            projected += HaPresenceCandidate(
+                entityId = entityId,
+                friendlyName = attributes.optString("friendly_name").safeName().ifBlank { entityId },
+                areaId = areaId,
+                areaName = if (areaId.isBlank()) "" else areaNames[areaId].orEmpty().ifBlank { areaId },
+                deviceClass = deviceClass,
+                platform = platform,
+                authority = HaPresenceAuthority.ASSERT_PRESENCE,
+                value = value(state.optString("state")),
+            )
+        }
+        return projected.distinctBy(HaPresenceCandidate::entityId)
+            .sortedWith(compareBy<HaPresenceCandidate>({ it.areaName.isBlank() })
+                .thenBy(String.CASE_INSENSITIVE_ORDER, HaPresenceCandidate::areaName)
+                .thenBy(String.CASE_INSENSITIVE_ORDER, HaPresenceCandidate::friendlyName)
+                .thenBy(HaPresenceCandidate::entityId))
+    }
+
+    /**
      * Resolves only this panel device's Area; it deliberately needs no entities or current states.
      *
      * [preferredAreaName] is the panel's locally configured area (`ha_area`), resolved by NAME first: a

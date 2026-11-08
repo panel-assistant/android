@@ -3,6 +3,10 @@ package io.panelassistant.android.http
 import io.panelassistant.android.sensors.HaPanelAreaPrerequisite
 import io.panelassistant.android.sensors.HaPanelAreaPrerequisitePhase
 import io.panelassistant.android.sensors.HaPresenceSourceUpdate
+import io.panelassistant.android.sensors.HaPresenceSourceCatalog
+import io.panelassistant.android.sensors.HaPresenceCandidate
+import io.panelassistant.android.sensors.HaPresenceAuthority
+import io.panelassistant.android.sensors.HaPresenceValue
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -22,6 +26,7 @@ class AutoSleepRoutesTest {
     @Test fun `auto sleep routes preserve status admission validation and source outcomes`() = testApplication {
         var outcome = HaPresenceSourceUpdate.UPDATED
         var received = ""
+        var chosenSet: List<String>? = null
         val api = object : AutoSleepHttpApi {
             override fun statusJson() = """{"phase":"live"}"""
             override suspend fun historyJson(hours: Int) = """{"hours":$hours}"""
@@ -33,6 +38,17 @@ class AutoSleepRoutesTest {
                 return outcome
             }
             override fun noteAreaChanged() = Unit
+            override suspend fun presenceSources() = HaPresenceSourceCatalog(
+                listOf("binary_sensor.kitchen_zone", "binary_sensor.gone"), listOf("binary_sensor.gone"),
+                listOf(HaPresenceCandidate(
+                    "binary_sensor.kitchen_zone", "Kitchen zone", "kitchen", "Kitchen", "occupancy", "group",
+                    HaPresenceAuthority.ASSERT_PRESENCE, HaPresenceValue.OFF,
+                )),
+            )
+            override fun setPresenceSources(entityIds: List<String>): HaPresenceSourceUpdate {
+                chosenSet = entityIds
+                return HaPresenceSourceUpdate.UPDATED
+            }
         }
         application {
             paneldRoot({ emptySet() }, { false }, { "/setup" }) {
@@ -75,6 +91,27 @@ class AutoSleepRoutesTest {
         assertEquals(HttpStatusCode.OK, updated.status)
         assertEquals("""{"ok":true,"included":false}""", updated.bodyAsText())
         assertEquals("$key/$key/false", received)
+        val sources = JSONObject(client.get("/api/v1/auto-sleep/presence-sources").bodyAsText())
+        assertEquals("chosen", sources.getString("mode"))
+        assertEquals("Kitchen", sources.getJSONArray("candidates").getJSONObject(0).getString("area_name"))
+        assertEquals("group", sources.getJSONArray("candidates").getJSONObject(0).getString("platform"))
+        assertEquals(true, sources.getJSONArray("chosen").getJSONObject(1).getBoolean("missing"))
+        assertEquals(HttpStatusCode.Forbidden, client.get("/api/v1/auto-sleep/presence-sources") {
+            header(HttpHeaders.Origin, "https://elsewhere.invalid")
+        }.status)
+        suspend fun choose(body: String) = client.post("/api/v1/auto-sleep/presence-sources/choose") {
+            header(HttpHeaders.ContentType, "application/json")
+            setBody(body)
+        }
+        assertEquals(HttpStatusCode.BadRequest, choose("""{"entity_ids":["light.x"]}""").status)
+        assertEquals(HttpStatusCode.BadRequest, choose("""{}""").status)
+        assertEquals(null, chosenSet)
+        val chose = choose("""{"entity_ids":["binary_sensor.kitchen_zone"]}""")
+        assertEquals("""{"ok":true,"mode":"chosen"}""", chose.bodyAsText())
+        assertEquals(listOf("binary_sensor.kitchen_zone"), chosenSet)
+        assertEquals("""{"ok":true,"mode":"automatic"}""", choose("""{"entity_ids":[]}""").bodyAsText())
+        assertEquals(emptyList<String>(), chosenSet)
+
         for ((state, status, text) in listOf(
             Triple(HaPresenceSourceUpdate.STALE, HttpStatusCode.Conflict, "activity sources changed; reload and try again\n"),
             Triple(HaPresenceSourceUpdate.COMMIT_FAILED, HttpStatusCode.InternalServerError, "configuration commit failed\n"),

@@ -9,6 +9,9 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.Build
 import android.os.SystemClock
+import io.panelassistant.android.adoptHybridAfterSetup
+import io.panelassistant.android.presenceMode
+import io.panelassistant.android.resolveLegacyPanelPresence
 import android.util.Log
 import io.panelassistant.android.Config
 import io.panelassistant.android.device.DeviceProfile
@@ -144,7 +147,14 @@ class SensorReporter(
     context: Context,
     private val config: Config,
     private val profile: DeviceProfile,
+    /** Screen touches label proximity samples: the person is at the panel. Returns null when unavailable. */
+    private val subscribeToTouches: ((() -> Unit) -> AutoCloseable?) = { callback ->
+        io.panelassistant.android.control.PanelTouchObserver.shared(context).subscribeWithActivityFallback(callback)
+    },
 ) {
+    /** True while the screen is intended off, so a touch is the tap that wakes it. Set by the service. */
+    @Volatile var screenDark: () -> Boolean = { false }
+    private var touchSubscription: AutoCloseable? = null
     private val appContext = context.applicationContext
     private val sm = appContext.getSystemService(Context.SENSOR_SERVICE) as SensorManager
     private val lightSensor: Sensor? = sm.getDefaultSensor(Sensor.TYPE_LIGHT)
@@ -350,8 +360,11 @@ class SensorReporter(
             driftMargin = proximityDriftMargin(proximityAcquisition),
             driftDeclaredRange = proximityDriftDeclaredRange(proximityAcquisition, proximitySensor?.maximumRange),
             keepStoredInsideDriftBand = proximityKeepsStoredInsideDriftBand(proximityAcquisition),
+            presenceMode = { config.presenceMode },
+            onExplicitSave = { config.adoptHybridAfterSetup() },
         )
         updateLearnedEligibility()
+        resolveLegacyPresence()
     }
 
     fun hasLight() = lightSensor != null
@@ -368,6 +381,34 @@ class SensorReporter(
     }
     fun hasProximity() = proximityAcquisition != ProximityAcquisition.ABSENT
     fun hasLearnedProximity() = proximityRuntime?.isLearnedSignal() == true
+
+    private var legacyPresenceResolved = false
+    private var legacyPresenceSamples = 0
+
+    /**
+     * Settles a pre-1.0 "panel sensor" auto-sleep source once the answer is known: a saved setup model says
+     * its own signal mode; a ranged route is ranged; GPIO and key routes are binary; an Android HAL proves
+     * ranged with one non-binary reading, or binary after enough fresh readings without one.
+     */
+    private fun resolveLegacyPresence() {
+        val runtime = proximityRuntime ?: return
+        val ranged: Boolean = runtime.wizardMode()?.let { it == ProximityCalibrationEngine.Mode.RANGED } ?: when {
+            proximityAcquisition == ProximityAcquisition.ABSENT -> return
+            hasRangedProximity() -> true
+            proximityAcquisition != ProximityAcquisition.ANDROID_HAL -> false
+            legacyPresenceSamples >= LEGACY_PRESENCE_BINARY_SAMPLES -> false
+            else -> return
+        }
+        legacyPresenceResolved = true
+        runCatching { config.resolveLegacyPanelPresence(runtime.wizardMode() != null, ranged) }
+            .onFailure { Log.w(TAG, "legacy presence mode could not be settled", it) }
+    }
+    /** Ranged routes always report a range; an Android HAL proves it only by non-binary readings. */
+    // Equality, not a `when` over the enum: like [hasProximity], this must answer on a reporter whose
+    // fields a test double never initialised.
+    fun hasRangedProximity(): Boolean =
+        proximityAcquisition == ProximityAcquisition.VI530X || proximityAcquisition == ProximityAcquisition.STK_RAW ||
+            proximityAcquisition == ProximityAcquisition.ANDROID_HAL && proximityRuntime?.observedRanged() == true
 
     /**
      * [hasLearnedProximity] once it is settled: null before [prepare] has loaded the calibration, when the stored
@@ -509,6 +550,11 @@ class SensorReporter(
         if (activeRun != null) return
         val run = SensorRunCallbacks(onLux, onLuxRaw, onProximity, onGesture, onTemperature, onHumidity, onPresenceApproach)
         activeRun = run
+        if (hasProximity() && touchSubscription == null) {
+            touchSubscription = runCatching {
+                subscribeToTouches { proximityRuntime?.touch(SystemClock.elapsedRealtime(), woke = screenDark()) }
+            }.getOrNull()
+        }
         proximitySampleCount = 0
         proximityReceived = false
         proximityTimestampGate.reset()
@@ -804,6 +850,7 @@ class SensorReporter(
             proximityReadingStable = false
         }
         val decision = proximityRuntime?.observe(raw, now, sparseReporting = sparseForObservation, live = wakeEligible, calibrationLive = fresh) ?: return
+        if (!legacyPresenceResolved && fresh) { legacyPresenceSamples++; resolveLegacyPresence() }
         updateLearnedEligibility()
         deliverProximity(decision, run)
         scheduleCalibrationTick()
@@ -911,6 +958,8 @@ class SensorReporter(
     fun stop(): CompletableFuture<Unit> {
         activeRun?.close()
         activeRun = null
+        touchSubscription?.let { runCatching { it.close() } }
+        touchSubscription = null
         colourTemperature.clear()
         stkRawWatchdog?.let { sensorHandler?.removeCallbacks(it) }
         stkRawWatchdog = null
@@ -951,6 +1000,8 @@ class SensorReporter(
         const val TAG = "ha-paneld/sensors"
         const val CADENCE_CLASSIFY_MS = 3_000L
         const val PROXIMITY_STALE_MS = 60_000L
+        /** Fresh readings without a non-binary value before an Android HAL counts as binary for the migration. */
+        const val LEGACY_PRESENCE_BINARY_SAMPLES = 40
         const val ON_CHANGE_PROBE_INTERVAL_MS = 15L * 60_000L
         const val ON_CHANGE_ACQUIRE_TIMEOUT_MS = 5_000L
     }

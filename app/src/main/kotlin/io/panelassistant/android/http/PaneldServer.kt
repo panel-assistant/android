@@ -833,6 +833,7 @@ class PaneldServer internal constructor(
         cached.copy(
             hasProximity = sensors.hasProximity(),
             hasLearnedProximity = sensors.hasLearnedProximity(),
+            hasRangedProximity = sensors.hasRangedProximity(),
         )
 
 

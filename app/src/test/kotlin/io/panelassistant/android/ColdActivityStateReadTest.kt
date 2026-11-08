@@ -24,18 +24,17 @@ class ColdActivityStateReadTest {
                 SharedPreferences::class.java.classLoader,
                 arrayOf(SharedPreferences::class.java),
             ) { _, method, _ ->
-                if (method.name == "contains") {
+                if (method.name == "contains" || method.name == "getString") {
                     reader.set(Thread.currentThread())
                     entered.countDown()
                     check(release.await(5, TimeUnit.SECONDS))
-                    false
-                } else if (method.name == "getString") null
-                else error("Unexpected preference operation: ${method.name}")
+                    if (method.name == "contains") false else null
+                } else error("Unexpected preference operation: ${method.name}")
             } as SharedPreferences
 
             try {
                 val config = async(start = CoroutineStart.UNDISPATCHED) {
-                    readActivityStateOffMain { Config(preferences).autoSleepSource }
+                    readActivityStateOffMain { Config(preferences).presenceMode }
                 }
                 assertTrue(entered.await(5, TimeUnit.SECONDS))
                 assertNotEquals(caller, reader.get())

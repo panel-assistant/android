@@ -486,8 +486,8 @@ internal class PanelCommandDispatcher(
         core.reconcile("auto_sleep")
     }
 
-    override fun handleAutoSleepSource(source: String) {
-        config.setRaw(requireNotNull(SettingsRegistry.spec("auto_sleep_source")), source)
+    override fun handlePresenceMode(option: ChannelOption) {
+        config.setRaw(requireNotNull(SettingsRegistry.spec(PresenceMode.KEY)), option.code)
         onAutoSleepConfigChanged(config.autoSleep)
         core.reconcile("auto_sleep")
     }
@@ -1075,7 +1075,7 @@ internal class PanelCommandDispatcher(
 internal enum class LiveSettingEffectOwner(val settingKey: String) {
     WAKE_ON_WAVE("wake_on_wave"),
     AUTO_SLEEP("auto_sleep"),
-    AUTO_SLEEP_SOURCE("auto_sleep_source"),
+    PRESENCE_MODE(PresenceMode.KEY),
     PREVENT_IDLE_DIM("prevent_idle_dim"),
     WATCHDOG("watchdog_enabled"),
     KIOSK("kiosk_lock"),
@@ -1120,6 +1120,7 @@ internal val externalLiveSettingOwners: Map<String, String> = linkedMapOf(
     "network_adb" to "network_adb",
     "home_dashboard" to "home_dashboard",
     "navbar" to "navbar_mode",
+    "presence" to PresenceMode.KEY,
     "wake_on_wave" to "wake_on_wave",
     "auto_sleep" to "auto_sleep",
     "touch_sound" to "touch_sound",
@@ -1168,7 +1169,7 @@ internal fun settingConflationKey(key: String): String = settingChannels[key] ?:
 internal interface LiveSettingHandlers {
     fun handleWakeOnWave(on: Boolean)
     fun handleAutoSleep(on: Boolean)
-    fun handleAutoSleepSource(source: String)
+    fun handlePresenceMode(option: ChannelOption)
     fun handlePreventIdleDim(on: Boolean, approvalRequired: Boolean = true)
     fun handleWatchdog(on: Boolean)
     fun handleKiosk(on: Boolean)
@@ -1207,7 +1208,8 @@ internal fun liveSettingValue(spec: SettingSpec, normalized: String): CommandVal
         )
         spec.type == SettingType.INT -> CommandValue.Quantity(normalized.toInt().toDouble())
         spec.type == SettingType.ENUM && options != null -> CommandValue.Option(
-            requireNotNull(options.firstOrNull { it.label.equals(normalized, ignoreCase = true) }) {
+            // Most selects store the option's label; presence stores its code.
+            requireNotNull(options.firstOrNull { it.label.equals(normalized, ignoreCase = true) || it.code == normalized }) {
                 "${spec.key} has no option $normalized"
             },
         )
@@ -1238,7 +1240,7 @@ internal fun dispatchLiveSetting(
     when (LiveSettingEffectOwner.requireFor(key)) {
         LiveSettingEffectOwner.WAKE_ON_WAVE -> handlers.handleWakeOnWave(on())
         LiveSettingEffectOwner.AUTO_SLEEP -> handlers.handleAutoSleep(on())
-        LiveSettingEffectOwner.AUTO_SLEEP_SOURCE -> handlers.handleAutoSleepSource(text())
+        LiveSettingEffectOwner.PRESENCE_MODE -> handlers.handlePresenceMode(option())
         LiveSettingEffectOwner.PREVENT_IDLE_DIM -> handlers.handlePreventIdleDim(on(), sensitiveApprovalRequired)
         LiveSettingEffectOwner.WATCHDOG -> handlers.handleWatchdog(on())
         LiveSettingEffectOwner.KIOSK -> handlers.handleKiosk(on())

@@ -70,6 +70,8 @@ data class Capabilities(
      *  graded signal. Source setup remains available through [hasProximity] while learning; actuation
      *  and fleet reporting stay unavailable until this learned capability exists. */
     val hasLearnedProximity: Boolean = false,
+    /** The proximity source reports a range rather than near/far, so presence can be learned from use. */
+    val hasRangedProximity: Boolean = false,
     val hasLight: Boolean = false,
     val hasTemperature: Boolean = false,
     val hasHumidity: Boolean = false,

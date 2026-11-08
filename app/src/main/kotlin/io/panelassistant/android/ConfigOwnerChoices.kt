@@ -35,6 +35,7 @@ internal fun Config.planOwnerChoices(
                 require(text.toByteArray(Charsets.UTF_8).size <= PaneldServer.MAX_CONFIG_POST_BODY_BYTES) { "owner choice too large" }
                 when (row.key) {
                     "auto_sleep_source_exclusions_v1" -> normalizeAutoSleepExclusions(text)
+                    PRESENCE_HA_SOURCES_PREF -> normalizePresenceHaSources(text)
                     "update_ignored" -> normalizeIgnoredUpdates(text)
                     "last_led" -> text.also(::validateStoredLed)
                     "last_led_effect" -> text.also {
@@ -93,7 +94,7 @@ private const val BUTTON_LIGHT_PREFIX = "last_button_backlight."
 
 private fun isOwnerChoice(key: String): Boolean = key in setOf(
     "auto_sleep_source_exclusions_v1", "update_ignored", "last_led", "last_led_effect",
-    "ui_dashboard_layout", "allow_apk_upload",
+    "ui_dashboard_layout", "allow_apk_upload", PRESENCE_HA_SOURCES_PREF,
 ) || key.startsWith(BUTTON_LIGHT_PREFIX)
 
 private fun validateStoredLed(text: String) {
