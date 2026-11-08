@@ -109,7 +109,7 @@ $(BUILD)/guard-maintenance-gates: $(CORE_SRCS) $(STUB) test/guard_boundary_harne
 	$(CC) $(CFLAGS) -DHAPANELD_TEST -DHAPANELD_TEST_SKIP_SELF_BINDING -DHAPANELD_BUILD_ID='"$(TEST_BUILD_ID)"' -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) \
 		test/guard_maintenance_gates.c $(LDLIBS) -o $@
 
-$(BUILD)/replacement-lease-old: $(CORE_SRCS) $(STUB) test/replacement_lease_process.c | $(BUILD)
+$(BUILD)/replacement-lease-old: $(BUILD)/replacement-lease-new $(CORE_SRCS) $(STUB) test/replacement_lease_process.c | $(BUILD)
 	$(CC) $(CFLAGS) -DHAPANELD_TEST -DHAPANELD_BUILD_ID='"$(REPLACEMENT_OLD_BUILD_ID)"' \
 		-I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/replacement_lease_process.c $(LDLIBS) -o $@
 
