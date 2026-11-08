@@ -218,7 +218,8 @@ static void start(void) {
         _exit(lifecycle_fixture_main(1, arguments));
     }
     char response[160];int ready=0;
-    for(int i=0;i<100;i++){if(!request("STATUS\n",response,sizeof response)){ready=1;break;}usleep(10000);}
+    /* Fixture readiness, not a product deadline: a loaded host can take over a second to copy and start it. */
+    for(int i=0;i<500;i++){if(!request("STATUS\n",response,sizeof response)){ready=1;break;}usleep(10000);}
     CHECK(ready,"main worker socket starts with independent lifecycle recovery");
     int connected = connect_owner(); struct ucred peer; socklen_t peer_size = sizeof peer;
     if (connected >= 0 && !getsockopt(connected, SOL_SOCKET, SO_PEERCRED, &peer, &peer_size))
