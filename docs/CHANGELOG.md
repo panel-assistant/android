@@ -10,6 +10,10 @@ The panel app's 1.0: the panel and Panel Assistant now talk over one connection 
 
 [Full release notes](https://panel-assistant.io/go/release-notes?v=1.0.0&component=panel-app)
 
+### Thanks
+
+- **Thank you, @merdok**, for three Smatek S9E contributions: "feat(climate): read S9E room temperature + humidity via direct i2c path", "fix(profile): S9E screen-off uses su-blpower for a true backlight-off" and "feat(buttons): optional release events for evdev buttons; enable on S9E F1-F4 (#205)".
+
 ## v0.9.11 - 2026-10-08
 
 A small release that finishes moving the app's internal names onto the project's own namespace before 1.0. Update Panel Assistant to 0.9.0 first.
