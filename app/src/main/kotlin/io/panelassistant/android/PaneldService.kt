@@ -59,6 +59,7 @@ import io.panelassistant.android.device.LedMechanism
 import io.panelassistant.android.hardware.Rk3576LedController
 import io.panelassistant.android.hardware.SocketLedController
 import io.panelassistant.android.config.Capabilities
+import io.panelassistant.android.config.presenceModeDefault
 import io.panelassistant.android.dashboard.EntityLearningManager
 import io.panelassistant.android.dashboard.EntityLearningRuntime
 import io.panelassistant.android.http.PaneldServer
@@ -1593,8 +1594,14 @@ class PaneldService : Service() {
                 canControlBootChime = typedShellControlReady,
             ).also {
                 cost.work(units = 1)
-                // Config reads the presence default from the last measured sensor capabilities.
+                // Config reads the presence default from the last measured sensor capabilities. A panel with no
+                // stored choice whose default this measurement changes refreshes its presence owners, so an
+                // auto-sleep that started before the first measurement does not keep the static default.
+                val previous = PresenceCapabilityHint.capabilities
                 PresenceCapabilityHint.capabilities = it
+                if (previous?.let(::presenceModeDefault) != presenceModeDefault(it) &&
+                    ::config.isInitialized && !config.prefs.contains(PresenceMode.KEY)
+                ) reconfigure(setOf(PresenceMode.KEY))
             }
         } catch (e: Exception) {
             cost.outcome(FeatureCostOutcome.FAILURE)
