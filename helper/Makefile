@@ -211,7 +211,7 @@ $(BUILD)/adb-recovery: test/adb_recovery.c test/adb_recovery_paths.h test/androi
 adb-recovery-test: $(BUILD)/adb-recovery
 	$(BUILD)/adb-recovery
 
-# Process/filesystem proof through the production command-line entry.
+# Retained independent recovery-engine filesystem retirement under the fixed recovery invocation.
 .PHONY: adb-recovery-retirement-test
 adb-recovery-retirement-test: $(BUILD)/adb-recovery-retirement
 	$(BUILD)/adb-recovery-retirement
@@ -219,7 +219,7 @@ $(BUILD)/adb-recovery-retirement: test/adb_recovery_retirement.py | $(BUILD)
 	cp $< $@
 	chmod +x $@
 
-# Runtime stale-build replacement through the shipped daemon entry.
+# Retained independent recovery-engine replacement through the fixed recovery invocation.
 .PHONY: adb-recovery-replacement-test
 adb-recovery-replacement-test: $(BUILD)/adb-recovery-replacement
 	$(BUILD)/adb-recovery-replacement

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Replace a real incumbent through the production --adb-recovery entry, with isolated Android I/O."""
+"""Qualify retained legacy recovery-engine replacement with isolated Android I/O."""
 import os
 import ctypes
 import fcntl
@@ -27,7 +27,7 @@ ENSURE_TIMEOUT = 28
 WRAPS = ('kill', 'fstatat', 'fopen', 'usleep', 'fsync', 'write', 'renameat', 'execve', 'pthread_create')
 
 # A minimal entry keeps ordinary-host startup away from Guard paths. Both paths run real core:
-# the ordinary bounded socket accumulator/dispatch, and the recovery child's production main.
+# the ordinary bounded socket accumulator/dispatch, and the retained independent recovery engine.
 ORDINARY_ENTRY = r'''
 #define _GNU_SOURCE
 #include <errno.h>
@@ -265,6 +265,7 @@ else:
                             *[f'-D{k}="{v}"' for k,v in flags.items()],
                             *[recovery if s=='src/adb_recovery.c' else s for s in sources],
                             'src/main.c','src/sysexec.c',cuts,
+                            '-DRECOVERY_REPLACEMENT_STANDALONE_ENTRY','-Wl,--wrap=main',
                             *['-Wl,--wrap=' + name for name in WRAPS],'-lpthread','-o',str(binary)],cwd=ROOT,check=True)
             binaries[build]=binary
         legs = os.environ.get('RECOVERY_REPLACEMENT_LEGS', 'direct,ensure').split(',')
