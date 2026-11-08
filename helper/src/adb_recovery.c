@@ -1275,7 +1275,7 @@ static void owner_request(int fd, const char *line, const unsigned char *prefix,
     struct timeval wait = { .tv_sec = 2 };
     (void)setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &wait, sizeof wait);
     if (!peer_allowed(fd)) { close(fd); return; }
-    if (owner_draining) { (void)write_all(fd, "ERR\n", 4); close(fd); return; }
+    if (owner_draining && strcmp(line, "STATUS")) { (void)write_all(fd, "ERR\n", 4); close(fd); return; }
         char candidate[65], extra;
         unsigned timeout; size_t bytes;
         const char *reply = "ERR\n";

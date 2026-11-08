@@ -127,7 +127,7 @@ $(BUILD)/sysexec-platform-wrapper: $(SRC_DIR)/sysexec.c test/sysexec_platform_wr
 # production implementation and supplies inert module stubs; it never opens a socket or executes a verb.
 peer-auth-test: $(BUILD)/peer-auth
 	$(BUILD)/peer-auth
-$(BUILD)/peer-auth: test/peer_auth.c $(SRC_DIR)/main.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c $(SRC_DIR)/identity.c | $(BUILD)
+$(BUILD)/peer-auth: test/peer_auth.c $(SRC_DIR)/main.c $(SRC_DIR)/adb_recovery.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c $(SRC_DIR)/identity.c | $(BUILD)
 	$(CC) $(CFLAGS) -I$(SRC_DIR) test/peer_auth.c $(SRC_DIR)/adb_recovery.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c $(SRC_DIR)/identity.c $(LDLIBS) -o $@
 
 request-timeout-test: $(BUILD)/request-timeout
@@ -149,7 +149,7 @@ $(BUILD)/logcat-fixture: test/logcat_fixture.c | $(BUILD)
 	$(CC) $(CFLAGS) test/logcat_fixture.c -o $@
 $(BUILD)/logcat-boundary: $(CORE_SRCS) $(SRC_DIR)/sysexec.c test/logcat_boundary.c $(BUILD)/logcat-fixture | $(BUILD)
 	$(CC) $(CFLAGS) -DHAPANELD_LOGCAT_PATH='"$(abspath $(BUILD)/logcat-fixture)"' -DLOGCAT_DUMP_DEADLINE_MS=500u -I$(SRC_DIR) $(CORE_SRCS) $(SRC_DIR)/sysexec.c test/logcat_boundary.c $(LDLIBS) -o $@
-$(BUILD)/request-timeout: test/request_timeout.c $(SRC_DIR)/main.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c $(SRC_DIR)/identity.c | $(BUILD)
+$(BUILD)/request-timeout: test/request_timeout.c $(SRC_DIR)/main.c $(SRC_DIR)/adb_recovery.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c $(SRC_DIR)/identity.c | $(BUILD)
 	$(CC) $(CFLAGS) -I$(SRC_DIR) test/request_timeout.c $(SRC_DIR)/adb_recovery.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c $(SRC_DIR)/identity.c $(LDLIBS) -o $@
 
 # Start two real daemon binaries on an isolated socket. Their names intentionally share the exact
