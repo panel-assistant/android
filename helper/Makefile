@@ -88,7 +88,7 @@ UNIT_RUNS := $(REPLACEMENT_RUNS) run-adb-recovery run-uninstall-supervisor run-a
 	run-sysfs-read-boundary run-stale-replacement-cli run-cdp-state-boundary run-peer-auth \
 	run-sysexec-fd-boundary run-wifi-boundary run-gfxinfo-boundary run-adb-ensure-boundary run-adb-state-boundary
 
-.PHONY: replacement-shard-check $(UNIT_RUNS)
+.PHONY: replacement-shard-check $(UNIT_RUNS) peer-auth-test request-timeout-test bounded-exec-test actuator-exec-test replacement-identity-test cdprelay-resource-test adb-recovery-test adb-recovery-retirement-test socket-framing-test lifecycle-reap-test
 test:
 	@started=$$(date +%s); status=0; \
 	$(MAKE) --no-print-directory -j$(TEST_JOBS) test-binaries && \
@@ -188,23 +188,19 @@ $(BUILD)/sysexec-platform-wrapper: $(SRC_DIR)/sysexec.c test/sysexec_platform_wr
 
 # Peer-credential policy is owned by main.c rather than CORE_SRCS. The white-box test includes that
 # production implementation and opens a real listener for credential checks with inert module stubs.
-peer-auth-test: $(BUILD)/peer-auth
-	$(BUILD)/peer-auth
+peer-auth-test: run-peer-auth
 $(BUILD)/peer-auth: test/peer_auth.c $(SRC_DIR)/main.c $(SRC_DIR)/adb_recovery.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c $(SRC_DIR)/identity.c | $(BUILD)
 	$(CC) $(CFLAGS) -I$(SRC_DIR) test/peer_auth.c $(SRC_DIR)/adb_recovery.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c $(SRC_DIR)/identity.c $(LDLIBS) -o $@
 
-request-timeout-test: $(BUILD)/request-timeout
-	$(BUILD)/request-timeout
+request-timeout-test: run-request-timeout
 
 # The one test that links the PRODUCTION sysexec.c and executes real children: the stubbed unit suite
 # cannot prove that a wedged actuator is killed, reaped and its thread released.
-bounded-exec-test: $(BUILD)/bounded-exec
-	$(BUILD)/bounded-exec
+bounded-exec-test: run-bounded-exec
 $(BUILD)/bounded-exec: test/bounded_exec.c $(SRC_DIR)/sysexec.c | $(BUILD)
 	$(CC) $(CFLAGS) -I$(SRC_DIR) test/bounded_exec.c $(SRC_DIR)/sysexec.c $(LDLIBS) -o $@
 # Real dispatcher + real bounded exec; only Android executable paths are remapped in the fixture.
-actuator-exec-test: $(BUILD)/actuator-exec
-	$(BUILD)/actuator-exec
+actuator-exec-test: run-actuator-exec
 $(BUILD)/actuator-exec: $(CORE_SRCS) $(SRC_DIR)/sysexec.c test/actuator_exec.c | $(BUILD)
 	$(CC) $(CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -DHAPANELD_FRAMEWORK_TIMEOUT_MS=200U -DHAPANELD_INSTALL_TIMEOUT_MS=900U -I$(SRC_DIR) -Itest $(CORE_SRCS) $(SRC_DIR)/sysexec.c test/actuator_exec.c $(LDLIBS) -Wl,--wrap=execve -o $@
 
@@ -223,8 +219,7 @@ NEW_BUILD_ID := bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 REPLACEMENT_FLAGS := -DSOCK_NAME=\"$(REPLACEMENT_SOCKET)\" -DAPP_DATA=\"/proc/self\" \
 	-DREPLACEMENT_RETIRE_ATTEMPTS=40 -DREPLACEMENT_RETIRE_DELAY_MS=10 \
 	-DHAPANELD_TEST_ALLOW_STALE_OWNER_RETIREMENT=1
-replacement-identity-test: $(BUILD)/hapaneld-helper-old $(BUILD)/hapaneld-helper-new
-	bash ./test/replacement_identity_test.sh $(BUILD)/hapaneld-helper-old $(BUILD)/hapaneld-helper-new
+replacement-identity-test: run-replacement-identity
 $(BUILD)/hapaneld-helper-old: $(DAEMON_SRCS) | $(BUILD)
 	$(CC) $(CFLAGS) -I$(SRC_DIR) $(REPLACEMENT_FLAGS) -DHAPANELD_BUILD_ID=\"$(OLD_BUILD_ID)\" $(DAEMON_SRCS) $(LDLIBS) -o $@
 $(BUILD)/hapaneld-helper-new: $(DAEMON_SRCS) | $(BUILD)
@@ -232,8 +227,7 @@ $(BUILD)/hapaneld-helper-new: $(DAEMON_SRCS) | $(BUILD)
 
 # CDP relay resource regression. Tight test-only deadlines keep saturation/reaping/idle coverage fast;
 # production uses the conservative defaults compiled into cdprelay.c by Gradle.
-cdprelay-resource-test: $(BUILD)/cdprelay-resource-test $(BUILD)/cdprelay-test
-	$(BUILD)/cdprelay-resource-test $(BUILD)/cdprelay-test
+cdprelay-resource-test: run-cdprelay-resource-test
 $(BUILD)/cdprelay-resource-test: test/cdprelay_resource.c | $(BUILD)
 	$(CC) $(CFLAGS) test/cdprelay_resource.c -o $@
 $(BUILD)/cdprelay-test: cdprelay.c | $(BUILD)
@@ -271,13 +265,11 @@ $(BUILD)/uninstall-supervisor: $(CORE_SRCS) $(SRC_DIR)/main.c $(SRC_DIR)/sysexec
 
 $(BUILD)/adb-recovery: test/adb_recovery.c test/adb_recovery_paths.h test/android/log.h $(CORE_SRCS) $(SRC_DIR)/main.c $(STUB) | $(BUILD)
 	$(CC) $(CFLAGS) -DHAPANELD_TEST -include test/adb_recovery_paths.h -DHAPANELD_BUILD_ID='"$(TEST_BUILD_ID)"' -I$(SRC_DIR) -Itest test/adb_recovery.c $(filter-out $(SRC_DIR)/adb_recovery.c,$(CORE_SRCS)) $(STUB) $(LDLIBS) -o $@
-adb-recovery-test: $(BUILD)/adb-recovery
-	$(BUILD)/adb-recovery
+adb-recovery-test: run-adb-recovery
 
 # Retained independent recovery-engine filesystem retirement under the fixed recovery invocation.
 .PHONY: adb-recovery-retirement-test
-adb-recovery-retirement-test: $(BUILD)/adb-recovery-retirement
-	$(BUILD)/adb-recovery-retirement
+adb-recovery-retirement-test: run-adb-recovery-retirement
 $(BUILD)/adb-recovery-retirement: test/adb_recovery_retirement.py | $(BUILD)
 	cp $< $@
 	chmod +x $@
@@ -343,14 +335,12 @@ $(BUILD)/adb-ensure-boundary: $(CORE_SRCS) test/adb_ensure_boundary.c | $(BUILD)
 
 # Real stream reader + dispatcher; only recovery execution/handoff is replaced with byte echo.
 .PHONY: socket-framing-test
-socket-framing-test: $(BUILD)/socket-framing
-	$(BUILD)/socket-framing
+socket-framing-test: run-socket-framing
 $(BUILD)/socket-framing: $(CORE_SRCS) $(STUB) test/socket_framing.c $(SRC_DIR)/commands.def | $(BUILD)
 	$(CC) $(CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/socket_framing.c $(LDLIBS) -Wl,--wrap=cmd_adb_recovery -Wl,--wrap=read -o $@
 
 # Lifecycle-parent child custody stays thread-free; the forked worker keeps ordinary reaping.
 .PHONY: lifecycle-reap-test
-lifecycle-reap-test: $(BUILD)/lifecycle-reap
-	$(BUILD)/lifecycle-reap
+lifecycle-reap-test: run-lifecycle-reap
 $(BUILD)/lifecycle-reap: test/lifecycle_reap.c $(SRC_DIR)/sysexec.c $(SRC_DIR)/sysexec.h | $(BUILD)
 	$(CC) $(CFLAGS) -I$(SRC_DIR) test/lifecycle_reap.c $(SRC_DIR)/sysexec.c $(LDLIBS) -o $@
