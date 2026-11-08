@@ -58,6 +58,7 @@
     var phases = {
       ready: ["ready", "Proximity is ready"],
       calibration_required: ["required", "Proximity setup is available on the panel"],
+      learning: ["learning", "Learning from everyday touches; setup is optional"],
       calibrating: ["calibrating", "Setup is running on the panel"],
       source_unavailable: ["unavailable", "Proximity source is unavailable"]
     };

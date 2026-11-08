@@ -4561,6 +4561,18 @@
       "softMaxChars": 242,
       "hardMaxChars": 363
     },
+    "configure.proximity.setup.learning": {
+      "text": "Learning from everyday touches; setup is optional",
+      "sourceHash": "6bdb563b7598b760041ba87ad31015e408b6b83eb2a2b7d5a79725271ef02865",
+      "surface": "configure",
+      "context": "Proximity status while Automatic or Hybrid presence calibrates itself from screen touches; the optional on-panel setup is not required. Render as text, not HTML.",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 82,
+      "hardMaxChars": 123
+    },
     "configure.proximity.setup.local": {
       "text": "Optional setup runs on the panel. Touch-to-wake remains available.",
       "sourceHash": "8f6597024bf8630ed4a363b1614be8f5feb965be8e1b86ff1b7b6569710454b7",

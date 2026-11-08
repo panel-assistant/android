@@ -403,6 +403,71 @@
       "sourceHash": "176f8e7ed6a899a9a73dccadf9898621bcf24caf9c0243b83fb3cea9d8f0b4c6",
       "state": "machine-cross-checked"
     },
+    "configure.auto_sleep.sensors_add": {
+      "text": "Add a sensor",
+      "sourceHash": "c3719757d0a8743516c909067acee8412b6dd73bf87b9f3e0e7e7bd06bc958a4",
+      "state": "english-fallback"
+    },
+    "configure.auto_sleep.sensors_add_placeholder": {
+      "text": "Add a sensor…",
+      "sourceHash": "c01bf6a5e947b21ddaa11d9c55f70a1c5a7a1008f4c99f648a4b151596ea9446",
+      "state": "english-fallback"
+    },
+    "configure.auto_sleep.sensors_automatic": {
+      "text": "Automatic: motion, occupancy and presence sensors in this panel’s Area.",
+      "sourceHash": "26feb6e1dd1692c1088699da59c69d419a4a560d9003d7b13d55fdaa0aa6a172",
+      "state": "english-fallback"
+    },
+    "configure.auto_sleep.sensors_automatic_button": {
+      "text": "Back to automatic",
+      "sourceHash": "0c2860d83d0aee5e24f2d2b0526f8c9cc50cb80afa7561f76d13e024268b7fd2",
+      "state": "english-fallback"
+    },
+    "configure.auto_sleep.sensors_chosen": {
+      "text": "Only the sensors you chose are used.",
+      "sourceHash": "9f5e510037a2a93562df4b14964a3f40acf684b214a4b21a0917aaec8f82f977",
+      "state": "english-fallback"
+    },
+    "configure.auto_sleep.sensors_heading": {
+      "text": "Activity sensors",
+      "sourceHash": "16a1447a97a8af410448f80ffaa142400203b1418cf79b08a267b0098fed5dae",
+      "state": "english-fallback"
+    },
+    "configure.auto_sleep.sensors_loading": {
+      "text": "Loading Home Assistant sensors…",
+      "sourceHash": "0f67f35d081bbb09480fce2cd2e130578f12eb44beea35b70135df3efcbbbb02",
+      "state": "english-fallback"
+    },
+    "configure.auto_sleep.sensors_missing": {
+      "text": "Not found in Home Assistant",
+      "sourceHash": "e97d16f2c8d31cd8979a414f4bdb414e15a640666bdfc3b38fb8e190e5d17afc",
+      "state": "english-fallback"
+    },
+    "configure.auto_sleep.sensors_no_area": {
+      "text": "No area",
+      "sourceHash": "3fd59f11b54e96933a2b02aa304ac4702497072e362651bddfe49cffc8ba393d",
+      "state": "english-fallback"
+    },
+    "configure.auto_sleep.sensors_remove": {
+      "text": "Remove",
+      "sourceHash": "c3812fc4acb861d5182fc2b8155f327f736fbe5e5eb86a7bd7afcb6dc5497282",
+      "state": "english-fallback"
+    },
+    "configure.auto_sleep.sensors_remove_label": {
+      "text": "Remove {name}",
+      "sourceHash": "e6a3c4a1250a6ad3f10faa22333e5e50a6ba78e5b28a3b26f5743d9f8c7ede93",
+      "state": "english-fallback"
+    },
+    "configure.auto_sleep.sensors_save_failed": {
+      "text": "Could not save the sensor choice.",
+      "sourceHash": "8a6e7cb4d77b0e4c381253d461449d25d7661efa7f6144e59630b4cb3e8db0a4",
+      "state": "english-fallback"
+    },
+    "configure.auto_sleep.sensors_unavailable": {
+      "text": "The Home Assistant sensor list is unavailable.",
+      "sourceHash": "2fdb70ec1722643de3eab6b56b215c69b8e2227d7d3a3fe54e9f9de384f18a34",
+      "state": "english-fallback"
+    },
     "configure.auto_sleep.setup_proximity": {
       "text": "Configurar proximidade no painel",
       "sourceHash": "e2e988d28e2af97b8efe9904775644d54099e54fd770cc808cd5b2f20a597c9c",
@@ -1622,6 +1687,11 @@
       "text": "Siga as instruções no painel. Mantenha a aba do navegador aberta até a configuração terminar; você pode deixá-la em segundo plano.",
       "sourceHash": "5617ef29cda6cf1af481ca3fdc7ef3c37b65981f0dcb67f0d58fd4e81e76eb18",
       "state": "machine-cross-checked"
+    },
+    "configure.proximity.setup.learning": {
+      "text": "Learning from everyday touches; setup is optional",
+      "sourceHash": "6bdb563b7598b760041ba87ad31015e408b6b83eb2a2b7d5a79725271ef02865",
+      "state": "english-fallback"
     },
     "configure.proximity.setup.local": {
       "text": "A configuração opcional ocorre no painel. O despertar por toque continua disponível.",
@@ -10104,9 +10174,9 @@
       "state": "english-fallback"
     },
     "settings.auto_sleep_touch_delay_seconds.help": {
-      "text": "Quando Inatividade por toque estiver selecionada, desliga totalmente a tela após este número de segundos sem toque.",
-      "sourceHash": "2859a764da776afae021acb6fc0c9719b3c9b382f0a2e10d3d9031eaa4a1409c",
-      "state": "machine-cross-checked"
+      "text": "When Presence is Off, or Home Assistant device has no usable device, switch the screen fully off after this many seconds without a touch.",
+      "sourceHash": "754ff4d9a8ed0b627c9067527d343515102816904199b50efc97091db15a46d5",
+      "state": "english-fallback"
     },
     "settings.auto_sleep_touch_delay_seconds.label": {
       "text": "Atraso de inatividade por toque (segundos)",
