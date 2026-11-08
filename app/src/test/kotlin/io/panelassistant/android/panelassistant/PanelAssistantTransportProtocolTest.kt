@@ -71,7 +71,7 @@ class PanelAssistantTransportProtocolTest {
         assertEquals(5, hello.getJSONObject("protocol").getInt("min"))
         assertEquals(5, hello.getJSONObject("protocol").getInt("max"))
         assertTrue(Regex("^[0-9a-f]{64}$").matches(hello.getString("contract_digest")))
-        assertEquals(listOf("state", "commands", "approval", "voice", "media", "voice_stream_session", "management", "local_adb", "ui_subscribe", "ui_bundle", "rest_retired", "unknown_state", "logs"), hello.getJSONArray("capabilities").let { (0 until it.length()).map(it::getString) })
+        assertEquals(listOf("state", "commands", "approval", "voice", "media", "voice_stream_session", "management", "local_adb", "local_adb_commands_v1", "ui_subscribe", "ui_bundle", "rest_retired", "unknown_state", "logs"), hello.getJSONArray("capabilities").let { (0 until it.length()).map(it::getString) })
         val relay = hello.getJSONArray("channels").getJSONObject(0)
         assertEquals(listOf("relay3", "switch", "relay", "relay3", "relay", "3"), listOf("channel", "platform", "translation_key", "unique_suffix", "family", "index").map { relay.get(it).toString() })
     }
@@ -88,7 +88,7 @@ class PanelAssistantTransportProtocolTest {
         // Pinned as a literal: a digest derived from JSON serialisation could differ between the
         // device's org.json and the JVM's, and the integration records whatever the panel sends.
         assertEquals(
-            "5249411f85bec0c5e36d549851cea2ee4a6bc02e684e05f9f03fb5d7ef9154a6",
+            "649abf9c68267a97f7a0df42be31511f6233304b1dbe57c9184e6b0b19c7a08b",
             PanelAssistantTransportProtocol.CONTRACT_DIGEST,
         )
     }

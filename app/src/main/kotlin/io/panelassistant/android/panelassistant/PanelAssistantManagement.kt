@@ -287,6 +287,7 @@ internal class PanelAssistantManagementRequests(
         if (monotonicMillis() - receivedAt > deadline) return refused(PanelAssistantCommandProcessor.CODE_EXPIRED)
         if (event.op.startsWith("adb.")) {
             if (PanelAssistantTransportProtocol.CAPABILITY_LOCAL_ADB !in session.capabilities) return refused("not_commandable")
+            if (event.op == "adb.cmd" && PanelAssistantTransportProtocol.CAPABILITY_LOCAL_ADB_COMMANDS !in session.capabilities) return refused("not_commandable")
             val channel = management.localAdb ?: return refused("not_commandable")
             var waitingForApproval = false
             val reply = channel.request(event.op, event.args ?: JSONObject(),

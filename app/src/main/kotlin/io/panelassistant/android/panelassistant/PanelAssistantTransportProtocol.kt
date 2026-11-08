@@ -172,6 +172,8 @@ internal object PanelAssistantTransportProtocol {
      */
     const val CAPABILITY_MANAGEMENT = "management"
     const val CAPABILITY_LOCAL_ADB = "local_adb"
+    /** The `adb.cmd` op: fixed typed helper commands in place of root shell programs. Offered only with [CAPABILITY_LOCAL_ADB]. */
+    const val CAPABILITY_LOCAL_ADB_COMMANDS = "local_adb_commands_v1"
     /**
      * Protocol section 20.4: the panel sends a relayed subscription's updates as `panel_assistant/ui_update`,
      * which a Panel Assistant granting it registers.
@@ -248,6 +250,7 @@ internal object PanelAssistantTransportProtocol {
             CAPABILITY_VOICE_STREAM_SESSION,
             CAPABILITY_MANAGEMENT,
             CAPABILITY_LOCAL_ADB,
+            CAPABILITY_LOCAL_ADB_COMMANDS,
             CAPABILITY_UI_SUBSCRIBE,
             CAPABILITY_UI_BUNDLE,
             CAPABILITY_REST_RETIRED,
@@ -261,7 +264,7 @@ internal object PanelAssistantTransportProtocol {
      * text, so a change to the handshake vocabulary changes the digest the integration records.
      */
     internal const val CANONICAL_CONTRACT: String =
-        """{"protocol":{"min":5,"max":5},"commands":["panel_assistant/hello","panel_assistant/report_state","panel_assistant/command_result","panel_assistant/restart_notice","panel_assistant/voice_configuration","panel_assistant/voice_run","panel_assistant/voice_played","panel_assistant/voice_stream_frame","panel_assistant/voice_stream_stop","panel_assistant/ui_update","panel_assistant/report_log"],"capabilities":["state","commands","approval","voice","media","voice_stream_session","management","local_adb","ui_subscribe","ui_bundle","rest_retired","unknown_state","logs"]}"""
+        """{"protocol":{"min":5,"max":5},"commands":["panel_assistant/hello","panel_assistant/report_state","panel_assistant/command_result","panel_assistant/restart_notice","panel_assistant/voice_configuration","panel_assistant/voice_run","panel_assistant/voice_played","panel_assistant/voice_stream_frame","panel_assistant/voice_stream_stop","panel_assistant/ui_update","panel_assistant/report_log"],"capabilities":["state","commands","approval","voice","media","voice_stream_session","management","local_adb","local_adb_commands_v1","ui_subscribe","ui_bundle","rest_retired","unknown_state","logs"]}"""
 
     val CONTRACT_DIGEST: String = MessageDigest.getInstance("SHA-256")
         .digest(CANONICAL_CONTRACT.toByteArray(Charsets.UTF_8))
