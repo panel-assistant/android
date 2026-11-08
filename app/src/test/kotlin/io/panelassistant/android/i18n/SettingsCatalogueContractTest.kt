@@ -58,23 +58,14 @@ class SettingsCatalogueContractTest {
     }
 
     @Test fun `every declared enum wire value has a display-only label record catalogueContract`() {
-        val localPresenceBindings = linkedMapOf(
-            "panel" to ("configure.auto_sleep.source_panel" to "This panel’s proximity sensor"),
-            "home_assistant" to ("configure.auto_sleep.source_ha" to "Home Assistant Area devices"),
-            "touch" to ("configure.auto_sleep.source_touch" to "Touch inactivity"),
-        )
         val enums = SettingsRegistry.SPECS.filter { it.type == SettingType.ENUM }
-        assertEquals(localPresenceBindings.keys.toList(), enums.single { it.key == "auto_sleep_source" }.options)
-        // ui_language shows native language names and auto_sleep_source has its own copy; every other
-        // option's label is its SettingSpec record, served with the schema.
-        val labelled = enums.filter { it.key != "ui_language" && it.key != "auto_sleep_source" }
+        // ui_language shows native language names; every other option's label is its SettingSpec record,
+        // served with the schema.
+        val labelled = enums.filter { it.key != "ui_language" }
             .flatMap { spec -> spec.options.map(spec::optionLabelKey) }
         assertTrue("the labelled option set must not shrink silently", labelled.size >= 26)
 
         val source = SourceCatalogue.parse(catalogueFile.readText())
-        localPresenceBindings.values.forEach { (key, english) ->
-            assertEquals(english, checkNotNull(source.strings[key]).text)
-        }
         labelled.forEach { key -> checkNotNull(source.strings[key]) { "English catalogue is missing $key" } }
     }
 }

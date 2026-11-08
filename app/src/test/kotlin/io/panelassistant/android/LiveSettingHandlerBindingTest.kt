@@ -17,7 +17,7 @@ class LiveSettingHandlerBindingTest {
 
         override fun handleWakeOnWave(on: Boolean) = record("handleWakeOnWave", on)
         override fun handleAutoSleep(on: Boolean) = record("handleAutoSleep", on)
-        override fun handleAutoSleepSource(source: String) = record("handleAutoSleepSource", source)
+        override fun handlePresenceMode(option: ChannelOption) = record("handlePresenceMode", option)
         override fun handlePreventIdleDim(on: Boolean, approvalRequired: Boolean) =
             record("handlePreventIdleDim", on, approvalRequired)
         override fun handleWatchdog(on: Boolean) = record("handleWatchdog", on)
@@ -60,7 +60,11 @@ class LiveSettingHandlerBindingTest {
         val cases = listOf(
             Case("wake_on_wave", "true", expected = invocation("handleWakeOnWave", true)),
             Case("auto_sleep", "true", expected = invocation("handleAutoSleep", true)),
-            Case("auto_sleep_source", "panel", expected = invocation("handleAutoSleepSource", "panel")),
+            Case(
+                "presence_mode",
+                "home_assistant",
+                expected = invocation("handlePresenceMode", ChannelOption("home_assistant", "Home Assistant device")),
+            ),
             Case(
                 "prevent_idle_dim",
                 "true",
@@ -167,6 +171,7 @@ class LiveSettingHandlerBindingTest {
             "network_adb" to "network_adb",
             "home_dashboard" to "home_dashboard",
             "navbar" to "navbar_mode",
+            "presence" to "presence_mode",
             "wake_on_wave" to "wake_on_wave",
             "auto_sleep" to "auto_sleep",
             "touch_sound" to "touch_sound",
@@ -201,7 +206,6 @@ class LiveSettingHandlerBindingTest {
         val admitted = externalLiveSettingOwners.values.toSet()
         val rejected = LiveSettingEffectOwner.settingKeys - admitted
         val expectedRejected = setOf(
-            "auto_sleep_source",
             // The voice assistant is a Home Assistant satellite, never an external command switch.
             "voice_enabled",
             "auto_brightness_minimum_percent",

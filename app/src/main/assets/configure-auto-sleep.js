@@ -109,8 +109,9 @@
     });
   }
 
-  function autoSleepUsesPanel() { return cfg.values.auto_sleep_source === "panel"; }
-  function autoSleepUsesTouch() { return cfg.values.auto_sleep_source === "touch"; }
+  // Automatic, Manual and Hybrid all use this panel's proximity sensor; Off uses touch inactivity.
+  function autoSleepUsesPanel() { var m = cfg.values.presence_mode; return m === "automatic" || m === "manual" || m === "hybrid"; }
+  function autoSleepUsesTouch() { return cfg.values.presence_mode === "off"; }
   // The touch source fetches no status: its summary comes from the setting itself, the moment it changes.
   function currentAutoSleepSummaryModel() {
     if (autoSleepUsesTouch()) return autoSleepSummaryModel();

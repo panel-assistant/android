@@ -366,11 +366,6 @@ class Config private constructor(
             editor.putString("log_ship_protocol", fields.getValue("log_ship_protocol"))
         }
 
-        // stage pins the effective source when it stores auto_sleep; an imported source must still win,
-        // whichever order the bundle staged the two keys in.
-        accepted["auto_sleep_source"]?.takeIf { it in specOf("auto_sleep_source").options }
-            ?.let { editor.putString("auto_sleep_source", it) }
-
         accepted["dashboard_package"]?.let { next ->
             if (next != dashboardPackage) editor.putBoolean("renderer_launch_pending", true)
         }
@@ -1257,9 +1252,8 @@ class Config private constructor(
         return when (spec.key) {
             "navbar_mode" -> resolveNavbarMode(declared, caps ?: navbarCapabilities())
             "log_ship_protocol" -> declared ?: logShipAbsentProtocolFallback ?: spec.default
-            // A store that predates the source setting keeps the HA policy it had; every later
-            // auto_sleep write materialises the effective source (see [stage]).
-            "auto_sleep_source" -> if (prefs.contains("auto_sleep")) "home_assistant" else declared ?: spec.default
+            PresenceMode.KEY -> declared
+                ?: (caps ?: PresenceCapabilityHint.capabilities)?.let(spec::defaultFor) ?: spec.default
             "network_adb" -> if (hardenedSecurityEnabled) "false" else declared ?: spec.default
             // A panel whose profile declares a microphone is a voice satellite out of the box.
             "voice_enabled" -> declared ?: if (profile?.microphoneDeclared == true) "true" else spec.default
@@ -1326,7 +1320,7 @@ class Config private constructor(
         }
         else -> when (spec.key) {
             "ha_area" -> haArea
-            "auto_sleep_source" -> autoSleepSource
+            PresenceMode.KEY -> presenceMode.wire
             "navbar_mode" -> navbarMode
             // A pre-UDP panel has the retired "syslog" spelling on disk. Canonicalize here so the
             // Configure select, the export bundle and the revision diff all see a declared option.
@@ -1344,12 +1338,8 @@ class Config private constructor(
         if (spec.key in setOf("ha_url", "ha_token", "ha_refresh_token", "ha_client_id") && normalized != getRaw(spec)) {
             forgetHaRoutes(editor)
         }
-        if (spec.key == "auto_sleep_source" && normalized != autoSleepSource)
+        if (spec.key == PresenceMode.KEY && normalized != presenceMode.wire)
             editor.putLong(AUTO_SLEEP_GENERATION_PREF, nextAutoSleepGenerationLocked())
-        // Storing auto_sleep would turn an absent source into the legacy "home_assistant", so the
-        // first write pins the source the panel was effectively using.
-        if (spec.key == "auto_sleep" && !prefs.contains("auto_sleep_source"))
-            editor.putString("auto_sleep_source", autoSleepSource)
         when (spec.type) {
             SettingType.BOOL -> editor.putBoolean(spec.key, normalized.toBoolean())
             SettingType.INT -> editor.putInt(spec.key, normalized.toIntOrNull() ?: 0)
@@ -1532,6 +1522,25 @@ class Config private constructor(
         retired.forEach(::remove)
     }
 
+    /**
+     * The schema-18 presence mode for a store written with the auto-sleep activity source. Home Assistant
+     * and touch map directly; a store that had auto_sleep but never a source kept the Home Assistant
+     * policy. The panel sensor, chosen or defaulted on an installed panel, depends on the wizard model in
+     * SQLite, so it leaves a marker for [resolveLegacyPanelPresence]. A fresh store (schema-1 sentinel and
+     * no auto-sleep state) writes nothing and takes the capability default.
+     */
+    private fun stageLegacyPresence(ed: SharedPreferences.Editor, from: Int) {
+        val stored = prefs.getString(SettingsRegistry.LEGACY_AUTO_SLEEP_SOURCE_KEY, null)
+        val source = stored
+            ?: if (prefs.contains("auto_sleep")) "home_assistant"
+            else profile?.settingDefaults?.get(SettingsRegistry.LEGACY_AUTO_SLEEP_SOURCE_KEY)
+        val direct = Migrations.legacyPresenceMode(source)
+        when {
+            direct != null -> ed.putString(PresenceMode.KEY, direct)
+            stored != null || from >= 2 -> ed.putBoolean(LEGACY_PANEL_PRESENCE_PENDING_PREF, true)
+        }
+    }
+
     fun migrateLiveStore(): Boolean = synchronized(CONFIG_LOCK) {
         rerootDashboardEntityOwners()
         canonicalizeStoredHomeDashboard()
@@ -1589,6 +1598,9 @@ class Config private constructor(
         if (from < 17) {
             ed.putBoolean(SettingsRegistry.NATIVE_KIOSK_KEY, false)
         }
+        // Schema 18 replaces the auto-sleep activity source with the presence mode. The retired key is no
+        // registered setting, so only this read can carry it; the retired-key removal below drops it.
+        if (from < 18 && !prefs.contains(PresenceMode.KEY)) stageLegacyPresence(ed, from)
         // A schema-3 live store may have relied on the old true fallbacks without ever materializing
         // them. Preserve that upgrade behavior, while fresh schema-1 stores receive schema-4 defaults.
         if (from == 3) {

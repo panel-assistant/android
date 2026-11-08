@@ -76,7 +76,7 @@ function settings() {
   }
   Object.assign(values, {
     panel_id: 'hallway_panel', friendly_name: 'Hallway panel', ha_area: 'hallway',
-    auto_sleep: 'true', auto_sleep_source: 'home_assistant',
+    auto_sleep: 'true', presence_mode: 'home_assistant',
     auto_brightness: 'true', auto_brightness_ha_entity: 'sensor.hallway_illuminance',
     auto_brightness_response_percent: '40', auto_brightness_minimum_percent: '10',
   });

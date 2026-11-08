@@ -139,11 +139,6 @@ window.ConfigurePage = {};
   // display label, which is the value itself when no label record exists.
   function localizedEnumOption(field, wireValue, index) {
     var fieldKey = field.key;
-    if (fieldKey === "auto_sleep_source") return wireValue === "panel"
-      ? i18nText("configure.auto_sleep.source_panel", "This panel’s proximity sensor")
-      : wireValue === "touch"
-        ? i18nText("configure.auto_sleep.source_touch", "Touch inactivity")
-        : i18nText("configure.auto_sleep.source_ha", "Home Assistant Area devices");
     if (fieldKey === "ui_language" && Object.prototype.hasOwnProperty.call(UI_LANGUAGE_LABELS, wireValue)) {
       return wireValue === "auto"
         ? i18nText("configure.language.automatic", "Automatic")
