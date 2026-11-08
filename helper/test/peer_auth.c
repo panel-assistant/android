@@ -109,7 +109,9 @@ static int accept_loop_rejects_unrelated_uid(void) {
     pid_t daemon = fork();
     if (daemon == 0) {
         char *argv[] = { "hapaneld-helper", NULL };
-        _exit(run_daemon(1, argv, NULL, 0));
+        int listener = open_main_listener(0);
+        if (listener < 0) _exit(1);
+        _exit(run_daemon(1, argv, NULL, listener));
     }
     if (daemon < 0) return 1;
     int root_bytes = -1;
