@@ -2,6 +2,7 @@ package io.panelassistant.android.sensors
 
 import io.panelassistant.android.PresenceMode
 import io.panelassistant.android.dashboard.EntityCatalogStore
+import io.panelassistant.android.testsupport.TestSources
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -42,6 +43,21 @@ class ProximityTouchCalibrationRuntimeTest {
     }
 
     private fun Map<Long, Boolean?>.at(time: Long): Boolean? = entries.last { it.key <= time }.value
+
+    // Source-text reason: openapi.json is the published response schema, read as data.
+    @Test fun thePublishedStatusSchemaDeclaresTheStatesAnUncalibratedPanelReports() {
+        val declared = JSONObject(TestSources.appFile("src/main/assets/openapi.json").readText())
+            .getJSONObject("paths").getJSONObject("/api/v1/status").getJSONObject("get").getJSONObject("responses")
+            .getJSONObject("200").getJSONObject("content").getJSONObject("application/json").getJSONObject("schema")
+            .getJSONObject("properties").getJSONObject("proximity").getJSONObject("properties")
+            .getJSONObject("state").getJSONArray("enum").let { values -> (0 until values.length()).map { values.getString(it) } }
+        for (mode in PresenceMode.entries) {
+            val runtime = runtime(mode)
+            runtime.observe(500f, 1, sparseReporting = false)
+            val state = JSONObject(runtime.statusJson()).getString("state")
+            assertTrue("$mode reports $state, which the published schema does not declare", state in declared)
+        }
+    }
 
     @Test fun automaticCalibratesItselfFromTouchesAndThenTracksPresence() {
         for (name in listOf("office-taps.csv", "x2i-taps.csv")) {
