@@ -28,8 +28,8 @@ docker run --rm -e HAPANELD_BUILD_ID="$BUILD_ID" -v "$HOST_WORK":/work -w /work 
   TC=$ANDROID_SDK_ROOT/ndk/27.0.12077973/toolchains/llvm/prebuilt/linux-x86_64/bin
   SRCS=helper/src/*.c
   mkdir -p helper/dist/armeabi-v7a helper/dist/arm64-v8a
-  "$TC/armv7a-linux-androideabi26-clang" -O2 -s -Ihelper/src -DHAPANELD_BUILD_ID=\"$HAPANELD_BUILD_ID\" -o helper/dist/armeabi-v7a/hapaneld-helper $SRCS
-  "$TC/aarch64-linux-android26-clang"    -O2 -s -Ihelper/src -DHAPANELD_BUILD_ID=\"$HAPANELD_BUILD_ID\" -o helper/dist/arm64-v8a/hapaneld-helper  $SRCS
+  "$TC/armv7a-linux-androideabi26-clang" -O2 -s -Ihelper/src -DHAPANELD_BUILD_ID=\"$HAPANELD_BUILD_ID\" -o helper/dist/armeabi-v7a/hapaneld-helper $SRCS -llog
+  "$TC/aarch64-linux-android26-clang"    -O2 -s -Ihelper/src -DHAPANELD_BUILD_ID=\"$HAPANELD_BUILD_ID\" -o helper/dist/arm64-v8a/hapaneld-helper  $SRCS -llog
 '
 
 echo ">> Built:"

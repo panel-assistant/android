@@ -99,6 +99,13 @@ static int fixture_execve(const char *path, char *const arguments[], char *const
     /* Only property fixtures need the host fixture directory. Shells use the real clean env. */
     return execve(path, arguments, !strcmp(path,"/proc/self/exe") ? environ : environment);
 }
+int __android_log_write(int priority, const char *tag, const char *text) {
+    char line[1024];
+    int length = snprintf(line, sizeof line, "%d %s %s\n", priority, tag, text);
+    int fd = open(fixture_path("android.log"), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0600);
+    if (fd < 0 || length < 0 || (size_t)length >= sizeof line || write(fd, line, (size_t)length) != length) abort();
+    close(fd); return 1;
+}
 #define close fixture_close
 #define fstatfs fixture_fstatfs
 #define write fixture_write
@@ -118,7 +125,9 @@ static int fixture_execve(const char *path, char *const arguments[], char *const
 #define ADB_RECOVERY_DIRECTORY fixture_path("helper")
 static unsigned fixture_lease_ms=600;
 #define ADB_RECOVERY_LEASE_MS fixture_lease_ms
+#define __ANDROID__ 1
 #include "../src/adb_recovery.c"
+#undef __ANDROID__
 #undef close
 #undef fstatfs
 #undef write
@@ -162,6 +171,7 @@ static void stop(void) {
     while(waitpid(-1,NULL,WNOHANG)>0){}
 }
 static void start(void) {
+    unlink(fixture_path("android.log"));
     unlink(fixture_path("no_backup/network-adb-recovery.fence"));
     unlink(fixture_path("no_backup/.remote-debug-security-authority.v1.publish"));
     unlink(fixture_path("unfenced-reopen"));
@@ -173,7 +183,12 @@ static void start(void) {
     char bytes[16384]; ssize_t n;
     while((n=read(source,bytes,sizeof bytes))>0){ ssize_t used=0; while(used<n){ssize_t w=write(target,bytes+used,(size_t)(n-used));if(w<=0)abort();used+=w;} }
     if(n<0 || close(source) || close(target))abort();
-    owner=fork();if(!owner)_exit(adb_recovery_main());
+    owner=fork();if(!owner){
+        int null = open("/dev/null", O_WRONLY);
+        if (null < 0 || dup2(null, STDERR_FILENO) < 0) _exit(99);
+        if (null != STDERR_FILENO) close(null);
+        _exit(adb_recovery_main());
+    }
     char response[160];int ready=0;
     for(int i=0;i<100;i++){if(!request("STATUS\n",response,sizeof response)){ready=1;break;}usleep(10000);}
     CHECK(ready,"independent recovery socket starts");
@@ -191,6 +206,114 @@ static void arm(void) {
 /* Observe lease deadlines, with margins for property subprocesses and host scheduling. */
 static void wait_until(long long deadline) {
     while (now_ms() < deadline) usleep(5000);
+}
+static int line_count(const char *name) {
+    FILE *input = fopen(fixture_path(name), "r");
+    char line[1024]; int count = 0;
+    while (input && fgets(line, sizeof line, input)) count++;
+    if (input) fclose(input);
+    return count;
+}
+static int reopen_log_count(void) { return line_count("android.log"); }
+static void check_reopen_log(const char *expected_actor, pid_t expected_pid,
+                             long long renewed_before, long long renewed_after,
+                             long long reopened_after) {
+    long long until = now_ms() + 500;
+    while (!reopen_log_count() && now_ms() < until) usleep(5000);
+    CHECK(reopen_log_count() == 1, "successful lease reopen emits exactly one Android warning with stderr discarded");
+    char line[1024], build[65], boot[65], actor[16], extra;
+    unsigned gap = 0, threshold = 0; long emitter = 0, recorded_owner = 0;
+    long long renewed = 0, triggered = 0, reopened = 0, owner_started = 0;
+    snprintf(line, sizeof line, "%s", get("android.log"));
+    if (*line) printf("reopen diagnostic: %s", line);
+    int fields = sscanf(line, "5 AdbLease adb_lease event=reopen cause=lease gap_ms=%u lease_ms=%u renewed_ms=%lld triggered_ms=%lld reopened_ms=%lld helper_build=%64s boot_id=%64s owner_pid=%ld owner_started_ms=%lld pid=%ld actor=%15s %c",
+        &gap, &threshold, &renewed, &triggered, &reopened, build, boot, &recorded_owner, &owner_started, &emitter, actor, &extra);
+    CHECK(fields == 11, "lease reopen diagnostic has the structured Android warning schema");
+    if (fields != 11) return;
+    CHECK(gap >= fixture_lease_ms && threshold == fixture_lease_ms && triggered - renewed == gap &&
+          renewed >= renewed_before && renewed <= renewed_after && reopened >= triggered && reopened >= reopened_after &&
+          reopened <= now_ms() && owner_started > 0 && owner_started <= renewed,
+          "lease reopen diagnostic reports the triggering renewal gap and monotonic recovery time");
+    char actual_boot[65] = ""; FILE *input = fopen("/proc/sys/kernel/random/boot_id", "r");
+    if (input) { if (fscanf(input, "%64s", actual_boot) != 1) actual_boot[0] = 0; fclose(input); }
+    int actor_matches = expected_actor ? emitter == expected_pid && !strcmp(actor, expected_actor) :
+        (!strcmp(actor, "owner") && emitter == owner) || (!strcmp(actor, "guardian") && emitter == guardian);
+    CHECK(!strcmp(build, HAPANELD_BUILD_ID) && !strcmp(boot, actual_boot) && recorded_owner == owner && actor_matches,
+          "lease reopen diagnostic identifies the exact helper boot owner and recovery actor");
+}
+static void reopen_diagnostic_tests(void) {
+    char command[100], response[160];
+    long long arm_before, arm_after;
+    start();
+    CHECK(!kill(guardian, SIGSTOP), "diagnostic fixture isolates owner expiry from the guardian");
+    arm(); wait_until(now_ms() + 350);
+    long long beat_before = now_ms();
+    snprintf(command, sizeof command, "BEAT %s\n", nonce);
+    CHECK(!request(command, response, sizeof response) && !strcmp(response, "OK"), "diagnostic fixture renews the actual recovery lease");
+    long long beat_after = now_ms();
+    CHECK(wait_network("running"), "owner expiry successfully reopens for the diagnostic fixture");
+    check_reopen_log("owner", owner, beat_before, beat_after, beat_after);
+    CHECK(!kill(guardian, SIGCONT), "diagnostic fixture resumes the independent guardian");
+    usleep(150000);
+    CHECK(reopen_log_count() == 1, "owner and guardian do not duplicate one lease reopen diagnostic");
+    arm(); CHECK(wait_network("running"), "a rearmed lease expires through the same recovery owner");
+    long long second_until = now_ms() + 500;
+    while (reopen_log_count() < 2 && now_ms() < second_until) usleep(5000);
+    CHECK(reopen_log_count() == 2, "a later armed lease emits its own reopen diagnostic");
+    stop();
+
+    start(); CHECK(!kill(guardian, SIGSTOP), "diagnostic fixture defers guardian until owner starts reopening");
+    arm_before = now_ms(); arm(); arm_after = now_ms();
+    put("pause-restart", "yes"); unlink(fixture_path("restart.calls"));
+    long long concurrent_until = now_ms() + 2000;
+    while (line_count("restart.calls") < 1 && now_ms() < concurrent_until) usleep(5000);
+    CHECK(line_count("restart.calls") == 1, "owner begins a lease-driven network reopen");
+    CHECK(!kill(guardian, SIGCONT), "guardian resumes during the owner's network proof");
+    concurrent_until = now_ms() + 1000;
+    while (line_count("restart.calls") < 2 && now_ms() < concurrent_until) usleep(5000);
+    CHECK(line_count("restart.calls") == 2, "owner and guardian both attempt the same lease reopen");
+    unlink(fixture_path("pause-restart"));
+    CHECK(wait_network("running"), "concurrent lease recovery successfully restores network ADB");
+    usleep(150000);
+    check_reopen_log(NULL, 0, arm_before, arm_after, arm_after);
+    stop();
+
+    start(); arm_before = now_ms(); arm(); arm_after = now_ms();
+    put("loopback-only", "yes");
+    int slow = connect_owner(); CHECK(slow >= 0 && !write_all(slow, "S", 1), "diagnostic fixture blocks owner framing to force guardian expiry");
+    wait_until(arm_after + 1000);
+    CHECK(reopen_log_count() == 0, "unproved network reopen emits no success diagnostic");
+    long long allowed_at = now_ms(); unlink(fixture_path("loopback-only"));
+    long long deadline = now_ms() + 5000;
+    while (!reopen_log_count() && now_ms() < deadline) usleep(10000);
+    check_reopen_log("guardian", guardian, arm_before, arm_after, allowed_at);
+    close(slow); usleep(150000);
+    CHECK(reopen_log_count() == 1, "delayed guardian recovery and owner retry emit one success diagnostic");
+    stop();
+
+    start(); arm();
+    snprintf(command, sizeof command, "RECOVER %s\n", nonce);
+    CHECK(!request(command, response, sizeof response) && !strcmp(response, "OK"), "diagnostic fixture explicitly recovers before lease expiry");
+    usleep(750000);
+    CHECK(reopen_log_count() == 0, "explicit recovery is not reported as lease expiry");
+    stop();
+
+    start(); CHECK(!kill(guardian, SIGSTOP), "diagnostic fixture isolates app-removal recovery from guardian expiry");
+    arm(); put("loopback-only", "yes"); unlink(fixture_path("restart.calls"));
+    CHECK(!rmdir(APP_DATA) && !rmdir(APP_USER_DATA), "diagnostic fixture removes app data before lease expiry");
+    deadline = now_ms() + 400;
+    while (!line_count("restart.calls") && now_ms() < deadline) usleep(5000);
+    CHECK(line_count("restart.calls") == 1, "app-removal recovery begins before lease expiry");
+    wait_until(now_ms() + 750);
+    CHECK(!mkdir(APP_DATA, 0700) && !mkdir(APP_USER_DATA, 0700), "diagnostic fixture restores app data during pending recovery");
+    unlink(fixture_path("loopback-only"));
+    CHECK(!kill(guardian, SIGCONT), "diagnostic fixture resumes guardian after nonlease recovery crossed expiry");
+    deadline = now_ms() + 5000;
+    while (strcmp(get("tcp"), "0: 00000000:15B3 00000000:0000 0A\n") && now_ms() < deadline) usleep(5000);
+    CHECK(!strcmp(get("tcp"), "0: 00000000:15B3 00000000:0000 0A\n"), "pending app-removal recovery proves network ADB after the lease deadline");
+    usleep(150000);
+    CHECK(reopen_log_count() == 0, "app-removal recovery crossing expiry retains its initiating nonlease cause");
+    stop();
 }
 static void heartbeat_tests(void) {
     const char *second = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
@@ -463,6 +586,10 @@ int main(int argc,char **argv) {
             if (members) closedir(members);
         }
         else if(!strcmp(argv[1],"ctl.restart")){
+            int calls = open(fixture_path("restart.calls"), O_WRONLY | O_CREAT | O_APPEND, 0600);
+            if (calls < 0 || write(calls, "restart\n", 8) != 8) abort();
+            close(calls);
+            while (access(fixture_path("pause-restart"), F_OK) == 0) usleep(5000);
             if(access(fixture_path("no_backup/network-adb-recovery.fence"),F_OK) || access(fixture_path("no_backup/.remote-debug-security-authority.v1.publish"),F_OK)) put("unfenced-reopen","yes");
             put("init.svc.adbd","running");
             put("tcp",access(fixture_path("loopback-only"),F_OK)==0 ? "0: 0100007F:15B3 00000000:0000 0A\n" : "0: 00000000:15B3 00000000:0000 0A\n");
@@ -480,7 +607,7 @@ int main(int argc,char **argv) {
     if(fixture_lease_region==MAP_FAILED)abort();
     if (mkdir(fixture_path("no_backup"),0700)) abort();
     if (mkdir(APP_DATA,0700) || mkdir(APP_USER_DATA,0700)) abort();
-    custody_tests(); heartbeat_tests(); absent_data_test(); managed_absent_trigger_test();
+    custody_tests(); heartbeat_tests(); reopen_diagnostic_tests(); absent_data_test(); managed_absent_trigger_test();
     start();unauthorized_test();shell_tests();malformed_request_tests();worker_death_test();stop();start();arm();
     int slow=connect_owner();write_all(slow,"S",1);
     long long slow_deadline = now_ms() + 1200;

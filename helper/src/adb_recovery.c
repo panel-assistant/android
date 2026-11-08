@@ -27,6 +27,9 @@
 #include <sys/resource.h>
 #include <time.h>
 #include <unistd.h>
+#ifdef __ANDROID__
+#include <android/log.h>
+#endif
 
 #ifndef ADB_RECOVERY_SOCKET
 #define ADB_RECOVERY_SOCKET "hapaneld-adb-recovery"
@@ -47,13 +50,50 @@
 #define COMMAND_LIMIT 65536
 #define MAX_EXECUTORS 4
 static long long read_deadline;
-typedef struct { _Atomic unsigned renewed; _Atomic int armed, recovering, recovered, ever_armed, actuator, security_unverified; _Atomic int groups[MAX_EXECUTORS]; } recovery_lease;
+typedef struct { _Atomic unsigned renewed; _Atomic int armed, recovering, recovered, ever_armed, actuator, security_unverified, expiry_logged, reopen_cause; _Atomic int groups[MAX_EXECUTORS]; } recovery_lease;
 static recovery_lease *lease;
 static int executing_slot = -1;
+static char recovery_boot_id[65] = "unknown";
+static long long recovery_owner_started_ms;
 static long long now_ms(void) {
     struct timespec ts;
     if (clock_gettime(CLOCK_MONOTONIC, &ts)) return -1;
     return (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+static void recovery_log_identity(void) {
+    recovery_owner_started_ms = now_ms();
+    int input = open("/proc/sys/kernel/random/boot_id", O_RDONLY | O_CLOEXEC);
+    if (input < 0) return;
+    char boot[65]; ssize_t count = read(input, boot, sizeof boot - 1);
+    close(input);
+    if (count <= 0) return;
+    boot[count] = 0;
+    boot[strcspn(boot, "\r\n")] = 0;
+    if (strlen(boot) == 36 && strspn(boot, "0123456789abcdef-") == 36)
+        memcpy(recovery_boot_id, boot, 37);
+}
+/* Diagnostic custody is separate from the actuator: a best-effort log never gates recovery.
+ * The unsigned subtraction matches the guardian's wrap-safe lease observation. Record that
+ * observation, rather than inflating the gap with time spent proving/retrying network recovery. */
+static void note_recovery_cause(int cause) {
+    int expected = 0;
+    (void)atomic_compare_exchange_strong(&lease->reopen_cause, &expected, cause); /* 1=lease, 2=other */
+}
+static void log_lease_reopen(unsigned renewed_at, long long triggered_at, pid_t owner, const char *actor) {
+    if (atomic_load(&lease->reopen_cause) != 1) return;
+    if (atomic_exchange(&lease->expiry_logged, 1)) return;
+    unsigned gap = (unsigned)((unsigned)triggered_at - renewed_at);
+    char line[512];
+    snprintf(line, sizeof line,
+        "adb_lease event=reopen cause=lease gap_ms=%u lease_ms=%u renewed_ms=%lld triggered_ms=%lld reopened_ms=%lld helper_build=%s boot_id=%s owner_pid=%ld owner_started_ms=%lld pid=%ld actor=%s",
+        gap, (unsigned)ADB_RECOVERY_LEASE_MS, triggered_at - gap, triggered_at, now_ms(),
+        helper_build_id(), recovery_boot_id, (long)owner, recovery_owner_started_ms, (long)getpid(), actor);
+#ifdef __ANDROID__
+    /* liblog writes directly to logd, including for detached owners whose stderr is /dev/null. */
+    (void)__android_log_write(ANDROID_LOG_WARN, "AdbLease", line);
+#else
+    fprintf(stderr, "%s\n", line);
+#endif
 }
 static int write_all(int fd, const void *bytes, size_t count) {
     const char *p = bytes;
@@ -325,13 +365,17 @@ static pid_t start_guardian(int server) {
         close(server);
         for (;;) {
             int owner_dead = getppid() != owner;
-            int expired = atomic_load(&lease->armed) &&
-                (unsigned)((unsigned)now_ms() - atomic_load(&lease->renewed)) >= ADB_RECOVERY_LEASE_MS;
+            int expired = atomic_load(&lease->armed);
+            long long expiry_observed_at = now_ms();
+            unsigned expiry_renewed_at = atomic_load(&lease->renewed);
+            expired = expired &&
+                (unsigned)((unsigned)expiry_observed_at - expiry_renewed_at) >= ADB_RECOVERY_LEASE_MS;
             if (owner_dead && !atomic_load(&lease->ever_armed)) _exit(0);
             if (owner_dead || expired) {
                 int expected = 0;
                 if (!owner_dead && !atomic_compare_exchange_strong(&lease->actuator, &expected, 2)) { usleep(20000); continue; }
                 if (owner_dead) atomic_store(&lease->actuator, 2);
+                note_recovery_cause(owner_dead ? 2 : 1);
                 atomic_store(&lease->recovering, 1);
                 atomic_store(&lease->recovered, 1);
                 atomic_store(&lease->armed, 0);
@@ -343,6 +387,7 @@ static pid_t start_guardian(int server) {
                     usleep(200000);
                 }
                 while (set_network(1)) usleep(100000);
+                if (expired && !owner_dead) log_lease_reopen(expiry_renewed_at, expiry_observed_at, owner, "guardian");
                 atomic_store(&lease->recovering, 0);
                 atomic_store(&lease->actuator, 0);
                 if (owner_dead) _exit(0);
@@ -1121,11 +1166,14 @@ int adb_recovery_main(void) {
     lease = mmap(NULL, sizeof *lease, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
     if (lease == MAP_FAILED) { close(server); return 1; }
     memset(lease, 0, sizeof *lease);
+    recovery_log_identity();
     pid_t guardian = start_guardian(server);
     if (guardian < 0) { close(server); return 1; }
     char nonce[65] = ""; long long renewed = 0;
     int managed = 0, hold = 0, recovery_pending = 0;
     long long retirement_after_ms = 0;
+    long long expiry_triggered_at = 0;
+    unsigned expiry_renewed_at = 0;
     pid_t workers[MAX_EXECUTORS] = {0};
     for (;;) {
         if (atomic_load(&lease->recovered)) managed = 0;
@@ -1133,7 +1181,7 @@ int adb_recovery_main(void) {
             pid_t done = waitpid(guardian, NULL, WNOHANG);
             if (done == guardian || (done < 0 && errno != EINTR)) {
                 guardian = -1; atomic_store(&lease->actuator, 0);
-                if (atomic_load(&lease->ever_armed)) recovery_pending = 1;
+                if (atomic_load(&lease->ever_armed)) { note_recovery_cause(2); recovery_pending = 1; }
             }
         }
         if (guardian < 0 && !managed) guardian = start_guardian(server);
@@ -1143,14 +1191,25 @@ int adb_recovery_main(void) {
                 workers[i] = 0;
                 int group = atomic_exchange(&lease->groups[i], 0);
                 if (group > 1) (void)kill(-group, SIGKILL);
-                if (done < 0 || !WIFEXITED(status) || WEXITSTATUS(status)) recovery_pending = 1;
+                if (done < 0 || !WIFEXITED(status) || WEXITSTATUS(status)) { note_recovery_cause(2); recovery_pending = 1; }
             }
         }
         int absent = helper_app_data_absent();
         if (!absent) retirement_after_ms = 0;
-        if (managed && (now_ms() - renewed >= ADB_RECOVERY_LEASE_MS || absent)) recovery_pending = 1;
+        long long expiry_observed_at = now_ms();
+        if (managed && (expiry_observed_at - renewed >= ADB_RECOVERY_LEASE_MS || absent)) {
+            note_recovery_cause(absent ? 2 : 1);
+            if (!expiry_triggered_at && expiry_observed_at - renewed >= ADB_RECOVERY_LEASE_MS) {
+                expiry_triggered_at = expiry_observed_at; expiry_renewed_at = (unsigned)renewed;
+            }
+            recovery_pending = 1;
+        }
         if (recovery_pending && (!absent || now_ms() >= retirement_after_ms)) {
-            if (!set_network(1)) { managed = 0; recovery_pending = 0; atomic_store(&lease->armed, 0); }
+            if (!set_network(1)) {
+                if (expiry_triggered_at) log_lease_reopen(expiry_renewed_at, expiry_triggered_at, getpid(), "owner");
+                expiry_triggered_at = 0;
+                managed = 0; recovery_pending = 0; atomic_store(&lease->armed, 0);
+            }
             else if (absent) retirement_after_ms = now_ms() + 1000;
         }
         if (absent && now_ms() >= retirement_after_ms && owner_actuator()) {
@@ -1210,12 +1269,15 @@ int adb_recovery_main(void) {
                     (void)write_all(fd, reply, strlen(reply)); close(fd); continue;
                 }
                 renewed = now_ms(); managed = 1; /* recovery armed BEFORE any close attempt */
+                expiry_triggered_at = 0;
+                atomic_store(&lease->expiry_logged, 0);
+                atomic_store(&lease->reopen_cause, 0);
                 atomic_store(&lease->recovered, 0);
                 atomic_store(&lease->renewed, (unsigned)renewed);
                 atomic_store(&lease->ever_armed, 1);
                 atomic_store(&lease->armed, 1);
                 if (!set_network(0) && !atomic_load(&lease->recovered) && !recovery_fence(0)) { atomic_store(&lease->security_unverified, 0); reply = "OK\n"; }
-                else recovery_pending = 1;
+                else { note_recovery_cause(2); recovery_pending = 1; }
                 atomic_store(&lease->actuator, 0);
             }
             (void)write_all(fd, reply, strlen(reply));
@@ -1223,7 +1285,7 @@ int adb_recovery_main(void) {
             if (managed && !hold && !atomic_load(&lease->recovering) && owner_actuator()) {
                 renewed = now_ms(); atomic_store(&lease->renewed, (unsigned)renewed);
                 if (!set_network(0) && !atomic_load(&lease->recovered)) reply = "OK\n";
-                else recovery_pending = 1;
+                else { note_recovery_cause(2); recovery_pending = 1; }
                 atomic_store(&lease->actuator, 0);
             }
             else if (hold) reply = "HELD\n";
@@ -1232,8 +1294,9 @@ int adb_recovery_main(void) {
             /* Recovery may also precede the first ARM, e.g. removal immediately after bootstrap. */
             {
                 memcpy(nonce, candidate, sizeof nonce); hold = 1;
+                note_recovery_cause(2);
                 if (!set_network(1)) { managed = 0; recovery_pending = 0; atomic_store(&lease->armed, 0); reply = "OK\n"; }
-                else recovery_pending = 1;
+                else { note_recovery_cause(2); recovery_pending = 1; }
             }
             (void)write_all(fd, reply, strlen(reply));
         } else if (sscanf(line, "SHELL %u %zu %c", &timeout, &bytes, &extra) == 2 && timeout >= 1 && timeout <= 180000 && bytes >= 1 && bytes <= COMMAND_LIMIT) {

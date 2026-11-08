@@ -329,6 +329,7 @@ object DiagReader {
         appendLine(profileLine(profile))
         appendLine(bootSecurityLine(SystemProps::get, Build.TYPE))
         val evdev = EvdevButtonClient.snapshot()
+        appendLine("[adb lease] ${io.panelassistant.android.panelassistant.LocalAdbLeaseDiagnosticHolder.summary()}")
         appendLine("[env] selinux=${PanelMetrics.shared.selinuxEnforce() ?: "?"} su=$su write_settings=${Settings.System.canWrite(ctx)} ${io.panelassistant.android.platform.AndroidDeviceName.of(ctx).diagnostic()} a11y=${a11yEnabled(ctx)} daemon=$daemon evdev=${evdev.state.name.lowercase()}/${evdev.mode?.name?.lowercase() ?: "none"} ledjni=${NativeLed.available()}")
         displaySizing?.let { appendLine(displaySizingLine(it, profile)) }
         // The renderer/Home Assistant line leads the health block deliberately: a pasted report whose
