@@ -95,7 +95,14 @@ test:
 	$(MAKE) --no-print-directory -k -j$(TEST_JOBS) --output-sync=target test-units || status=$$?; \
 	echo "helper unit tests: $$(( $$(date +%s) - started )) s, exit $$status"; exit $$status
 
-test-units: replacement-shard-check $(UNIT_RUNS)
+# With FUZZ_SECONDS > 0 the robustness runs (run-fuzz-*, below) join both phases: their drivers build
+# in test-binaries, and the runs come first in test-units because make starts prerequisites in order.
+# FUZZ_SECS is FUZZ_SECONDS as a plain decimal, so 00, 035 or +5 cannot reach libFuzzer unnormalized
+# (it reads -max_total_time=0 as no limit); anything that is not a whole number stops make.
+FUZZ_SECS = $(or $(shell expr '$(or $(FUZZ_SECONDS),0)' + 0 2>/dev/null | grep -Ex '[0-9]+'),$(error FUZZ_SECONDS must be a whole number of seconds, got '$(FUZZ_SECONDS)'))
+FUZZ_RUNS = $(if $(filter-out 0,$(FUZZ_SECS)),run-fuzz-parser run-fuzz-others)
+test-binaries: $(if $(FUZZ_RUNS),fuzz-binaries)
+test-units: $(FUZZ_RUNS) replacement-shard-check $(UNIT_RUNS)
 
 # A binary test: a fresh fixture root, then the binary.
 UNIT_BINARY_RUNS := $(filter-out $(REPLACEMENT_RUNS) run-adb-recovery run-adb-recovery-retirement run-replacement-lease run-replacement-identity run-version run-cdprelay-resource-test,$(UNIT_RUNS))
@@ -247,6 +254,31 @@ contract:
 # Sanitizer smoke: ASan+UBSan over the same CORE_SRCS (the script asks for the list).
 fuzz:
 	./fuzz/run.sh
+
+# Robustness tests inside `make test`, off unless FUZZ_SECONDS > 0 (CI sets it). The fuzz drivers build
+# in the test-binaries phase; two run slots then work beside the unit tests: the parser target gets the
+# whole budget, the other slot replays the deterministic parser corpus and then spends the budget on the
+# recovery parser (two thirds) and the CDP relay (one third). Every target fails on a sanitizer fault or
+# a rule check (fuzz/oracles.c). FUZZ_OUT keeps each target's evolved corpus between runs.
+FUZZ_SECONDS ?= 0
+FUZZ_OUT ?= $(abspath fuzz/build)
+FUZZ_FLAGS ?=
+fuzz_env = HAPANELD_FUZZ_OUT='$(FUZZ_OUT)$(2)' HAPANELD_FUZZ_PHASE=$(1)
+.PHONY: fuzz-binaries fuzz-build-smoke fuzz-build-parser fuzz-build-recovery fuzz-build-cdprelay run-fuzz-parser run-fuzz-others
+fuzz-binaries: fuzz-build-smoke fuzz-build-parser fuzz-build-recovery fuzz-build-cdprelay
+# The deterministic replay keeps its own output root: both parser drivers write record seeds at start.
+fuzz-build-smoke:
+	$(call fuzz_env,build,/smoke) ./fuzz/run.sh --target parser 0 >/dev/null
+fuzz-build-parser fuzz-build-recovery fuzz-build-cdprelay: fuzz-build-%:
+	$(call fuzz_env,build) ./fuzz/run.sh --target $* --libfuzzer >/dev/null
+run-fuzz-parser:
+	nice -n 10 env $(call fuzz_env,run) ./fuzz/run.sh --target parser --libfuzzer $(FUZZ_SECS) $(FUZZ_FLAGS)
+run-fuzz-others:
+	nice -n 10 env $(call fuzz_env,run,/smoke) ./fuzz/run.sh --target parser 0
+	nice -n 10 env $(call fuzz_env,run) ./fuzz/run.sh --target recovery --libfuzzer $(call fuzz_share,2) $(FUZZ_FLAGS)
+	nice -n 10 env $(call fuzz_env,run) ./fuzz/run.sh --target cdprelay --libfuzzer $(call fuzz_share,1) $(FUZZ_FLAGS)
+# $(1) thirds of the budget, at least one second: a share rounded down to 0 would be unbounded.
+fuzz_share = $$(( $(FUZZ_SECS) * $(1) / 3 > 0 ? $(FUZZ_SECS) * $(1) / 3 : 1 ))
 
 # Used by fuzz/run.sh to reuse the one source list.
 print-core:

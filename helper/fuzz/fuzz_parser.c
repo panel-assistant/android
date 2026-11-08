@@ -332,7 +332,7 @@ int main(int argc, char **argv) {
         "ZIGBEESTATE\n", "ZIGBEEHEALTH\n", "ZIGBEEROLE\n",
         "ZIGBEESTATE x\n", "ZIGBEEHEALTH /proc\n", "ZIGBEEROLE ;reboot\n",
         "GOV schedutil\n", "GOV \n", "GOV PERF;reboot\n", "GOV performance\n",
-        "STOP com.eWeLinkControlPanel\n", "STOP com.android.systemui\n", "STOP\n", "STOP ../../x\n",
+        "RELOAD com.android.systemui\n", "STOP com.eWeLinkControlPanel\n", "STOP com.android.systemui\n", "STOP\n", "STOP ../../x\n",
         "DISABLE com.eWeLinkControlPanel\n", "DISABLE android\n", "DISABLE\n",
         "ENABLE com.eWeLinkControlPanel\n", "ENABLE com.android.settings\n",
         "OVERLAY com.eWeLinkControlPanel deny\n", "OVERLAY com.android.systemui deny\n",

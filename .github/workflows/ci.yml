@@ -464,9 +464,10 @@ jobs:
           echo "host=$host" >> "$GITHUB_OUTPUT"
 
   # The root helper (helper/src/) is C, never touched by the Gradle build. This job is the only place
-  # it's compiler-checked and unit-tested — host-native (gcc), so it's fast and needs no NDK. The parser
-  # sanitizer smoke (helper/fuzz/run.sh) is deliberately NOT run here: it is deterministic rather than
-  # coverage-guided and is run locally when the parser, dispatch, or validators change.
+  # it's compiler-checked and unit-tested — host-native (gcc), so it's fast and needs no NDK. The unit
+  # tests also run the robustness tests (helper/fuzz): the deterministic parser corpus plus a bounded
+  # coverage-guided run of the command parser, the recovery endpoint parser and the CDP relay, each
+  # with sanitizers and rule checks, beside the unit targets. The evolved corpus is cached between runs.
   helper:
     name: Helper units
     needs: changes
@@ -484,17 +485,58 @@ jobs:
       # The helper takes its transaction lock under a root-owned parent and checks the
       # directory is owned by the calling user, which holds on a panel because the
       # daemon is root. Hosted runners are unprivileged, so the suite runs as root.
+      # Each run restores the newest corpus and saves its own, so coverage accumulates across runs.
+      - name: Restore robustness corpus
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: helper/fuzz/build/*/corpus
+          key: helper-fuzz-corpus-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: helper-fuzz-corpus-
+
+      # The helper takes its transaction lock under a root-owned parent and checks the
+      # directory is owned by the calling user, which holds on a panel because the
+      # daemon is root. Hosted runners are unprivileged, so the suite runs as root.
       - name: Unit tests
+        env:
+          FUZZ_SECONDS: ${{ vars.HELPER_FUZZ_SECONDS || '35' }}
+          RUN_NUMBER: ${{ github.run_number }}
         run: |
           trap 'sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE" || true' EXIT
+          # Coverage-guided runs need clang with libFuzzer; fail here rather than mid-suite.
+          printf 'int LLVMFuzzerTestOneInput(const char *d, unsigned long n) { (void)d; (void)n; return 0; }\n' > "$RUNNER_TEMP/probe.c"
+          clang-18 -fsanitize=fuzzer "$RUNNER_TEMP/probe.c" -o "$RUNNER_TEMP/probe"
+          # Below four CPUs the two fuzz slots starve the recovery tests' real deadlines, so a smaller
+          # machine (the private CI has two) runs units only; its nightly campaign fuzzes instead.
+          if [ "$(nproc)" -lt 4 ]; then
+            echo "::notice::$(nproc) CPUs: robustness fuzzing skipped in this step"
+            FUZZ_SECONDS=0
+          fi
+          # A new seed each run explores new paths; the run number reproduces it.
+          suite=(make -C helper test FUZZ_SECONDS="$FUZZ_SECONDS" CLANG=clang-18 FUZZ_FLAGS="-seed=$RUN_NUMBER")
           # The recovery daemon starts only when init sits at the cgroup root, as on a panel; a
           # systemd runner keeps init in /init.scope, so run the suite in its own PID and cgroup namespace.
           # Containers (the private CI) already put init at the root and may refuse new namespaces.
           if sudo unshare --pid --fork --mount-proc --cgroup true; then
-            sudo unshare --pid --fork --mount-proc --cgroup make -C helper test
+            sudo unshare --pid --fork --mount-proc --cgroup "${suite[@]}"
           else
-            sudo make -C helper test
+            sudo "${suite[@]}"
           fi
+
+      - name: Save robustness corpus
+        if: always()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: helper/fuzz/build/*/corpus
+          key: helper-fuzz-corpus-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      # A crash or rule-check input reproduces with helper/fuzz/run.sh --target <t> --replay <file>.
+      - name: Upload robustness failure inputs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: helper-fuzz-artifacts
+          path: helper/fuzz/build/*/artifacts
+          if-no-files-found: ignore
 
       - name: App↔daemon contract cross-check
         run: helper/test/contract-check.sh
