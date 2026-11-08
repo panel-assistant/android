@@ -24,7 +24,16 @@ NEW = '2' * 64
 THIRD = '3' * 64
 CASE_WAIT = 8
 ENSURE_TIMEOUT = 28
-DIRECT_CASES = tuple('locked-fresh,stale,matching,failed-open,unproven-open,foreign-owner,scan-error,concurrent,staggered,timeout-retry,malformed-custody,symlink-custody,fifo-custody,receipt-sync-fails'.split(','))
+DIRECT_CASES = tuple('locked-fresh,stale,matching,failed-open,unproven-open,foreign-owner,scan-error,concurrent,staggered,timeout-retry,malformed-custody,symlink-custody,fifo-custody,receipt-sync-fails,stage-owner,ensure-stage-owner,stage-matching,stage-short,stage-upper,stage-nested,stage-live'.split(','))
+# Pre-3.18 kernels swap names on rename-over: the replaced owner's exe then reads as the
+# launcher's stage name. Values: (path under the directory, unlinked, accepted).
+STAGED = {'stage-owner': ('.stage-' + '0123456789abcdef' * 2 + '/helper', True, True),
+          'ensure-stage-owner': ('.ensure-1234-7', True, True),
+          'stage-matching': ('.stage-' + 'fedcba9876543210' * 2 + '/helper', True, True),
+          'stage-short': ('.stage-' + 'a' * 31 + '/helper', True, False),
+          'stage-upper': ('.stage-' + 'A' * 32 + '/helper', True, False),
+          'stage-nested': ('.stage-' + 'a' * 32 + '/x/helper', True, False),
+          'stage-live': ('.stage-' + 'b' * 32 + '/helper', False, False)}
 EXTRA_CASES = tuple('source-bound,fresh,source-pinned,lost-ack,unsafe-target,publication-faults,reaper-failure,superseded,readiness-faults'.split(','))
 EXTRA_VARIANTS = {
     'source-bound': ('exact', 'overflow'),
@@ -386,6 +395,8 @@ else:
                 except OSError: return False
             wait(ready, 'ordinary fixture did not bind its isolated socket', seconds=5)
             return process, executable
+        # A displaced owner that the helper accepts may still be the READY endpoint.
+        accepted_stages = {str(live/name) + ' (deleted)' for name, unlinked, accepted in STAGED.values() if unlinked and accepted}
         def ready_proof(build=NEW):
             with socket.socket(socket.AF_UNIX) as s:
                 s.settimeout(5); s.connect('\0'+sock)
@@ -395,7 +406,7 @@ else:
                 assert identity, 'READY recovery endpoint lacks a stable process identity'
                 executable = Path('/proc')/str(peer_pid)/'exe'
                 reached = os.readlink(executable)
-                assert reached in (str(live/'helper'), str(live/'helper') + ' (deleted)'), 'READY recovery endpoint executes outside the fixed canonical recovery path'
+                assert reached in (str(live/'helper'), str(live/'helper') + ' (deleted)') or reached in accepted_stages, 'READY recovery endpoint executes outside the fixed canonical recovery path'
                 metadata = executable.stat()
                 assert metadata.st_uid == metadata.st_gid == 0 and metadata.st_mode & 0o7777 == 0o700 and metadata.st_nlink <= 1, 'READY recovery endpoint executable has unsafe root metadata'
                 s.sendall(b'STATUS\n'); response = line(s, 256)
@@ -486,7 +497,7 @@ else:
             ordinary = ordinary_start()[0] if leg == 'ensure' else None
             (p/'tcp').write_text('0: 00000000:15B3 00000000:0000 0A\n')
             (p/'tcp6').write_text(''); (p/'init.svc.adbd').write_text('running')
-            incumbent_build=NEW if case=='matching' else OLD
+            incumbent_build=NEW if case in ('matching','stage-matching') else OLD
             install(incumbent_build)
             if case in ('locked-fresh', 'malformed-custody', 'symlink-custody', 'fifo-custody'): install(NEW)
             if case=='locked-fresh':
@@ -531,6 +542,14 @@ else:
                 if case == 'foreign-owner':
                     (live/'helper').replace(foreign)
                     assert os.readlink(Path('/proc')/str(incumbent.pid)/'exe') == str(foreign), 'foreign-owner fixture did not move the live incumbent executable path'
+                if case in STAGED:
+                    name, unlinked, _ = STAGED[case]; staged = live/name
+                    staged.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                    (live/'helper').replace(staged)
+                    if unlinked:
+                        staged.unlink()
+                        for parent in staged.relative_to(live).parents[:-1]: (live/parent).rmdir()
+                    assert os.readlink(Path('/proc')/str(incumbent.pid)/'exe') == str(staged) + (' (deleted)' if unlinked else ''), 'stage fixture did not reproduce the swapped executable name'
                 assert request('ARM '+'a'*64)=='OK\n'
                 assert not opened(), 'ARM must close ADB under live recovery owner'
                 matching_before = ready_proof() if leg == 'ensure' and case == 'matching' else None
@@ -542,6 +561,7 @@ else:
                     wait(lambda:(p/'shell-pid').exists(),'old shell never executed')
                 children=Path(f'/proc/{incumbent.pid}/task/{incumbent.pid}/children').read_text().split()
                 if leg != 'ensure' or case != 'matching': install(NEW)
+                staged_foreign = case in STAGED and not STAGED[case][2]
                 if case=='failed-open': (p/'fail-open').touch()
                 contenders=[launch_contender(scan_error=case=='scan-error',hide_listener=case=='unproven-open',receipt_sync_error=case=='receipt-sync-fails') for _ in range(2 if case=='concurrent' else 1)]
                 if case in ('staggered', 'timeout-retry'):
@@ -567,10 +587,15 @@ else:
                         assert contenders[0].wait() == 0, 'matching ENSURE did not report readiness'
                         matching_after = ready_proof()
                         assert all(matching_after[0][key] == matching_before[0][key] for key in ('pid', 'start', 'dev', 'ino', 'sid')) and matching_after[1] == matching_before[1], 'matching ENSURE changed owner identity or managed/hold/security status'
-                elif case in ('failed-open','unproven-open','foreign-owner','receipt-sync-fails'):
+                elif case=='stage-matching':
+                    wait(lambda: contenders[0].poll() is not None or incumbent.poll() is not None,'stage matching launch did not finish')
+                    assert incumbent.poll() is None and NEW in status(), 'matching stage-named daemon replaced'
+                    assert not opened(), 'matching stage-named launch reopened managed ADB'
+                    if leg == 'ensure': assert contenders[0].wait() == 0, 'matching stage-named owner was not reported ready'
+                elif case in ('failed-open','unproven-open','foreign-owner','receipt-sync-fails') or staged_foreign:
                     wait(lambda: contenders[0].poll() is not None or incumbent.poll() is not None,'failed handoff did not finish')
                     assert incumbent.poll() is None and OLD in status(), 'refused handoff killed incumbent'
-                    if case=='foreign-owner': assert not opened(), 'foreign owner was sent RECOVER'
+                    if case=='foreign-owner' or staged_foreign: assert not opened(), 'foreign owner was sent RECOVER'
                     if case=='receipt-sync-fails': assert opened(), 'failed custody persistence must leave recovery open'
                     if case=='unproven-open': assert opened(), 'RECOVER must establish actual route while probe refuses publication'
                     if case=='failed-open':

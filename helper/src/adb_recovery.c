@@ -666,6 +666,31 @@ static int drain_retiring_inode(int directory, const struct stat *old) {
         unlinkat(directory, REPLACEMENT_RETIRING, 0) || fsync(directory))) result = -1;
     return result;
 }
+static int digits(const char **text, size_t limit) {
+    size_t count = 0;
+    while (count < limit && (*text)[count] >= '0' && (*text)[count] <= '9') count++;
+    *text += count;
+    return count > 0 && (**text < '0' || **text > '9');
+}
+/* The canonical image, or one a launcher's rename-over displaced. Pre-3.18 kernels swap
+ * names on rename, so the displaced owner reports the publisher's exclusive stage name:
+ * Panel Assistant's .stage-<32 hex>/helper or this helper's .ensure-<pid>-<sequence>. */
+static int recovery_image(const char *executable) {
+    size_t length = strlen(ADB_RECOVERY_DIRECTORY);
+    if (strncmp(executable, ADB_RECOVERY_DIRECTORY, length)) return 0;
+    const char *rest = executable + length;
+    if (!strcmp(rest, "/helper") || !strcmp(rest, "/helper (deleted)")) return 1;
+    if (!strncmp(rest, "/.stage-", 8)) {
+        rest += 8;
+        for (int i = 0; i < 32; i++, rest++)
+            if (!((*rest >= '0' && *rest <= '9') || (*rest >= 'a' && *rest <= 'f'))) return 0;
+        return !strcmp(rest, "/helper (deleted)");
+    }
+    if (strncmp(rest, "/.ensure-", 9)) return 0;
+    rest += 9;
+    if (!digits(&rest, 10) || *rest++ != '-' || !digits(&rest, 10)) return 0;
+    return !strcmp(rest, " (deleted)");
+}
 /* 1: already current; 0: safely retired; -1: refuse. RECOVER is supported by shipped daemons. */
 static int replace_incumbent(const struct sockaddr_un *address, socklen_t length, int directory) {
     int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0), process = -1, result = -1;
@@ -683,11 +708,7 @@ static int replace_incumbent(const struct sockaddr_un *address, socklen_t length
     ssize_t n = readlinkat(process, "exe", executable, sizeof executable - 1);
     if (n < 0) goto done;
     executable[n] = 0;
-    char canonical[PATH_MAX];
-    if (snprintf(canonical, sizeof canonical, "%s/helper", ADB_RECOVERY_DIRECTORY) >= (int)sizeof canonical) goto done;
-    size_t canonical_length = strlen(canonical);
-    if (strncmp(executable, canonical, canonical_length) ||
-        (executable[canonical_length] && strcmp(executable + canonical_length, " (deleted)"))) goto done;
+    if (!recovery_image(executable)) goto done;
     struct stat old, current; char state; unsigned long long started, checked;
     if (fstatat(process, "exe", &old, 0) || !S_ISREG(old.st_mode) || old.st_uid || old.st_gid ||
         (old.st_mode & 07777) != 0700 || old.st_nlink > 1 ||
@@ -775,20 +796,17 @@ static int ensure_status(long long deadline) {
     }
     struct ucred peer; socklen_t size = sizeof peer;
     if (getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &peer, &size) || peer.uid || peer.pid <= 1) goto done;
-    char path[64], executable[PATH_MAX], canonical[PATH_MAX];
+    char path[64], executable[PATH_MAX];
     snprintf(path, sizeof path, "/proc/%ld", (long)peer.pid);
     process = open(path, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
     if (process < 0) goto done;
     ssize_t n = readlinkat(process, "exe", executable, sizeof executable - 1);
     if (n < 0 || n == (ssize_t)sizeof executable - 1) goto done;
     executable[n] = 0;
-    int count = snprintf(canonical, sizeof canonical, "%s/helper", ADB_RECOVERY_DIRECTORY);
-    if (count < 0 || count >= (int)sizeof canonical) goto done;
     struct stat self_image, peer_image;
     int own_image = !stat("/proc/self/exe", &self_image) && !fstatat(process, "exe", &peer_image, 0) &&
         ensure_same(&self_image, &peer_image);
-    if (!own_image && (strncmp(executable, canonical, (size_t)count) ||
-        (executable[count] && strcmp(executable + count, " (deleted)")))) goto done;
+    if (!own_image && !recovery_image(executable)) goto done;
     struct stat image, pinned, reached; char state; unsigned long long started, checked;
     if (fstatat(process, "exe", &image, 0) || !S_ISREG(image.st_mode) || image.st_uid || image.st_gid ||
         (!own_image && (image.st_mode & 07777) != 0700) || (image.st_mode & 0022) || image.st_nlink > 1 ||

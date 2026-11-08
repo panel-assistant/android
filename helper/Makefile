@@ -73,8 +73,10 @@ REPLACEMENT_SHARDS := \
 	ensure:locked-fresh+stale: ensure:matching+concurrent: ensure:staggered: \
 	ensure:fresh+reaper-failure: ensure:lost-ack+source-pinned: ensure:source-bound: \
 	ensure:unsafe-target: ensure:publication-faults: \
+	ensure:stage-owner+ensure-stage-owner+stage-matching: ensure:stage-short+stage-upper+stage-nested+stage-live: \
 	direct:timeout-retry+staggered: direct:locked-fresh+stale+matching+failed-open+unproven-open+foreign-owner: \
-	direct:scan-error+concurrent+malformed-custody+symlink-custody+fifo-custody+receipt-sync-fails:
+	direct:scan-error+concurrent+malformed-custody+symlink-custody+fifo-custody+receipt-sync-fails: \
+	direct:stage-owner+ensure-stage-owner+stage-matching+stage-short+stage-upper+stage-nested+stage-live:
 comma := ,
 shard_field = $(word $(2),$(subst :, ,$(subst ::,: :,$(1)):))
 shard_name = replacement-$(subst :,-,$(patsubst %:,%,$(1)))
@@ -323,6 +325,7 @@ ENSURE_CASES_status := readiness-faults
 ENSURE_CASES_contender := superseded
 ENSURE_CASES_drain := timeout-retry
 ENSURE_CASES_receipt := receipt-sync-fails
+ENSURE_CASES_stage := stage-owner,ensure-stage-owner,stage-matching,stage-short,stage-upper,stage-nested,stage-live
 $(BUILD)/adb-ensure-%: $(BUILD)/adb-recovery-replacement Makefile
 	test -n '$(ENSURE_CASES_$*)'
 	printf '%s\n' '#!/bin/sh' 'RECOVERY_REPLACEMENT_LEGS=ensure RECOVERY_REPLACEMENT_CASES=$(ENSURE_CASES_$*) exec "$$(dirname "$$0")/adb-recovery-replacement"' > $@
