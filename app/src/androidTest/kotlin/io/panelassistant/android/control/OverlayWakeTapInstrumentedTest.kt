@@ -109,11 +109,13 @@ class OverlayWakeTapInstrumentedTest {
                 assertTrue("the initial wake path must be exercised", failedAttempt.await(2, TimeUnit.SECONDS))
                 // Failure is handled on the wake worker; allow later physical taps until it reopens.
                 val retryDeadline = SystemClock.uptimeMillis() + 2_000
-                while (retried.count != 0L && SystemClock.uptimeMillis() < retryDeadline) {
-                    tap(x, y)
+                // Stop once the retry has started: its disarm removes the wake window, and a tap racing that
+                // removal is dropped by Android (API 35 under load, 2026-11-08), so those taps need not be accepted.
+                while (attempts.get() < 2 && SystemClock.uptimeMillis() < retryDeadline) {
+                    tap(x, y, requireAccepted = false)
                     retried.await(20, TimeUnit.MILLISECONDS)
                 }
-                assertTrue("an exceptional wake must permit a later touch to retry", retried.await(0, TimeUnit.MILLISECONDS))
+                assertTrue("an exceptional wake must permit a later touch to retry", retried.await(2, TimeUnit.SECONDS))
                 instrumentation.waitForIdleSync()
 
                 assertEquals("only the failed wake and successful retry may run", 2, attempts.get())
@@ -169,9 +171,9 @@ class OverlayWakeTapInstrumentedTest {
         }
     }
 
-    private fun tap(x: Float, y: Float) {
+    private fun tap(x: Float, y: Float, requireAccepted: Boolean = true) {
         val down = SystemClock.uptimeMillis()
-        inject(MotionEvent.ACTION_DOWN, down, x, y)
+        inject(MotionEvent.ACTION_DOWN, down, x, y, requireAccepted)
         inject(MotionEvent.ACTION_UP, down, x, y)
     }
 
@@ -188,13 +190,13 @@ class OverlayWakeTapInstrumentedTest {
         }
     }
 
-    private fun inject(action: Int, down: Long, x: Float, y: Float) {
+    private fun inject(action: Int, down: Long, x: Float, y: Float, requireAccepted: Boolean = true) {
         val event = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, x, y, 0)
         event.source = InputDevice.SOURCE_TOUCHSCREEN
         try {
             // InputDispatcher may discard MOVE/UP after removal: the dashboard must still see zero.
             val accepted = instrumentation.uiAutomation.injectInputEvent(event, true)
-            if (action == MotionEvent.ACTION_DOWN) assertTrue("Android must accept the injected DOWN", accepted)
+            if (action == MotionEvent.ACTION_DOWN && requireAccepted) assertTrue("Android must accept the injected DOWN", accepted)
         } finally {
             event.recycle()
         }
