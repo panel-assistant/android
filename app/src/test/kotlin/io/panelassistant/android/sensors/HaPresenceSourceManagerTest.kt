@@ -746,6 +746,90 @@ class HaPresenceSourceManagerTest {
         owner.close()
     }
 
+    @Test fun `a chosen helper from another Area replaces the Area guess`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val discovery = FakePresenceTransport().apply { includeOtherAreaHelper = true }
+        val exact = FakeExactTransport(FakeExactConnection())
+        val aggregates = mutableListOf<HaPresenceAggregate>()
+        val (manager, owner) = manager(dispatcher, discovery, exact, aggregates, chosen = FakeChosen(HELPER))
+
+        manager.configure(request())
+        runCurrent()
+
+        val live = aggregates.last { it.phase == HaPresencePhase.LIVE }
+        assertEquals(setOf(HELPER), live.selectedEntityIds)
+        assertEquals(setOf(HELPER), live.discoveredEntityIds)
+        assertTrue(live.chosenSources)
+        assertEquals(setOf(HELPER), exact.subscriptions.single())
+        assertTrue(discovery.historyEntitySets.all { it == setOf(HELPER) })
+        manager.close()
+        owner.close()
+    }
+
+    @Test fun `a panel without an Area works with chosen sensors`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val discovery = FakePresenceTransport().apply {
+            includeOtherAreaHelper = true
+            registryPanelUnassigned = true
+            panelAreaAssigned = false
+        }
+        val exact = FakeExactTransport(FakeExactConnection())
+        val aggregates = mutableListOf<HaPresenceAggregate>()
+        val (manager, owner) = manager(dispatcher, discovery, exact, aggregates, chosen = FakeChosen(HELPER))
+
+        manager.configure(request())
+        runCurrent()
+
+        assertEquals(setOf(HELPER), aggregates.last { it.phase == HaPresencePhase.LIVE }.selectedEntityIds)
+        val prerequisite = async { manager.prerequisite() }
+        runCurrent()
+        assertTrue(prerequisite.await().eligible)
+        manager.close()
+        owner.close()
+    }
+
+    @Test fun `clearing the choice restores Area discovery`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val discovery = FakePresenceTransport().apply { includeOtherAreaHelper = true }
+        val exact = FakeExactTransport(FakeExactConnection(), FakeExactConnection())
+        val aggregates = mutableListOf<HaPresenceAggregate>()
+        val (manager, owner) = manager(dispatcher, discovery, exact, aggregates, chosen = FakeChosen(HELPER))
+        manager.configure(request())
+        runCurrent()
+        assertEquals(setOf(HELPER), aggregates.last { it.phase == HaPresencePhase.LIVE }.selectedEntityIds)
+
+        assertEquals(HaPresenceSourceUpdate.UPDATED, manager.setChosenSources(emptyList()))
+        runCurrent()
+
+        val live = aggregates.last { it.phase == HaPresencePhase.LIVE }
+        assertEquals(setOf(ENTITY), live.selectedEntityIds)
+        assertFalse(live.chosenSources)
+        assertEquals("Room", live.areaName)
+        manager.close()
+        owner.close()
+    }
+
+    @Test fun `a chosen sensor missing from Home Assistant is reported`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val discovery = FakePresenceTransport().apply { includeOtherAreaHelper = true }
+        val aggregates = mutableListOf<HaPresenceAggregate>()
+        val (manager, owner) = manager(
+            dispatcher, discovery, FakeExactTransport(FakeExactConnection()), aggregates,
+            chosen = FakeChosen(HELPER, "binary_sensor.gone"),
+        )
+        manager.configure(request())
+        runCurrent()
+
+        val live = aggregates.last { it.phase == HaPresencePhase.LIVE }
+        assertEquals(setOf(HELPER), live.selectedEntityIds)
+        assertEquals(setOf("binary_sensor.gone"), live.missingEntityIds)
+        val catalog = async { manager.sourceCatalog() }
+        runCurrent()
+        assertEquals(listOf("binary_sensor.gone"), catalog.await().missing)
+        manager.close()
+        owner.close()
+    }
+
     @Test fun `disabled manager owns no discovery stream or timer`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val discovery = FakePresenceTransport()
@@ -1001,13 +1085,22 @@ class HaPresenceSourceManagerTest {
         aggregates: MutableList<HaPresenceAggregate>,
         exclusions: HaPresenceExclusions? = null,
         panelAssistantEntryId: String? = PA_ENTRY,
+        chosen: HaPresenceChosenSources = HaPresenceChosenSources.NONE,
     ): Pair<HaPresenceSourceManager, HaExactEntityStreamOwner> {
         val sessionProvider = auth()
         val owner = exactOwner(dispatcher, exactTransport, sessionProvider)
         return HaPresenceSourceManager(
             this, sessionProvider, transport, owner, aggregates::add, dispatcher, ::epochMillis,
-            exclusions ?: FakeExclusions(), { panelAssistantEntryId },
+            exclusions ?: FakeExclusions(), { panelAssistantEntryId }, chosen,
         ) to owner
+    }
+
+    private class FakeChosen(vararg ids: String) : HaPresenceChosenSources {
+        val ids = ids.toMutableList()
+        override fun chosen(): List<String> = ids.toList()
+        override fun setChosen(entityIds: List<String>): Boolean {
+            ids.clear(); ids.addAll(entityIds); return true
+        }
     }
 
     private class FakeExclusions(
@@ -1092,6 +1185,8 @@ class HaPresenceSourceManagerTest {
         var registryAuthFailures = 0
         var includePanelActivity = false
         var includeSupportingActivity = false
+        var includeOtherAreaHelper = false
+        var registryPanelUnassigned = false
         var malformedEntityRegistry = false
         var historyTransportFailure = false
         var historyAuthFailures = 0
@@ -1121,6 +1216,12 @@ class HaPresenceSourceManagerTest {
                 states.put(state(SUPPORTING, "on").put("attributes", JSONObject()
                     .put("device_class", "occupancy").put("friendly_name", "Room is deserted")))
             }
+            if (includeOtherAreaHelper) {
+                entities.put(JSONObject().put("ei", HELPER).put("ai", "kitchen").put("pl", "group"))
+                states.put(state(HELPER, "off").put("attributes", JSONObject()
+                    .put("device_class", "occupancy").put("friendly_name", "Kitchen zone")))
+            }
+            if (registryPanelUnassigned) devices.getJSONObject(0).put("area_id", "")
             entityIds().forEachIndexed { index, id ->
                 val deviceId = "motion-device-$index"
                 devices.put(device(deviceId, "motion-$index"))
@@ -1130,7 +1231,8 @@ class HaPresenceSourceManagerTest {
             }
             return HaPresenceRegistrySnapshot(
                 JSONObject().put("result", devices),
-                JSONObject().put("result", JSONArray().put(JSONObject().put("area_id", areaId).put("name", areaName))),
+                JSONObject().put("result", JSONArray().put(JSONObject().put("area_id", areaId).put("name", areaName))
+                    .put(JSONObject().put("area_id", "kitchen").put("name", "Kitchen"))),
                 if (malformedEntityRegistry) JSONObject().put("result", JSONObject())
                 else JSONObject().put("result", JSONObject().put("entities", entities)),
                 states,
@@ -1197,6 +1299,7 @@ class HaPresenceSourceManagerTest {
     private companion object {
         const val ENTITY = "binary_sensor.room_motion"
         const val SELF = "binary_sensor.panel_proximity"
+        const val HELPER = "binary_sensor.kitchen_zone"
         const val PA_ENTRY = "01J00000000000000000000CCC"
         const val SUPPORTING = "binary_sensor.room_is_deserted"
         val OWNER = HaAuthSnapshot("https://ha.example", "access", "refresh", 1L, "client").stableOwner()

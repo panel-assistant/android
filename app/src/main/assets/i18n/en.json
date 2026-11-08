@@ -1094,6 +1094,170 @@
       "softMaxChars": 24,
       "hardMaxChars": 40
     },
+    "configure.auto_sleep.sensors_add": {
+      "text": "Add a sensor",
+      "sourceHash": "c3719757d0a8743516c909067acee8412b6dd73bf87b9f3e0e7e7bd06bc958a4",
+      "surface": "configure",
+      "context": "auto_sleep",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 16,
+      "hardMaxChars": 24
+    },
+    "configure.auto_sleep.sensors_add_placeholder": {
+      "text": "Add a sensor…",
+      "sourceHash": "c01bf6a5e947b21ddaa11d9c55f70a1c5a7a1008f4c99f648a4b151596ea9446",
+      "surface": "configure",
+      "context": "auto_sleep",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 16,
+      "hardMaxChars": 24
+    },
+    "configure.auto_sleep.sensors_automatic": {
+      "text": "Automatic: motion, occupancy and presence sensors in this panel’s Area.",
+      "sourceHash": "26feb6e1dd1692c1088699da59c69d419a4a560d9003d7b13d55fdaa0aa6a172",
+      "surface": "configure",
+      "context": "auto_sleep",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 85,
+      "hardMaxChars": 120
+    },
+    "configure.auto_sleep.sensors_automatic_button": {
+      "text": "Back to automatic",
+      "sourceHash": "0c2860d83d0aee5e24f2d2b0526f8c9cc50cb80afa7561f76d13e024268b7fd2",
+      "surface": "configure",
+      "context": "auto_sleep",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 20,
+      "hardMaxChars": 28
+    },
+    "configure.auto_sleep.sensors_chosen": {
+      "text": "Only the sensors you chose are used.",
+      "sourceHash": "9f5e510037a2a93562df4b14964a3f40acf684b214a4b21a0917aaec8f82f977",
+      "surface": "configure",
+      "context": "auto_sleep",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 43,
+      "hardMaxChars": 61
+    },
+    "configure.auto_sleep.sensors_heading": {
+      "text": "Activity sensors",
+      "sourceHash": "16a1447a97a8af410448f80ffaa142400203b1418cf79b08a267b0098fed5dae",
+      "surface": "configure",
+      "context": "auto_sleep",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 19,
+      "hardMaxChars": 27
+    },
+    "configure.auto_sleep.sensors_loading": {
+      "text": "Loading Home Assistant sensors…",
+      "sourceHash": "0f67f35d081bbb09480fce2cd2e130578f12eb44beea35b70135df3efcbbbb02",
+      "surface": "configure",
+      "context": "auto_sleep",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [
+        "Home Assistant"
+      ],
+      "softMaxChars": 37,
+      "hardMaxChars": 52
+    },
+    "configure.auto_sleep.sensors_missing": {
+      "text": "Not found in Home Assistant",
+      "sourceHash": "e97d16f2c8d31cd8979a414f4bdb414e15a640666bdfc3b38fb8e190e5d17afc",
+      "surface": "configure",
+      "context": "auto_sleep",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [
+        "Home Assistant"
+      ],
+      "softMaxChars": 32,
+      "hardMaxChars": 45
+    },
+    "configure.auto_sleep.sensors_no_area": {
+      "text": "No area",
+      "sourceHash": "3fd59f11b54e96933a2b02aa304ac4702497072e362651bddfe49cffc8ba393d",
+      "surface": "configure",
+      "context": "auto_sleep",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 16,
+      "hardMaxChars": 24
+    },
+    "configure.auto_sleep.sensors_remove": {
+      "text": "Remove",
+      "sourceHash": "c3812fc4acb861d5182fc2b8155f327f736fbe5e5eb86a7bd7afcb6dc5497282",
+      "surface": "configure",
+      "context": "auto_sleep",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 16,
+      "hardMaxChars": 24
+    },
+    "configure.auto_sleep.sensors_remove_label": {
+      "text": "Remove {name}",
+      "sourceHash": "e6a3c4a1250a6ad3f10faa22333e5e50a6ba78e5b28a3b26f5743d9f8c7ede93",
+      "surface": "configure",
+      "context": "auto_sleep",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [
+        "{name}"
+      ],
+      "frozen": [],
+      "softMaxChars": 16,
+      "hardMaxChars": 24
+    },
+    "configure.auto_sleep.sensors_save_failed": {
+      "text": "Could not save the sensor choice.",
+      "sourceHash": "8a6e7cb4d77b0e4c381253d461449d25d7661efa7f6144e59630b4cb3e8db0a4",
+      "surface": "configure",
+      "context": "auto_sleep",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 39,
+      "hardMaxChars": 56
+    },
+    "configure.auto_sleep.sensors_unavailable": {
+      "text": "The Home Assistant sensor list is unavailable.",
+      "sourceHash": "2fdb70ec1722643de3eab6b56b215c69b8e2227d7d3a3fe54e9f9de384f18a34",
+      "surface": "configure",
+      "context": "auto_sleep",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [
+        "Home Assistant"
+      ],
+      "softMaxChars": 55,
+      "hardMaxChars": 78
+    },
     "configure.auto_sleep.setup_proximity": {
       "text": "Set up proximity on panel",
       "sourceHash": "e2e988d28e2af97b8efe9904775644d54099e54fd770cc808cd5b2f20a597c9c",

@@ -7,6 +7,8 @@ import io.panelassistant.android.autoSleepExcludedEntityIds
 import io.panelassistant.android.autoSleepExclusionScope
 import io.panelassistant.android.dashboard.EntityFilterProtocol
 import io.panelassistant.android.setAutoSleepSourceIncludedIfScope
+import io.panelassistant.android.presenceHaSources
+import io.panelassistant.android.setPresenceHaSources
 import io.panelassistant.android.util.AddressFamilyPolicy
 import io.panelassistant.android.util.HaWebSocketClients
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
@@ -78,6 +80,10 @@ internal data class HaPresenceAggregate private constructor(
     val areaKey: String,
     val learnedLeaseMs: Long,
     val activityMarker: HaPresenceActivityMarker?,
+    /** True when the owner chose the sources; false for the automatic Area guess. */
+    val chosenSources: Boolean,
+    /** Owner-chosen entity ids that the latest Home Assistant snapshot did not contain. */
+    val missingEntityIds: Set<String>,
 ) {
     fun admits(snapshot: HaPresenceFeedSnapshot, epoch: Long, generation: Long): Boolean =
         controllerEpoch == epoch && managerGeneration == generation &&
@@ -103,13 +109,16 @@ internal data class HaPresenceAggregate private constructor(
             areaKey: String = "",
             learnedLeaseMs: Long = MIN_AUTO_SLEEP_LEASE_MS,
             activityMarker: HaPresenceActivityMarker? = null,
+            chosenSources: Boolean = false,
+            missingEntityIds: Set<String> = emptySet(),
         ) = HaPresenceAggregate(
             phase, detail, reconnectAttempt, controllerEpoch, managerGeneration,
             feedGeneration, feedRevision,
             Collections.unmodifiableMap(LinkedHashMap(finalStates)), hydrated,
             Collections.unmodifiableSet(LinkedHashSet(selectedEntityIds)),
             Collections.unmodifiableSet(LinkedHashSet(discoveredEntityIds)), areaName, areaKey,
-            learnedLeaseMs, activityMarker,
+            learnedLeaseMs, activityMarker, chosenSources,
+            Collections.unmodifiableSet(LinkedHashSet(missingEntityIds)),
         )
     }
 }
@@ -127,6 +136,8 @@ private data class HaPresenceResolution(
     val sourceKeys: Map<String, String>,
     val scope: String,
     val controllerEpoch: Long,
+    val chosenSources: Boolean = false,
+    val missingEntityIds: Set<String> = emptySet(),
 )
 
 internal enum class HaPresenceSourceUpdate { UPDATED, STALE, COMMIT_FAILED, UNAVAILABLE }
@@ -137,6 +148,31 @@ internal interface HaPresenceExclusions {
     /** Null means [expectedScope] is no longer the active HA installation. */
     fun setIncluded(expectedScope: String, areaId: String, entityId: String, included: Boolean): Boolean?
 }
+
+/** Owner-chosen sources. Empty means the automatic Area guess; any entry replaces it entirely. */
+internal interface HaPresenceChosenSources {
+    fun chosen(): List<String>
+    fun setChosen(entityIds: List<String>): Boolean
+
+    companion object {
+        val NONE = object : HaPresenceChosenSources {
+            override fun chosen() = emptyList<String>()
+            override fun setChosen(entityIds: List<String>) = false
+        }
+    }
+}
+
+private class ConfigHaPresenceChosenSources(private val config: Config) : HaPresenceChosenSources {
+    override fun chosen() = config.presenceHaSources()
+    override fun setChosen(entityIds: List<String>) = config.setPresenceHaSources(entityIds)
+}
+
+/** Picker rows plus the active choice, read from one registry snapshot. */
+internal data class HaPresenceSourceCatalog(
+    val chosen: List<String>,
+    val missing: List<String>,
+    val candidates: List<HaPresenceCandidate>,
+)
 
 private class ConfigHaPresenceExclusions(private val config: Config) : HaPresenceExclusions {
     override val scope: String get() = config.autoSleepExclusionScope()
@@ -223,6 +259,7 @@ internal class HaPresenceSourceManager(
     },
     /** The Panel Assistant entry the last `hello` named ([HaConnectionRoutes.panelAssistantEntryId]). */
     private val panelAssistantEntryId: () -> String? = { null },
+    private val chosenSources: HaPresenceChosenSources = HaPresenceChosenSources.NONE,
 ) : AutoCloseable {
     private class DiscoveryFailure(
         val code: String,
@@ -230,7 +267,12 @@ internal class HaPresenceSourceManager(
         val areaName: String = "",
     ) : Exception(code, cause)
 
-    private class NoCredibleSources(val detail: String, val areaName: String) : Exception(detail)
+    private class NoCredibleSources(
+        val detail: String,
+        val areaName: String,
+        val chosen: Boolean = false,
+        val missing: Set<String> = emptySet(),
+    ) : Exception(detail)
 
     constructor(
         scope: CoroutineScope,
@@ -247,6 +289,7 @@ internal class HaPresenceSourceManager(
         offerAggregate,
         exclusions = ConfigHaPresenceExclusions(config),
         panelAssistantEntryId = { HaConnectionRoutes.panelAssistantEntryId(config) },
+        chosenSources = ConfigHaPresenceChosenSources(config),
     )
 
     private val generation = AtomicLong()
@@ -324,6 +367,10 @@ internal class HaPresenceSourceManager(
             )
         } catch (error: Exception) {
             val unassigned = error.message?.contains("has no Area", ignoreCase = true) == true
+            // Owner-chosen sensors are named directly, so they need no panel Area.
+            if (unassigned && runCatching { chosenSources.chosen() }.getOrDefault(emptyList()).isNotEmpty()) {
+                return HaPanelAreaPrerequisite(HaPanelAreaPrerequisitePhase.ASSIGNED)
+            }
             HaPanelAreaPrerequisite(
                 if (unassigned) HaPanelAreaPrerequisitePhase.UNASSIGNED
                 else HaPanelAreaPrerequisitePhase.UNAVAILABLE,
@@ -384,6 +431,8 @@ internal class HaPresenceSourceManager(
         val target = synchronized(lock) {
             if (closed || !request.enabled) return HaPresenceSourceUpdate.UNAVAILABLE
             val current = selection ?: return HaPresenceSourceUpdate.UNAVAILABLE
+            // Area exclusions do not apply to owner-chosen sources; the owner removes one instead.
+            if (current.chosenSources) return HaPresenceSourceUpdate.UNAVAILABLE
             if (current.controllerEpoch != request.controllerEpoch) return HaPresenceSourceUpdate.STALE
             if (areaKey != current.areaKey) return HaPresenceSourceUpdate.STALE
             val entityId = current.sourceKeys.entries.firstOrNull { it.value == sourceKey }?.key
@@ -401,6 +450,36 @@ internal class HaPresenceSourceManager(
         val shouldRefresh = synchronized(lock) { !closed && request.enabled }
         if (shouldRefresh) runCatching(::refresh)
         return HaPresenceSourceUpdate.UPDATED
+    }
+
+    /** Replaces the owner's chosen sources (empty restores the Area guess) and rediscovers. */
+    fun setChosenSources(entityIds: List<String>): HaPresenceSourceUpdate {
+        val committed = runCatching { chosenSources.setChosen(entityIds) }.getOrDefault(false)
+        if (!committed) return HaPresenceSourceUpdate.COMMIT_FAILED
+        val shouldRefresh = synchronized(lock) { !closed && request.enabled }
+        if (shouldRefresh) runCatching(::refresh)
+        return HaPresenceSourceUpdate.UPDATED
+    }
+
+    /** One bounded registry read listing every presence-class binary_sensor for the owner's picker. */
+    suspend fun sourceCatalog(): HaPresenceSourceCatalog {
+        suspend fun read(force: Boolean): HaPresenceRegistrySnapshot {
+            val session = resolveSession(force)
+            return withContext(workerDispatcher) {
+                transport.registry(session.baseUrl, checkNotNull(session.accessToken))
+            }
+        }
+        val snapshot = try {
+            read(force = false)
+        } catch (rejected: HaAuthenticationException) {
+            read(force = true)
+        }
+        val candidates = HaPresenceProtocol.projectAllCandidates(
+            snapshot.devices, snapshot.areas, snapshot.entities, snapshot.states,
+        )
+        val chosen = chosenSources.chosen()
+        val known = candidates.mapTo(hashSetOf()) { it.entityId }
+        return HaPresenceSourceCatalog(chosen, chosen.filter { it !in known }, candidates)
     }
 
     fun configure(next: HaPresenceRequest) = configure(next, force = false)
@@ -491,7 +570,8 @@ internal class HaPresenceSourceManager(
             }
             synchronized(lock) { if (current(run, requested)) clearFailuresLocked() }
             if (kept != null && found.selectedEntityIds == kept.selectedEntityIds &&
-                found.discoveredEntityIds == kept.discoveredEntityIds && found.areaKey == kept.areaKey
+                found.discoveredEntityIds == kept.discoveredEntityIds && found.areaKey == kept.areaKey &&
+                found.missingEntityIds == kept.missingEntityIds
             ) {
                 synchronized(lock) { if (current(run, requested) && discoveryJob === job) selection = found }
                 return
@@ -517,7 +597,10 @@ internal class HaPresenceSourceManager(
             synchronized(lock) { if (current(run, requested)) clearFailuresLocked() }
             if (!diverged()) return
             reconcileStreamSources()
-            publish(run, HaPresenceAggregate(HaPresencePhase.NO_CREDIBLE_SOURCES, none.detail, areaName = none.areaName))
+            publish(run, HaPresenceAggregate(
+                HaPresencePhase.NO_CREDIBLE_SOURCES, none.detail, areaName = none.areaName,
+                chosenSources = none.chosen, missingEntityIds = none.missing,
+            ))
         } catch (rejected: HaAuthenticationException) {
             if (!diverged()) return
             noteFailure(run, requested)
@@ -560,6 +643,8 @@ internal class HaPresenceSourceManager(
             throw DiscoveryFailure("registry_transport", error)
         }
         val panelAssistantEntryIds = setOfNotNull(panelAssistantEntryId())
+        val chosen = chosenSources.chosen()
+        if (chosen.isNotEmpty()) return bootstrapChosen(run, requested, session, quiet, snapshot, chosen, panelAssistantEntryIds)
         // Preserve the independently resolvable panel Area in a projection failure. This keeps the
         // status coherent with the prerequisite endpoint and lets clients distinguish a terminal
         // failure from a stale result for a previously selected Area.
@@ -640,6 +725,64 @@ internal class HaPresenceSourceManager(
         )
     }
 
+    /**
+     * Owner-chosen sources replace the Area guess entirely: any Area, any platform (helpers included),
+     * no panel Area needed, and no history credibility gate. History only informs the lease.
+     */
+    private suspend fun bootstrapChosen(
+        run: Long,
+        requested: HaPresenceRequest,
+        session: HaApiSession,
+        quiet: Boolean,
+        snapshot: HaPresenceRegistrySnapshot,
+        chosen: List<String>,
+        panelAssistantEntryIds: Set<String>,
+    ): HaPresenceResolution {
+        // The panel Area is informational here; an unassigned panel still works with a choice.
+        val panelArea = runCatching {
+            HaPresenceProtocol.projectPanelArea(
+                snapshot.devices, snapshot.areas, panelAssistantEntryIds, requested.preferredAreaName,
+            )
+        }.getOrNull()
+        val areaName = panelArea?.name.orEmpty()
+        val projected = try {
+            HaPresenceProtocol.projectAllCandidates(snapshot.devices, snapshot.areas, snapshot.entities, snapshot.states)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            throw DiscoveryFailure("registry_projection", error, areaName)
+        }.associateBy(HaPresenceCandidate::entityId)
+        val present = chosen.filterTo(linkedSetOf()) { it in projected }
+        val missing = chosen.filterTo(linkedSetOf()) { it !in projected }
+        if (missing.isNotEmpty()) Log.w(TAG, "presence chosen sources missing from Home Assistant count=${missing.size}")
+        if (present.isEmpty()) throw NoCredibleSources("chosen_sources_missing", areaName, chosen = true, missing = missing)
+        if (!quiet) publish(run, HaPresenceAggregate(HaPresencePhase.LEARNING))
+        val transitions = try {
+            val end = epochMillis() / MINUTE_MS * MINUTE_MS
+            loadHistory(session, present, end - HISTORY_WINDOW_MS, end)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: DiscoveryFailure) {
+            throw DiscoveryFailure(error.code, error.cause ?: error, areaName)
+        } catch (rejected: HaAuthenticationException) {
+            throw rejected
+        } catch (error: Exception) {
+            throw DiscoveryFailure(historyFailureCode(error), error, areaName)
+        }
+        val learnedLease = present.maxOf { id ->
+            HaPresenceProtocol.evidence(transitions[id].orEmpty()).suggestedLeaseMs
+        }.coerceIn(MIN_AUTO_SLEEP_LEASE_MS, MAX_AUTO_SLEEP_LEASE_MS)
+        val labels = present.associateWithTo(linkedMapOf()) { projected.getValue(it).friendlyName }
+        val scope = exclusions.scope
+        val areaKey = presenceOpaqueKey(scope, "chosen", "")
+        val keys = present.associateWithTo(linkedMapOf()) { presenceOpaqueKey(scope, "chosen_source", "", it) }
+        return HaPresenceResolution(
+            present, present, labels, learnedLease, panelArea?.id.orEmpty(), areaName,
+            areaKey, keys, scope, requested.controllerEpoch,
+            chosenSources = true, missingEntityIds = missing,
+        )
+    }
+
     /** Single synchronous ingress used by the bound shared-owner observer and deterministic races. */
     internal fun acceptFeed(snapshot: HaPresenceFeedSnapshot) {
         synchronized(lock) {
@@ -665,6 +808,8 @@ internal class HaPresenceSourceManager(
                 learnedLeaseMs = currentSelection.learnedLeaseMs,
                 activityMarker = snapshot.lastOnActivity?.takeIf { it.entityId in ids },
                 reconnectAttempt = snapshot.reconnectAttempt,
+                chosenSources = currentSelection.chosenSources,
+                missingEntityIds = currentSelection.missingEntityIds,
             )
             emitLocked(next)
         }
@@ -777,6 +922,8 @@ internal class HaPresenceSourceManager(
                 learnedLeaseMs = currentSelection?.learnedLeaseMs ?: MIN_AUTO_SLEEP_LEASE_MS,
                 activityMarker = aggregate.activityMarker?.takeIf { !newManagerRun && it.entityId in ids },
                 reconnectAttempt = next.reconnectAttempt,
+                chosenSources = currentSelection?.chosenSources ?: next.chosenSources,
+                missingEntityIds = currentSelection?.missingEntityIds ?: next.missingEntityIds,
             )
             emitLocked(candidate)
         }
