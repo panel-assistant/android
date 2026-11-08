@@ -394,69 +394,69 @@
    "state": "machine-cross-checked"
   },
   "configure.auto_sleep.sensors_add": {
-   "text": "Add a sensor",
+   "text": "Sensor toevoegen",
    "sourceHash": "c3719757d0a8743516c909067acee8412b6dd73bf87b9f3e0e7e7bd06bc958a4",
-   "state": "english-fallback"
+   "state": "machine-cross-checked"
   },
   "configure.auto_sleep.sensors_add_placeholder": {
-   "text": "Add a sensor…",
+   "text": "Sensor toevoegen…",
    "sourceHash": "c01bf6a5e947b21ddaa11d9c55f70a1c5a7a1008f4c99f648a4b151596ea9446",
-   "state": "english-fallback"
+   "state": "machine-cross-checked"
   },
   "configure.auto_sleep.sensors_automatic": {
-   "text": "Automatic: motion, occupancy and presence sensors in this panel’s Area.",
+   "text": "Automatisch: bewegings-, bezettings- en aanwezigheidssensoren in de ruimte van dit paneel.",
    "sourceHash": "26feb6e1dd1692c1088699da59c69d419a4a560d9003d7b13d55fdaa0aa6a172",
-   "state": "english-fallback"
+   "state": "machine-cross-checked"
   },
   "configure.auto_sleep.sensors_automatic_button": {
-   "text": "Back to automatic",
+   "text": "Terug naar automatisch",
    "sourceHash": "0c2860d83d0aee5e24f2d2b0526f8c9cc50cb80afa7561f76d13e024268b7fd2",
-   "state": "english-fallback"
+   "state": "machine-cross-checked"
   },
   "configure.auto_sleep.sensors_chosen": {
-   "text": "Only the sensors you chose are used.",
+   "text": "Alleen de gekozen sensoren worden gebruikt.",
    "sourceHash": "9f5e510037a2a93562df4b14964a3f40acf684b214a4b21a0917aaec8f82f977",
-   "state": "english-fallback"
+   "state": "machine-cross-checked"
   },
   "configure.auto_sleep.sensors_heading": {
-   "text": "Activity sensors",
+   "text": "Activiteitssensoren",
    "sourceHash": "16a1447a97a8af410448f80ffaa142400203b1418cf79b08a267b0098fed5dae",
-   "state": "english-fallback"
+   "state": "machine-cross-checked"
   },
   "configure.auto_sleep.sensors_loading": {
-   "text": "Loading Home Assistant sensors…",
+   "text": "Home Assistant-sensoren laden…",
    "sourceHash": "0f67f35d081bbb09480fce2cd2e130578f12eb44beea35b70135df3efcbbbb02",
-   "state": "english-fallback"
+   "state": "machine-cross-checked"
   },
   "configure.auto_sleep.sensors_missing": {
-   "text": "Not found in Home Assistant",
+   "text": "Niet gevonden in Home Assistant",
    "sourceHash": "e97d16f2c8d31cd8979a414f4bdb414e15a640666bdfc3b38fb8e190e5d17afc",
-   "state": "english-fallback"
+   "state": "machine-cross-checked"
   },
   "configure.auto_sleep.sensors_no_area": {
-   "text": "No area",
+   "text": "Geen ruimte",
    "sourceHash": "3fd59f11b54e96933a2b02aa304ac4702497072e362651bddfe49cffc8ba393d",
-   "state": "english-fallback"
+   "state": "machine-cross-checked"
   },
   "configure.auto_sleep.sensors_remove": {
-   "text": "Remove",
+   "text": "Verwijderen",
    "sourceHash": "c3812fc4acb861d5182fc2b8155f327f736fbe5e5eb86a7bd7afcb6dc5497282",
-   "state": "english-fallback"
+   "state": "machine-cross-checked"
   },
   "configure.auto_sleep.sensors_remove_label": {
-   "text": "Remove {name}",
+   "text": "{name} verwijderen",
    "sourceHash": "e6a3c4a1250a6ad3f10faa22333e5e50a6ba78e5b28a3b26f5743d9f8c7ede93",
-   "state": "english-fallback"
+   "state": "machine-cross-checked"
   },
   "configure.auto_sleep.sensors_save_failed": {
-   "text": "Could not save the sensor choice.",
+   "text": "De sensorkeuze kon niet worden opgeslagen.",
    "sourceHash": "8a6e7cb4d77b0e4c381253d461449d25d7661efa7f6144e59630b4cb3e8db0a4",
-   "state": "english-fallback"
+   "state": "machine-cross-checked"
   },
   "configure.auto_sleep.sensors_unavailable": {
-   "text": "The Home Assistant sensor list is unavailable.",
+   "text": "De lijst met Home Assistant-sensoren is niet beschikbaar.",
    "sourceHash": "2fdb70ec1722643de3eab6b56b215c69b8e2227d7d3a3fe54e9f9de384f18a34",
-   "state": "english-fallback"
+   "state": "machine-cross-checked"
   },
   "configure.auto_sleep.source_lanes_shown": {
    "text": "{count} bronbanen worden weergegeven.",
@@ -10989,29 +10989,29 @@
    "state": "machine-cross-checked"
   },
   "configure.enum.presence_mode.automatic": {
-   "text": "Automatic",
+   "text": "Automatisch",
    "sourceHash": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
-   "state": "english-fallback"
+   "state": "machine-cross-checked"
   },
   "configure.enum.presence_mode.home_assistant": {
-   "text": "Home Assistant device",
+   "text": "Home Assistant-apparaat",
    "sourceHash": "0e7822ccc39d40e601271e0a49edbfca5d441f5e6be7a5f018d362664b6c63be",
-   "state": "english-fallback"
+   "state": "machine-cross-checked"
   },
   "configure.enum.presence_mode.manual": {
-   "text": "Manual",
+   "text": "Handmatig",
    "sourceHash": "b0b9fe24ffa9629125bdc59b122f80d605ab604eb1b74485c2f2ecfde26576ae",
-   "state": "english-fallback"
+   "state": "machine-cross-checked"
   },
   "configure.enum.presence_mode.hybrid": {
-   "text": "Hybrid",
+   "text": "Hybride",
    "sourceHash": "6c67dc13f83949fe089ca86225b136b5f40ac5268ebf92fbefe45f1f94e8064b",
-   "state": "english-fallback"
+   "state": "machine-cross-checked"
   },
   "configure.enum.presence_mode.off": {
-   "text": "Off",
+   "text": "Uit",
    "sourceHash": "ca7981b46ecf2c1787b6d76d81d9fd7fa0ca95842e2fcc2a452869891a9334d1",
-   "state": "english-fallback"
+   "state": "machine-cross-checked"
   },
   "configure.enum.camera_resolution.1080p": {
    "text": "1080p (Full HD)",
@@ -11959,9 +11959,9 @@
    "state": "machine-cross-checked"
   },
   "configure.proximity.setup.learning": {
-   "text": "Learning from everyday touches; setup is optional",
+   "text": "Leert van dagelijkse aanrakingen; instellen is optioneel",
    "sourceHash": "6bdb563b7598b760041ba87ad31015e408b6b83eb2a2b7d5a79725271ef02865",
-   "state": "english-fallback"
+   "state": "machine-cross-checked"
   },
   "dashboard.camera.action.misdeclared_profile": {
    "text": "het profiel geeft een camera op die dit board niet biedt; corrigeer hardware.camera in het profiel",
@@ -12029,19 +12029,19 @@
    "state": "machine-cross-checked"
   },
   "settings.presence_mode.help": {
-   "text": "How the panel knows someone is nearby. Touching the screen always counts as someone being there.\n\n- **Automatic** learns the proximity sensor from your touches.\n- **Home Assistant device** uses presence devices in the panel's Home Assistant area. With no usable device it falls back to the touch delay.\n- **Manual** uses the readings you record with the calibration wizard.\n- **Hybrid** starts from the wizard readings and keeps learning from touches.\n- **Off** uses no presence; auto-sleep turns the screen off after the touch delay.",
+   "text": "Hoe het paneel merkt dat iemand in de buurt is. Het scherm aanraken telt altijd als aanwezigheid.\n\n- **Automatisch** kalibreert de nabijheidssensor op basis van je aanrakingen.\n- **Home Assistant-apparaat** gebruikt aanwezigheidsapparaten in de Home Assistant-ruimte van het paneel. Zonder bruikbaar apparaat geldt de wachttijd na aanraking.\n- **Handmatig** gebruikt de metingen die je met de kalibratiewizard vastlegt.\n- **Hybride** begint met de wizardmetingen en blijft leren van aanrakingen.\n- **Uit** gebruikt geen aanwezigheid; automatisch slapen schakelt het scherm uit na de wachttijd na aanraking.",
    "sourceHash": "29f58d54686b32bedf4ae556bb9c514cce2051c80216e2d801ee321db3bf8741",
-   "state": "english-fallback"
+   "state": "machine-cross-checked"
   },
   "settings.presence_mode.label": {
-   "text": "Presence",
+   "text": "Aanwezigheid",
    "sourceHash": "d6b3e8c828d3742089ed59ebbfd89492ec2ce0bc89a19294cae52a6ac233b244",
-   "state": "english-fallback"
+   "state": "machine-cross-checked"
   },
   "settings.presence_mode.summary": {
-   "text": "How the panel tells that someone is nearby.",
+   "text": "Hoe het paneel merkt dat iemand in de buurt is.",
    "sourceHash": "237dd010ba3255b755bbfbf406c792b8965cdb630aaf68867e83188bd2421e3f",
-   "state": "english-fallback"
+   "state": "machine-cross-checked"
   },
   "configure.proximity.setup.stage.wave_baseline": {
    "text": "Startpositie voor handzwaai controleren",
@@ -12229,9 +12229,9 @@
    "state": "machine-cross-checked"
   },
   "settings.auto_sleep_touch_delay_seconds.help": {
-   "text": "When Presence is Off, or Home Assistant device has no usable device, switch the screen fully off after this many seconds without a touch.",
+   "text": "Aanwezigheid Uit of geen bruikbaar Home Assistant-apparaat: het scherm gaat volledig uit na dit aantal seconden zonder aanraking.",
    "sourceHash": "754ff4d9a8ed0b627c9067527d343515102816904199b50efc97091db15a46d5",
-   "state": "english-fallback"
+   "state": "machine-cross-checked"
   },
   "settings.auto_sleep_touch_delay_seconds.summary": {
    "text": "Aantal seconden zonder aanraking voordat het scherm uitschakelt.",
@@ -12296,6 +12296,21 @@
   "install.approval.expired": {
    "text": "Niet gestart: het is niet op tijd op het paneel goedgekeurd. Er is niets gewijzigd.",
    "sourceHash": "e07cad6b74d46511394598dd94d73f230e86d71c2c4e5ede5891d53694ce85b1",
+   "state": "machine-cross-checked"
+  },
+  "shell.runtime.ha_network_echo_evidence": {
+   "text": "p95 {p95Ms} ms, {missCount} van {probeCount} netwerkcontroles zonder antwoord in {burstCount} meetreeksen",
+   "sourceHash": "e0be4e0f11a38e2bb80f14fc572e87f6c58ed19239d135c9ab19a13748b4b00c",
+   "state": "machine-cross-checked"
+  },
+  "shell.runtime.ha_network_echo_no_reply": {
+   "text": "geen antwoord, {missCount} van {probeCount} netwerkcontroles zonder antwoord in {burstCount} meetreeksen",
+   "sourceHash": "bdd1a4e418c8f95e7f9470f012c6f1497656821a6ea2ce4df4051d7f2ed97362",
+   "state": "machine-cross-checked"
+  },
+  "shell.runtime.ha_network_with_evidence": {
+   "text": "{verdict}; {evidence}",
+   "sourceHash": "df42587b95447408d7bf60f413e8cb0921c3523565e128b86c4c07893776ae37",
    "state": "machine-cross-checked"
   }
  }

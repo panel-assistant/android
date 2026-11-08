@@ -167,12 +167,7 @@ class StringsTest {
     @Test fun `page locale changes only when the complete Settings surface is promoted`() {
         // Source-text reason: loads the shipped i18n catalogues as input data.
         val source = SourceCatalogue.parse(File("src/main/assets/i18n/en.json").readText())
-        // Keys awaiting their translation pass are treated as reviewed here, so this proves the promotion
-        // rule rather than the current translation backlog.
-        val promotedJson = DEFERRED_PRESENCE_KEYS.fold(File("src/main/assets/i18n/de.json").readText()) { json, key ->
-            Regex("(\"" + Regex.escape(key) + "\": \\{[^}]*\"state\": )\"english-fallback\"")
-                .replace(json) { it.groupValues[1] + "\"machine-cross-checked\"" }
-        }
+        val promotedJson = File("src/main/assets/i18n/de.json").readText()
         val draftJson = promotedJson.replace("\"state\": \"machine-cross-checked\"", "\"state\": \"machine-draft\"")
         val partial = TargetCatalogue.parse(
             draftJson.replaceFirst("\"state\": \"machine-draft\"", "\"state\": \"machine-cross-checked\""),
@@ -193,8 +188,8 @@ class StringsTest {
         assertEquals(listOf("de"), Strings(source, complete).languages(setOf("settings.")))
         assertEquals(listOf("de", "en"), Strings(source, complete).languages(setOf("profiles.")))
         assertEquals(
-            "new echo evidence retains English until its separate translation pass",
-            listOf("de", "en"),
+            "the translated shell surface uses only German",
+            listOf("de"),
             Strings(source, complete).languages(setOf("shell.")),
         )
         val promotedKey = partial.strings.values.single { it.state == TranslationState.MACHINE_CROSS_CHECKED }.key
