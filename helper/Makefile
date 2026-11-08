@@ -90,7 +90,9 @@ UNIT_RUNS := $(REPLACEMENT_RUNS) run-adb-recovery run-uninstall-supervisor run-a
 
 .PHONY: replacement-shard-check $(UNIT_RUNS)
 test:
-	$(MAKE) --no-print-directory -k -j$(TEST_JOBS) --output-sync=target test-units
+	@started=$$(date +%s); status=0; \
+	$(MAKE) --no-print-directory -k -j$(TEST_JOBS) --output-sync=target test-units || status=$$?; \
+	echo "helper unit tests: $$(( $$(date +%s) - started )) s, exit $$status"; exit $$status
 
 test-units: replacement-shard-check $(UNIT_RUNS)
 
