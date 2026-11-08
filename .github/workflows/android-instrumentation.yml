@@ -111,6 +111,13 @@ jobs:
             local qemu; qemu="$(timeout 10 adb -s "$ANDROID_SERIAL" shell getprop ro.kernel.qemu | tr -d "\r")" || return $?; test "$qemu" = 1 || return 1;
             timeout 20 adb -s "$ANDROID_SERIAL" "$@";
             };
+            clear_app_data() {
+            local output status=0;
+            output="$(adb shell pm clear "$1" 2>&1)" || status=$?;
+            printf "pm clear %s (exit %s):\n%s\n" "$1" "$status" "$output";
+            test "$status" -eq 0;
+            test "$(printf "%s" "$output" | tr -d "\r")" = Success;
+            };
             launcher_anr_preflight() {
             local label="$1" windows anrs;
             [[ "$ANDROID_SERIAL" =~ ^emulator-[0-9]+$ ]] || return 1;
@@ -158,8 +165,8 @@ jobs:
             test "$(adb shell getprop ro.kernel.qemu | tr -d "\r")" = 1;
             adb shell am force-stop io.panelassistant.android;
             adb shell am force-stop io.panelassistant.android.test;
-            cleared="$(adb shell pm clear io.panelassistant.android | tr -d "\r")"; test "$cleared" = Success;
-            cleared="$(adb shell pm clear io.panelassistant.android.test | tr -d "\r")"; test "$cleared" = Success;
+            clear_app_data io.panelassistant.android;
+            clear_app_data io.panelassistant.android.test;
             trap "adb shell appops set io.panelassistant.android SYSTEM_ALERT_WINDOW default" EXIT;
             adb shell appops set io.panelassistant.android SYSTEM_ALERT_WINDOW allow;
             if [ "${{ matrix.api-level }}" -ge 29 ]; then home_preflight; fi;
@@ -182,14 +189,14 @@ jobs:
             adb shell ip -4 addr;
             adb shell ip link;
             run_one io.panelassistant.android.ClonedDiscoveryInstrumentedTest cloned-discovery 180;
-            test "$(adb shell pm clear io.panelassistant.android | tr -d "\r")" = Success;
-            test "$(adb shell pm clear io.panelassistant.android.test | tr -d "\r")" = Success;
+            clear_app_data io.panelassistant.android;
+            clear_app_data io.panelassistant.android.test;
             run_one io.panelassistant.android.ScheduledInstallInstrumentedTest scheduled-install 150;
             for method in urlWithoutTokenShowsPhysicalSignIn entityLearningWithoutTokenStillShowsPhysicalSignIn configuredTokenWaitsForTheUnansweredSetupQuestion; do
             adb shell am force-stop io.panelassistant.android;
             adb shell am force-stop io.panelassistant.android.test;
-            test "$(adb shell pm clear io.panelassistant.android | tr -d "\r")" = Success;
-            test "$(adb shell pm clear io.panelassistant.android.test | tr -d "\r")" = Success;
+            clear_app_data io.panelassistant.android;
+            clear_app_data io.panelassistant.android.test;
             run_one "io.panelassistant.android.FirstRunSignInInstrumentedTest#$method" "first-run-sign-in-$method" 150;
             done'
 
@@ -242,3 +249,17 @@ jobs:
           test "$status" -eq 0
           if grep -Eq 'FAILURES!!!|Process crashed|INSTRUMENTATION_FAILED|shortMsg=|No tests found' "$log"; then exit 1; fi
           grep -Eq '^OK \(12 tests\)[[:space:]]*$' "$log"
+
+      - name: Show connected devices on failure
+        if: failure()
+        run: adb devices -l
+
+      - name: Upload emulator crash reports and instrumentation logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: android-instrumentation-diagnostics-api-${{ matrix.api-level }}
+          path: |
+            /tmp/android-runner/emu-crash-*.db
+            ${{ runner.temp }}/*.log
+          if-no-files-found: warn
