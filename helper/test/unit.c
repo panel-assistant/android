@@ -1112,6 +1112,10 @@ static void test_sysctl_execution_results(void) {
     sysexec_stub_fail_run("monkey -p", 256);
     dispatch_reply("RELOAD com.example.app", out, sizeof out);
     CHECK(strcmp(out, "ERR\n") == 0, "RELOAD reports relaunch failure (got '%s')\n", out);
+    // RELOAD force-stops its target first, so it refuses a critical package as STOP does.
+    sysexec_stub_reset();
+    dispatch_reply("RELOAD com.android.systemui", out, sizeof out);
+    CHECK(strcmp(out, "ERR\n") == 0, "RELOAD refuses a critical package (got '%s')\n", out);
 
     // Read verbs distinguish valid state from a pipe/open/exit failure.
     sysexec_stub_reset();

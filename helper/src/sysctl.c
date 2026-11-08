@@ -54,7 +54,7 @@ static int command_exited_with(int status, int code) {
 
 // Force-stop + relaunch a dashboard app (root via this daemon's su domain).
 static int reload_pkg(const char *pkg) {
-    if (!valid_pkg(pkg)) return -1;
+    if (!valid_pkg(pkg) || is_critical_pkg(pkg)) return -1;
     uint64_t deadline = framework_deadline();
     const char *const stop[] = { "am", "force-stop", pkg, NULL };
     if (!command_ok(sysexec_run_argv_timeout("/system/bin/am", stop, 1, framework_remaining(deadline), NULL))) return -1;
