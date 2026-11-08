@@ -1,4 +1,5 @@
 #define _GNU_SOURCE
+#include "test_tmp.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -17,13 +18,13 @@
 #include "sha256.h"
 #include "version.h"
 
-#define LIVE "/tmp/.hapaneld-helper-live-test"
-#define STAGE "/tmp/.hapaneld-helper-live-test.new"
-#define PREVIOUS "/tmp/.hapaneld-helper-live-test.previous"
-#define LIVE_LINK "/tmp/.hapaneld-helper-live-test.link"
-#define OWNER "/tmp/.hapaneld-guard-db-test/.owner.lock"
-#define BOOT "/tmp/.hapaneld-guard-db-test.boot-id"
-#define REPLACEMENT "/tmp/.hapaneld-guard-db-test/replacement.v1"
+#define LIVE HAPANELD_TEST_TMP "/.hapaneld-helper-live-test"
+#define STAGE HAPANELD_TEST_TMP "/.hapaneld-helper-live-test.new"
+#define PREVIOUS HAPANELD_TEST_TMP "/.hapaneld-helper-live-test.previous"
+#define LIVE_LINK HAPANELD_TEST_TMP "/.hapaneld-helper-live-test.link"
+#define OWNER HAPANELD_TEST_TMP "/.hapaneld-guard-db-test/.owner.lock"
+#define BOOT HAPANELD_TEST_TMP "/.hapaneld-guard-db-test.boot-id"
+#define REPLACEMENT HAPANELD_TEST_TMP "/.hapaneld-guard-db-test/replacement.v1"
 #define NONCE "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
 #define NEW_BUILD "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
 

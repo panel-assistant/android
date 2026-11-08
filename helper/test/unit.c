@@ -6,6 +6,7 @@
 //
 // A clean run prints "UNIT OK" and exits 0; any failed assertion prints the case and exits 1.
 #define _GNU_SOURCE
+#include "test_tmp.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/input.h>
@@ -1170,8 +1171,8 @@ static void test_sysctl_execution_results(void) {
     // Legacy pathname INSTALL remains protocol-compatible but fails closed without opening the
     // caller-selected path. INSTALLGC is an idempotent compatibility acknowledgement only.
     const char *install = "INSTALL /data/user/0/io.panelassistant.android/cache/update.apk";
-    const char *install_dir = "/tmp/.hapaneld-helper-test";
-    const char *install_stage = "/tmp/.hapaneld-helper-test/hapaneld-install.apk";
+    const char *install_dir = HAPANELD_TEST_TMP "/.hapaneld-helper-test";
+    const char *install_stage = HAPANELD_TEST_TMP "/.hapaneld-helper-test/hapaneld-install.apk";
     unlink(install_stage);
     rmdir(install_dir);
     sysexec_stub_reset();
@@ -1193,7 +1194,7 @@ static void test_sysctl_execution_results(void) {
     // exact declared length reaches root-owned staging. Block pm install so the staged bytes can be
     // inspected before terminal cleanup.
     const char *stream_stage = install_stage;
-    const char *symlink_target = "/tmp/hapaneld-helper-install-stream-target";
+    const char *symlink_target = HAPANELD_TEST_TMP "/hapaneld-helper-install-stream-target";
     const char payload[] = { 0x50, 0x4b, 0x03, 0x04, 0x7f };
     unlink(stream_stage);
     sysexec_stub_reset();
@@ -2004,7 +2005,7 @@ static void test_dead_subscriber_on_broadcast_releases_grab(void) {
     input_init();
     sysexec_stub_reset();
     evdev_open_ok = 1; evdev_grab_ok = 1;
-    snprintf(evdev_fixture, sizeof evdev_fixture, "/tmp/.hapaneld-evdev-fixture-%ld", (long)getpid());
+    snprintf(evdev_fixture, sizeof evdev_fixture, HAPANELD_TEST_TMP "/.hapaneld-evdev-fixture-%ld", (long)getpid());
     (void)unlink(evdev_fixture);
     CHECK(mkfifo(evdev_fixture, 0600) == 0, "create evdev FIFO fixture\n");
     int feed = __real_open(evdev_fixture, O_RDWR | O_CLOEXEC);

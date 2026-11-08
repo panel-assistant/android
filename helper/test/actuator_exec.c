@@ -2,6 +2,7 @@
 // Only execve's Android destinations are mapped to real host shell fixtures. Their two-second
 // self-completion bounds the broken-base proof even if the caller selects an unbounded primitive.
 #define _GNU_SOURCE
+#include "test_tmp.h"
 #include "guard_maintenance.h"
 #include "server.h"
 
@@ -262,7 +263,7 @@ static unsigned long install(enum fixture next, const char *expected) {
         strstr(observed->commands[0], "pm install -r -d ") == observed->commands[0],
         "stream install reports only its adjudicated result after invoking PackageManager once");
     CHECK(conn_active() == MAX_CONN - 1, "stream install returns its reserved connection slot");
-    CHECK(access("/tmp/.hapaneld-helper-test/hapaneld-install.apk", F_OK) != 0 && errno == ENOENT,
+    CHECK(access(HAPANELD_TEST_TMP "/.hapaneld-helper-test/hapaneld-install.apk", F_OK) != 0 && errno == ENOENT,
         "stream install removes its staged APK after success or timeout");
     check_cleanup();
     return now_ms() - began;

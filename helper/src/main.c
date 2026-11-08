@@ -71,8 +71,9 @@
 #define REPLACEMENT_RETIRE_DELAY_MS 50
 #endif
 #ifdef HAPANELD_TEST
-#define APP_HELPER_LIVE "/tmp/.hapaneld-helper-live-test"
-#define APP_HELPER_STAGE "/tmp/.hapaneld-helper-live-test.new"
+#include "test_tmp.h"
+#define APP_HELPER_LIVE HAPANELD_TEST_TMP "/.hapaneld-helper-live-test"
+#define APP_HELPER_STAGE HAPANELD_TEST_TMP "/.hapaneld-helper-live-test.new"
 #else
 #define APP_HELPER_LIVE "/data/local/hapaneld-helper"
 #define APP_HELPER_STAGE "/data/local/.hapaneld-helper.new"

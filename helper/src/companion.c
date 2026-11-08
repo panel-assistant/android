@@ -22,8 +22,9 @@
 #define COMPANION_MINIMAL "io.homeassistant.companion.android.minimal"
 
 #ifdef HAPANELD_TEST
-#define DATA_PARENT        "/tmp/.hapaneld-companion-test/data/user/0"
-#define STAGE_PARENT       "/tmp"
+#include "test_tmp.h"
+#define DATA_PARENT        HAPANELD_TEST_TMP "/.hapaneld-companion-test/data/user/0"
+#define STAGE_PARENT       HAPANELD_TEST_TMP
 #define STAGE_DIR_NAME     ".hapaneld-companion-stage-test"
 #else
 #define DATA_PARENT        "/data/user/0"
