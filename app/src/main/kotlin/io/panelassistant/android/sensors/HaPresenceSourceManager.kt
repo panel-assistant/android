@@ -336,6 +336,9 @@ internal class HaPresenceSourceManager(
     suspend fun prerequisite(
         preferredAreaName: String = "",
     ): HaPanelAreaPrerequisite {
+        // The signed-in session that read the registry; a chosen-sensor admission without an Area still
+        // carries it, so the Configure save can prove the answer belongs to the current connection.
+        var readOwner: io.panelassistant.android.HaAuthOwner? = null
         return try {
             suspend fun resolveAndRead(force: Boolean): Pair<HaApiSession, HaPanelAreaRegistrySnapshot> {
                 val session = resolveSession(force)
@@ -349,6 +352,7 @@ internal class HaPresenceSourceManager(
             } catch (rejected: HaAuthenticationException) {
                 resolveAndRead(force = true)
             }
+            readOwner = session.owner
             val area = HaPresenceProtocol.projectPanelArea(
                 snapshot.devices,
                 snapshot.areas,
@@ -368,8 +372,9 @@ internal class HaPresenceSourceManager(
         } catch (error: Exception) {
             val unassigned = error.message?.contains("has no Area", ignoreCase = true) == true
             // Owner-chosen sensors are named directly, so they need no panel Area.
-            if (unassigned && runCatching { chosenSources.chosen() }.getOrDefault(emptyList()).isNotEmpty()) {
-                return HaPanelAreaPrerequisite(HaPanelAreaPrerequisitePhase.ASSIGNED)
+            val owner = readOwner
+            if (unassigned && owner != null && runCatching { chosenSources.chosen() }.getOrDefault(emptyList()).isNotEmpty()) {
+                return HaPanelAreaPrerequisite(HaPanelAreaPrerequisitePhase.ASSIGNED, authOwner = owner)
             }
             HaPanelAreaPrerequisite(
                 if (unassigned) HaPanelAreaPrerequisitePhase.UNASSIGNED

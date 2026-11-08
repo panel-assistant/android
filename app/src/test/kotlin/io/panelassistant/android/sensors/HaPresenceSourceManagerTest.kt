@@ -783,7 +783,10 @@ class HaPresenceSourceManagerTest {
         assertEquals(setOf(HELPER), aggregates.last { it.phase == HaPresencePhase.LIVE }.selectedEntityIds)
         val prerequisite = async { manager.prerequisite() }
         runCurrent()
-        assertTrue(prerequisite.await().eligible)
+        val admitted = prerequisite.await()
+        assertTrue(admitted.eligible)
+        // The Configure save admits auto-sleep only with the session that answered; without it, it reports stale.
+        assertEquals(OWNER, admitted.authOwner)
         manager.close()
         owner.close()
     }

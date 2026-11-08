@@ -218,7 +218,16 @@ internal class ProximityCalibrationRuntime(
     /** Moves the engine to the mode's calibration when it differs materially from the running one. */
     private fun adopt(now: Long) {
         if (view.active || saving) return
-        val next = effective(appliedMode) ?: return
+        val next = effective(appliedMode)
+        if (next == null) {
+            // The selected mode has nothing to run (Manual with no setup or profile calibration): stop the
+            // calibration another mode adopted rather than keep it under a mode that never chose it.
+            if (adopted == null && view.calibration == null) return
+            adopted = null
+            view = engine.reset(null, now)
+            reportGate.reset()
+            return
+        }
         val current = adopted
         if (current != null && !materiallyDifferent(current, next)) return
         adopted = next

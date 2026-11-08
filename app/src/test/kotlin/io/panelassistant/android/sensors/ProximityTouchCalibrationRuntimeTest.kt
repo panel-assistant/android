@@ -117,5 +117,12 @@ class ProximityTouchCalibrationRuntimeTest {
         mode = PresenceMode.AUTOMATIC
         runtime.observe(37f, 500_000, sparseReporting = false)
         assertTrue(runtime.isLearnedSignal())
+        // Back to Manual with no setup or profile calibration: the touch-learned model must stop running.
+        mode = PresenceMode.MANUAL
+        val manual = runtime.observe(37f, 500_250, sparseReporting = false)
+        assertFalse(runtime.isLearnedSignal())
+        assertEquals(null, manual.near)
+        runtime.observe(37f, 500_500, sparseReporting = false)
+        assertEquals("calibration_required", JSONObject(runtime.statusJson()).getString("state"))
     }
 }
