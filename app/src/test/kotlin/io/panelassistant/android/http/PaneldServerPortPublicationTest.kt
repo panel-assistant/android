@@ -13,6 +13,9 @@ import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.URL
 import javax.jmdns.JmDNS
+import javax.jmdns.ServiceInfo
+import javax.jmdns.ServiceListener
+import javax.jmdns.ServiceTypeListener
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -28,10 +31,17 @@ class PaneldServerPortPublicationTest {
         PaneldListenerPortTest.withDefaultPortLock {
             PortRig().use { rig ->
                 val name = "port-publication-${ProcessHandle.current().pid()}"
+                val advertisements = mutableListOf<Advertisement>()
                 val advertiser = MdnsAdvertiser(
                     ContextWrapper(null), rig.config, runtimePanelId = name,
                     runtimeFriendlyName = "Port publication", acquireMulticastLock = { {} },
                     discoveryId = { "port-publication" },
+                    // Observe the production registration boundary directly: multicast convergence is
+                    // exercised by the responder tests and must not time this server callback proof.
+                    createDns = { address, _ -> RegistrationDns { info ->
+                        advertisements += Advertisement(info.type, info.name, info.port, address.hostAddress, rig.reconstructedPort())
+                        if (info.port != 8888) assertHttp(info.port)
+                    } },
                 )
                 val published = mutableListOf<Pair<Set<String>, Int>>()
                 rig.onReconfigure { keys ->
@@ -45,7 +55,7 @@ class PaneldServerPortPublicationTest {
                     occupiedDefault.bind(InetSocketAddress("127.0.0.1", 8888))
                     try {
                         advertiser.start("127.0.0.1")
-                        assertAdvertised(name, 8888)
+                        assertAdvertised(advertisements, name, listOf(8888))
                         val started = runCatching { rig.server.start() }
                         assertTrue("The actual server must start after collision: ${started.exceptionOrNull()}", started.isSuccess)
                         val initialPort = rig.socketPort()
@@ -55,7 +65,7 @@ class PaneldServerPortPublicationTest {
                         assertTrue("Initial startup must not rebuild its own owner", published.isEmpty())
                         // The service calls ensureStarted after server.start, consuming the persisted port.
                         advertiser.ensureStarted()
-                        assertAdvertised(name, initialPort)
+                        assertAdvertised(advertisements, name, listOf(8888, initialPort))
 
                         // IPv4-specific HTTP can coexist with this IPv6 socket. Opening HTTP to ::
                         // must collide with it and choose a new real connector during security rebind.
@@ -68,7 +78,7 @@ class PaneldServerPortPublicationTest {
                             assertHttp(reboundPort)
                             assertEquals(reboundPort, rig.reconstructedPort())
                             assertEquals(listOf(setOf("http_port") to reboundPort), published)
-                            assertAdvertised(name, reboundPort)
+                            assertAdvertised(advertisements, name, listOf(8888, initialPort, reboundPort))
                         }
                     } finally {
                         advertiser.stop()
@@ -154,17 +164,43 @@ class PaneldServerPortPublicationTest {
                 assertEquals(StubEndpoints.GONE_BODY, connection.errorStream.bufferedReader().use { it.readText() })
             } finally { connection.disconnect() }
         }
-        fun assertAdvertised(name: String, expectedPort: Int) {
-            JmDNS.create(InetAddress.getByName("127.0.0.1"), "port-publication-browser").use { browser ->
-                val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(12)
-                var observed: javax.jmdns.ServiceInfo? = null
-                while (System.nanoTime() < deadline) {
-                    observed = browser.list(Config.MDNS_SERVICE_TYPE, 1_000).firstOrNull { it.name == name && it.port == expectedPort }
-                    if (observed != null) break
-                }
-                assertTrue("No advertisement for $name:$expectedPort", observed != null)
-                assertEquals(listOf("127.0.0.1"), observed!!.inet4Addresses.map { it.hostAddress })
-            }
+        fun assertAdvertised(advertisements: List<Advertisement>, name: String, ports: List<Int>) {
+            assertEquals(ports.map { Advertisement(Config.MDNS_SERVICE_TYPE, name, it, "127.0.0.1", it) }, advertisements)
         }
+    }
+
+    private data class Advertisement(val type: String, val name: String, val port: Int, val address: String, val durablePort: Int)
+
+    /** Only the transport is substituted; MdnsAdvertiser builds and registers the real ServiceInfo. */
+    private class RegistrationDns(private val registered: (ServiceInfo) -> Unit) : JmDNS() {
+        private var currentDelegate: Delegate? = null
+        override fun registerService(info: ServiceInfo) = registered(info)
+        override fun setDelegate(value: Delegate?): Delegate? = currentDelegate.also { currentDelegate = value }
+        override fun getDelegate(): Delegate? = currentDelegate
+        override fun addServiceListener(type: String, listener: ServiceListener) = Unit
+        override fun removeServiceListener(type: String, listener: ServiceListener) = Unit
+        override fun unregisterAllServices() = Unit
+        override fun close() = Unit
+        override fun getName(): String = error("Unexpected responder query")
+        override fun getHostName(): String = error("Unexpected responder query")
+        override fun getInetAddress(): InetAddress = error("Unexpected responder query")
+        override fun getInterface(): InetAddress = error("Unexpected responder query")
+        override fun getServiceInfo(type: String, name: String): ServiceInfo = error("Unexpected responder query")
+        override fun getServiceInfo(type: String, name: String, timeout: Long): ServiceInfo = error("Unexpected responder query")
+        override fun getServiceInfo(type: String, name: String, persistent: Boolean): ServiceInfo = error("Unexpected responder query")
+        override fun getServiceInfo(type: String, name: String, persistent: Boolean, timeout: Long): ServiceInfo = error("Unexpected responder query")
+        override fun requestServiceInfo(type: String, name: String): Unit = error("Unexpected responder query")
+        override fun requestServiceInfo(type: String, name: String, persistent: Boolean): Unit = error("Unexpected responder query")
+        override fun requestServiceInfo(type: String, name: String, timeout: Long): Unit = error("Unexpected responder query")
+        override fun requestServiceInfo(type: String, name: String, persistent: Boolean, timeout: Long): Unit = error("Unexpected responder query")
+        override fun addServiceTypeListener(listener: ServiceTypeListener): Unit = error("Unexpected responder query")
+        override fun removeServiceTypeListener(listener: ServiceTypeListener): Unit = error("Unexpected responder query")
+        override fun unregisterService(info: ServiceInfo): Unit = error("Unexpected responder query")
+        override fun registerServiceType(type: String): Boolean = error("Unexpected responder query")
+        override fun printServices(): Unit = error("Unexpected responder query")
+        override fun list(type: String): Array<ServiceInfo> = error("Unexpected responder query")
+        override fun list(type: String, timeout: Long): Array<ServiceInfo> = error("Unexpected responder query")
+        override fun listBySubtype(type: String): Map<String, Array<ServiceInfo>> = error("Unexpected responder query")
+        override fun listBySubtype(type: String, timeout: Long): Map<String, Array<ServiceInfo>> = error("Unexpected responder query")
     }
 }
