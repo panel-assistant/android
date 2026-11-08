@@ -32,15 +32,17 @@ class AutoSleepSettingsTest {
         assertEquals(presence.options, presence.ha?.facts?.options?.map { it.code })
 
         val ranged = Capabilities(hasProximity = true, hasRangedProximity = true)
-        val binary = Capabilities(hasProximity = true)
+        // Not yet proved ranged (an Android HAL before its first reading, or a near/far sensor).
+        val unproven = Capabilities(hasProximity = true)
         val none = Capabilities()
         assertEquals(presence.options, presence.optionsFor(ranged))
-        assertEquals(listOf("home_assistant", "manual", "off"), presence.optionsFor(binary))
+        assertEquals("a restore before the first reading must not refuse Automatic", presence.options, presence.optionsFor(unproven))
         assertEquals(listOf("home_assistant", "off"), presence.optionsFor(none))
         assertEquals("automatic", presence.defaultFor(ranged))
-        assertEquals("manual", presence.defaultFor(binary))
+        assertEquals("automatic", presence.defaultFor(unproven))
         assertEquals("home_assistant", presence.defaultFor(none))
-        assertFalse(presence.canApplyValue("automatic", binary))
+        assertTrue(presence.canApplyValue("automatic", unproven))
+        assertFalse(presence.canApplyValue("automatic", none))
         assertFalse(SettingsRegistry.isRetired("presence_mode"))
         assertTrue(SettingsRegistry.isRetired("auto_sleep_source"))
     }

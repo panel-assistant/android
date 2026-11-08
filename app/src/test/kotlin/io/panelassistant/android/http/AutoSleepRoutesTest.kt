@@ -99,7 +99,7 @@ class AutoSleepRoutesTest {
         assertEquals(HttpStatusCode.Forbidden, client.get("/api/v1/auto-sleep/presence-sources") {
             header(HttpHeaders.Origin, "https://elsewhere.invalid")
         }.status)
-        suspend fun choose(body: String) = client.post("/api/v1/auto-sleep/presence-sources") {
+        suspend fun choose(body: String) = client.post("/api/v1/auto-sleep/presence-sources/choose") {
             header(HttpHeaders.ContentType, "application/json")
             setBody(body)
         }

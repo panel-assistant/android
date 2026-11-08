@@ -350,10 +350,12 @@ object SettingsRegistry {
             tier = Tier.BASIC, summary = "How the panel tells that someone is nearby.",
             label = "Presence", default = PRESENCE_OPTIONS.first().code, scope = Scope.DEVICE,
             liveApply = true, options = PRESENCE_OPTIONS.map { it.code },
-            // Learning from touches needs a sensor that reports distance; Manual only needs a sensor.
+            // Every proximity mode needs a sensor. Whether it reports distance is only known after its first
+            // readings, so a restore or a fresh install must not refuse Automatic for that; a near/far sensor
+            // in Automatic or Hybrid simply keeps its setup or profile calibration, as Manual does.
             optionRequires = mapOf(
-                "automatic" to { caps: Capabilities -> caps.hasRangedProximity },
-                "hybrid" to { caps: Capabilities -> caps.hasRangedProximity },
+                "automatic" to { caps: Capabilities -> caps.hasProximity },
+                "hybrid" to { caps: Capabilities -> caps.hasProximity },
                 "manual" to { caps: Capabilities -> caps.hasProximity },
             ),
             derivedDefault = ::presenceModeDefault,
@@ -1268,15 +1270,12 @@ object SettingsRegistry {
             ?.takeIf { it.ha != null }
 }
 
+/** Any proximity sensor starts in Automatic; with none, presence comes from Home Assistant. */
+internal fun presenceModeDefault(caps: Capabilities): String = if (caps.hasProximity) "automatic" else "home_assistant"
+
 /** Fresh defaults use the same resolved navigation presence as Native-mode admission. A catalog-backed
  * panel with neither Recents nor buttons gets the swipe-revealed bar whatever its firmware claims; unknown
  * hardware must not be mistaken for measured absence. Stored choices are handled by Config. */
-/** Ranged sensors learn from touches, a plain sensor uses the wizard, and no sensor leaves Home Assistant. */
-internal fun presenceModeDefault(caps: Capabilities): String = when {
-    caps.hasRangedProximity -> "automatic"
-    caps.hasProximity -> "manual"
-    else -> "home_assistant"
-}
 
 internal fun navbarModeDefault(caps: Capabilities): String {
     if (caps.hasNativeNavbar) return "Native"

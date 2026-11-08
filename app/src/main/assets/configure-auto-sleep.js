@@ -349,7 +349,7 @@
     cfg.autoSleepPresenceSourcesSaving = true;
     cfg.autoSleepPresenceSourcesError = "";
     rerenderPresenceSources();
-    window.PaneldTransport.request("auto_sleep.set_presence_sources", { entity_ids: ids }).then(function (reply) {
+    window.PaneldTransport.request("auto_sleep.presence_sources.choose", { entity_ids: ids }).then(function (reply) {
       if (reply.outcome !== "applied") throw new Error(String(reply.code || reply.outcome));
       cfg.autoSleepPresenceSourcesSaving = false;
       cfg.autoSleepPresenceSources = null;

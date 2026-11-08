@@ -673,7 +673,9 @@
     "/api/v1/auto-sleep/presence-sources": {
       "get": { "summary": "List Home Assistant presence sensors and the owner's chosen auto-sleep sources", "description": "Returns every motion, occupancy and presence binary_sensor in Home Assistant with its area, device class and platform, plus the chosen list and the mode (automatic or chosen). Browser requests must pass same-origin Fetch Metadata admission; headerless LAN automation remains supported.", "tags": ["display"],
         "responses": { "200": { "description": "mode, chosen (entity_id, name, area_name, missing), missing entity ids and candidates (entity_id, name, area_name, device_class, platform)" }, "403": { "description": "Cross-origin or unverifiable browser request refused" }, "409": { "description": "Home Assistant sources are unavailable" } }
-      },
+      }
+    },
+    "/api/v1/auto-sleep/presence-sources/choose": {
       "post": { "summary": "Choose the auto-sleep presence sensors", "description": "Persists an ordered list of binary_sensor entity ids from any area, helpers included. Any choice replaces the automatic Area guess; an empty list returns to automatic Area discovery.", "tags": ["display"],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["entity_ids"], "properties": { "entity_ids": { "type": "array", "maxItems": 16, "items": { "type": "string", "pattern": "^binary_sensor\\.[a-z0-9_]+$" } } } } } } },
         "responses": { "200": { "description": "Choice saved and source rediscovery started" }, "400": { "description": "Malformed request" }, "409": { "description": "Auto-sleep runtime unavailable" }, "500": { "description": "Durable state commit failed" } }

@@ -325,6 +325,7 @@ internal class ManageDoorTest : PanelRuntimeRig() {
             "auto_brightness", "auto_brightness.history", "auto_brightness.sources", "auto_brightness.source",
             "auto_brightness.reset", "auto_brightness.resume",
             "auto_sleep", "auto_sleep.history", "auto_sleep.prerequisite", "auto_sleep.source",
+            "auto_sleep.presence_sources", "auto_sleep.presence_sources.choose",
             "voice.pipelines", "voice.microphone", "voice.wake_words", "voice.wake_words.set", "restore",
         )
         const val FLOOR_MS = 300L

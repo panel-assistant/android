@@ -76,7 +76,7 @@ internal fun Route.autoSleepRoutes(
             ?: return@get call.respondText("activity sources are unavailable\n", status = HttpStatusCode.Conflict)
         call.respondText(presenceSourcesJson(catalog), ContentType.Application.Json)
     }
-    post("/auto-sleep/presence-sources") {
+    post("/auto-sleep/presence-sources/choose") {
         val obj = receiveJson(call, false) ?: return@post
         val raw = obj.opt("entity_ids") as? JSONArray
         val ids = raw?.let { array -> (0 until array.length()).map { array.opt(it) as? String ?: "" } }

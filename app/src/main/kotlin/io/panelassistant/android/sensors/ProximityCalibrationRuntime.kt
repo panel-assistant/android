@@ -230,7 +230,8 @@ internal class ProximityCalibrationRuntime(
     private fun effective(mode: PresenceMode): ProximityCalibrationEngine.Calibration? = when (mode) {
         PresenceMode.MANUAL -> wizard ?: baseline
         PresenceMode.HYBRID -> learnedCalibration(wizard) ?: wizard ?: baseline
-        PresenceMode.AUTOMATIC -> learnedCalibration(null) ?: baseline
+        // Until touches qualify, and always on a near/far source, a saved setup is better than nothing.
+        PresenceMode.AUTOMATIC -> learnedCalibration(null) ?: wizard ?: baseline
         // Presence comes from elsewhere; the panel's own sensor keeps its best calibration for the entity and waves.
         PresenceMode.HOME_ASSISTANT, PresenceMode.OFF -> wizard ?: learnedCalibration(null) ?: baseline
     }
