@@ -428,3 +428,6 @@ int sysexec_capture_gfxinfo(const char *package, char *output, size_t capacity, 
 
 // No-exec socket/fuzz fixtures interpose the fixed ordinary recovery operation.
 int __wrap_adb_recovery_ensure(void) { ensure_calls++; return ensure_result; }
+
+void sysexec_set_lifecycle_owner(int enabled) { (void)enabled; }
+int sysexec_reap_pending(void) { return 0; }

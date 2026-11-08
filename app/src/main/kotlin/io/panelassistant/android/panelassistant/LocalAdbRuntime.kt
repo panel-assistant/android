@@ -9,7 +9,6 @@ import io.panelassistant.android.control.Su
 import io.panelassistant.android.platform.Daemon
 import io.panelassistant.android.util.HelperClient
 import io.panelassistant.android.util.helperAssetName
-import io.panelassistant.android.util.openRootAbstractSocket
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -31,6 +30,14 @@ internal interface LocalAdbEndpoint {
     fun state(): LocalAdbState?
     fun arm(nonce: String): Boolean
     fun beat(nonce: String): Boolean
+    fun arm(nonce: String, submit: (() -> Unit) -> Boolean): Boolean {
+        var armed = false
+        return submit { armed = arm(nonce) } && armed
+    }
+    fun beat(nonce: String, submit: (() -> Unit) -> Boolean): Boolean {
+        var renewed = false
+        return submit { renewed = beat(nonce) } && renewed
+    }
     fun recover(nonce: String, submit: (() -> Unit) -> Boolean = { it(); true }): Boolean?
     fun shell(command: ByteArray, timeoutMs: Int, submit: (() -> Unit) -> Boolean): JSONObject?
 }
@@ -61,7 +68,7 @@ internal class LocalAdbRuntime(
 
     // A structural su refusal need not hide a compatible running ordinary helper. This short read-only
     // capability check runs per PA hello; the eventual action independently admits its carrying socket.
-    override fun offered(): Boolean = !rootKnownUnusable() || endpoint.state() != null || daemon.supportsAdbRecoveryEnsure()
+    override fun offered(): Boolean = !rootKnownUnusable() || endpoint.state() != null || daemon.supportsAdbRecovery()
 
     override fun session(token: String, granted: Boolean) {
         val (current, fresh, retainExistingLease) = RemoteDebugSecurityTransitionGate.withLock {
@@ -78,14 +85,22 @@ internal class LocalAdbRuntime(
             try { effects.withLock {
                 if (generation.get() != current) return@withLock
                 if (!granted) {
-                    if (!hardened() && endpoint.state() != null) transition { generation.get() == current && !hardened() && endpoint.recover(fresh) == true }
+                    if (!hardened() && endpoint.state() != null) endpoint.recover(fresh) { write ->
+                        RemoteDebugSecurityTransitionGate.withLock {
+                            generation.get() == current && !hardened() && transition { write(); true }
+                        }
+                    }
                     publish()
                     return@withLock
                 }
                 val state = currentDaemon()
                 if (generation.get() == current && state != null && healthy()) {
                     leaseOperation = "arm"
-                    transition { generation.get() == current && endpoint.arm(fresh).also { if (it) leaseDiagnostics.arm() else leaseDiagnostics.skip("arm_false", "arm") } }
+                    endpoint.arm(fresh) { write ->
+                        RemoteDebugSecurityTransitionGate.withLock {
+                            generation.get() == current && transition { write(); true }
+                        }
+                    }.also { if (it) leaseDiagnostics.arm() else leaseDiagnostics.skip("arm_false", "arm") }
                     leaseOperation = "publish"
                     publish()
                     onClosed()
@@ -108,14 +123,20 @@ internal class LocalAdbRuntime(
                             val state = if (granted) currentDaemon() else endpoint.state()
                             if (state != null && !state.managed && !state.recoveryHold && granted) {
                                 leaseOperation = "arm"
-                                transition { generation.get() == current && endpoint.arm(fresh).also { if (it) leaseDiagnostics.arm() else leaseDiagnostics.skip("arm_false", "arm") } }
+                                endpoint.arm(fresh) { write ->
+                                    RemoteDebugSecurityTransitionGate.withLock {
+                                        generation.get() == current && transition { write(); true }
+                                    }
+                                }.also { if (it) leaseDiagnostics.arm() else leaseDiagnostics.skip("arm_false", "arm") }
                                 leaseOperation = "publish"
                                 publish()
                                 onClosed()
                             }
                             else if (state != null) {
                                 leaseOperation = "beat"
-                                if (endpoint.beat(fresh)) leaseDiagnostics.beat() else leaseDiagnostics.skip("beat_false", "beat")
+                                if (endpoint.beat(fresh) { write -> RemoteDebugSecurityTransitionGate.withLock {
+                                    if (generation.get() == current && nonce == fresh) { write(); true } else false
+                                } }) leaseDiagnostics.beat() else leaseDiagnostics.skip("beat_false", "beat")
                             } else leaseDiagnostics.skip("state_unavailable")
                             leaseOperation = "publish"
                             publish()
@@ -130,7 +151,7 @@ internal class LocalAdbRuntime(
         }
     }
 
-    /** Startup proves an open recovery route before retiring a different-build owner. */
+    /** Main recovery becomes available only after the canonical helper passes capability admission. */
     private fun currentDaemon(): LocalAdbState? {
         var state = endpoint.state()
         if (state == null || state.buildId != BuildConfig.HELPER_BUILD_ID) {
@@ -237,14 +258,14 @@ internal class LocalAdbRuntime(
     }
 
     companion object {
-        fun create(context: Context, scope: CoroutineScope, config: Config, daemon: Daemon = HelperClient): LocalAdbRuntime {
+        fun create(context: Context, scope: CoroutineScope, config: Config, daemon: Daemon = HelperClient, dispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.IO): LocalAdbRuntime {
             val staging = LocalAdbAsset(context)
             val main = android.os.Handler(android.os.Looper.getMainLooper())
             val leaseDiagnostics = LocalAdbLeaseDiagnostics()
             LocalAdbLeaseDiagnosticHolder.install(leaseDiagnostics)
-            return LocalAdbRuntime(scope, RootLocalAdbEndpoint(), { config.hardenedSecurityEnabled }, staging::prepare, {
-                daemon.ensureAdbRecovery()
-            }, authorize = { payload, pending, admitted ->
+            return LocalAdbRuntime(scope, RootLocalAdbEndpoint(daemon), { config.hardenedSecurityEnabled }, staging::prepare, {
+                daemon.supportsAdbRecovery()
+            }, dispatcher = dispatcher, authorize = { payload, pending, admitted ->
                 io.panelassistant.android.http.awaitSessionApproval(
                     io.panelassistant.android.security.SensitiveOperation.LOCAL_ADB_MAINTENANCE,
                     payload, "Run Panel Assistant maintenance", io.panelassistant.android.security.LocalApprovalBroker.instance, pending, admitted = admitted,
@@ -287,12 +308,10 @@ internal class LocalAdbAsset(
     }
 }
 
-internal class RootLocalAdbEndpoint : LocalAdbEndpoint {
-    private fun <T> exchange(timeoutMs: Int = 20_000, body: (android.net.LocalSocket) -> T): T =
-        openRootAbstractSocket("hapaneld-adb-recovery").use { socket ->
-            socket.soTimeout = timeoutMs
-            body(socket)
-        }
+internal class RootLocalAdbEndpoint(private val daemon: Daemon = HelperClient) : LocalAdbEndpoint {
+    private fun exchange(header: String, payload: ByteArray = byteArrayOf(), timeoutMs: Int = 20_000,
+                         submit: (() -> Unit) -> Boolean = { it(); true }): java.io.InputStream? =
+        daemon.adbRecoveryExchange(header, payload, timeoutMs, submit)?.inputStream()
     private fun line(input: java.io.InputStream): String {
         val result = StringBuilder()
         repeat(160) {
@@ -304,48 +323,22 @@ internal class RootLocalAdbEndpoint : LocalAdbEndpoint {
         }
         error("local adb header too long")
     }
-    /** One absolute send deadline, including a root peer that stops reading midway through a payload. */
-    private fun writeRequest(socket: android.net.LocalSocket, bytes: ByteArray) {
-        // Wait for POLLOUT under the deadline, then write a chunk small enough to fit the free space POLLOUT promises
-        // (an AF_UNIX socket reports writable only while at most a quarter of its send buffer is in use).
-        val descriptor = socket.fileDescriptor
-        val chunk = (socket.sendBufferSize / 8).coerceIn(1, 1_024)
-        val output = socket.outputStream
-        val deadline = android.os.SystemClock.elapsedRealtime() + 2_000L
-        var sent = 0
-        while (sent < bytes.size) {
-            val remaining = deadline - android.os.SystemClock.elapsedRealtime()
-            check(remaining > 0) { "local adb submission timed out" }
-            val ready = android.system.StructPollfd().apply { fd = descriptor; events = android.system.OsConstants.POLLOUT.toShort() }
-            try {
-                if (android.system.Os.poll(arrayOf(ready), remaining.toInt()) <= 0) continue
-            } catch (failure: android.system.ErrnoException) {
-                if (failure.errno == android.system.OsConstants.EINTR) continue
-                throw failure
-            }
-            val count = minOf(chunk, bytes.size - sent)
-            output.write(bytes, sent, count)
-            sent += count
-        }
-    }
-    private fun command(text: String, submit: (() -> Unit) -> Boolean = { it(); true }): Boolean? = exchange { socket ->
-        if (!submit { writeRequest(socket, (text + "\n").toByteArray()) }) null else line(socket.inputStream) == "OK"
-    }
+    private fun command(text: String, submit: (() -> Unit) -> Boolean = { it(); true }): Boolean? =
+        exchange(text, submit = submit)?.let { line(it) == "OK" }
 
     override fun state(): LocalAdbState? = runCatching {
-        exchange { socket ->
-            writeRequest(socket, "STATUS\n".toByteArray())
-            val fields = line(socket.inputStream).split(' ')
+        exchange("STATUS")?.let { input ->
+            val fields = line(input).split(' ')
             check(fields.size == 6 && fields[0] == "READY" && fields[1] == "1" && fields[2].matches(Regex("[0-9a-f]{64}")) && fields[3] in listOf("0", "1") && fields[4] in listOf("0", "1") && fields[5] in listOf("0", "1"))
             LocalAdbState(fields[3] == "1", fields[4] == "1", fields[5] == "1", fields[2])
         }
     }.getOrNull()
     override fun arm(nonce: String): Boolean = command("ARM $nonce") == true
     override fun beat(nonce: String): Boolean = command("BEAT $nonce") == true
+    override fun arm(nonce: String, submit: (() -> Unit) -> Boolean): Boolean = command("ARM $nonce", submit) == true
+    override fun beat(nonce: String, submit: (() -> Unit) -> Boolean): Boolean = command("BEAT $nonce", submit) == true
     override fun recover(nonce: String, submit: (() -> Unit) -> Boolean): Boolean? = command("RECOVER $nonce", submit)
-    override fun shell(command: ByteArray, timeoutMs: Int, submit: (() -> Unit) -> Boolean): JSONObject? = exchange(timeoutMs + 5_000) { socket ->
-        val input = socket.inputStream
-        if (!submit { writeRequest(socket, "SHELL $timeoutMs ${command.size}\n".toByteArray() + command) }) return@exchange null
+    override fun shell(command: ByteArray, timeoutMs: Int, submit: (() -> Unit) -> Boolean): JSONObject? = exchange("SHELL $timeoutMs ${command.size}", command, timeoutMs + 5_000, submit)?.let { input ->
         val fields = line(input).split(' ')
         check(fields.size == 5 && fields[0] == "RESULT")
         val exit = fields[1].toInt(); val count = fields[4].toInt()

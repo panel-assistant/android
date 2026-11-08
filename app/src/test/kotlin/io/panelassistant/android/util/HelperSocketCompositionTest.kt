@@ -3,6 +3,7 @@ package io.panelassistant.android.util
 import io.panelassistant.android.testsupport.scratchDirectory
 
 import io.panelassistant.android.platform.Daemon
+import io.panelassistant.android.panelassistant.RootLocalAdbEndpoint
 import io.panelassistant.android.platform.DaemonLongResult
 import io.panelassistant.android.platform.DaemonStreamResult
 import java.io.File
@@ -32,13 +33,68 @@ import org.junit.BeforeClass
 import org.junit.Test
 
 class HelperSocketCompositionTest {
+    @Test(timeout = 30_000)
+    fun allRecoveryVerbsCrossTheAdmittedMainSocketAndRealLifecycleOwner() {
+        val executable = File(requireNotNull(System.getProperty("hapaneld.helper.socketTestServer"))).absoluteFile.parentFile.resolve("adb-recovery")
+        assertTrue(executable.isFile, "native lifecycle fixture was not built")
+        for (chunk in listOf(Int.MAX_VALUE, 1, 3)) {
+            val mainPath = Path.of(System.getProperty("java.io.tmpdir"), "hapaneld-main-${UUID.randomUUID()}.sock")
+            val fixture = ProcessBuilder(executable.toString(), "--serve").apply {
+                environment()["HAPANELD_MAIN_FIXTURE_PATH"] = mainPath.toString()
+            }.redirectErrorStream(true).start()
+            try {
+                val started = java.util.concurrent.CompletableFuture.supplyAsync { fixture.inputStream.bufferedReader().readLine() }
+                    .get(5, TimeUnit.SECONDS)
+                assertEquals(mainPath.toString(), started)
+                assertTrue(Files.exists(mainPath), "real main socket did not bind")
+                val sessions = mutableListOf<MutableList<String>>()
+                val transport = ChannelSessionTransport(mainPath, chunk, sessions)
+                val endpoint = RootLocalAdbEndpoint(IdentityAdmittingHelperClient(transport, expectedBuildId = FIXTURE_BUILD_ID))
+                val nonce = "a".repeat(64)
+                assertEquals(FIXTURE_BUILD_ID, assertNotNull(endpoint.state()).buildId)
+                assertTrue(endpoint.arm(nonce))
+                assertTrue(endpoint.beat(nonce))
+                val program = "printf '\\000\\nX'".toByteArray()
+                val shell = assertNotNull(endpoint.shell(program, 1_000) { it(); true })
+                assertEquals("AApY", shell.getString("stdout_b64"))
+                assertEquals(0, shell.getInt("exit_code"))
+                assertEquals(true, endpoint.recover(nonce) { it(); true })
+                assertEquals(listOf("STATUS", "ARM $nonce", "BEAT $nonce", "SHELL 1000 ${program.size}", "RECOVER $nonce"), sessions.map { it.last() })
+                sessions.forEach { assertEquals(listOf("VERSION", "BUILDID"), it.take(2)); assertEquals(3, it.size) }
+                for (stale in listOf("VERSION", "BUILDID")) {
+                    val sessions = mutableListOf<MutableList<String>>()
+                    val transport = ChannelSessionTransport(mainPath, sessions = sessions, bootstrapReply = { command, reply ->
+                        if (stale == "VERSION" && command == "VERSION") "HELPER version=1.15.0 proto=1.15" else reply
+                    })
+                    val expectedBuild = if (stale == "BUILDID") "b".repeat(64) else FIXTURE_BUILD_ID
+                    assertNull(RootLocalAdbEndpoint(IdentityAdmittingHelperClient(transport, expectedBuildId = expectedBuild)).state())
+                    assertEquals(1, sessions.size)
+                    assertEquals(if (stale == "VERSION") listOf("VERSION") else listOf("VERSION", "BUILDID"), sessions.single())
+                }
+            } finally {
+                // ProcessHandle is host-only and absent from the Android compilation API.
+                val handleType = Class.forName("java.lang.ProcessHandle")
+                val handle = Process::class.java.getMethod("toHandle").invoke(fixture)
+                val descendants = (handleType.getMethod("descendants").invoke(handle) as java.util.stream.Stream<*>)
+                    .use { it.toArray().toList() }
+                fixture.outputStream.close()
+                if (!fixture.waitFor(10, TimeUnit.SECONDS)) fixture.destroyForcibly().waitFor(3, TimeUnit.SECONDS)
+                descendants.asReversed().forEach {
+                    if (handleType.getMethod("isAlive").invoke(it) == true) handleType.getMethod("destroyForcibly").invoke(it)
+                }
+                Files.deleteIfExists(mainPath)
+            }
+            assertEquals(0, fixture.exitValue(), "native lifecycle fixture cleanup failed")
+        }
+    }
+
     @Test(timeout = 10_000)
     fun recoveryBootstrapRefusesTheHostFixtureBuildAndInvalidArgumentsBeforePublication() {
-        // This host fixture advertises BUILDID development, not the app's expected embedded digest.
+        // This host fixture advertises a fixed test build, not the app's expected embedded digest.
         val daemon = IdentityAdmittingHelperClient(ChannelSessionTransport(socketPath))
         assertFalse(daemon.supportsAdbRecoveryEnsure())
         assertFalse(daemon.ensureAdbRecovery())
-        assertEquals("BUILDID development", SocketDaemon(socketPath).send("BUILDID"))
+        assertEquals("BUILDID ${FIXTURE_BUILD_ID}", SocketDaemon(socketPath).send("BUILDID"))
         assertEquals("ERR", SocketDaemon(socketPath).send("ADBRECOVERYENSURE extra"))
     }
 
@@ -62,7 +118,7 @@ class HelperSocketCompositionTest {
             ).redirectErrorStream(true).start()
             assertEquals("READY", second.inputStream.bufferedReader().readLine())
             assertTrue(Files.isDirectory(root.resolve(".hapaneld-guard-db-test")))
-            assertEquals("HELPER version=1.15.0 proto=1.15", SocketDaemon(socket).send("VERSION"))
+            assertEquals("HELPER version=1.16.0 proto=1.16", SocketDaemon(socket).send("VERSION"))
         } finally {
             second?.let {
                 it.destroy()
@@ -78,7 +134,7 @@ class HelperSocketCompositionTest {
         val daemon = SocketDaemon(socketPath)
 
         assertTrue(daemon.available())
-        assertEquals("HELPER version=1.15.0 proto=1.15", daemon.send("VERSION"))
+        assertEquals("HELPER version=1.16.0 proto=1.16", daemon.send("VERSION"))
         assertEquals("ERR", daemon.send("PINGEXTRA"))
         assertEquals("OK", daemon.sendLong("RELOAD io.example.dashboard", 5_000).replyValue())
     }
@@ -94,9 +150,9 @@ class HelperSocketCompositionTest {
         val daemon = SocketDaemon(socketPath)
         // The host fixture redirects fixed governor reads and refuses governor writes.
         listOf(
-            WireTranscript("VERSION", "HELPER version=1.15.0 proto=1.15"),
+            WireTranscript("VERSION", "HELPER version=1.16.0 proto=1.16"),
             WireTranscript("PING", "OK"),
-            WireTranscript("BUILDID", "BUILDID development"),
+            WireTranscript("BUILDID", "BUILDID ${FIXTURE_BUILD_ID}"),
             WireTranscript("COMPANIONCAPS", "COMPANIONCAPS 1 BACKUP RESTORE STATUS JOURNAL"),
             WireTranscript("COMPANIONSTATUS", "IDLE"),
             WireTranscript("LOGCATCAPS", "LOGCATCAPS 1"),
@@ -349,9 +405,15 @@ class HelperSocketCompositionTest {
 
     private data class WireTranscript(val request: String, val reply: String)
 
-    private class ChannelSessionTransport(private val path: Path) : HelperCommandTransport {
+    private class ChannelSessionTransport(
+        private val path: Path,
+        private val recoveryWriteChunk: Int = Int.MAX_VALUE,
+        private val sessions: MutableList<MutableList<String>>? = null,
+        private val bootstrapReply: (String, String) -> String = { _, reply -> reply },
+    ) : HelperCommandTransport {
         override fun open(): HelperCommandSession? = runCatching {
-            ChannelSession(SocketChannel.open(unixAddress(path)))
+            val transcript = mutableListOf<String>().also { sessions?.add(it) }
+            ChannelSession(SocketChannel.open(unixAddress(path)), recoveryWriteChunk, transcript, bootstrapReply)
         }.getOrNull()
 
         private fun unixAddress(path: Path): SocketAddress = Class.forName("java.net.UnixDomainSocketAddress")
@@ -359,14 +421,21 @@ class HelperSocketCompositionTest {
             .invoke(null, path) as SocketAddress
     }
 
-    private class ChannelSession(private val channel: SocketChannel) : HelperCommandSession {
+    private class ChannelSession(
+        private val channel: SocketChannel,
+        private val recoveryWriteChunk: Int,
+        private val transcript: MutableList<String>,
+        private val bootstrapReply: (String, String) -> String,
+    ) : HelperCommandSession {
         private val input = Channels.newInputStream(channel)
         private val output = Channels.newOutputStream(channel)
         private val logcatReader = HelperLogcatLineReader(input)
 
         override fun bootstrap(command: String, deadline: MonotonicDeadline): HelperBootstrapReply {
             output.apply { write((command + "\n").toByteArray()); flush() }
-            return readHelperBootstrapLine(input, {}, deadline)
+            transcript += command
+            val reply = readHelperBootstrapLine(input, {}, deadline)
+            return if (reply is HelperBootstrapReply.Line) HelperBootstrapReply.Line(bootstrapReply(command, reply.value)) else reply
         }
 
         override fun send(cmd: String): String? = HelperSocketProtocol.sendLine(cmd, input, output)
@@ -392,6 +461,18 @@ class HelperSocketCompositionTest {
             shutdownOutput = channel::shutdownOutput,
             maxBytes = maxBytes,
         )
+
+        override fun adbRecoveryExchange(header: String, payload: ByteArray, timeoutMs: Int, submit: (() -> Unit) -> Boolean): ByteArray? =
+            HelperSocketProtocol.adbRecoveryExchange(header, payload, input, timeoutMs, submit,
+                write = { bytes ->
+                    transcript += header
+                    var at = 0
+                    while (at < bytes.size) {
+                        val count = minOf(recoveryWriteChunk, bytes.size - at)
+                        output.write(bytes, at, count); output.flush(); at += count
+                    }
+                }, beforeRead = {},
+            )
 
         override fun readLogcatLine(): String? = logcatReader.readLine()
 
@@ -422,6 +503,7 @@ class HelperSocketCompositionTest {
         lateinit var sysfsReadRoot: Path
         lateinit var zigbeeRoot: Path
         lateinit var cdpRoot: Path
+        private const val FIXTURE_BUILD_ID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         private const val TCP_HEADER = "  sl  local_address rem_address st tx_queue rx_queue tr tm->when retrnsmt uid timeout inode\n"
         lateinit var fixtureLock: FileLock
 

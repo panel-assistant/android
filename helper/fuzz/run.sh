@@ -19,7 +19,7 @@ if (($#)); then shift; fi
 LIMIT="${LIMIT:-$([[ "$MODE" == smoke ]] && echo 100000 || echo 30)}"
 [[ "$LIMIT" =~ ^[0-9]+$ ]] || { echo 'Expected a nonnegative iteration/seconds limit' >&2; exit 2; }
 read -r -a CORE_SRCS <<< "$(cd "$HELPER" && make --no-print-directory -s print-core)"
-WRAPS=(open openat fopen opendir mkdir mkdirat unlink unlinkat rmdir rename renameat chmod fchmod fchown fstatat stat lstat access faccessat ioctl kill fork pthread_create connect execve linkat fsetxattr socket bind waitpid setpgid setsid _exit adb_recovery_ensure)
+WRAPS=(open openat fopen opendir mkdir mkdirat unlink unlinkat rmdir rename renameat chmod fchmod fchown fstatat stat lstat access faccessat ioctl kill fork pthread_create connect execve linkat fsetxattr socket bind waitpid setpgid setsid _exit adb_recovery_ensure sendmsg)
 LINK=()
 for symbol in "${WRAPS[@]}"; do LINK+=("-Wl,--wrap=$symbol"); done
 FLAGS=(-O1 -g -Wall -Wextra -Werror -DHAPANELD_TEST -DHAPANELD_TEST_SKIP_SELF_BINDING

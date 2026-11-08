@@ -209,6 +209,14 @@ static int old_role(void) {
     if (guard_maintenance_replacement_parent_grant(nonce) != GUARD_REPLACEMENT_READY ||
         strcmp(nonce, NONCE) != 0 || guard_maintenance_replacement_export_lease() != 0)
         fail("grant/export");
+    if (guard_maintenance_replacement_parent_abort(nonce) != 0)
+        fail("abort granted replacement");
+    prove_lease_held("aborted replacement retains authoritative owner");
+    int flags = fcntl(GUARD_REPLACEMENT_LEASE_FD, F_GETFD, 0);
+    if (flags < 0 || !(flags & FD_CLOEXEC)) fail("aborted authoritative lease disables exec inheritance");
+    issue_retire(sha);
+    if (guard_maintenance_replacement_parent_grant(nonce) != GUARD_REPLACEMENT_READY ||
+        strcmp(nonce, NONCE) != 0) fail("grant after aborted replacement");
     prove_lease_held("old-to-stage");
     execl(STAGE, "replacement-lease-new", "--fixture-stage", nonce, NULL);
     fail("exec stage");

@@ -1126,7 +1126,7 @@ class PanelAssistantTransportOwnerTest {
     }
 
     @Test fun theHelloOffersLocalAdbWhenRootAnEndpointOrTheExpectedOrdinaryHelperCanStartRecovery() = runTest {
-        fun offeredWith(rootKnownUnusable: Boolean, endpointAnswers: Boolean, wire: io.panelassistant.android.util.EnsureWireFixture = io.panelassistant.android.util.EnsureWireFixture().apply { missing = true }): List<String> {
+        fun offeredWith(rootKnownUnusable: Boolean, endpointAnswers: Boolean, wire: io.panelassistant.android.util.MainRecoveryWireFixture = io.panelassistant.android.util.MainRecoveryWireFixture().apply { missing = true }): List<String> {
             val endpoint = object : LocalAdbEndpoint {
                 override fun state() = if (endpointAnswers) LocalAdbState(false, false) else null
                 override fun arm(nonce: String) = true
@@ -1154,13 +1154,13 @@ class PanelAssistantTransportOwnerTest {
         assertTrue("management stays offered", "management" in offeredWith(rootKnownUnusable = true, endpointAnswers = false))
         assertTrue("a rooted panel", "local_adb" in offeredWith(rootKnownUnusable = false, endpointAnswers = false))
         assertTrue("an endpoint already answering", "local_adb" in offeredWith(rootKnownUnusable = true, endpointAnswers = true))
-        val helper = io.panelassistant.android.util.EnsureWireFixture()
+        val helper = io.panelassistant.android.util.MainRecoveryWireFixture()
         assertTrue("the expected ordinary helper without a su route", "local_adb" in offeredWith(true, false, helper))
         assertEquals(listOf(1 to "VERSION", 1 to "BUILDID"), helper.commands)
-        helper.identity = helper.identity.copy(build = "BUILDID ${"0".repeat(64)}")
+        helper.build = "BUILDID ${"0".repeat(64)}"
         assertFalse("a replaced helper must be admitted afresh", "local_adb" in offeredWith(true, false, helper))
         assertTrue(helper.commands.none { it.second == "ADBRECOVERYENSURE" || it.second == "PING" })
-        val bypassed = io.panelassistant.android.util.EnsureWireFixture()
+        val bypassed = io.panelassistant.android.util.MainRecoveryWireFixture()
         assertTrue("root offer stays cheap", "local_adb" in offeredWith(false, false, bypassed))
         assertTrue("existing endpoint stays cheap", "local_adb" in offeredWith(true, true, bypassed))
         assertTrue(bypassed.commands.isEmpty())

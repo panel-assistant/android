@@ -508,10 +508,13 @@ val buildHelperSocketTestServer = tasks.register<Exec>("buildHelperSocketTestSer
         rootProject.file("helper/Makefile"),
         rootProject.fileTree("helper/src"),
         rootProject.file("helper/test/socket_server.c"),
+        rootProject.file("helper/test/adb_recovery.c"),
+        rootProject.file("helper/test/adb_recovery_paths.h"),
+        rootProject.file("helper/test/android/log.h"),
         rootProject.file("helper/test/sysexec_stub.c"),
         rootProject.file("helper/test/sysexec_stub.h"),
     )
-    outputs.file(helperSocketTestServer)
+    outputs.files(helperSocketTestServer, helperSocketTestServer.parentFile.resolve("adb-recovery"))
 }
 
 // The JNI libraries' binding code built for the host, so NativeLibraryBindingTest loads both against

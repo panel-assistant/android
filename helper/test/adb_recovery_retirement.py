@@ -55,7 +55,7 @@ else:
         subprocess.run(['cc','-O1','-g','-Wall','-Wextra','-Werror','-Wno-format-truncation',
                         '-Isrc', *[f'-D{k}="{v}"' for k,v in flags.items()],
                         *sources,'src/main.c','src/sysexec.c','test/adb_recovery_retirement_cuts.c',
-                        '-Wl,--wrap=unlinkat','-Wl,--wrap=rmdir','-Wl,--wrap=mkdirat','-lpthread','-o',str(binary)],cwd=ROOT,check=True)
+                        '-Wl,--wrap=main','-Wl,--wrap=unlinkat','-Wl,--wrap=rmdir','-Wl,--wrap=mkdirat','-lpthread','-o',str(binary)],cwd=ROOT,check=True)
         def request(command):
             with socket.socket(socket.AF_UNIX) as s:
                 s.settimeout(4)

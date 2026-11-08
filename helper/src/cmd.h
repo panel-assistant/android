@@ -8,6 +8,7 @@
 #define HAPANELD_CMD_H
 
 #include "identity.h"
+#include <stddef.h>
 
 // Per-connection state threaded through a command. `subscribed` is set by an async-stream subscription
 // handler so the server's idle-timeout exempts a connection meant to sit idle, only reading.
@@ -20,6 +21,15 @@ typedef struct {
     int fd;
     int subscribed;
     enum helper_caller caller;
+    // Unmodified header and remaining bytes of the current read. These pointers are valid only
+    // during dispatch; a terminal handler copies them before handing the socket to its owner.
+    const char *request;
+    size_t request_len;
+    int request_terminator;
+    long long request_started_ms; // monotonic time at the first header byte
+    const unsigned char *body_prefix;
+    size_t body_prefix_len;
+    int terminal; // stop dispatching this connection, including bytes already read after the header
 } conn_ctx;
 
 typedef void (*cmd_fn)(conn_ctx *ctx, const char *args);

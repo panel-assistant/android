@@ -14,6 +14,71 @@
 #include <time.h>
 #include <unistd.h>
 
+/* The lifecycle parent forks C executors after Guard work, so no delayed reap
+ * may add a thread there. Reserve custody before each fork, including children
+ * still owned by their caller, and poll only explicitly deferred children. */
+#define OWNER_CHILD_LIMIT 8
+static pid_t lifecycle_owner;
+static struct { pid_t pid; int deferred; } owner_children[OWNER_CHILD_LIMIT];
+
+void sysexec_set_lifecycle_owner(int enabled) {
+    pid_t owner = enabled ? getpid() : 0;
+    if (lifecycle_owner == owner) return;
+    lifecycle_owner = owner;
+    memset(owner_children, 0, sizeof owner_children);
+}
+static int in_lifecycle_owner(void) {
+    return lifecycle_owner != 0 && lifecycle_owner == getpid();
+}
+int sysexec_reap_pending(void) {
+    if (!in_lifecycle_owner()) return 0;
+    int pending = 0;
+    for (int i = 0; i < OWNER_CHILD_LIMIT; i++) {
+        if (!owner_children[i].deferred) continue;
+        pid_t done = waitpid(owner_children[i].pid, NULL, WNOHANG);
+        if (done == owner_children[i].pid || (done < 0 && errno == ECHILD)) {
+            owner_children[i].pid = 0;
+            owner_children[i].deferred = 0;
+        } else pending++;
+    }
+    return pending;
+}
+static pid_t wait_owned_child(pid_t pid, int *status, int options) {
+    pid_t done = waitpid(pid, status, options);
+    if (in_lifecycle_owner() && (done == pid || (done < 0 && errno == ECHILD))) {
+        for (int i = 0; i < OWNER_CHILD_LIMIT; i++) if (owner_children[i].pid == pid) {
+            owner_children[i].pid = 0;
+            owner_children[i].deferred = 0;
+            break;
+        }
+    }
+    return done;
+}
+static pid_t fork_owned_child(void) {
+    int slot = -1;
+    if (in_lifecycle_owner()) {
+        (void)sysexec_reap_pending();
+        for (int i = 0; i < OWNER_CHILD_LIMIT; i++) if (!owner_children[i].pid) { slot = i; break; }
+        if (slot < 0) { errno = EAGAIN; return -1; }
+        owner_children[slot].pid = -1;
+    }
+    pid_t child = fork();
+    if (slot >= 0) {
+        if (child == 0) sysexec_set_lifecycle_owner(0);
+        else owner_children[slot].pid = child > 0 ? child : 0;
+    }
+    return child;
+}
+static int defer_owner_child(pid_t pid) {
+    for (int i = 0; i < OWNER_CHILD_LIMIT; i++) if (owner_children[i].pid == pid) {
+        owner_children[i].deferred = 1;
+        return 1;
+    }
+    /* Only start APIs reserve owner custody. An unknown PID cannot consume a
+     * hidden extra slot or cause the fork-owning parent to create a thread. */
+    return -1;
+}
+
 int sysexec_run_constant(const char *program) {
     if (!program) return -1;
     const char *const argv[] = { "sh", "-c", program, NULL };
@@ -78,7 +143,7 @@ static void child_exec(const char *path, const char *const argv[], int input, in
 
 static int wait_child(pid_t pid) {
     int status;
-    while (waitpid(pid, &status, 0) < 0) {
+    while (wait_owned_child(pid, &status, 0) < 0) {
         if (errno != EINTR) return -1;
     }
     return status;
@@ -94,7 +159,7 @@ static pid_t spawn_argv(const char *path, const char *const argv[], int quiet, i
     }
 
     pid_t parent = getpid();
-    pid_t pid = fork();
+    pid_t pid = fork_owned_child();
     if (pid < 0) {
         if (null_fd >= 0) close(null_fd);
         return -1;
@@ -132,14 +197,14 @@ int sysexec_run_argv(const char *path, const char *const argv[], int quiet) {
 // After SIGKILL the child normally becomes reapable within milliseconds, so a short inline grace
 // completes the common case without spawning anything. A child wedged in uninterruptible sleep can
 // outlast any grace, and it must neither become a second unbounded wait on the connection thread nor
-// be abandoned as a permanent zombie — past the grace it is handed to a detached reaper thread whose
-// blocking waitpid finishes the reap whenever the kernel finally releases the child.
+// be abandoned as a permanent zombie. The lifecycle parent tracks it for later nonblocking ticks;
+// an ordinary socket worker hands it to a detached reaper until the kernel releases the child.
 #define REAP_GRACE_MS 500u
 
 static void *reap_child_thread(void *arg) {
     pid_t pid = (pid_t)(intptr_t)arg;
     int status;
-    while (waitpid(pid, &status, 0) < 0 && errno == EINTR) continue;
+    while (wait_owned_child(pid, &status, 0) < 0 && errno == EINTR) continue;
     return NULL;
 }
 
@@ -149,7 +214,7 @@ static int wait_child_deadline(pid_t pid, unsigned deadline_ms, unsigned *waited
     unsigned waited = 0;
     for (;;) {
         int status;
-        pid_t done = waitpid(pid, &status, WNOHANG);
+        pid_t done = wait_owned_child(pid, &status, WNOHANG);
         if (done == pid) {
             *waited_out = waited;
             return status;
@@ -178,7 +243,7 @@ static int signal_process_group(pid_t pid) {
 }
 
 // Reap for at most the RC1 inline grace. The caller receives the exact wait status only when this
-// thread performed the reap; 1 means a detached thread owns the eventual reap, and -1 means wait
+// thread performed the reap; 1 means deferred custody owns the eventual reap, and -1 means wait
 // ownership was lost. This keeps every post-SIGKILL path bounded without inventing a wait status.
 static int reap_child_bounded(pid_t pid, int *status) {
     unsigned waited = 0;
@@ -188,6 +253,7 @@ static int reap_child_bounded(pid_t pid, int *status) {
         return 0;
     }
     if (waited < REAP_GRACE_MS) return -1;
+    if (in_lifecycle_owner()) return defer_owner_child(pid);
     return sysexec_spawn(reap_child_thread, (void *)(intptr_t)pid) == 0 ? 1 : -1;
 }
 
@@ -212,8 +278,10 @@ int sysexec_run_argv_deadline(const char *path, const char *const argv[], int qu
         (void)signal_process_group(pid);
         unsigned reaped = 0;
         int reap_status = wait_child_deadline(pid, REAP_GRACE_MS, &reaped);
-        if (reap_status < 0 && reaped >= REAP_GRACE_MS)
-            (void)sysexec_spawn(reap_child_thread, (void *)(intptr_t)pid);
+        if (reap_status < 0 && reaped >= REAP_GRACE_MS) {
+            if (in_lifecycle_owner()) (void)defer_owner_child(pid);
+            else (void)sysexec_spawn(reap_child_thread, (void *)(intptr_t)pid);
+        }
         elapsed += reaped;
     }
     if (elapsed_ms) *elapsed_ms = elapsed;
@@ -243,7 +311,7 @@ int sysexec_run_argv_timeout(const char *path, const char *const argv[], int qui
     const unsigned long long deadline = start + timeout_ms;
     for (;;) {
         int status;
-        pid_t waited = waitpid(pid, &status, WNOHANG);
+        pid_t waited = wait_owned_child(pid, &status, WNOHANG);
         if (waited == pid) return status;
         if (waited < 0 && errno != EINTR) return -1;
         unsigned long long now;
@@ -275,7 +343,7 @@ int sysexec_start_argv(const char *path, const char *const argv[], int quiet, pi
     int null_fd = quiet ? open("/dev/null", O_RDWR | O_CLOEXEC) : -1;
     if (quiet && null_fd < 0) { close(errors[0]); close(errors[1]); return -1; }
     pid_t parent = getpid();
-    pid_t pid = fork();
+    pid_t pid = fork_owned_child();
     if (pid < 0) {
         if (null_fd >= 0) close(null_fd);
         close(errors[0]); close(errors[1]);
@@ -336,7 +404,7 @@ int sysexec_start_stdout_argv(const char *path, const char *const argv[], pid_t 
         return -1;
     }
     pid_t parent = getpid();
-    pid_t pid = fork();
+    pid_t pid = fork_owned_child();
     if (pid < 0) {
         close(null_fd); close(output[0]); close(output[1]); close(errors[0]); close(errors[1]);
         return -1;
@@ -382,13 +450,13 @@ int sysexec_start_stdout_argv(const char *path, const char *const argv[], pid_t 
 int sysexec_poll_argv(pid_t pid, int *status) {
     if (pid <= 1 || !status) return -1;
     pid_t result;
-    do result = waitpid(pid, status, WNOHANG); while (result < 0 && errno == EINTR);
+    do result = wait_owned_child(pid, status, WNOHANG); while (result < 0 && errno == EINTR);
     return result == 0 ? 0 : (result == pid ? 1 : -1);
 }
 
 int sysexec_terminate_argv(pid_t pid, int *status) {
     if (pid <= 1 || !status) return -1;
-    // Preserve the API's exact-status contract: a detached handoff safely owns the reap but returns
+    // Preserve the API's exact-status contract: deferred custody safely owns the reap but returns
     // -1 because this caller cannot truthfully supply the eventual raw wait status.
     return terminate_child_bounded(pid, status) == 0 ? 0 : -1;
 }
@@ -402,7 +470,7 @@ static int pipe_argv(const char *path, const char *const argv[], int output_fd,
     (void)fcntl(pipefd[1], F_SETFD, FD_CLOEXEC);
     int null_fd = open("/dev/null", O_RDWR | O_CLOEXEC);
     if (null_fd < 0) { close(pipefd[0]); close(pipefd[1]); return -1; }
-    pid_t pid = fork();
+    pid_t pid = fork_owned_child();
     if (pid < 0) { close(null_fd); close(pipefd[0]); close(pipefd[1]); return -1; }
     if (pid == 0) {
         close(pipefd[0]);
@@ -466,7 +534,7 @@ static int capture_argv_timeout_env(const char *path, const char *const argv[], 
     int null_fd = open("/dev/null", O_RDWR | O_CLOEXEC);
     if (null_fd < 0) { close(pipefd[0]); close(pipefd[1]); return -1; }
     pid_t parent = getpid();
-    pid_t pid = fork();
+    pid_t pid = fork_owned_child();
     if (pid < 0) {
         close(null_fd); close(pipefd[0]); close(pipefd[1]);
         return -1;
@@ -511,7 +579,7 @@ static int capture_argv_timeout_env(const char *path, const char *const argv[], 
             break;
         }
         if (!reaped) {
-            pid_t waited = waitpid(pid, &status, WNOHANG);
+            pid_t waited = wait_owned_child(pid, &status, WNOHANG);
             if (waited == pid) reaped = 1;
             else if (waited < 0 && errno != EINTR) failed = 1;
         }
@@ -614,6 +682,7 @@ int sysexec_stream_argv(const char *path, const char *const argv[], int output_f
 }
 
 int sysexec_spawn(void *(*fn)(void *), void *arg) {
+    if (in_lifecycle_owner()) { errno = EAGAIN; return -1; }
     pthread_t t;
     if (pthread_create(&t, NULL, fn, arg) != 0) return -1;
     pthread_detach(t);

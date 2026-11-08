@@ -57,3 +57,12 @@ __attribute__((constructor)) static void old_kernel_syscalls(void) {
     struct sock_fprog program = { .len = sizeof filters / sizeof filters[0], .filter = filters };
     if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) || prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &program)) abort();
 }
+
+/* Compatibility cases exercise the retained old-owner retirement engine. New
+ * production --adb-recovery bootstraps the merged main lifecycle instead. */
+#include "adb_recovery.h"
+int __real_main(int, char **);
+int __wrap_main(int argc, char **argv) {
+    if (argc == 2 && !strcmp(argv[1], "--adb-recovery")) return adb_recovery_main();
+    return __real_main(argc, argv);
+}

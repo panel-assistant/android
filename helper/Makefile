@@ -44,7 +44,7 @@ $(BUILD)/hapaneld-helper: $(DAEMON_SRCS) | $(BUILD)
 # Unit tests: CORE modules + the sysexec stub (no real exec) + the test driver. `test` runs the three
 # groups one after another, even under -j; CI runs each group as its own job because the two installer
 # scripts spend most of their time waiting on the installer's retry intervals.
-TEST_BINS := $(BUILD)/actuator-exec $(BUILD)/adb-recovery $(BUILD)/uninstall-supervisor $(BUILD)/unit $(BUILD)/hapaneld-helper $(BUILD)/companion-boundary $(BUILD)/guard-maintenance-boundary $(BUILD)/guard-maintenance-gates $(BUILD)/replacement-lease-old $(BUILD)/replacement-lease-new $(BUILD)/sysexec-fd-boundary $(BUILD)/sysexec-platform-wrapper $(BUILD)/peer-auth $(BUILD)/request-timeout $(BUILD)/bounded-exec $(BUILD)/hapaneld-helper-old $(BUILD)/hapaneld-helper-new $(BUILD)/cdprelay-resource-test $(BUILD)/cdprelay-test $(BUILD)/logcat-fixture $(BUILD)/logcat-boundary
+TEST_BINS := $(BUILD)/actuator-exec $(BUILD)/adb-recovery $(BUILD)/uninstall-supervisor $(BUILD)/unit $(BUILD)/hapaneld-helper $(BUILD)/companion-boundary $(BUILD)/guard-maintenance-boundary $(BUILD)/guard-maintenance-gates $(BUILD)/replacement-lease-old $(BUILD)/replacement-lease-new $(BUILD)/sysexec-fd-boundary $(BUILD)/sysexec-platform-wrapper $(BUILD)/peer-auth $(BUILD)/request-timeout $(BUILD)/bounded-exec $(BUILD)/lifecycle-reap $(BUILD)/hapaneld-helper-old $(BUILD)/hapaneld-helper-new $(BUILD)/cdprelay-resource-test $(BUILD)/cdprelay-test $(BUILD)/logcat-fixture $(BUILD)/logcat-boundary
 test:
 	$(MAKE) test-units
 
@@ -54,7 +54,8 @@ test-units: $(BUILD)/stale-replacement-cli $(BUILD)/adb-ensure-boundary $(BUILD)
 	$(BUILD)/adb-recovery
 	$(BUILD)/uninstall-supervisor
 	$(BUILD)/unit
-	test "$$($(BUILD)/hapaneld-helper --version)" = "HELPER version=1.15.0 proto=1.15"
+	$(MAKE) socket-framing-test
+	test "$$($(BUILD)/hapaneld-helper --version)" = "HELPER version=1.16.0 proto=1.16"
 	$(BUILD)/companion-boundary
 	$(BUILD)/guard-maintenance-boundary
 	$(BUILD)/stale-replacement-cli
@@ -65,6 +66,7 @@ test-units: $(BUILD)/stale-replacement-cli $(BUILD)/adb-ensure-boundary $(BUILD)
 	$(BUILD)/peer-auth
 	$(BUILD)/request-timeout
 	$(BUILD)/bounded-exec
+	$(BUILD)/lifecycle-reap
 	$(BUILD)/actuator-exec
 	$(BUILD)/adb-ensure-boundary
 	$(BUILD)/gfxinfo-boundary
@@ -177,9 +179,9 @@ $(BUILD)/cdprelay-test: cdprelay.c | $(BUILD)
 		-DCDPRELAY_MAX_LIFETIME_MS=2000 cdprelay.c -o $@
 
 # Real UNIX-socket composition fixture: production server/dispatch core with the no-exec host stub.
-socket-test-server: $(BUILD)/socket-test-server
+socket-test-server: $(BUILD)/socket-test-server $(BUILD)/adb-recovery
 $(BUILD)/socket-test-server: $(CORE_SRCS) $(STUB) test/socket_server.c $(SRC_DIR)/commands.def test/zigbee_paths.h | $(BUILD)
-	$(CC) $(CFLAGS) -DHAPANELD_TEST -DCDP_PROC_ROOT='"$(abspath $(BUILD)/cdp-state-socket-fixture)"' -DSYSFS_READ_CLASS_ROOT='"$(abspath $(BUILD)/sysfs-read-socket-fixture)"' -DZIGBEE_TEST_ROOT='"$(abspath $(BUILD)/zigbee-socket-fixture)"' -include test/zigbee_paths.h -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/socket_server.c $(LDLIBS) -Wl,--wrap=open -Wl,--wrap=adb_recovery_ensure -o $@
+	$(CC) $(CFLAGS) -DHAPANELD_TEST -DHAPANELD_BUILD_ID='"$(TEST_BUILD_ID)"' -DCDP_PROC_ROOT='"$(abspath $(BUILD)/cdp-state-socket-fixture)"' -DSYSFS_READ_CLASS_ROOT='"$(abspath $(BUILD)/sysfs-read-socket-fixture)"' -DZIGBEE_TEST_ROOT='"$(abspath $(BUILD)/zigbee-socket-fixture)"' -include test/zigbee_paths.h -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/socket_server.c $(LDLIBS) -Wl,--wrap=open -Wl,--wrap=adb_recovery_ensure -o $@
 
 # App<->daemon verb-contract cross-check: every verb the app sends must exist in commands.def.
 contract:
@@ -204,8 +206,8 @@ $(BUILD)/uninstall-supervisor: $(CORE_SRCS) $(SRC_DIR)/main.c $(SRC_DIR)/sysexec
 		-DAPP_DATA='"/tmp/.hapaneld-uninstall-data-test"' -DAPP_USER_DATA='"/tmp/.hapaneld-uninstall-user-test"' \
 		-I$(SRC_DIR) $(CORE_SRCS) $(SRC_DIR)/sysexec.c test/uninstall_supervisor.c $(LDLIBS) -Wl,--wrap=unlinkat -Wl,--wrap=lstat -o $@
 
-$(BUILD)/adb-recovery: test/adb_recovery.c test/adb_recovery_paths.h test/android/log.h $(SRC_DIR)/adb_recovery.c $(SRC_DIR)/identity.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c | $(BUILD)
-	$(CC) $(CFLAGS) -include test/adb_recovery_paths.h -DHAPANELD_BUILD_ID='"$(TEST_BUILD_ID)"' -I$(SRC_DIR) -Itest test/adb_recovery.c $(SRC_DIR)/identity.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c $(LDLIBS) -o $@
+$(BUILD)/adb-recovery: test/adb_recovery.c test/adb_recovery_paths.h test/android/log.h $(CORE_SRCS) $(SRC_DIR)/main.c $(STUB) | $(BUILD)
+	$(CC) $(CFLAGS) -DHAPANELD_TEST -include test/adb_recovery_paths.h -DHAPANELD_BUILD_ID='"$(TEST_BUILD_ID)"' -I$(SRC_DIR) -Itest test/adb_recovery.c $(filter-out $(SRC_DIR)/adb_recovery.c,$(CORE_SRCS)) $(STUB) $(LDLIBS) -o $@
 adb-recovery-test: $(BUILD)/adb-recovery
 	$(BUILD)/adb-recovery
 
@@ -275,3 +277,17 @@ $(BUILD)/gfxinfo-exec: $(SRC_DIR)/sysexec.c test/gfxinfo_exec.c | $(BUILD)
 # Ordinary fixed ENSURE wire/argument boundary; the real driver qualifies publication/custody.
 $(BUILD)/adb-ensure-boundary: $(CORE_SRCS) test/adb_ensure_boundary.c | $(BUILD)
 	$(CC) $(CFLAGS) -DHAPANELD_TEST -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/adb_ensure_boundary.c $(LDLIBS) -Wl,--wrap=adb_recovery_ensure -o $@
+
+# Real stream reader + dispatcher; only recovery execution/handoff is replaced with byte echo.
+.PHONY: socket-framing-test
+socket-framing-test: $(BUILD)/socket-framing
+	$(BUILD)/socket-framing
+$(BUILD)/socket-framing: $(CORE_SRCS) $(STUB) test/socket_framing.c $(SRC_DIR)/commands.def | $(BUILD)
+	$(CC) $(CFLAGS) -DHAPANELD_TEST -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/socket_framing.c $(LDLIBS) -Wl,--wrap=cmd_adb_recovery -Wl,--wrap=read -o $@
+
+# Lifecycle-parent child custody stays thread-free; the forked worker keeps ordinary reaping.
+.PHONY: lifecycle-reap-test
+lifecycle-reap-test: $(BUILD)/lifecycle-reap
+	$(BUILD)/lifecycle-reap
+$(BUILD)/lifecycle-reap: test/lifecycle_reap.c $(SRC_DIR)/sysexec.c $(SRC_DIR)/sysexec.h | $(BUILD)
+	$(CC) $(CFLAGS) -I$(SRC_DIR) test/lifecycle_reap.c $(SRC_DIR)/sysexec.c $(LDLIBS) -o $@

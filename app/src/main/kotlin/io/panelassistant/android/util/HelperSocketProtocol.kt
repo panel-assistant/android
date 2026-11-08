@@ -39,6 +39,52 @@ internal object HelperSocketProtocol {
         return BoundedStreams.readBytes(input, maxBytes, beforeRead).takeIf { it.isNotEmpty() }
     }
 
+    /** Recovery is terminal on its admitted connection; consume only the declared bounded reply. */
+    fun adbRecoveryExchange(
+        header: String, payload: ByteArray, input: InputStream, timeoutMs: Int,
+        submit: (() -> Unit) -> Boolean, write: (ByteArray) -> Unit,
+        beforeRead: (Long) -> Unit,
+        nowNs: () -> Long = System::nanoTime,
+    ): ByteArray? {
+        require(timeoutMs in 1..185_000 && payload.size <= 65_536)
+        require(header.length <= 159 && header.all { it.code in 32..126 })
+        val request = (header + "\n").toByteArray(StandardCharsets.US_ASCII) + payload
+        if (!submit { write(request) }) return null
+        val deadline = MonotonicDeadline(timeoutMs.toLong(), nowNs)
+        fun reading() {
+            val remaining = deadline.remainingMs()
+            check(remaining > 0) { "local adb reply timed out" }
+            beforeRead(remaining)
+        }
+        val line = java.io.ByteArrayOutputStream(160)
+        while (true) {
+            reading()
+            val value = input.read()
+            check(value >= 0) { "incomplete local adb reply" }
+            if (value == 10) break
+            check(value in 32..126 && line.size() < 159) { "invalid local adb reply header" }
+            line.write(value)
+        }
+        val text = line.toString("US-ASCII")
+        line.write(10)
+        if (header.startsWith("SHELL ")) {
+            val match = Regex("RESULT (-1|[0-9]{1,3}) [01] [01] (0|[1-9][0-9]{0,4})").matchEntire(text)
+            check(match != null && match.groupValues[1].toInt() in -1..255)
+            val count = match.groupValues[2].toInt()
+            check(count in 0..32_768)
+            val bytes = ByteArray(count)
+            var used = 0
+            while (used < count) {
+                reading()
+                val read = input.read(bytes, used, count - used)
+                check(read > 0) { "incomplete local adb output" }
+                used += read
+            }
+            line.write(bytes)
+        }
+        return line.toByteArray()
+    }
+
     fun sendFile(
         command: String,
         openSource: () -> InputStream,

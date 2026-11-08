@@ -41,8 +41,9 @@ args = {
     'FONTSCALE': '1.15', 'BOOTCHIME': 'RESTORE 1 1 1 7 7', 'GOV': 'schedutil',
     'GOVREAD': 'CURRENT', 'RELAYREAD': 'RELAY COUNT',
     'GPIOREAD': '0', 'GFXINFO': 'SELF',
+    'ARM': h, 'BEAT': h, 'RECOVER': h, 'SHELL': '100 3',
 }
-noargs = set('COMPANIONSTATUS ZIGBEECONTAIN OFF LEDPROBE BLPOWER BLREAD SCREENCAP LOGCATCAPS LOGCAT COMPANIONCAPS BUILDID GUARDCAPS GUARDSELF GUARDSTATUS INPUTV2 INPUTV3 WATCHRESET SUBSCRIBE GPIOV1 GPIORESET GPIOSUBSCRIBE REBOOT ZIGBEESTATE ZIGBEEHEALTH ZIGBEEROLE WIFISTATUS ADBSTATE PERFDUMP CHT8305 VI530X VERSION PING CDPSTATE ADBRECOVERYENSURE'.split())
+noargs = set('COMPANIONSTATUS ZIGBEECONTAIN OFF LEDPROBE BLPOWER BLREAD SCREENCAP LOGCATCAPS LOGCAT COMPANIONCAPS BUILDID GUARDCAPS GUARDSELF GUARDSTATUS INPUTV2 INPUTV3 WATCHRESET SUBSCRIBE GPIOV1 GPIORESET GPIOSUBSCRIBE REBOOT ZIGBEESTATE ZIGBEEHEALTH ZIGBEEROLE WIFISTATUS ADBSTATE PERFDUMP CHT8305 VI530X VERSION PING CDPSTATE ADBRECOVERYENSURE STATUS'.split())
 assert set(verbs) == set(args) | noargs, 'Add a reviewed argument seed/no-argument declaration for new verbs'
 
 def put(name, value):
@@ -70,6 +71,14 @@ for verb in verbs:
         cases.append(('arg-' + str(len(cases)), verb + ' ' + value + '\n'))
     for length in (511, 512, 513, 1024, 8192):
         cases.append((f'length-{length}', (verb + ' ').ljust(length, 'A') + '\n'))
+    if verb == 'SHELL':
+        cases += [('body', valid + '\nabc'),
+                  ('body-verbs', 'SHELL 100 9\nPING\nOFF\nPING\n'),
+                  ('body-nul', b'SHELL 100 3\na\x00b'),
+                  ('body-short', 'SHELL 100 4\nabc'),
+                  ('bad-timeout', 'SHELL 180001 3\nabc'),
+                  ('bad-count', 'SHELL 100 65537\nabc'),
+                  ('extra-header-token', 'SHELL 100 3 extra\nabc')]
     cases += [(f'variant-{i}', verb + ' ' + argument + '\n')
               for i, argument in enumerate(variants.get(verb, []))]
     for name, value in cases:
@@ -80,6 +89,9 @@ prepare = 'GUARDPREPARE ' + args['GUARDPREPARE'] + '\n'
 put('guard-prepare-define', prepare + 'GUARDDEFINE ' + args['GUARDDEFINE'] + '\nGUARDSTATUS\n')
 put('guard-prepare-cancel', prepare + 'GUARDCANCEL ' + args['GUARDCANCEL'] + '\nGUARDSTATUS\n')
 put('guard-prepare-stream', prepare + 'GUARDDEFINE ' + args['GUARDDEFINE'] + '\nGUARDSTREAM ' + args['GUARDSTREAM'] + '\nabc\n')
+put('recovery-admitted-sequence', f'VERSION\nBUILDID\nARM {h}\nPING\n')
+put('recovery-header-control', b'STATUS\x01\nPING\n')
+put('recovery-header-overflow-body', 'SHELL ' + '1' * 600 + '\nPING\nOFF\n')
 put('transport-reply-flood', 'PING\n' * 1500)
 put('transport-overlong-recovery', 'X' * 8192 + '\nPING\n')
 put('transport-binary', b'\xff\xfe\x00\x01\r\nRGB 1 2 3\x00OFF\n')

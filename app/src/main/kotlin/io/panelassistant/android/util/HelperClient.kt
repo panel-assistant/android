@@ -283,6 +283,7 @@ internal interface HelperCommandSession : AutoCloseable {
     fun sendBytes(cmd: String, maxBytes: Long): ByteArray?
     fun sendBytes(cmd: String, maxBytes: Long, deadline: MonotonicDeadline): ByteArray? =
         if (deadline.remainingMs() > 0L) sendBytes(cmd, maxBytes) else null
+    fun adbRecoveryExchange(header: String, payload: ByteArray, timeoutMs: Int, submit: (() -> Unit) -> Boolean): ByteArray? = null
     fun readLogcatLine(): String?
     fun backupCompanion(
         packageName: String,
@@ -326,6 +327,7 @@ internal class IdentityAdmittingHelperClient(
     private val transport: HelperCommandTransport,
     private val nowNs: () -> Long = System::nanoTime,
     private val bootstrapTimeoutMs: Long = HELPER_BOOTSTRAP_TIMEOUT_MS,
+    private val expectedBuildId: String = BuildConfig.HELPER_BUILD_ID,
 ) : Daemon {
     init {
         require(bootstrapTimeoutMs in 1..Int.MAX_VALUE.toLong())
@@ -451,6 +453,32 @@ internal class IdentityAdmittingHelperClient(
             "CDPSTATE UNKNOWN\n" -> HelperCdpState.UNKNOWN
             else -> null
         }
+    }
+
+    /** Admission belongs to the actual carrying socket; there is no legacy or reconnect fallback. */
+    private fun openAdbRecoverySession(): HelperCommandSession? {
+        val deadline = newDeadline()
+        val session = transport.open(deadline) ?: return null
+        try {
+            val version = session.bootstrap("VERSION", deadline) as? HelperBootstrapReply.Line
+            val identity = version?.let { parseHelperIdentity(it.value) }
+            if (deadline.remainingMs() > 0L && identity?.protocolMajor == SUPPORTED_HELPER_PROTOCOL_MAJOR && identity.protocolMinor >= 16) {
+                val build = session.bootstrap("BUILDID", deadline) as? HelperBootstrapReply.Line
+                if (deadline.remainingMs() > 0L && helperBuildIdentitySupported(build?.value, expectedBuildId)) return session
+            }
+        } catch (_: Exception) { /* An unadmitted socket never receives an operation. */ }
+        session.close()
+        return null
+    }
+
+    override fun supportsAdbRecovery(): Boolean = runCatching {
+        openAdbRecoverySession()?.use { true } ?: false
+    }.getOrDefault(false)
+
+    override fun adbRecoveryExchange(header: String, payload: ByteArray, timeoutMs: Int, submit: (() -> Unit) -> Boolean): ByteArray? {
+        val session = openAdbRecoverySession() ?: error("main helper recovery unavailable")
+        // Exceptions after submission remain indeterminate to the caller: never retry or reopen.
+        return session.use { it.adbRecoveryExchange(header, payload, timeoutMs, submit) }
     }
 
     override fun supportsAdbRecoveryEnsure(): Boolean = adbRecoveryEnsure(submit = false)
@@ -835,6 +863,33 @@ private class LocalSocketHelperSession(
     } catch (e: Exception) {
         Log.d(tag, "daemon timed bytes failed (${e.message})")
         null
+    }
+
+    override fun adbRecoveryExchange(header: String, payload: ByteArray, timeoutMs: Int, submit: (() -> Unit) -> Boolean): ByteArray? =
+        HelperSocketProtocol.adbRecoveryExchange(header, payload, input, timeoutMs, submit,
+            write = { bytes -> writeRecoveryRequest(bytes) },
+            beforeRead = { remaining -> socket.soTimeout = remaining.toInt() },
+        )
+
+    /** Poll each bounded chunk under one deadline, even when the root peer stops reading. */
+    private fun writeRecoveryRequest(bytes: ByteArray) {
+        val deadline = MonotonicDeadline(2_000)
+        val chunk = (socket.sendBufferSize / 8).coerceIn(1, 1_024)
+        var sent = 0
+        while (sent < bytes.size) {
+            val remaining = deadline.remainingMs()
+            check(remaining > 0) { "local adb submission timed out" }
+            val ready = android.system.StructPollfd().apply { fd = socket.fileDescriptor; events = OsConstants.POLLOUT.toShort() }
+            try {
+                if (Os.poll(arrayOf(ready), remaining.toInt()) <= 0) continue
+            } catch (failure: ErrnoException) {
+                if (failure.errno == OsConstants.EINTR) continue
+                throw failure
+            }
+            val count = minOf(chunk, bytes.size - sent)
+            output.write(bytes, sent, count)
+            sent += count
+        }
     }
 
     override fun readLogcatLine(): String? {

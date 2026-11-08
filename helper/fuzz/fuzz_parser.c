@@ -20,6 +20,7 @@
 #include "sandbox.h"
 #include "sha256.h"
 #include <sys/stat.h>
+#include <time.h>
 
 #include "cmd.h"
 #include "dispatch.h"
@@ -105,7 +106,17 @@ static void run_handle(const uint8_t *data, size_t n) {
     static char line[8192];
     if (n > sizeof line - 1) n = sizeof line - 1;
     memcpy(line, data, n); line[n] = '\0';
-    conn_ctx ctx = { .fd = devnull, .subscribed = 0, .caller = HELPER_CALLER_SUCCESSOR };
+    size_t header = 0;
+    while (header < n && data[header] != '\r' && data[header] != '\n') header++;
+    line[header] = '\0';
+    struct timespec now;
+    if (clock_gettime(CLOCK_MONOTONIC, &now)) abort();
+    conn_ctx ctx = { .fd = devnull, .subscribed = 0, .caller = HELPER_CALLER_SUCCESSOR,
+        .request = line, .request_len = header,
+        .request_terminator = header < n ? data[header] : 0,
+        .request_started_ms = now.tv_sec * 1000LL + now.tv_nsec / 1000000,
+        .body_prefix = header < n ? data + header + 1 : NULL,
+        .body_prefix_len = header < n ? n - header - 1 : 0 };
     reset_state();
     dispatch(&ctx, line);
     fuzz_sandbox_leave();

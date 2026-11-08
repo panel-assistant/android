@@ -82,6 +82,7 @@ REAL(linkat, int, (int, const char *, int, const char *, int));
 REAL(fsetxattr, int, (int, const char *, const void *, size_t, int));
 REAL(socket, int, (int, int, int));
 REAL(bind, int, (int, const struct sockaddr *, socklen_t));
+REAL(sendmsg, ssize_t, (int, const struct msghdr *, int));
 REAL(waitpid, pid_t, (pid_t, int *, int));
 REAL(setpgid, int, (pid_t, pid_t));
 REAL(setsid, pid_t, (void));
@@ -97,6 +98,11 @@ int __wrap_socket(int domain, int type, int protocol) {
 }
 int __wrap_bind(int fd, const struct sockaddr *addr, socklen_t n) {
     return active ? denied() : __real_bind(fd, addr, n);
+}
+// A fuzz input cannot transfer descriptors to any lifecycle owner. Header validation remains real;
+// process fixtures exercise accepted IPC records and byte-counted execution.
+ssize_t __wrap_sendmsg(int fd, const struct msghdr *message, int flags) {
+    return active ? denied() : __real_sendmsg(fd, message, flags);
 }
 pid_t __wrap_waitpid(pid_t pid, int *status, int flags) {
     return active ? denied() : __real_waitpid(pid, status, flags);

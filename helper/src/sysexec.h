@@ -1,21 +1,23 @@
-// sysexec — the ONLY part of the daemon that executes commands, opens pipes, spawns threads, or
-// reboots the device. Every host-effecting primitive funnels through this one interface for two
-// reasons:
+// sysexec owns the fixed-command execution, pipe, thread and reboot mechanisms. Request-derived
+// values use structural argv or direct operations; its shell scripts are audited constants.
+// adb_recovery.c is the administrative exception: its lifecycle owner forks fixed property tools
+// and executes caller-supplied root programs through the authenticated SHELL operation.
 //
-//   1. Security: the entire shell-exec + privilege surface is in one small, auditable file. Callers
-//      must still validate/whitelist arguments (see util.h validators) — sysexec is the mechanism,
-//      not the policy — but "everything that can exec" lives here and nowhere else.
-//   2. Testability: the fuzz and unit-test builds link sysexec_stub.c instead of sysexec.c, so the
-//      real parsing/dispatch/validator code runs unmodified while a valid REBOOT/RELOAD/WATCH can't
-//      exec a command or spawn a looping thread on the build host — no per-call macro stubbing.
-//
-// The production implementation (sysexec.c) keeps shell execution restricted to audited,
-// argument-free constant scripts. Request-derived values must use the argv functions below.
+// Fixed-command tests link sysexec_stub.c so real parser/validator code runs without host effects.
+// Recovery and fuzz fixtures additionally isolate their own process and execution boundary.
 #ifndef HAPANELD_SYSEXEC_H
 #define HAPANELD_SYSEXEC_H
 
 #include <stddef.h>
 #include <sys/types.h>
+
+/* Before any lifecycle-parent execution, enable bounded, thread-free child custody.
+ * The forked socket worker disables it before starting threads. A parent tick reaps
+ * only deferred children; live caller-owned statuses are never stolen. Eight owned
+ * children (active or deferred) exhaust admission until a status is collected.
+ * Disable only in a forked worker, never to abandon a parent's outstanding custody. */
+void sysexec_set_lifecycle_owner(int enabled);
+int sysexec_reap_pending(void);
 
 // Run an audited, argument-free constant shell program, blocking until it exits. Never pass request,
 // profile, environment, filesystem, or network-derived bytes. Returns the raw wait status.
@@ -44,13 +46,13 @@ int   sysexec_run_argv_deadline(const char *path, const char *const argv[], int 
 
 /* Execute with a monotonic deadline. Returns raw wait status, -1 for spawn/wait failure, or -2
  * after terminating the process group that exceeded timeout_ms. The leader is reaped inline for at
- * most 500 ms, then by a detached reaper if necessary. timed_out is always initialized. */
+ * most 500 ms, then by a parent tick or worker reaper if necessary. timed_out is always initialized. */
 int   sysexec_run_argv_timeout(const char *path, const char *const argv[], int quiet,
                                unsigned timeout_ms, int *timed_out);
 
 /* Start one directly-execed child owned by the caller. A CLOEXEC handshake proves exec succeeded;
  * the returned pid is also its process-group id. poll returns 0 running, 1 reaped, -1 unknown.
- * terminate returns 0 only with the leader's exact wait status; it returns -1 after a safe detached
+ * terminate returns 0 only with the leader's exact wait status; it returns -1 after a deferred
  * reap handoff because no exact status is available to that caller. */
 int   sysexec_start_argv(const char *path, const char *const argv[], int quiet, pid_t *pid);
 /* Start a fixed argv with stdout on a CLOEXEC pipe owned by the caller. */
@@ -63,8 +65,8 @@ int   sysexec_terminate_argv(pid_t pid, int *status);
 int   sysexec_capture_argv(const char *path, const char *const argv[], char *output, size_t capacity);
 
 /* Capture bounded stdout under a monotonic deadline. The process group is killed on timeout and its
- * leader is reaped inline for at most 500 ms, then by a detached reaper if necessary. Output is always
- * NUL terminated. Returns raw wait status, -1 for I/O/spawn failure, or -2 for timeout. Callers must
+ * leader is reaped inline for at most 500 ms, then by a parent tick or worker reaper if necessary.
+ * Output is always NUL terminated. Returns raw wait status, -1 for I/O/spawn failure, or -2 for timeout. Callers must
  * independently adjudicate side effects. */
 int   sysexec_capture_argv_timeout(const char *path, const char *const argv[], char *output,
                                    size_t capacity, unsigned timeout_ms, int *timed_out);

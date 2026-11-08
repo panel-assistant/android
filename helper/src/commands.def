@@ -79,5 +79,13 @@ COMMAND(CDPSTATE, cmd_cdpstate)
 // Authenticated app-only fixed cumulative HWUI counters (protocol 1.14).
 COMMAND(GFXINFO, cmd_gfxinfo)
 
-// Fixed no-argument recovery bootstrap (protocol 1.15), separate recovery control stays private.
+// Fixed no-argument legacy recovery readiness probe (protocol 1.15).
 COMMAND(ADBRECOVERYENSURE, cmd_adbrecoveryensure)
+
+// Terminal recovery operations share the lifecycle owner's lease (protocol 1.16). SHELL is the
+// authenticated administrative exception to the ordinary fixed-command surface.
+COMMAND(ARM, cmd_adb_recovery)
+COMMAND(BEAT, cmd_adb_recovery)
+COMMAND(RECOVER, cmd_adb_recovery)
+COMMAND(STATUS, cmd_adb_recovery)
+COMMAND(SHELL, cmd_adb_recovery)
