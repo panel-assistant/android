@@ -846,6 +846,10 @@ int main(int argc,char **argv) {
     if (mkdir(APP_DATA,0700) || mkdir(APP_USER_DATA,0700)) abort();
     if (serve) {
         fixture_lease_ms = 60000;
+        /* Serve as an owner already in the root cgroup, as after a panel's migration, so the
+         * JVM composition test does not depend on the host's cgroup layout (a systemd CI host
+         * runs jobs in a service cgroup that the Android custody check rightly refuses). */
+        fixture_custody = 1; fixture_migrated = 1; fixture_magic = 0;
         start();
         const char *path = getenv("HAPANELD_MAIN_FIXTURE_PATH");
         printf("%s\n", path && *path ? path : fixture_main_socket); fflush(stdout);
