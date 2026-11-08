@@ -43,7 +43,8 @@ $(BUILD)/hapaneld-helper: $(DAEMON_SRCS) | $(BUILD)
 
 # Unit tests: CORE modules + the sysexec stub (no real exec) + the test drivers. Every test is its own
 # run-<name> target and `test` runs them in parallel (`make test TEST_JOBS=1` runs them one at a time).
-# Output is grouped per target, so a failing test prints its own log and make names it. Most of the wall
+# Output is grouped per target, so a failing test prints its own log and make names it; -k runs every
+# test even after one fails, so one run reports every failure. Most of the wall
 # time is the recovery replacement driver waiting on real deadlines, so it is split into shards
 # (REPLACEMENT_SHARDS) and listed first, where make starts it first.
 #
@@ -56,7 +57,7 @@ TEST_JOBS ?= 16
 UNITS_TMP := /tmp/hapaneld-units-$(shell printf '%s' '$(abspath $(BUILD))' | sha256sum | cut -c1-12)
 UNIT_NAME = $(notdir $@)
 UNIT_TMP = -DHAPANELD_TEST_TMP='"$(UNITS_TMP)/$(UNIT_NAME)"'
-fresh_root = rm -rf -- '$(UNITS_TMP)/$(1)' && mkdir -p '$(UNITS_TMP)' && mkdir -m 1777 '$(UNITS_TMP)/$(1)'
+fresh_root = rm -rf -- '$(UNITS_TMP)/$(1)' && install -d -m 0755 '$(UNITS_TMP)' && mkdir -m 1777 '$(UNITS_TMP)/$(1)'
 
 TEST_BINS := $(BUILD)/actuator-exec $(BUILD)/adb-recovery $(BUILD)/uninstall-supervisor $(BUILD)/unit $(BUILD)/hapaneld-helper $(BUILD)/companion-boundary $(BUILD)/guard-maintenance-boundary $(BUILD)/guard-maintenance-gates $(BUILD)/replacement-lease-old $(BUILD)/replacement-lease-new $(BUILD)/sysexec-fd-boundary $(BUILD)/sysexec-platform-wrapper $(BUILD)/peer-auth $(BUILD)/request-timeout $(BUILD)/bounded-exec $(BUILD)/lifecycle-reap $(BUILD)/hapaneld-helper-old $(BUILD)/hapaneld-helper-new $(BUILD)/cdprelay-resource-test $(BUILD)/cdprelay-test $(BUILD)/logcat-fixture $(BUILD)/logcat-boundary
 
@@ -89,12 +90,12 @@ UNIT_RUNS := $(REPLACEMENT_RUNS) run-adb-recovery run-uninstall-supervisor run-a
 
 .PHONY: replacement-shard-check $(UNIT_RUNS)
 test:
-	$(MAKE) --no-print-directory -j$(TEST_JOBS) --output-sync=target test-units
+	$(MAKE) --no-print-directory -k -j$(TEST_JOBS) --output-sync=target test-units
 
 test-units: replacement-shard-check $(UNIT_RUNS)
 
 # A binary test: a fresh fixture root, then the binary.
-UNIT_BINARY_RUNS := $(filter-out $(REPLACEMENT_RUNS) run-adb-recovery-retirement run-replacement-lease run-replacement-identity run-version run-cdprelay-resource-test,$(UNIT_RUNS))
+UNIT_BINARY_RUNS := $(filter-out $(REPLACEMENT_RUNS) run-adb-recovery run-adb-recovery-retirement run-replacement-lease run-replacement-identity run-version run-cdprelay-resource-test,$(UNIT_RUNS))
 $(UNIT_BINARY_RUNS): run-%: $(BUILD)/%
 	@$(call fresh_root,$*)
 	$(BUILD)/$*
@@ -107,9 +108,16 @@ run-replacement-identity: $(BUILD)/hapaneld-helper-old $(BUILD)/hapaneld-helper-
 	bash ./test/replacement_identity_test.sh $(BUILD)/hapaneld-helper-old $(BUILD)/hapaneld-helper-new
 run-cdprelay-resource-test: $(BUILD)/cdprelay-resource-test $(BUILD)/cdprelay-test
 	$(BUILD)/cdprelay-resource-test $(BUILD)/cdprelay-test
+# adb-recovery keeps the default /tmp fixture root: HelperSocketCompositionTest (Gradle) runs this binary
+# from its own BUILD, where no per-test root exists, and no other test here uses the default names.
+run-adb-recovery: $(BUILD)/adb-recovery
+	$(BUILD)/adb-recovery
 run-adb-recovery-retirement: $(BUILD)/adb-recovery-retirement
 	$(BUILD)/adb-recovery-retirement
 
+# The shards run at a lower priority: their deadlines are seconds long, while actuator-exec,
+# bounded-exec and the other binaries assert sub-second deadlines that the shards' polling would
+# otherwise starve on a small runner.
 # The shards compile the sources that read none of the driver's per-run defines once, here, and each
 # shard links them into its own binaries (a distinct executable inode per shard).
 REPLACEMENT_OBJ := $(BUILD)/replacement-obj
@@ -122,7 +130,7 @@ define replacement_shard
 run-$(call shard_name,$(1)): $(BUILD)/adb-recovery-replacement $(REPLACEMENT_OBJS)
 	RECOVERY_REPLACEMENT_OBJECTS='$(abspath $(REPLACEMENT_OBJ))' RECOVERY_REPLACEMENT_LEGS=$(call shard_field,$(1),1) \
 		RECOVERY_REPLACEMENT_CASES=$(subst +,$(comma),$(call shard_field,$(1),2)) $(if $(call shard_field,$(1),3),RECOVERY_REPLACEMENT_VARIANTS=$(subst +,$(comma),$(call shard_field,$(1),3))) \
-		$(BUILD)/adb-recovery-replacement
+		nice -n 10 $(BUILD)/adb-recovery-replacement
 endef
 $(foreach s,$(REPLACEMENT_SHARDS),$(eval $(call replacement_shard,$(s))))
 
@@ -254,7 +262,7 @@ $(BUILD)/uninstall-supervisor: $(CORE_SRCS) $(SRC_DIR)/main.c $(SRC_DIR)/sysexec
 		-I$(SRC_DIR) $(CORE_SRCS) $(SRC_DIR)/sysexec.c test/uninstall_supervisor.c $(LDLIBS) -Wl,--wrap=unlinkat -Wl,--wrap=lstat -o $@
 
 $(BUILD)/adb-recovery: test/adb_recovery.c test/adb_recovery_paths.h test/android/log.h $(CORE_SRCS) $(SRC_DIR)/main.c $(STUB) | $(BUILD)
-	$(CC) $(CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -include test/adb_recovery_paths.h -DHAPANELD_BUILD_ID='"$(TEST_BUILD_ID)"' -I$(SRC_DIR) -Itest test/adb_recovery.c $(filter-out $(SRC_DIR)/adb_recovery.c,$(CORE_SRCS)) $(STUB) $(LDLIBS) -o $@
+	$(CC) $(CFLAGS) -DHAPANELD_TEST -include test/adb_recovery_paths.h -DHAPANELD_BUILD_ID='"$(TEST_BUILD_ID)"' -I$(SRC_DIR) -Itest test/adb_recovery.c $(filter-out $(SRC_DIR)/adb_recovery.c,$(CORE_SRCS)) $(STUB) $(LDLIBS) -o $@
 adb-recovery-test: $(BUILD)/adb-recovery
 	$(BUILD)/adb-recovery
 
