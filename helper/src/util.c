@@ -186,3 +186,38 @@ int valid_apk_path(const char *s) {
     for (size_t i = 0; i < n; i++) if (s[i] == '\'') return 0;
     return 1;
 }
+
+int valid_component_strict(const char *s) {
+    return valid_component_shape(s) && strlen(s) <= VALID_COMPONENT_MAX;
+}
+
+int valid_component_shape(const char *s) {
+    if (!s) return 0;
+    size_t n = strlen(s);
+    if (n == 0 || n > 4096) return 0;
+    const char *slash = strchr(s, '/');
+    if (!slash || strchr(slash + 1, '/') || slash == s || slash[1] == '\0') return 0;
+    if (!((s[0] >= 'A' && s[0] <= 'Z') || (s[0] >= 'a' && s[0] <= 'z'))) return 0;
+    for (const char *p = s + 1; p < slash; p++)
+        if (!((*p >= 'A' && *p <= 'Z') || (*p >= 'a' && *p <= 'z') || (*p >= '0' && *p <= '9') ||
+              *p == '_' || *p == '.')) return 0;
+    const char *cls = slash + 1;
+    if (!((cls[0] >= 'A' && cls[0] <= 'Z') || (cls[0] >= 'a' && cls[0] <= 'z') || cls[0] == '.')) return 0;
+    for (const char *p = cls + 1; *p; p++)
+        if (!((*p >= 'A' && *p <= 'Z') || (*p >= 'a' && *p <= 'z') || (*p >= '0' && *p <= '9') ||
+              *p == '_' || *p == '.' || *p == '$')) return 0;
+    return 1;
+}
+
+int valid_home_target(const char *component, int (*package_present)(const char *package)) {
+    if (!valid_component_strict(component) || !package_present) return 0;
+    char package[VALID_COMPONENT_MAX + 1];
+    size_t n = (size_t)(strchr(component, '/') - component);
+    memcpy(package, component, n);
+    package[n] = '\0';
+    // The chooser (android/*) and Settings' FallbackHome would leave the panel without a home screen.
+    if (strcmp(package, "android") == 0 || strcmp(package, "com.android.settings") == 0) return 0;
+    if (is_critical_pkg(package)) return 0;
+    if (strcmp(package, "io.github.maxlyth.hapaneld") == 0) return 0;
+    return package_present(package);
+}

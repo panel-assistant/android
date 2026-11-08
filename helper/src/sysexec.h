@@ -71,6 +71,14 @@ int   sysexec_capture_argv(const char *path, const char *const argv[], char *out
 int   sysexec_capture_argv_timeout(const char *path, const char *const argv[], char *output,
                                    size_t capacity, unsigned timeout_ms, int *timed_out);
 
+/* The capture above with two extra controls: [stdin_fd] (or -1 for /dev/null) becomes the child's
+ * stdin, which keeps a held lock alive across a framework command that hands stdin over Binder, and
+ * [merge_stderr] sends stderr into the captured output for commands that report errors there while
+ * exiting 0. */
+int   sysexec_capture_argv_io(const char *path, const char *const argv[], char *output,
+                              size_t capacity, unsigned timeout_ms, int *timed_out,
+                              int stdin_fd, int merge_stderr);
+
 // Fixed one-topic vendor broker read, child-only fixed LD_LIBRARY_PATH and 3500ms deadline.
 // Successful capture reports its exact byte count, so embedded NUL cannot hide trailing data.
 int sysexec_capture_zigbee_role(char *output, size_t capacity, size_t *used);

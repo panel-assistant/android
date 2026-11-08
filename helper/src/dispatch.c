@@ -23,6 +23,7 @@
 #include "adb_state.h"
 #include "adb_recovery.h"
 #include "sysfs_read.h"
+#include "pa_commands.h"
 
 static void cmd_ping(conn_ctx *ctx, const char *args) { (void)args; reply(ctx->fd, "OK\n"); }
 static void cmd_buildid(conn_ctx *ctx, const char *args) {

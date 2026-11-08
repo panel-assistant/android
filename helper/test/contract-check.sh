@@ -15,6 +15,7 @@
 #   - HelperClient's own send("VERB …") calls (notably the PING availability probe)
 #   - TameController.privileged("VERB …")                  (STOP/DISABLE/ENABLE/OVERLAY)
 #   - input session socket writer.write("VERB …")          (INPUTV2/WATCH/SUBSCRIBE)
+#   - typed Panel Assistant verb literals "PA_…"           (LocalAdbRuntime's adb.cmd tables)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 APP="$ROOT/app/src/main/kotlin"
@@ -25,7 +26,10 @@ daemon=$(grep -oE '^COMMAND\([A-Z][A-Z0-9_]*' "$COMMANDS" | cut -d'(' -f2 | sort
 app_helper=$(grep -rhoE '((HelperClient|daemon)\.(send|sendBytes|sendLong|sendFile)|privileged)\("[A-Z][A-Z0-9_]*' "$APP" | grep -oE '"[A-Z][A-Z0-9_]*' | tr -d '"')
 app_client=$(grep -hoE '(send|sendBytes|sendLong|sendFile|requestRaw|request|bootstrap)\("[A-Z][A-Z0-9_]*' "$APP/io/panelassistant/android/util/HelperClient.kt" | grep -oE '"[A-Z][A-Z0-9_]*' | tr -d '"')
 app_evdev=$(grep -rhoE '(out|writer)\.write\("[A-Z][A-Z0-9_]*' "$APP/io/panelassistant/android/input" 2>/dev/null | grep -oE '"[A-Z][A-Z0-9_]*' | tr -d '"' || true)
-app=$(printf '%s\n%s\n%s\n' "$app_helper" "$app_client" "$app_evdev" | grep -E '.' | sort -u)
+# Typed Panel Assistant verbs are sent as a computed header, so their names are read from the
+# literals that spell them (the per-verb timeout table and the allowed-verb set).
+app_typed=$(grep -rhoE '"PA_[A-Z][A-Z0-9_]*"' "$APP" 2>/dev/null | tr -d '"' || true)
+app=$(printf '%s\n%s\n%s\n%s\n' "$app_helper" "$app_client" "$app_evdev" "$app_typed" | grep -E '.' | sort -u)
 
 missing=""
 for v in $app; do grep -qxF "$v" <<<"$daemon" || missing="$missing $v"; done

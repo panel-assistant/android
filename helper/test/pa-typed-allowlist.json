@@ -1,0 +1,105 @@
+{
+  "accessibility_components": {
+    "current": {
+      "io.panelassistant.android/io.github.maxlyth.hapaneld.MainActivity": "io.panelassistant.android/io.github.maxlyth.hapaneld.input.PanelAccessibilityService",
+      "io.panelassistant.android/io.panelassistant.android.MainActivity": "io.panelassistant.android/io.panelassistant.android.input.PanelAccessibilityService"
+    },
+    "equivalent": {
+      "io.panelassistant.android/io.github.maxlyth.hapaneld.MainActivity": [
+        "io.panelassistant.android/io.github.maxlyth.hapaneld.input.PanelAccessibilityService"
+      ],
+      "io.panelassistant.android/io.panelassistant.android.MainActivity": [
+        "io.panelassistant.android/.input.PanelAccessibilityService",
+        "io.panelassistant.android/io.panelassistant.android.input.PanelAccessibilityService"
+      ]
+    },
+    "obsolete": {
+      "io.panelassistant.android/io.panelassistant.android.MainActivity": [
+        "io.panelassistant.android/io.github.maxlyth.hapaneld.input.PanelAccessibilityService"
+      ]
+    }
+  },
+  "app_ops": [
+    "WRITE_SETTINGS",
+    "SYSTEM_ALERT_WINDOW",
+    "REQUEST_INSTALL_PACKAGES"
+  ],
+  "device_admin": {
+    "receiver": "io.panelassistant.android.platform.PanelDeviceAdminReceiver",
+    "release_receiver": "io.panelassistant.android.platform.ReleaseDeviceAdminReceiver"
+  },
+  "home_components": {
+    "current": {
+      "io.panelassistant.android/io.github.maxlyth.hapaneld.MainActivity": "io.panelassistant.android/io.github.maxlyth.hapaneld.DashboardActivity",
+      "io.panelassistant.android/io.panelassistant.android.MainActivity": "io.panelassistant.android/io.panelassistant.android.DashboardActivity"
+    },
+    "equivalent": {
+      "io.panelassistant.android/io.github.maxlyth.hapaneld.MainActivity": [
+        "io.panelassistant.android/io.github.maxlyth.hapaneld.DashboardActivity"
+      ],
+      "io.panelassistant.android/io.panelassistant.android.MainActivity": [
+        "io.panelassistant.android/.DashboardActivity",
+        "io.panelassistant.android/io.panelassistant.android.DashboardActivity"
+      ]
+    },
+    "labels": [
+      "Panel Assistant",
+      "ha-paneld"
+    ]
+  },
+  "launch_components": [
+    "io.panelassistant.android/io.github.maxlyth.hapaneld.MainActivity",
+    "io.panelassistant.android/io.panelassistant.android.MainActivity"
+  ],
+  "meta": {
+    "control_center": "com.facebook.alohaapps.controlcenter",
+    "devices": [
+      "omni",
+      "aloha"
+    ]
+  },
+  "notifications": {
+    "min_sdk": 33,
+    "permission": "android.permission.POST_NOTIFICATIONS"
+  },
+  "package_ids": {
+    "app": "io.panelassistant.android",
+    "legacy": "io.github.maxlyth.hapaneld",
+    "shelly": "cloud.shelly.stargate"
+  },
+  "record_paths": {
+    "display": "/data/local/tmp/panel-assistant-display-restore",
+    "meta": "/data/local/tmp/panel-assistant-meta-portal-restore",
+    "meta_verifier": "/data/local/tmp/panel-assistant-meta-portal-verifier-restore",
+    "shelly": "/data/local/tmp/panel-assistant-shelly-restore"
+  },
+  "restore_settings_keys": {
+    "display": [
+      "density",
+      "font_scale"
+    ],
+    "meta": [
+      "screensaver_components",
+      "screensaver_default_component",
+      "controlcenter_overlay"
+    ],
+    "meta_verifier": [
+      "package_verifier_enable"
+    ],
+    "shelly": [
+      "stargate_overlay"
+    ]
+  },
+  "runtime_grants": [
+    {
+      "feature": "camera.any",
+      "permission": "android.permission.CAMERA"
+    },
+    {
+      "feature": "microphone",
+      "permission": "android.permission.RECORD_AUDIO"
+    }
+  ],
+  "secure_settings_permission": "android.permission.WRITE_SECURE_SETTINGS",
+  "shelly_splash": "cloud.shelly.stargate/.activities.SplashActivity"
+}

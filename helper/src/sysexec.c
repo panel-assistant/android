@@ -519,9 +519,26 @@ int sysexec_capture_argv(const char *path, const char *const argv[], char *outpu
     return pipe_argv(path, argv, -1, output, capacity);
 }
 
+static int capture_argv_io(const char *path, const char *const argv[], char *output,
+                           size_t capacity, unsigned timeout_ms, int *timed_out,
+                           char *const env[], size_t *output_size, int stdin_fd, int merge_stderr);
+
 static int capture_argv_timeout_env(const char *path, const char *const argv[], char *output,
                                  size_t capacity, unsigned timeout_ms, int *timed_out,
                                  char *const env[], size_t *output_size) {
+    return capture_argv_io(path, argv, output, capacity, timeout_ms, timed_out, env, output_size, -1, 0);
+}
+
+int sysexec_capture_argv_io(const char *path, const char *const argv[], char *output,
+                            size_t capacity, unsigned timeout_ms, int *timed_out,
+                            int stdin_fd, int merge_stderr) {
+    return capture_argv_io(path, argv, output, capacity, timeout_ms, timed_out, clean_env, NULL,
+                           stdin_fd, merge_stderr);
+}
+
+static int capture_argv_io(const char *path, const char *const argv[], char *output,
+                           size_t capacity, unsigned timeout_ms, int *timed_out,
+                           char *const env[], size_t *output_size, int stdin_fd, int merge_stderr) {
     if (output_size) *output_size = 0;
     if (timed_out) *timed_out = 0;
     if (!path || path[0] != '/' || !argv || !argv[0] || !output || capacity == 0 ||
@@ -543,7 +560,8 @@ static int capture_argv_timeout_env(const char *path, const char *const argv[], 
         close(pipefd[0]);
         if (prctl(PR_SET_PDEATHSIG, SIGKILL) != 0 || getppid() != parent ||
             setpgid(0, 0) != 0) _exit(127);
-        child_exec_env(path, argv, null_fd, pipefd[1], null_fd, env);
+        child_exec_env(path, argv, stdin_fd >= 0 ? stdin_fd : null_fd, pipefd[1],
+                       merge_stderr ? pipefd[1] : null_fd, env);
     }
     (void)setpgid(pid, pid);
     close(null_fd);

@@ -8,6 +8,7 @@
 #include <errno.h>
 #include <pthread.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -15,10 +16,10 @@ static int ensure_result, ensure_calls;
 void sysexec_stub_set_ensure_result(int result) { ensure_result = result; }
 int sysexec_stub_count_ensure(void) { return ensure_calls; }
 
-#define MAX_POPEN_RULES 8
+#define MAX_POPEN_RULES 40
 #define MAX_RUN_HISTORY 32
 #define MAX_RUN_BYTES 4096
-#define MAX_ARGV_HISTORY 32
+#define MAX_ARGV_HISTORY 96
 #define MAX_ARGV_ARGS 32
 #define MAX_ARGV_BYTES 1280
 
@@ -26,7 +27,12 @@ typedef struct {
     char needle[128];
     char output[16384];
     int close_status;
+    int remaining; // 0 = unlimited; otherwise the rule stops matching after this many uses
 } popen_rule;
+
+// A file the stub writes when a matching argv runs, standing in for a child that writes a file.
+static char file_rule_needle[128], file_rule_path[256], file_rule_content[16384];
+static int stdin_fd_calls;
 
 typedef struct {
     char path[MAX_ARGV_BYTES];
@@ -78,6 +84,8 @@ void sysexec_stub_reset(void) {
     spawn_status = -1;
     spawn_real = 0;
     last_pclose_offset = -1;
+    file_rule_needle[0] = file_rule_path[0] = file_rule_content[0] = '\0';
+    stdin_fd_calls = 0;
     sleep_call_count = 0;
     sleep_total_ms = 0;
     memset(deadline_history, 0, sizeof deadline_history);
@@ -168,13 +176,29 @@ int sysexec_stub_count_argv_calls(void) {
     return count;
 }
 
-void sysexec_stub_add_popen(const char *needle, const char *output, int close_status) {
-    if (popen_rule_count >= MAX_POPEN_RULES) return;
+void sysexec_stub_add_popen_times(const char *needle, const char *output, int close_status, int times) {
+    if (popen_rule_count >= MAX_POPEN_RULES) {
+        fprintf(stderr, "sysexec stub: popen rule table full\n");
+        abort();
+    }
     popen_rule *rule = &popen_rules[popen_rule_count++];
     snprintf(rule->needle, sizeof rule->needle, "%s", needle);
     snprintf(rule->output, sizeof rule->output, "%s", output);
     rule->close_status = close_status;
+    rule->remaining = times;
 }
+
+void sysexec_stub_add_popen(const char *needle, const char *output, int close_status) {
+    sysexec_stub_add_popen_times(needle, output, close_status, 0);
+}
+
+void sysexec_stub_write_file_on_run(const char *needle, const char *path, const char *content) {
+    snprintf(file_rule_needle, sizeof file_rule_needle, "%s", needle);
+    snprintf(file_rule_path, sizeof file_rule_path, "%s", path);
+    snprintf(file_rule_content, sizeof file_rule_content, "%s", content);
+}
+
+int sysexec_stub_count_stdin_fd_calls(void) { return stdin_fd_calls; }
 
 void sysexec_stub_clear_popen_rules(void) {
     memset(popen_rules, 0, sizeof popen_rules);
@@ -216,6 +240,13 @@ int sysexec_run_argv(const char *path, const char *const argv[], int quiet) {
         size_t used = strlen(display);
         if (used + 1 >= sizeof display) break;
         snprintf(display + used, sizeof display - used, "%s%s", i ? " " : "", argv[i]);
+    }
+    if (file_rule_needle[0] && strstr(display, file_rule_needle)) {
+        FILE *file = fopen(file_rule_path, "w");
+        if (!file || fputs(file_rule_content, file) < 0 || fclose(file) != 0) {
+            fprintf(stderr, "sysexec stub: cannot write %s\n", file_rule_path);
+            abort();
+        }
     }
     if (run_fail_needle[0] && strstr(display, run_fail_needle)) {
         int status = run_fail_status;
@@ -264,15 +295,19 @@ int sysexec_start_stdout_argv(const char *path, const char *const argv[], pid_t 
 int sysexec_poll_argv(pid_t pid, int *status) { (void)pid; (void)status; return -1; }
 int sysexec_terminate_argv(pid_t pid, int *status) { (void)pid; (void)status; return -1; }
 
-static const popen_rule *find_argv_rule(const char *const argv[]) {
+static popen_rule *find_argv_rule(const char *const argv[]) {
     char display[600] = {0};
     for (int i = 0; argv[i]; i++) {
         size_t used = strlen(display);
         if (used + 1 >= sizeof display) break;
         snprintf(display + used, sizeof display - used, "%s%s", i ? " " : "", argv[i]);
     }
-    for (int i = 0; i < popen_rule_count; i++)
-        if (strstr(display, popen_rules[i].needle)) return &popen_rules[i];
+    for (int i = 0; i < popen_rule_count; i++) {
+        popen_rule *rule = &popen_rules[i];
+        if (rule->remaining < 0 || !strstr(display, rule->needle)) continue;
+        if (rule->remaining > 0 && --rule->remaining == 0) rule->remaining = -1;
+        return rule;
+    }
     return NULL;
 }
 
@@ -303,6 +338,14 @@ int sysexec_capture_argv_timeout(const char *path, const char *const argv[], cha
         return -2;
     }
     return sysexec_capture_argv(path, argv, output, capacity);
+}
+
+int sysexec_capture_argv_io(const char *path, const char *const argv[], char *output,
+                            size_t capacity, unsigned timeout_ms, int *timed_out,
+                            int stdin_fd, int merge_stderr) {
+    (void)merge_stderr;
+    if (stdin_fd >= 0) stdin_fd_calls++;
+    return sysexec_capture_argv_timeout(path, argv, output, capacity, timeout_ms, timed_out);
 }
 
 int sysexec_stream_argv(const char *path, const char *const argv[], int output_fd) {

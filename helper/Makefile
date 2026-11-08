@@ -26,14 +26,14 @@ BUILD   := build
 # sysexec and never run main, so a valid REBOOT/RELOAD/WATCH/GPIOWATCH can't exec or spawn on the build host.
 # The dispatch-only ENSURE fixture and socket/fuzz fixtures additionally wrap its publisher; the
 # real replacement driver separately exercises publication and detached recovery processes.
-CORE_SRCS := $(addprefix $(SRC_DIR)/, identity.c adb_recovery.c util.c sha256.c led.c screen.c input.c gpio.c sysctl.c zigbee.c wifi.c adb_state.c sysfs_read.c perf.c cht8305.c vi530x.c version.c companion.c guard_maintenance.c guard_replacement.c logcat.c server.c dispatch.c)
+CORE_SRCS := $(addprefix $(SRC_DIR)/, identity.c adb_recovery.c util.c sha256.c led.c screen.c input.c gpio.c sysctl.c zigbee.c wifi.c adb_state.c sysfs_read.c perf.c cht8305.c vi530x.c version.c companion.c guard_maintenance.c guard_replacement.c logcat.c pa_commands.c server.c dispatch.c)
 DAEMON_SRCS := $(CORE_SRCS) $(SRC_DIR)/main.c $(SRC_DIR)/sysexec.c
 STUB := test/sysexec_stub.c
 TEST_BUILD_ID := aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 REPLACEMENT_OLD_BUILD_ID := eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
 REPLACEMENT_NEW_BUILD_ID := dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 
-.PHONY: actuator-exec-test adb-recovery-test all daemon test test-units peer-auth-test request-timeout-test replacement-identity-test cdprelay-resource-test socket-test-server fuzz contract clean print-core
+.PHONY: pa-allowlist-test actuator-exec-test adb-recovery-test all daemon test test-units peer-auth-test request-timeout-test replacement-identity-test cdprelay-resource-test socket-test-server fuzz contract clean print-core
 all: daemon
 
 # Host build of the real daemon — a compile sanity check (-Werror); the shipped binary is build.sh.
@@ -86,7 +86,8 @@ UNIT_RUNS := $(REPLACEMENT_RUNS) run-adb-recovery run-uninstall-supervisor run-a
 	run-zigbee-boundary run-sysexec-platform-wrapper run-cdprelay-resource-test run-guard-maintenance-gates \
 	run-replacement-lease run-request-timeout run-replacement-identity run-companion-boundary run-version \
 	run-sysfs-read-boundary run-stale-replacement-cli run-cdp-state-boundary run-peer-auth \
-	run-sysexec-fd-boundary run-wifi-boundary run-gfxinfo-boundary run-adb-ensure-boundary run-adb-state-boundary
+	run-sysexec-fd-boundary run-wifi-boundary run-gfxinfo-boundary run-adb-ensure-boundary run-adb-state-boundary \
+	run-pa-allowlist
 
 .PHONY: replacement-shard-check $(UNIT_RUNS) peer-auth-test request-timeout-test bounded-exec-test actuator-exec-test replacement-identity-test cdprelay-resource-test adb-recovery-test adb-recovery-retirement-test socket-framing-test lifecycle-reap-test
 test:
@@ -105,7 +106,7 @@ test-binaries: $(if $(FUZZ_RUNS),fuzz-binaries)
 test-units: $(FUZZ_RUNS) replacement-shard-check $(UNIT_RUNS)
 
 # A binary test: a fresh fixture root, then the binary.
-UNIT_BINARY_RUNS := $(filter-out $(REPLACEMENT_RUNS) run-adb-recovery run-adb-recovery-retirement run-replacement-lease run-replacement-identity run-version run-cdprelay-resource-test,$(UNIT_RUNS))
+UNIT_BINARY_RUNS := $(filter-out $(REPLACEMENT_RUNS) run-pa-allowlist run-adb-recovery run-adb-recovery-retirement run-replacement-lease run-replacement-identity run-version run-cdprelay-resource-test,$(UNIT_RUNS))
 $(UNIT_BINARY_RUNS): run-%: $(BUILD)/%
 	@$(call fresh_root,$*)
 	$(BUILD)/$*
@@ -113,9 +114,11 @@ run-replacement-lease: $(BUILD)/replacement-lease-old $(BUILD)/replacement-lease
 	@$(call fresh_root,replacement-lease)
 	$(BUILD)/replacement-lease-old $(BUILD)/replacement-lease-old $(BUILD)/replacement-lease-new
 run-version: $(BUILD)/hapaneld-helper
-	test "$$($(BUILD)/hapaneld-helper --version)" = "HELPER version=1.16.0 proto=1.16"
+	test "$$($(BUILD)/hapaneld-helper --version)" = "HELPER version=1.17.0 proto=1.17"
 run-replacement-identity: $(BUILD)/hapaneld-helper-old $(BUILD)/hapaneld-helper-new
 	bash ./test/replacement_identity_test.sh $(BUILD)/hapaneld-helper-old $(BUILD)/hapaneld-helper-new
+run-pa-allowlist: $(BUILD)/pa-allowlist-json
+	bash ./test/pa_allowlist_check.sh $(BUILD)/pa-allowlist-json
 run-cdprelay-resource-test: $(BUILD)/cdprelay-resource-test $(BUILD)/cdprelay-test
 	$(BUILD)/cdprelay-resource-test $(BUILD)/cdprelay-test
 # adb-recovery keeps the default /tmp fixture root: HelperSocketCompositionTest (Gradle) runs this binary
@@ -146,7 +149,7 @@ $(foreach s,$(REPLACEMENT_SHARDS),$(eval $(call replacement_shard,$(s))))
 .PHONY: test-binaries
 test-binaries: $(patsubst run-%,$(BUILD)/%,$(UNIT_BINARY_RUNS)) $(BUILD)/adb-recovery $(BUILD)/adb-recovery-retirement \
 	$(BUILD)/replacement-lease-old $(BUILD)/replacement-lease-new $(BUILD)/hapaneld-helper $(BUILD)/hapaneld-helper-old \
-	$(BUILD)/hapaneld-helper-new $(BUILD)/cdprelay-resource-test $(BUILD)/cdprelay-test $(BUILD)/adb-recovery-replacement \
+	$(BUILD)/hapaneld-helper-new $(BUILD)/cdprelay-resource-test $(BUILD)/cdprelay-test $(BUILD)/adb-recovery-replacement $(BUILD)/pa-allowlist-json \
 	$(REPLACEMENT_OBJS)
 
 replacement-shard-check:
@@ -157,6 +160,12 @@ replacement-shard-check:
 # preserving the existing ledjni ioctl assertions; --wrap=write forces deterministic stream edge cases.
 $(BUILD)/unit: $(CORE_SRCS) $(STUB) test/unit.c | $(BUILD)
 	$(CC) $(CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -I$(SRC_DIR) $(CORE_SRCS) $(STUB) test/unit.c $(LDLIBS) -Wl,--wrap=open -Wl,--wrap=ioctl -Wl,--wrap=write -Wl,--wrap=read -Wl,--wrap=__read_chk -o $@
+
+# The typed-command allowlist as JSON, compared with test/pa-typed-allowlist.json by value.
+pa-allowlist-test: $(BUILD)/pa-allowlist-json
+	bash ./test/pa_allowlist_check.sh $(BUILD)/pa-allowlist-json
+$(BUILD)/pa-allowlist-json: $(SRC_DIR)/pa_allowlist.h test/pa_allowlist_json.c | $(BUILD)
+	$(CC) $(CFLAGS) -I$(SRC_DIR) test/pa_allowlist_json.c -o $@
 
 $(BUILD)/companion-boundary: $(CORE_SRCS) $(STUB) test/companion_boundary.c | $(BUILD)
 	$(CC) $(CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) \
