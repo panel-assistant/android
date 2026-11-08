@@ -104,6 +104,45 @@ class SensorReporterProximityLivenessTest {
         assertEquals(null to null, rig.proximity.last())
     }
 
+    /** An NSPanel 86 under a hand: ambient jitter, a cover climbs once to full scale, then the HAL is silent. */
+    @Test fun aCoverThatSaturatesTheReadingStaysAvailableThroughSilenceAndReportsTheUncover() {
+        // Uncalibrated, as on that panel, so ranged counts are not judged against a binary model.
+        val rig = rig(calibrated = false)
+        rig.ambientJitter()
+        rig.sensors.emit(1531f)
+        advance(1)
+        rig.sensors.emit(65535f)
+
+        // The panel reported the source lost here, at 60 s of silence.
+        advance(65_000)
+        rig.assertHealthy(raw = 65535f)
+        // The re-registration acquisition timeout and a later periodic probe.
+        advance(15 * 60_000)
+
+        rig.assertHealthy(raw = 65535f)
+        assertTrue(rig.json().getLong("age_s") >= 15 * 60)
+
+        // Re-pair the timestamp gate after the virtual clock jump, then the hand comes away.
+        rig.sensors.emit(65535f)
+        advance(1)
+        rig.sensors.emit(35f)
+        rig.assertHealthy(raw = 35f)
+        assertEquals(0L, rig.json().getLong("age_s"))
+    }
+
+    @Test fun aChangedReadingJustBelowFullScaleStillBecomesUnavailableWhenTheHalFallsSilent() {
+        // Uncalibrated, as on that panel, so ranged counts are not judged against a binary model.
+        val rig = rig(calibrated = false)
+        rig.ambientJitter()
+        rig.sensors.emit(1531f)
+        advance(1)
+        rig.sensors.emit(65534f)
+
+        advance(65_000)
+
+        assertEquals("source_unavailable", rig.json().getString("health"))
+    }
+
     @Test fun continuousHalStillExpiresWhenItsDenseStreamStops() {
         val rig = rig(Sensor.REPORTING_MODE_CONTINUOUS)
         rig.densePlateau(0f)
@@ -183,6 +222,7 @@ class SensorReporterProximityLivenessTest {
         mode: Int = Sensor.REPORTING_MODE_ON_CHANGE,
         acceptsRegistration: Boolean = true,
         deviceProfile: DeviceProfile? = null,
+        calibrated: Boolean = true,
     ): Rig {
         val sensors = ProximitySensorManager(mode).also { it.acceptsRegistration = acceptsRegistration }
         val files = scratchDirectory("proximity-liveness").toFile()
@@ -205,7 +245,7 @@ class SensorReporterProximityLivenessTest {
             ))
         }.apply { isAccessible = true }
         val config = constructor.newInstance(prefs, context.contentResolver, prefs, prefs, null) as Config
-        val profile = object : DeviceProfile by fakeProfile(id = "generic") {
+        val profile = if (!calibrated) fakeProfile(id = "generic") else object : DeviceProfile by fakeProfile(id = "generic") {
             override val proximityCalibration = ProfileProximityCalibration(
                 revision = 1, mode = "binary", clearRaw = 0f, nearRaw = 1f,
                 verification = "Deterministic binary HAL fixture", formatVersion = 2,
@@ -228,6 +268,16 @@ class SensorReporterProximityLivenessTest {
             repeat(count) { sensors.emit(raw); advance(1) }
         }
         fun densePlateau(raw: Float) { samples(raw, 8); advance(3_000) }
+        /** Dense, never-repeating counts like an uncovered NSPanel 86 (47-67), so no plateau forms.
+         * Samples are 1 ms apart: a longer virtual step without wall time fails the timestamp gate. */
+        fun ambientJitter() {
+            repeat(16) { sensors.emit(47f + (it * 7) % 21); advance(1) }
+            assertEquals("healthy", json().getString("health"))
+        }
+        fun assertHealthy(raw: Float) {
+            assertEquals("healthy", json().getString("health"))
+            assertEquals(raw.toDouble(), json().getDouble("raw"), 0.0)
+        }
         fun assertAvailable(near: Boolean, raw: Float) {
             assertEquals("healthy", json().getString("health"))
             assertEquals("ready", JSONObject(reporter.proximityStatusJson()!!).getString("state"))
