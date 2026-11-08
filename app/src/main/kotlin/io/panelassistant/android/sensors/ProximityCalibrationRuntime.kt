@@ -32,6 +32,8 @@ internal class ProximityCalibrationRuntime(
     private val presenceMode: () -> PresenceMode = { PresenceMode.MANUAL },
     /** Durable touch-learning state, kept apart from the calibration table so it can never evict a saved model. */
     private val touchStore: ProximityTouchStore = ProximityTouchStore.NONE,
+    /** Runs after setup saves a calibration; Automatic hands over to Hybrid so the capture is used. */
+    private val onExplicitSave: () -> Unit = {},
 ) : AutoCloseable {
     data class Decision(val reportMask: Int, val near: Boolean?, val normalizedLevel: Int?, val deliberateGesture: Boolean, val presenceApproach: Boolean = false)
 
@@ -77,6 +79,7 @@ internal class ProximityCalibrationRuntime(
             if (it) {
                 userOverride = true; readFailed = false; driftUnsafe = false
                 wizard = candidate; adopted = candidate
+                runCatching(onExplicitSave).onFailure { Log.w(TAG, "presence mode could not follow setup", it) }
                 if (appliedMode == PresenceMode.HYBRID) learner = reseed(learner, candidate, appliedMode)
             }
         }
@@ -106,6 +109,7 @@ internal class ProximityCalibrationRuntime(
         driftDeclaredRange: Float = 0f,
         keepStoredInsideDriftBand: Boolean = false,
         presenceMode: () -> PresenceMode = { PresenceMode.MANUAL },
+        onExplicitSave: () -> Unit = {},
     ) : this(
         sourceIdentity, profileId, profile?.let(::fromProfile),
         SqliteProximityModelStore(EntityCatalogStore(context.applicationContext)),
@@ -117,6 +121,7 @@ internal class ProximityCalibrationRuntime(
         keepStoredInsideDriftBand = keepStoredInsideDriftBand,
         presenceMode = presenceMode,
         touchStore = ProximityTouchStore.preferences(context.applicationContext),
+        onExplicitSave = onExplicitSave,
     )
 
     @Synchronized
@@ -156,6 +161,8 @@ internal class ProximityCalibrationRuntime(
     fun isPresenceNear(): Boolean = isPresenceReady() && view.near == true
     fun isWaveReady(): Boolean = !closed && sourceProven && !saving && view.wakeReady
     fun observedRanged(): Boolean = !closed && engine.observedRanged()
+    /** The saved setup model's signal mode, or null when setup has saved nothing. */
+    fun wizardMode(): ProximityCalibrationEngine.Mode? = wizard?.mode
     fun isLearnedSignal(): Boolean = !closed && view.calibration?.presenceSupported == true
 
     /**

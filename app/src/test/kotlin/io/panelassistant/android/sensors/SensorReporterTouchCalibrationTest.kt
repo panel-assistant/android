@@ -9,6 +9,7 @@ import android.hardware.ProximitySensorManager
 import android.hardware.Sensor
 import android.os.SystemClock
 import io.panelassistant.android.Config
+import io.panelassistant.android.adoptHybridAfterSetup
 import io.panelassistant.android.control.fakeProfile
 import io.panelassistant.android.testsupport.scratchDirectory
 import java.io.File
@@ -52,6 +53,25 @@ class SensorReporterTouchCalibrationTest {
         assertEquals("present at the panel on the second visit", true, checked)
     }
 
+    @Test fun aPre10PanelSensorSourceSettlesToAutomaticOnceTheHalProvesItIsRanged() {
+        val (reporter, sensors, prefs) = rigWithPrefs(mapOf("presence_mode_legacy_panel_pending" to "true"))
+        assertTrue(prefs.contains("presence_mode_legacy_panel_pending"))
+        sensors.deliver(37f)
+        assertEquals("automatic", prefs.getString("presence_mode", null))
+        assertFalse(prefs.contains("presence_mode_legacy_panel_pending"))
+        assertTrue(reporter.hasRangedProximity())
+    }
+
+    @Test fun aSetupSaveInAutomaticHandsOverToHybridButLeavesAnOwnersChoiceAlone() {
+        val (_, _, prefs) = rigWithPrefs(mapOf("presence_mode" to "automatic"))
+        assertTrue(config.adoptHybridAfterSetup())
+        assertEquals("hybrid", prefs.getString("presence_mode", null))
+        assertFalse(config.adoptHybridAfterSetup())
+        prefs.edit().putString("presence_mode", "manual").commit()
+        assertFalse(config.adoptHybridAfterSetup())
+        assertEquals("manual", prefs.getString("presence_mode", null))
+    }
+
     @Test fun manualPresenceIgnoresTouches() {
         val (reporter, sensors) = rig(mapOf("presence_mode" to "manual"))
         val replay = ProximityTouchReplay.load("office-taps.csv")
@@ -71,7 +91,12 @@ class SensorReporterTouchCalibrationTest {
      */
     private fun ProximitySensorManager.deliver(raw: Float) { emit(raw); advance(1); emit(raw) }
 
-    private fun rig(stored: Map<String, String>): Pair<SensorReporter, ProximitySensorManager> {
+    private lateinit var config: Config
+
+    private fun rig(stored: Map<String, String>): Pair<SensorReporter, ProximitySensorManager> =
+        rigWithPrefs(stored).let { it.first to it.second }
+
+    private fun rigWithPrefs(stored: Map<String, String>): Triple<SensorReporter, ProximitySensorManager, SharedPreferences> {
         val sensors = ProximitySensorManager(Sensor.REPORTING_MODE_CONTINUOUS)
         val files = scratchDirectory("proximity-touch").toFile()
         val prefs = preferences()
@@ -93,14 +118,14 @@ class SensorReporterTouchCalibrationTest {
                 SharedPreferences::class.java, SharedPreferences::class.java, Resources::class.java,
             ))
         }.apply { isAccessible = true }
-        val config = constructor.newInstance(prefs, context.contentResolver, prefs, prefs, null) as Config
+        config = constructor.newInstance(prefs, context.contentResolver, prefs, prefs, null) as Config
         val reporter = SensorReporter(context, config, fakeProfile(id = "generic"), subscribeToTouches = { listener ->
             touchListeners += listener
             AutoCloseable { touchListeners.remove(listener) }
         }).also { reporters += it; it.prepare() }
         reporter.start(onLux = {}, onProximity = { _, _, _ -> })
         advance(0)
-        return reporter to sensors
+        return Triple(reporter, sensors, prefs)
     }
 
     private companion object {

@@ -42,3 +42,12 @@ fun Config.resolveLegacyPanelPresence(hasWizardModel: Boolean, ranged: Boolean):
             remove(LEGACY_PANEL_PRESENCE_PENDING_PREF)
         }
     }
+
+/**
+ * After an explicit setup Save in Automatic, the saved capture becomes Hybrid's starting point rather than
+ * being ignored. Returns whether it wrote; any other mode is the owner's choice and is left alone.
+ */
+fun Config.adoptHybridAfterSetup(): Boolean = synchronized(CONFIG_LOCK) {
+    if (presenceMode != PresenceMode.AUTOMATIC) return@synchronized false
+    durableCommit { putString(PresenceMode.KEY, PresenceMode.HYBRID.wire) }
+}
