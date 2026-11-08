@@ -129,6 +129,7 @@ internal class ProximityCalibrationRuntime(
     fun isPresenceReady(): Boolean = !closed && sourceProven && !saving && !view.active && view.presenceReady
     fun isPresenceNear(): Boolean = isPresenceReady() && view.near == true
     fun isWaveReady(): Boolean = !closed && sourceProven && !saving && view.wakeReady
+    fun observedRanged(): Boolean = !closed && engine.observedRanged()
     fun isLearnedSignal(): Boolean = !closed && view.calibration?.presenceSupported == true
 
     /**

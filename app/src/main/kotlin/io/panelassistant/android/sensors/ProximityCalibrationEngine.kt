@@ -144,6 +144,8 @@ internal class ProximityCalibrationEngine(
     private var ambientLastSample: Long? = null
 
     @Synchronized fun current(): Result = result()
+    /** The source has proved it reports a range: a ranged calibration or a fresh non-binary reading. */
+    @Synchronized fun observedRanged(): Boolean = observedNonBinary || calibration?.mode == Mode.RANGED
     @Synchronized fun needsTick(heldEvidence: Boolean = false): Boolean = active() || detector?.needsTick(heldEvidence) == true || waveDetector?.needsTick() == true || pendingOperationalPulse != null
     @Synchronized fun releaseGestureCooldown() { operationalCooldownUntil = 0L; waveDetector?.releaseCooldown() }
 
@@ -215,6 +217,7 @@ internal class ProximityCalibrationEngine(
             return result()
         }
         if (!live) { generation++; pendingOperationalPulse = null }
+        if (calibrationLive && raw != 0f && raw != 1f) observedNonBinary = true
         if (detector == null && calibrationLive &&
             (calibration?.mode == Mode.RANGED || observedSourceMode == Mode.RANGED || raw != 0f && raw != 1f)) {
             observeAmbientQuiet(raw, now)

@@ -1553,6 +1553,7 @@ class PaneldService : Service() {
             Capabilities(
                 hasProximity = sensors.hasProximity(),
                 hasLearnedProximity = sensors.hasLearnedProximity(),
+                hasRangedProximity = sensors.hasRangedProximity(),
                 hasLight = sensors.lightChannel() == true,
                 hasTemperature = sensors.hasTemperature(),
                 hasHumidity = sensors.hasHumidity(),

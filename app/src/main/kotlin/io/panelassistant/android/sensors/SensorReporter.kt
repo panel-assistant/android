@@ -368,6 +368,12 @@ class SensorReporter(
     }
     fun hasProximity() = proximityAcquisition != ProximityAcquisition.ABSENT
     fun hasLearnedProximity() = proximityRuntime?.isLearnedSignal() == true
+    /** Ranged routes always report a range; an Android HAL proves it only by non-binary readings. */
+    fun hasRangedProximity(): Boolean = when (proximityAcquisition) {
+        ProximityAcquisition.VI530X, ProximityAcquisition.STK_RAW -> true
+        ProximityAcquisition.ANDROID_HAL -> proximityRuntime?.observedRanged() == true
+        else -> false
+    }
 
     /**
      * [hasLearnedProximity] once it is settled: null before [prepare] has loaded the calibration, when the stored
