@@ -2,7 +2,7 @@
 
 ## v1.0.1-rc1
 
-## v1.0.0
+## v1.0.0 - 2026-11-06
 
 This is the panel app's 1.0, the Android app that Panel Assistant installs on your panels. The story of 1.0 is that MQTT and the old app are gone for good. In exchange the panel and Panel Assistant now talk over one connection for everything, including the sidebar, updates, logs and voice, and that is what makes most of the changes below possible. A lot changed since v0.9.11, so I have listed what you will notice rather than every commit. If something breaks, please open an issue with the panel model and what you saw.
 

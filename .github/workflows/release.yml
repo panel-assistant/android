@@ -280,10 +280,10 @@ jobs:
           echo "HELPER_BUILD_ID=$helper_build_id" >> "$GITHUB_ENV"
           "$toolchain/armv7a-linux-androideabi26-clang" -O2 -s -Ihelper/src \
             -DHAPANELD_BUILD_ID="\"$helper_build_id\"" \
-            -o release-input/hapaneld-helper-armeabi-v7a "${sources[@]}"
+            -o release-input/hapaneld-helper-armeabi-v7a "${sources[@]}" -llog
           "$toolchain/aarch64-linux-android26-clang" -O2 -s -Ihelper/src \
             -DHAPANELD_BUILD_ID="\"$helper_build_id\"" \
-            -o release-input/hapaneld-helper-arm64-v8a "${sources[@]}"
+            -o release-input/hapaneld-helper-arm64-v8a "${sources[@]}" -llog
           test -s release-input/hapaneld-helper-armeabi-v7a
           test -s release-input/hapaneld-helper-arm64-v8a
           file release-input/hapaneld-helper-armeabi-v7a | grep -Fq 'ELF 32-bit'
