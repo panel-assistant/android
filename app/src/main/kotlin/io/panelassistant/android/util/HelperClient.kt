@@ -758,9 +758,10 @@ private class LocalSocketHelperSession(
 ) : HelperCommandSession {
     private val input = socket.inputStream
     private val output = socket.outputStream
-    private val logcatReader = HelperLogcatLineReader(
-        BufferedInputStream(HelperLogcatSocketInputStream(socket.fileDescriptor), 4096),
-    )
+    // Only logcat streams read through the descriptor; a command session never touches it.
+    private val logcatReader by lazy {
+        HelperLogcatLineReader(BufferedInputStream(HelperLogcatSocketInputStream(socket.fileDescriptor), 4096))
+    }
 
     override fun bootstrap(command: String, deadline: MonotonicDeadline): HelperBootstrapReply =
         exchangeHelperBootstrap(command, input, output, { socket.soTimeout = it }, deadline)

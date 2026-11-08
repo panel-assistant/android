@@ -229,6 +229,8 @@ class ProximityWizardActivity : AppCompatActivity() {
             fontFeatureSettings = "tnum"
             gravity = if (compactSquare) Gravity.START else Gravity.CENTER_HORIZONTAL
             maxLines = 1
+            // The reading must retain every digit even when accessibility text outgrows its row.
+            setAutoSizeTextTypeUniformWithConfiguration(1, textSize.toInt().coerceAtLeast(2), 1, android.util.TypedValue.COMPLEX_UNIT_PX)
         }
         rawWaiting = label(if (compactSquare) 22f else 26f).apply {
             setTextColor(accentColor)

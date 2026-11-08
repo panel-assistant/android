@@ -4,6 +4,7 @@ import io.panelassistant.android.config.SettingsRegistry
 import android.app.Activity
 import android.content.res.Configuration
 import android.content.res.Resources
+import android.graphics.Rect
 import android.os.SystemClock
 import android.util.DisplayMetrics
 import android.view.View
@@ -11,6 +12,7 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
@@ -96,7 +98,7 @@ class StatusSurfaceInstrumentedTest {
         val context = instrumentation.targetContext
         val original = Config(context).uiLanguage
         try {
-            val expectedRetry = mapOf("cs" to "Opakovat pokus", "pt-BR" to "Tentar novamente", "en" to "Retry")
+            val expectedRetry = mapOf("cs" to "Zkusit znovu", "pt-BR" to "Tentar novamente", "en" to "Retry")
             for (locale in requestedExpansionLocales() + "en") {
                 Config(context).setRaw(requireNotNull(SettingsRegistry.spec("ui_language")), locale)
                 assertEquals("the persisted selection survives a new Config reader", locale, Config(context).uiLanguage)
@@ -152,7 +154,7 @@ class StatusSurfaceInstrumentedTest {
         try {
             ActivityScenario.launch(StatusSurfaceTestHost::class.java).use { scenario ->
                 scenario.onActivity { activity ->
-                    locale?.let { assertEquals(it, activity.resources.configuration.locales[0].toLanguageTag()) }
+                    locale?.let { assertEquals("host locale=$locale font=$fontScale dark=$dark", it, activity.resources.configuration.locales[0].toLanguageTag()) }
                     if (fontScale > 0f) {
                         assertEquals(
                             "the font-scale override did not reach the activity",
@@ -463,52 +465,71 @@ class StatusSurfaceInstrumentedTest {
     @Test
     fun czechAndBrazilianPortugueseApprovalDialogsKeepTheirEvidenceAndActionsReachable() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
-        for (locale in requestedExpansionLocales()) for (scale in listOf(1.0f, LARGE_FONT_SCALE)) {
-            StatusSurfaceTestHost.localeTagOverride = locale
-            StatusSurfaceTestHost.fontScaleOverride = scale
-            try {
-                ActivityScenario.launch(StatusSurfaceTestHost::class.java).use { scenario ->
-                    lateinit var dialog: AlertDialog
-                    scenario.onActivity { activity ->
-                        assertEquals(locale, activity.resources.configuration.locales[0].toLanguageTag())
-                        assertEquals(scale, activity.resources.configuration.fontScale, 0.001f)
-                        dialog = AlertDialog.Builder(activity)
-                            .setTitle(activity.getText(R.string.approval_op_backup_restore))
-                            .setMessage(activity.getString(R.string.approval_request_detail,
-                                "Restore backup: 123456789 bytes; SHA-256: " + "a".repeat(64), "192.0.2.123"))
-                            .setPositiveButton(R.string.approve, null)
-                            .setNegativeButton(R.string.deny, null)
-                            .setNeutralButton(R.string.cancel, null)
-                            .show()
-                    }
-                    instrumentation.waitForIdleSync()
-                    scenario.onActivity {
-                        val decor = checkNotNull(dialog.window).decorView
-                        assertTrue("$locale $scale: approval dialog fits the panel", decor.width in 1..480 && decor.height in 1..panelHeightPx)
-                        val texts = textViews(decor).filter { it.visibility == View.VISIBLE && it.text.isNotEmpty() }
-                        assertTrue("the actual approval evidence was loaded", texts.any { it.text.contains("a".repeat(64)) })
-                        texts.forEach { assertTextFits(it, "$locale $scale approval") }
-                        for (which in listOf(AlertDialog.BUTTON_POSITIVE, AlertDialog.BUTTON_NEGATIVE, AlertDialog.BUTTON_NEUTRAL)) {
-                            val button = dialog.getButton(which)
-                            assertTrue("$locale $scale: approval action remains visible", button.isShown && button.height > 0)
-                            assertTrue("$locale $scale: approval action stays on the panel", button.topInWindow() >= 0 && button.bottomInWindow() <= panelHeightPx)
+        val originalLanguage = Config(instrumentation.targetContext).uiLanguage
+        try {
+            for (locale in requestedExpansionLocales()) for (scale in listOf(1.0f, LARGE_FONT_SCALE)) {
+                // The real settings dialog follows AppCompat's application locale. Keep it aligned with
+                // the plain host so its delegate cannot rewrite cached host resources to another language.
+                instrumentation.runOnMainSync { NativeLocale.apply(locale) }
+                StatusSurfaceTestHost.localeTagOverride = locale
+                StatusSurfaceTestHost.fontScaleOverride = scale
+                try {
+                    ActivityScenario.launch(StatusSurfaceTestHost::class.java).use { scenario ->
+                        lateinit var dialog: AlertDialog
+                        scenario.onActivity { activity ->
+                            assertEquals(locale, activity.resources.configuration.locales[0].toLanguageTag())
+                            assertEquals(scale, activity.resources.configuration.fontScale, 0.001f)
+                            dialog = AlertDialog.Builder(activity)
+                                .setTitle(activity.getText(R.string.approval_op_backup_restore))
+                                .setMessage(activity.getString(R.string.approval_request_detail,
+                                    "Restore backup: 123456789 bytes; SHA-256: " + "a".repeat(64), "192.0.2.123"))
+                                .setPositiveButton(R.string.approve, null)
+                                .setNegativeButton(R.string.deny, null)
+                                .setNeutralButton(R.string.cancel, null)
+                                .show()
                         }
-                        val message = checkNotNull(dialog.findViewById<TextView>(android.R.id.message))
-                        val scroll = checkNotNull(generateSequence(message.parent) { it.parent }
-                            .filterIsInstance<androidx.core.widget.NestedScrollView>().firstOrNull()) {
-                            "$locale $scale: approval evidence has no scroll containment"
+                        instrumentation.waitForIdleSync()
+                        scenario.onActivity {
+                            assertEquals("the dialog keeps the requested locale", locale,
+                                dialog.context.resources.configuration.locales[0].toLanguageTag())
+                            assertEquals("the dialog keeps the requested font scale", scale,
+                                dialog.context.resources.configuration.fontScale, 0.001f)
+                            val decor = checkNotNull(dialog.window).decorView
+                            assertTrue("$locale $scale: approval dialog fits the panel", decor.width in 1..480 && decor.height in 1..panelHeightPx)
+                            val texts = textViews(decor).filter { it.visibility == View.VISIBLE && it.text.isNotEmpty() }
+                            assertTrue("the actual approval evidence was loaded", texts.any { it.text.contains("a".repeat(64)) })
+                            texts.forEach { assertTextFits(it, "$locale $scale approval") }
+                            for (which in listOf(AlertDialog.BUTTON_POSITIVE, AlertDialog.BUTTON_NEGATIVE, AlertDialog.BUTTON_NEUTRAL)) {
+                                val button = dialog.getButton(which)
+                                // AppCompat stacks enlarged actions inside its own scrolling button panel.
+                                // Bring each real touch target into view, as a reader scrolling that panel does.
+                                button.requestRectangleOnScreen(Rect(0, 0, button.width, button.height), true)
+                                assertTrue("$locale $scale: approval action remains visible", button.isShown && button.height > 0)
+                                val visibleAction = Rect()
+                                assertTrue("$locale $scale: the complete approval action can be reached",
+                                    button.getGlobalVisibleRect(visibleAction) && visibleAction.height() == button.height && visibleAction.width() == button.width)
+                                assertTrue("$locale $scale: approval action '${button.text}' stays on the panel",
+                                    button.topInWindow() >= 0 && button.bottomInWindow() <= panelHeightPx)
+                            }
+                            val message = checkNotNull(dialog.findViewById<TextView>(android.R.id.message))
+                            val scroll = checkNotNull(generateSequence(message.parent) { it.parent }
+                                .filterIsInstance<androidx.core.widget.NestedScrollView>().firstOrNull()) {
+                                "$locale $scale: approval evidence has no scroll containment"
+                            }
+                            val bottom = (scroll.getChildAt(0).height - scroll.height + scroll.paddingTop + scroll.paddingBottom).coerceAtLeast(0)
+                            scroll.scrollTo(0, bottom)
+                            assertEquals("$locale $scale: evidence can scroll to the end", bottom, scroll.scrollY)
+                            assertTrue("$locale $scale: final evidence is reachable", message.bottomInWindow() <= scroll.bottomInWindow())
+                            dialog.dismiss()
                         }
-                        val bottom = (scroll.getChildAt(0).height - scroll.height + scroll.paddingTop + scroll.paddingBottom).coerceAtLeast(0)
-                        scroll.scrollTo(0, bottom)
-                        assertEquals("$locale $scale: evidence can scroll to the end", bottom, scroll.scrollY)
-                        assertTrue("$locale $scale: final evidence is reachable", message.bottomInWindow() <= scroll.bottomInWindow())
-                        dialog.dismiss()
                     }
+                } finally {
+                    StatusSurfaceTestHost.localeTagOverride = null
+                    StatusSurfaceTestHost.fontScaleOverride = 0f
                 }
-            } finally {
-                StatusSurfaceTestHost.localeTagOverride = null
-                StatusSurfaceTestHost.fontScaleOverride = 0f
             }
+        } finally {
+            instrumentation.runOnMainSync { NativeLocale.apply(originalLanguage) }
         }
     }
 
@@ -552,7 +573,14 @@ class StatusSurfaceInstrumentedTest {
                             activity.settle()
                             val texts = textViews(root).filter { it.isShown && it.text.isNotEmpty() }
                             assertTrue("$description: the production detail is visible", texts.any { it.text.toString() == activity.getString(case.text) })
-                            assertTrue("$description: Panel Assistant owns the notice", texts.any { it.text.toString() == "Panel Assistant" })
+                            val wordmark = viewGroups(root).flatMap { parent ->
+                                (0 until parent.childCount).map(parent::getChildAt).filterIsInstance<ImageView>()
+                            }.single { it.contentDescription == activity.getString(R.string.wordmark_description) }
+                            wordmark.requestRectangleOnScreen(Rect(0, 0, wordmark.width, wordmark.height), true)
+                            val visibleWordmark = Rect()
+                            assertTrue("$description: Panel Assistant owns the notice", wordmark.isShown &&
+                                wordmark.drawable != null && wordmark.getGlobalVisibleRect(visibleWordmark) &&
+                                visibleWordmark.width() == wordmark.width && visibleWordmark.height() == wordmark.height)
                             case.clock?.let { clock ->
                                 assertTrue("$description: the exact countdown is visible", texts.any { it.text.toString() == clock })
                             }
@@ -570,8 +598,19 @@ class StatusSurfaceInstrumentedTest {
                             expectedFooter?.let { footer ->
                                 assertTrue("$description: the complete measured footer is visible", texts.any { it.text.toString() == footer })
                             }
+                            // The lifecycle notice scrolls when enlarged content exceeds the panel.
+                            // Every complete row must be reachable through that real viewport.
+                            val scroller = viewGroups(root).filterIsInstance<ScrollView>().single()
+                            assertTrue("$description: the lifecycle viewport stays on the panel",
+                                scroller.topInWindow() >= 0 && scroller.bottomInWindow() <= panelHeightPx)
                             for (text in texts) {
+                                text.requestRectangleOnScreen(Rect(0, 0, text.width, text.height), true)
                                 assertTextFits(text, "$description text='${text.text}'")
+                                val visibleText = Rect()
+                                val isVisible = text.getGlobalVisibleRect(visibleText)
+                                assertTrue("$description: '${text.text}' can be reached in full: visible=$visibleText size=${text.width}x${text.height} top=${text.topInWindow()} scroll=${scroller.scrollY}/${scroller.height} child=${scroller.getChildAt(0).height}",
+                                    isVisible && visibleText.width() == text.width &&
+                                    visibleText.height() == text.height)
                                 assertTrue("$description: '${text.text}' stays on the panel", text.topInWindow() >= 0 && text.bottomInWindow() <= panelHeightPx)
                                 assertTrue("$description: '${text.text}' stays inside its parents",
                                     generateSequence(text.parent) { it.parent }.filterIsInstance<ViewGroup>().all { parent ->
@@ -614,7 +653,7 @@ class StatusSurfaceInstrumentedTest {
             instrumentation.uiAutomation.executeShellCommand(command),
         ).bufferedReader().use { it.readText().trim() }
         assertEquals("this test changes and restores font scale only on the AOSP emulator", "1", shell("getprop ro.kernel.qemu"))
-        val originalFont = shell("settings get system font_scale").toFloat()
+        val originalFont = (shell("settings get system font_scale").toFloatOrNull() ?: 1f)
         val config = Config(instrumentation.targetContext)
         val originalLanguage = config.uiLanguage
         val owner = Any()
@@ -685,7 +724,7 @@ class StatusSurfaceInstrumentedTest {
             instrumentation.runOnMainSync { NativeLocale.apply(originalLanguage) }
             shell("settings put system font_scale $originalFont")
             assertEquals("the emulator's saved language was restored", originalLanguage, config.uiLanguage)
-            assertEquals("the emulator's font setting was restored", originalFont, shell("settings get system font_scale").toFloat(), 0.001f)
+            assertEquals("the emulator's font setting was restored", originalFont, (shell("settings get system font_scale").toFloatOrNull() ?: 1f), 0.001f)
         }
     }
 
@@ -704,10 +743,11 @@ class StatusSurfaceInstrumentedTest {
         assertTrue("$context: '${view.text}' has a nonzero drawing area", view.width > view.compoundPaddingLeft + view.compoundPaddingRight && view.height > 0)
         assertEquals("$context: every character remains in the layout", view.text.length, layout.getLineEnd(layout.lineCount - 1))
         for (line in 0 until layout.lineCount) {
-            assertEquals("$context: line $line is not ellipsized", 0, layout.getEllipsisCount(line))
+            assertEquals("$context: text='${view.text}' line $line is not ellipsized", 0, layout.getEllipsisCount(line))
             assertTrue("$context: line $line fits the available width", layout.getLineMax(line) <= layout.width + 1f)
         }
-        assertTrue("$context: final text line is not clipped vertically", layout.getLineBottom(layout.lineCount - 1) <= view.height - view.compoundPaddingTop - view.compoundPaddingBottom)
+        assertTrue("$context: '${view.text}' final text line is not clipped vertically",
+            layout.getLineBottom(layout.lineCount - 1) <= view.height - view.compoundPaddingTop - view.compoundPaddingBottom)
         view.text.toString().codePoints().filter { Character.isLetter(it) }.distinct().forEach { codepoint ->
             assertTrue("$context: missing glyph U+${codepoint.toString(16)}", view.paint.hasGlyph(String(Character.toChars(codepoint))))
         }

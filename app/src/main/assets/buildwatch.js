@@ -181,33 +181,51 @@
     }
     return i18nText(keyPrefix + "p95_no_misses", "p95 {p95Ms} ms, no misses in the last 5 min", values);
   }
-  function haNetBanner(state, resp, p95, n, miss, age, cause) {
-    // A latency verdict is owned by the layer-3 probe. Every number on this line — p95, probe count,
-    // misses, reply age — comes from the WebSocket instead, so presenting them here would offer one
-    // instrument's evidence as proof of another's verdict, and a severe path verdict could read
-    // "very slow; p95 9 ms". They are omitted rather than borrowed. An absent cause keeps the
-    // legacy loss wording, so an older panel answering this poll is unaffected.
+  function haNetEchoEvidence(echo) {
+    var values = {
+      p95Ms: localizedNumber(echo.p95),
+      missCount: localizedNumber(echo.miss),
+      probeCount: localizedNumber(echo.n),
+      burstCount: localizedNumber(echo.bursts)
+    };
+    return echo.p95 < 0
+      ? i18nText("shell.runtime.ha_network_echo_no_reply", "no reply, {missCount} of {probeCount} network checks missed across {burstCount} bursts", values)
+      : i18nText("shell.runtime.ha_network_echo_evidence", "p95 {p95Ms} ms, {missCount} of {probeCount} network checks missed across {burstCount} bursts", values);
+  }
+  function haNetWithEvidence(verdict, evidence) {
+    return i18nText("shell.runtime.ha_network_with_evidence", "{verdict}; {evidence}", { verdict: verdict, evidence: evidence });
+  }
+  function haNetBanner(state, resp, p95, n, miss, age, cause, source, echo) {
+    // The source and its evidence arrive on the same health observation. Old panels omit source;
+    // their latency verdict still has no echo figures, so socket numbers stay off that wording.
     var slow = cause === "latency";
     var knownLossCause = cause === "" || cause === "loss";
     var b = document.getElementById("hanetbar");
+    var row = document.getElementById("hanetcell");
+    if ((source !== "" && source !== "socket" && source !== "echo") ||
+        (source === "echo" && !echo)) {
+      if (b) b.style.display = "none";
+      if (row) row.textContent = "";
+      return;
+    }
+    var evidence = source === "echo" ? haNetEchoEvidence(echo) : haNetEvidence(p95, n, miss, age);
     if (b) {
       var text = slow ? ownValue(HA_NET_TEXT_SLOW, state) : (knownLossCause ? ownValue(HA_NET_TEXT, state) : null);
       if (!text) { b.style.display = "none"; } else {
         if (slow) {
           var message = i18nText(text[0], text[1]);
+          if (source === "echo") message = haNetWithEvidence(message, evidence);
         } else {
-          var bannerEvidence = haNetEvidence(p95, n, miss, age);
           var bannerKey = state === "severe"
             ? "shell.runtime.ha_network.banner_severe"
             : "shell.runtime.ha_network.banner_warning";
           var bannerFallback = text + ": {evidence}. " + HA_NET_ADVICE;
-          var message = i18nText(bannerKey, bannerFallback, { evidence: bannerEvidence });
+          var message = i18nText(bannerKey, bannerFallback, { evidence: evidence });
         }
         window.HaNotice.fill(b, state === "severe" ? "action_needed" : "warning", "", message.replace(/^\s*[⛔⚠ℹ⬆⟳🔒✓]\uFE0F?\s*/u, ""));
         b.style.display = "";
       }
     }
-    var row = document.getElementById("hanetcell");
     if (!row) return;
     if (!state) { row.textContent = ""; return; }
     if (state === "settling") {
@@ -224,13 +242,11 @@
     }
     var clause = HA_RESP_CLAUSE[resp] || "";
     if (slow) {
-      // Same rule as the banner: the verdict is the probe's, so the socket's numbers stay off it.
-      // The responsiveness clause is kept because it names its own instrument out loud.
       var slowRow = HA_NET_ROW_SLOW[state][resp];
-      row.textContent = i18nText(slowRow[0], slowRow[1]);
+      var verdict = i18nText(slowRow[0], slowRow[1]);
+      row.textContent = source === "echo" ? haNetWithEvidence(verdict, evidence) : verdict;
       return;
     }
-    var evidence = haNetEvidence(p95, n, miss, age);
     var suffix = clause ? (resp === "severe" ? "_very_slow" : "_slow") : "";
     var rowStem = { healthy: "healthy", warning: "losing_probes", severe: "failing" }[state];
     var rowKey = state === "healthy" && !suffix
@@ -258,7 +274,17 @@
     var mc = t.match(/ha_net_n=(\d+)/);
     var mm = t.match(/ha_net_miss=(\d+)/);
     var ma = t.match(/ha_net_age=(-?\d+)/);
-    haNetBanner(mn ? mn[1] : "", mrs ? mrs[1] : "", mp ? parseInt(mp[1], 10) : -1, mc ? parseInt(mc[1], 10) : 0, mm ? parseInt(mm[1], 10) : 0, ma ? parseInt(ma[1], 10) : -1, mcz ? mcz[1] : "");
+    // One compact tuple keeps the additive /health evidence small. Its presence selects
+    // echo evidence; a malformed or duplicate tuple must never fall back to socket figures.
+    var echoTokens = t.match(/(?:^|\s)ha_net_echo=\S*/g);
+    var tuple = echoTokens && echoTokens.length === 1
+      ? /^\s*ha_net_echo=(\d+),(\d+),(-?\d+),(\d+)$/.exec(echoTokens[0]) : null;
+    var echo = tuple ? { n: Number(tuple[1]), miss: Number(tuple[2]), p95: Number(tuple[3]), bursts: Number(tuple[4]) } : null;
+    if (echo && (!Number.isSafeInteger(echo.n) || echo.n <= 0 ||
+        !Number.isSafeInteger(echo.miss) || echo.miss < 0 || echo.miss > echo.n ||
+        !Number.isSafeInteger(echo.p95) || echo.p95 < -1 ||
+        !Number.isSafeInteger(echo.bursts) || echo.bursts <= 0)) echo = null;
+    haNetBanner(mn ? mn[1] : "", mrs ? mrs[1] : "", mp ? parseInt(mp[1], 10) : -1, mc ? parseInt(mc[1], 10) : 0, mm ? parseInt(mm[1], 10) : 0, ma ? parseInt(ma[1], 10) : -1, mcz ? mcz[1] : "", echoTokens ? (echo ? "echo" : "invalid") : "", echo);
     var mb = t.match(/build=(\S+)/);
     if (mb && LB && mb[1] !== LB) {
       if (dirty()) banner("shell.new_version.installed", "A newer Panel Assistant is installed"); else location.reload();

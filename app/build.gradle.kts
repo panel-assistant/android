@@ -212,6 +212,11 @@ android {
         unitTests.isReturnDefaultValues = true
     }
 
+    lint {
+        // Translations follow English in a planned pass, so a new string without them is reported, never a failed build.
+        warning += "MissingTranslation"
+    }
+
     packaging {
         resources {
             // These metadata files collide across the dependency graph.

@@ -47,6 +47,13 @@ internal val DEFERRED_PRESENCE_KEYS = setOf(
     "settings.presence_mode.summary",
 )
 
+// These new echo evidence strings deliberately retain English until their separate translation pass.
+internal val DEFERRED_ECHO_EVIDENCE_KEYS = setOf(
+    "shell.runtime.ha_network_echo_evidence",
+    "shell.runtime.ha_network_echo_no_reply",
+    "shell.runtime.ha_network_with_evidence",
+)
+
 class ReleaseReadinessContractTest {
     // Source-text reason: loads the shipped i18n catalogues as input data.
     private val sourceJson = TestSources.asset("i18n/en.json").readText()
@@ -74,6 +81,7 @@ class ReleaseReadinessContractTest {
             source.strings.filterKeys(owns).mapNotNull { (key, english) ->
                 val translated = target.strings[key]
                 when {
+                    translated == null && key in DEFERRED_ECHO_EVIDENCE_KEYS -> null
                     translated == null -> "$slice: $locale is missing $key"
                     translated.sourceHash != english.sourceHash -> "$slice: $locale has stale source text for $key"
                     !releaseReady(locale, key, translated) -> "$slice: $locale $key is ${translated.state} and not release-ready"

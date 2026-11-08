@@ -21,7 +21,7 @@ internal class PathProbeMonitor(
      * measurement outranks anything derivable from the socket, so this is what makes the echo probe
      * the path verdict rather than a second opinion beside it.
      */
-    private val onVerdict: (HaNetworkPathSeverity?, PathProbeCause) -> Unit = { _, _ -> },
+    private val onVerdict: (PathProbeHistory.Verdict?) -> Unit = {},
     private val schedule: PathProbeSchedule = PathProbeSchedule(),
     private val history: PathProbeHistory = PathProbeHistory(),
     private val echoesPerBurst: Int = PathProbeHistory.ECHOES_PER_BURST,
@@ -141,8 +141,7 @@ internal class PathProbeMonitor(
 
     /** Hand the current layer-3 verdict to the prominent owner. Called under the lock. */
     private fun publishVerdict() {
-        val verdict = history.verdict()
-        onVerdict(verdict?.severity, verdict?.cause ?: PathProbeCause.NONE)
+        onVerdict(history.verdict())
     }
 
     /** One atomic reading for the surfaces, or null when there is nothing to describe. */

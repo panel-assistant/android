@@ -54,4 +54,6 @@
     <string name="voice_step_understood">Capito</string>
     <string name="voice_step_answered">Risposto</string>
     <string name="voice_heard">«%1$s»</string>
+    <string name="network_chip_echoes_lost">%1$d controlli di rete su %2$d verso Home Assistant persi in %3$d serie</string>
+    <string name="network_chip_echo_time">I controlli di rete verso Home Assistant richiedono %1$s al p95</string>
 </resources>

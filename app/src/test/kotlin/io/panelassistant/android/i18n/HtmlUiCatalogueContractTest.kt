@@ -67,8 +67,8 @@ class HtmlUiCatalogueContractTest {
             val target = TargetCatalogue.parse(File(assets, "i18n/$locale.json").readText(), source)
             assertEquals(
                 "$locale target keys must exactly match the reviewed English source catalogue",
-                source.strings.keys,
-                target.strings.keys,
+                source.strings.keys - DEFERRED_ECHO_EVIDENCE_KEYS,
+                target.strings.keys - DEFERRED_ECHO_EVIDENCE_KEYS,
             )
         }
     }
