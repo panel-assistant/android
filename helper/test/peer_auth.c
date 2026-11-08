@@ -70,6 +70,8 @@ int guard_maintenance_supervisor_complete(enum guard_supervisor_work work,
         enum guard_execution_result result, int status) {
     (void)work; (void)result; (void)status; return -1;
 }
+void sysexec_set_lifecycle_owner(int enabled) { (void)enabled; }
+int sysexec_reap_pending(void) { return 0; }
 int sysexec_poll_argv(pid_t pid, int *status) { (void)pid; (void)status; return -1; }
 int sysexec_terminate_argv(pid_t pid, int *status) { (void)pid; (void)status; return -1; }
 
