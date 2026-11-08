@@ -9,6 +9,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.Build
 import android.os.SystemClock
+import io.panelassistant.android.presenceMode
 import android.util.Log
 import io.panelassistant.android.Config
 import io.panelassistant.android.device.DeviceProfile
@@ -144,7 +145,14 @@ class SensorReporter(
     context: Context,
     private val config: Config,
     private val profile: DeviceProfile,
+    /** Screen touches label proximity samples: the person is at the panel. Returns null when unavailable. */
+    private val subscribeToTouches: ((() -> Unit) -> AutoCloseable?) = { callback ->
+        io.panelassistant.android.control.PanelTouchObserver.shared(context).subscribeWithActivityFallback(callback)
+    },
 ) {
+    /** True while the screen is intended off, so a touch is the tap that wakes it. Set by the service. */
+    @Volatile var screenDark: () -> Boolean = { false }
+    private var touchSubscription: AutoCloseable? = null
     private val appContext = context.applicationContext
     private val sm = appContext.getSystemService(Context.SENSOR_SERVICE) as SensorManager
     private val lightSensor: Sensor? = sm.getDefaultSensor(Sensor.TYPE_LIGHT)
@@ -350,6 +358,7 @@ class SensorReporter(
             driftMargin = proximityDriftMargin(proximityAcquisition),
             driftDeclaredRange = proximityDriftDeclaredRange(proximityAcquisition, proximitySensor?.maximumRange),
             keepStoredInsideDriftBand = proximityKeepsStoredInsideDriftBand(proximityAcquisition),
+            presenceMode = { config.presenceMode },
         )
         updateLearnedEligibility()
     }
@@ -515,6 +524,11 @@ class SensorReporter(
         if (activeRun != null) return
         val run = SensorRunCallbacks(onLux, onLuxRaw, onProximity, onGesture, onTemperature, onHumidity, onPresenceApproach)
         activeRun = run
+        if (hasProximity() && touchSubscription == null) {
+            touchSubscription = runCatching {
+                subscribeToTouches { proximityRuntime?.touch(SystemClock.elapsedRealtime(), woke = screenDark()) }
+            }.getOrNull()
+        }
         proximitySampleCount = 0
         proximityReceived = false
         proximityTimestampGate.reset()
@@ -917,6 +931,8 @@ class SensorReporter(
     fun stop(): CompletableFuture<Unit> {
         activeRun?.close()
         activeRun = null
+        touchSubscription?.let { runCatching { it.close() } }
+        touchSubscription = null
         colourTemperature.clear()
         stkRawWatchdog?.let { sensorHandler?.removeCallbacks(it) }
         stkRawWatchdog = null

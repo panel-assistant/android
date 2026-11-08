@@ -3,6 +3,7 @@ package io.panelassistant.android.sensors
 import android.content.Context
 import android.os.SystemClock
 import android.util.Log
+import io.panelassistant.android.PresenceMode
 import io.panelassistant.android.dashboard.EntityCatalogStore
 import io.panelassistant.android.device.profile.ProfileProximityCalibration
 import java.security.MessageDigest
@@ -27,6 +28,10 @@ internal class ProximityCalibrationRuntime(
     private val driftDeclaredRange: Float = 0f,
     /** Keep a stored calibration inside the band as saved, rather than decline it (`proximityKeepsStoredInsideDriftBand`). */
     private val keepStoredInsideDriftBand: Boolean = false,
+    /** Where presence comes from; decides whether touch-learned or wizard anchors run. */
+    private val presenceMode: () -> PresenceMode = { PresenceMode.MANUAL },
+    /** Durable touch-learning state, kept apart from the calibration table so it can never evict a saved model. */
+    private val touchStore: ProximityTouchStore = ProximityTouchStore.NONE,
 ) : AutoCloseable {
     data class Decision(val reportMask: Int, val near: Boolean?, val normalizedLevel: Int?, val deliberateGesture: Boolean, val presenceApproach: Boolean = false)
 
@@ -49,7 +54,16 @@ internal class ProximityCalibrationRuntime(
             if (it == null) Log.w(TAG, "profile proximity calibration cannot hold this source's drift band; not used")
         }
     }
-    private val engine = ProximityCalibrationEngine(readCalibration(), commit = { candidate ->
+    /** The calibration saved by the on-panel setup, after admission; null when there is none. */
+    private var wizard: ProximityCalibrationEngine.Calibration? = null
+    private val touchKey = digest("touch-learned-v1|$profileId|$sourceIdentity")
+    private var appliedMode = presenceMode()
+    private var learner = newLearner(readCalibration(), appliedMode).also { learner ->
+        runCatching { touchStore.read(touchKey)?.let { learner.restore(JSONObject(it), elapsed()) } }
+            .onFailure { Log.w(TAG, "touch-learned proximity state could not be read", it) }
+    }
+    private var adopted: ProximityCalibrationEngine.Calibration? = null
+    private val engine = ProximityCalibrationEngine(effective(appliedMode).also { adopted = it }, commit = { candidate ->
         val now = wall()
         // This is the only calibration write. The store commits the whole row in one transaction;
         // observation, cancellation, close, and restart have no persistence queue to race it.
@@ -59,7 +73,13 @@ internal class ProximityCalibrationRuntime(
                     fingerprint, STORAGE_VERSION, "explicit-calibration-v2", encode(candidate), true, now,
                 ), emptyList(), emptyList(), now,
             )
-        }.isSuccess.also { if (it) { userOverride = true; readFailed = false; driftUnsafe = false } }
+        }.isSuccess.also {
+            if (it) {
+                userOverride = true; readFailed = false; driftUnsafe = false
+                wizard = candidate; adopted = candidate
+                if (appliedMode == PresenceMode.HYBRID) learner = reseed(learner, candidate, appliedMode)
+            }
+        }
     }, requestedWavePattern = requestedWavePattern, observedSourceMode = observedSourceMode,
         driftMargin = driftMargin, driftDeclaredRange = driftDeclaredRange)
     @Volatile private var view = engine.current()
@@ -85,6 +105,7 @@ internal class ProximityCalibrationRuntime(
         driftMargin: Float = 0f,
         driftDeclaredRange: Float = 0f,
         keepStoredInsideDriftBand: Boolean = false,
+        presenceMode: () -> PresenceMode = { PresenceMode.MANUAL },
     ) : this(
         sourceIdentity, profileId, profile?.let(::fromProfile),
         SqliteProximityModelStore(EntityCatalogStore(context.applicationContext)),
@@ -94,6 +115,8 @@ internal class ProximityCalibrationRuntime(
         driftMargin = driftMargin,
         driftDeclaredRange = driftDeclaredRange,
         keepStoredInsideDriftBand = keepStoredInsideDriftBand,
+        presenceMode = presenceMode,
+        touchStore = ProximityTouchStore.preferences(context.applicationContext),
     )
 
     @Synchronized
@@ -104,6 +127,8 @@ internal class ProximityCalibrationRuntime(
         if (!raw.isFinite()) sourceProven = false
         else if (calibrationLive) sourceProven = true
         view = engine.observe(raw, now, live, calibrationLive)
+        if (calibrationLive && raw.isFinite() && !view.active && engine.observedRanged() && learner.observe(raw, now)) learned(now)
+        applyMode(now)
         return decision(now, sparseReporting)
     }
 
@@ -113,6 +138,7 @@ internal class ProximityCalibrationRuntime(
         if (closed) return Decision(ProximityReportGate.NONE, null, null, false)
         expireOwner(now)
         view = engine.tick(now, heldEvidence && sourceProven)
+        applyMode(now)
         return decision(now, sparseReporting)
     }
 
@@ -146,7 +172,105 @@ internal class ProximityCalibrationRuntime(
         if (token != gestureToken || token <= completedGestureToken) return
         completedGestureToken = token
         if (!accepted) engine.releaseGestureCooldown()
+        else {
+            // The sensor woke the screen: the touches that follow would label its own trigger.
+            val now = processingTime(elapsed())
+            learner.exclude(now, now + ProximityTouchLearner.WAVE_WAKE_EXCLUSION_MS)
+        }
     }
+
+    /**
+     * A screen touch: the person is at the panel. [woke] marks a tap that woke a dark screen. Ignored while
+     * setup runs, because touches then answer its prompts.
+     */
+    @Synchronized
+    fun touch(receivedAt: Long = elapsed(), woke: Boolean = false) {
+        if (closed) return
+        val now = processingTime(receivedAt)
+        learner.suspend(view.active)
+        if (!view.active && engine.observedRanged()) learner.touch(now, woke)
+    }
+
+    /** Touch learning's progress for status: null until a ranged source has been seen. */
+    fun touchLearning(): ProximityTouchLearner.Model? = learner.model()
+
+    private fun learned(now: Long) {
+        runCatching { touchStore.write(touchKey, learner.toJson().toString()) }
+            .onFailure { Log.w(TAG, "touch-learned proximity state could not be saved", it) }
+        adopt(now)
+    }
+
+    private fun applyMode(now: Long) {
+        val mode = presenceMode()
+        if (mode == appliedMode) return
+        appliedMode = mode
+        learner = reseed(learner, wizard, mode)
+        adopt(now)
+    }
+
+    /** Moves the engine to the mode's calibration when it differs materially from the running one. */
+    private fun adopt(now: Long) {
+        if (view.active || saving) return
+        val next = effective(appliedMode) ?: return
+        val current = adopted
+        if (current != null && !materiallyDifferent(current, next)) return
+        adopted = next
+        val quiet = learner.model()?.clear?.takeIf { next.clearRaw == it.mean.toFloat() }
+        view = engine.adopt(next, quiet, now)
+        reportGate.reset()
+    }
+
+    private fun effective(mode: PresenceMode): ProximityCalibrationEngine.Calibration? = when (mode) {
+        PresenceMode.MANUAL -> wizard ?: baseline
+        PresenceMode.HYBRID -> learnedCalibration(wizard) ?: wizard ?: baseline
+        PresenceMode.AUTOMATIC -> learnedCalibration(null) ?: baseline
+        // Presence comes from elsewhere; the panel's own sensor keeps its best calibration for the entity and waves.
+        PresenceMode.HOME_ASSISTANT, PresenceMode.OFF -> wizard ?: learnedCalibration(null) ?: baseline
+    }
+
+    /**
+     * The touch-learned anchors as a calibration. Hybrid keeps the wizard's timings and its captured wave,
+     * which measured real waves; otherwise the wave comes from the hand level at touches, with hysteresis
+     * set low because a deliberate wave is weaker than a tap.
+     */
+    private fun learnedCalibration(template: ProximityCalibrationEngine.Calibration?): ProximityCalibrationEngine.Calibration? {
+        val model = learner.model() ?: return null
+        val ranged = template?.takeIf { it.mode == ProximityCalibrationEngine.Mode.RANGED }
+        val clear = model.clear.mean.toFloat()
+        val wave = ranged?.effectiveWave() ?: model.waveRaw?.let {
+            ProximityCalibrationEngine.WaveCalibration(
+                clearRaw = clear, nearRaw = it,
+                nearEnter = ProximityTouchLearner.WAVE_NEAR_ENTER, clearExit = ProximityTouchLearner.WAVE_CLEAR_EXIT,
+            )
+        }
+        val value = runCatching {
+            (ranged ?: ProximityCalibrationEngine.Calibration(mode = ProximityCalibrationEngine.Mode.RANGED, clearRaw = clear, nearRaw = model.presentRaw))
+                .copy(version = 2, clearRaw = clear, nearRaw = model.presentRaw, presenceSupported = true, wave = wave)
+        }.recoverCatching {
+            // A wizard wave whose direction disagrees with the learned presence cannot share one calibration.
+            ProximityCalibrationEngine.Calibration(mode = ProximityCalibrationEngine.Mode.RANGED, clearRaw = clear, nearRaw = model.presentRaw)
+        }.getOrNull() ?: return null
+        return admitStored(value)
+    }
+
+    private fun materiallyDifferent(a: ProximityCalibrationEngine.Calibration, b: ProximityCalibrationEngine.Calibration): Boolean {
+        if (a.mode != b.mode || a.presenceSupported != b.presenceSupported || (a.wave == null) != (b.wave == null)) return true
+        if ((a.nearRaw > a.clearRaw) != (b.nearRaw > b.clearRaw)) return true
+        val span = kotlin.math.abs(a.nearRaw - a.clearRaw).coerceAtLeast(Float.MIN_VALUE)
+        fun moved(x: Float, y: Float) = kotlin.math.abs(x - y) > span * ADOPT_FRACTION
+        val waveMoved = a.wave != null && b.wave != null &&
+            (moved(a.wave.nearRaw, b.wave.nearRaw) || a.wave.nearEnter != b.wave.nearEnter)
+        return moved(a.clearRaw, b.clearRaw) || moved(a.nearRaw, b.nearRaw) || waveMoved
+    }
+
+    private fun newLearner(wizardValue: ProximityCalibrationEngine.Calibration?, mode: PresenceMode) = ProximityTouchLearner(
+        wizardValue?.takeIf { mode == PresenceMode.HYBRID && it.mode == ProximityCalibrationEngine.Mode.RANGED && it.presenceSupported }
+            ?.let { ProximityTouchLearner.Seed(it.clearRaw, it.nearRaw, null) },
+    )
+
+    /** A different seed keeps every touch already learned. */
+    private fun reseed(current: ProximityTouchLearner, wizardValue: ProximityCalibrationEngine.Calibration?, mode: PresenceMode) =
+        newLearner(wizardValue, mode).also { it.restore(current.toJson(), elapsed()) }
     fun active(): Boolean = !closed && view.active
 
     /** HTML creates only the introduction. Only a visible local Activity can begin collecting. */
@@ -224,6 +348,8 @@ internal class ProximityCalibrationRuntime(
         driftUnsafe = false
         sessionId = ""
         failureMessage = ""
+        wizard = null
+        adopted = baseline
         view = engine.reset(baseline, processingTime(elapsed()))
         reportGate.reset()
         return true
@@ -254,6 +380,8 @@ internal class ProximityCalibrationRuntime(
         userOverride = true
         readFailed = false
         driftUnsafe = false
+        wizard = margined
+        adopted = margined
         view = engine.reset(margined, processingTime(elapsed()))
         reportGate.reset()
         return true
@@ -273,6 +401,8 @@ internal class ProximityCalibrationRuntime(
         // Unreadable storage is not a missing calibration: asking the owner to set it up again would be
         // wrong, and would replace one that may still be there.
         state.calibration == null && readFailed -> "source_unavailable"
+        // Automatic and Hybrid calibrate themselves in use; setup is optional, so nothing is required yet.
+        state.calibration == null && appliedMode.learnsFromTouches && engine.observedRanged() -> "learning"
         state.calibration == null -> "calibration_required"
         else -> "ready"
     }
@@ -329,10 +459,21 @@ internal class ProximityCalibrationRuntime(
             put("level", state.level ?: JSONObject.NULL)
             put("raw", if (raw.isFinite()) raw else JSONObject.NULL)
             put("age_s", ageSeconds ?: JSONObject.NULL)
-            put("calibrationSource", if (userOverride) "user" else if (baseline != null) "profile" else "none")
+            put("calibrationSource", when {
+                adopted != null && adopted == state.calibration && adopted != wizard && adopted != baseline -> "touch"
+                userOverride -> "user"
+                baseline != null -> "profile"
+                else -> "none"
+            })
             put("profileDefaultAvailable", baseline != null)
             put("calibrationReadFailed", readFailed)
             put("calibrationDriftUnsafe", driftUnsafe)
+            put("presenceMode", appliedMode.wire)
+            put("touchLearning", learner.model().let { model ->
+                JSONObject().put("ready", model != null)
+                    .put("seenTouches", model?.seenTouches ?: 0)
+                    .put("unseenTouches", model?.unseenTouches ?: 0)
+            })
         }.toString()
     }
 
@@ -386,6 +527,7 @@ internal class ProximityCalibrationRuntime(
             return baseline
         }
         userOverride = true
+        wizard = margined
         return margined
     }
 
@@ -422,6 +564,8 @@ internal class ProximityCalibrationRuntime(
 
     companion object {
         const val STORAGE_VERSION = 1002
+        /** A learned anchor moves this fraction of the presence span before the running calibration follows. */
+        private const val ADOPT_FRACTION = .1f
         const val LEGACY_STORAGE_VERSION = 1001
         const val SESSION_TIMEOUT_MS = 300_000L
         const val BROWSER_LEASE_MS = 30_000L

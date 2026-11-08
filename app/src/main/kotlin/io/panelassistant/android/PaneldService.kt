@@ -693,6 +693,7 @@ class PaneldService : Service() {
         config.attachProfile(profile)   // supplies per-panel manufacturer/model defaults
         appliedNetworkConfiguration = currentNetworkConfigurationSnapshot()
         sensors = SensorReporter(this, config, profile)
+        sensors.screenDark = { displayPower.screen.currentOffGeneration() != null }
         wifiOutageTracker = WifiOutageTracker(store = wifiStore)
         wifiDiagnostics = AndroidWifiDiagnostics(this, HelperClient::wifiStatus)
         // Shared demand-driven logcat captures (one producer and redaction pass per source): app,

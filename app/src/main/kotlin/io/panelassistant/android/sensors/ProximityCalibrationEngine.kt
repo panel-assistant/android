@@ -248,6 +248,19 @@ internal class ProximityCalibrationEngine(
         return loseSource(now, "Sensor connection lost. Your previous calibration is unchanged.")
     }
 
+    /**
+     * Runs a calibration learned in use without a setup session: presence keeps the given quiet band, so the
+     * change of anchors does not restart noise learning. Ignored while setup runs.
+     */
+    @Synchronized fun adopt(calibration: Calibration, quiet: ProximityPresenceBand.QuietBand?, now: Long): Result {
+        if (!admit(now) || active()) return result()
+        this.calibration = calibration
+        detector = calibration.takeIf { it.presenceSupported }?.let { PresenceDetector(it, quiet ?: detector?.learnedQuiet()) }
+        waveDetector = createWaveDetector(calibration)
+        generation++; resetOperational()
+        return result()
+    }
+
     @Synchronized fun reset(calibration: Calibration?, now: Long): Result {
         if (!admit(now)) return result()
         this.calibration = calibration
