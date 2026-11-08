@@ -61,6 +61,37 @@ class ProximityTouchCalibrationRuntimeTest {
         }
     }
 
+    @Test fun touchesRightAfterAWaveWakeAreNotLearnedFrom() {
+        // A saved wave calibration lets the sensor itself wake the screen; the touches that follow are circular.
+        val wave = ProximityCalibrationEngine.WaveCalibration(clearRaw = 30f, nearRaw = 600f)
+        val saved = ProximityCalibrationEngine.Calibration(
+            mode = ProximityCalibrationEngine.Mode.RANGED, clearRaw = 30f, nearRaw = 50f, wave = wave,
+        )
+        fun replayAfterEachWave(acceptWake: Boolean): ProximityTouchLearner.Model? {
+            val runtime = ProximityCalibrationRuntime(
+                sourceIdentity = "android_hal|test", profileId = "generic", profileBaseline = saved, store = MemoryModels(),
+                elapsed = { 0L }, wall = { 0L }, presenceMode = { PresenceMode.AUTOMATIC }, touchStore = MemoryTouches(),
+            )
+            val replay = ProximityTouchReplay.load("office-taps.csv")
+            for (i in 0 until 40) runtime.observe(37f, i * 250L, sparseReporting = false)
+            var last = 10_000L
+            for ((at, raw) in replay.events()) {
+                val t = 20_000 + at
+                if (raw != null) { runtime.observe(raw, t, sparseReporting = false); last = t; continue }
+                // A wave between the last reading and the touch woke the screen.
+                val pulse = (1..5).map { runtime.observe(600f, last + it * 50L, sparseReporting = false) }
+                    .any { it.deliberateGesture }
+                assertTrue("the wave fires", pulse)
+                runtime.completeGesture(runtime.gestureToken(), accepted = acceptWake)
+                runtime.touch(t)
+            }
+            return runtime.touchLearning()
+        }
+        assertEquals(null, replayAfterEachWave(acceptWake = true))
+        // Control: the same touches after a wave that did not wake the screen do teach the panel.
+        assertTrue(replayAfterEachWave(acceptWake = false) != null)
+    }
+
     @Test fun manualNeverLearnsFromTouches() {
         val runtime = runtime(PresenceMode.MANUAL)
         runtime.replay("office-taps.csv", offset = 1_000)
