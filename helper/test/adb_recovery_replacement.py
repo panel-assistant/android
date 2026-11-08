@@ -318,7 +318,7 @@ else:
                             *[recovery if s=='src/adb_recovery.c' else s for s in sources],
                             main_source,*linked,cuts,
                             '-DRECOVERY_REPLACEMENT_STANDALONE_ENTRY','-Wl,--wrap=main',
-                            *['-Wl,--wrap=' + name for name in WRAPS],'-lpthread','-o',str(binary)],cwd=ROOT,check=True)
+                            *['-Wl,--wrap=' + name for name in WRAPS],'-lpthread','-o',str(binary)],cwd=ROOT,check=True,preexec_fn=lambda: os.nice(10))
             binaries[build]=binary
         legs, cases, runs = selection()
         ordinary_binaries = {}
@@ -332,7 +332,7 @@ else:
                                 *[f'-D{k}="{v}"' for k,v in flags.items()], *sources,
                                 str(entry),*linked,cuts,
                                 *['-Wl,--wrap=' + name for name in WRAPS],
-                                '-lpthread','-o',str(binary)],cwd=ROOT,check=True)
+                                '-lpthread','-o',str(binary)],cwd=ROOT,check=True,preexec_fn=lambda: os.nice(10))
                 ordinary_binaries[build] = binary
         owned = None
         def line(s, bound, deadline=None):

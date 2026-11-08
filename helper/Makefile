@@ -91,6 +91,7 @@ UNIT_RUNS := $(REPLACEMENT_RUNS) run-adb-recovery run-uninstall-supervisor run-a
 .PHONY: replacement-shard-check $(UNIT_RUNS)
 test:
 	@started=$$(date +%s); status=0; \
+	$(MAKE) --no-print-directory -j$(TEST_JOBS) test-binaries && \
 	$(MAKE) --no-print-directory -k -j$(TEST_JOBS) --output-sync=target test-units || status=$$?; \
 	echo "helper unit tests: $$(( $$(date +%s) - started )) s, exit $$status"; exit $$status
 
@@ -117,9 +118,6 @@ run-adb-recovery: $(BUILD)/adb-recovery
 run-adb-recovery-retirement: $(BUILD)/adb-recovery-retirement
 	$(BUILD)/adb-recovery-retirement
 
-# The shards run at a lower priority: their deadlines are seconds long, while actuator-exec,
-# bounded-exec and the other binaries assert sub-second deadlines that the shards' polling would
-# otherwise starve on a small runner.
 # The shards compile the sources that read none of the driver's per-run defines once, here, and each
 # shard links them into its own binaries (a distinct executable inode per shard).
 REPLACEMENT_OBJ := $(BUILD)/replacement-obj
@@ -132,9 +130,17 @@ define replacement_shard
 run-$(call shard_name,$(1)): $(BUILD)/adb-recovery-replacement $(REPLACEMENT_OBJS)
 	RECOVERY_REPLACEMENT_OBJECTS='$(abspath $(REPLACEMENT_OBJ))' RECOVERY_REPLACEMENT_LEGS=$(call shard_field,$(1),1) \
 		RECOVERY_REPLACEMENT_CASES=$(subst +,$(comma),$(call shard_field,$(1),2)) $(if $(call shard_field,$(1),3),RECOVERY_REPLACEMENT_VARIANTS=$(subst +,$(comma),$(call shard_field,$(1),3))) \
-		nice -n 10 $(BUILD)/adb-recovery-replacement
+		$(BUILD)/adb-recovery-replacement
 endef
 $(foreach s,$(REPLACEMENT_SHARDS),$(eval $(call replacement_shard,$(s))))
+
+# Everything the runs need, built before any test starts so compiling never competes with a test's
+# deadlines. The Python drivers compile their few per-run sources at nice 10 for the same reason.
+.PHONY: test-binaries
+test-binaries: $(patsubst run-%,$(BUILD)/%,$(UNIT_BINARY_RUNS)) $(BUILD)/adb-recovery $(BUILD)/adb-recovery-retirement \
+	$(BUILD)/replacement-lease-old $(BUILD)/replacement-lease-new $(BUILD)/hapaneld-helper $(BUILD)/hapaneld-helper-old \
+	$(BUILD)/hapaneld-helper-new $(BUILD)/cdprelay-resource-test $(BUILD)/cdprelay-test $(BUILD)/adb-recovery-replacement \
+	$(REPLACEMENT_OBJS)
 
 replacement-shard-check:
 	@python3 test/replacement_shards.py test/adb_recovery_replacement.py $(REPLACEMENT_SHARDS)
