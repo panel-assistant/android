@@ -1332,35 +1332,51 @@ class AutoSleepControllerTest {
         h.scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
     }
 
-    @Test fun `confirmed missing Area wakes owned screen and requests fail off once`() = runTest {
-        val failOffs = AtomicLong()
-        virtualHarness(onNoArea = { failOffs.incrementAndGet() }).let { h ->
-            val request = h.prepareAutomaticSleep()
-            assertTrue(h.screen.isIntendedOff())
+    @Test fun `no presence device in Home Assistant falls back to the touch delay`() {
+        listOf(
+            HaPresencePhase.NO_AREA to "no_area",
+            HaPresencePhase.NO_CREDIBLE_SOURCES to "no_device_source",
+            HaPresencePhase.NO_INCLUDED_SOURCES to "",
+        ).forEach { (phase, detail) ->
+            runTest {
+                val failOffs = AtomicLong()
+                val h = virtualHarness(onNoArea = { failOffs.incrementAndGet() })
+                val request = h.prepareAutomaticSleep()
+                h.offer(aggregate(request, 1L, HaPresenceValue.UNAVAILABLE, manager = 2L, phase = phase,
+                    detail = detail, hydrated = false, sources = emptySet()))
+                h.settle()
+                assertFalse("$phase wakes the screen it slept", h.screen.isIntendedOff())
+                val status = h.status()
+                assertEquals(phase.name.lowercase(), status.getString("phase"))
+                assertEquals("no_presence_device", status.getString("reason"))
+                assertTrue(status.toString(), status.getBoolean("available"))
+                assertEquals("auto-sleep stays on", 0L, failOffs.get())
 
-            h.offer(aggregate(
-                request,
-                revision = 1L,
-                state = HaPresenceValue.UNAVAILABLE,
-                phase = HaPresencePhase.NO_AREA,
-                hydrated = false,
-                sources = emptySet(),
-            ))
-            h.await { !h.screen.isIntendedOff() && failOffs.get() == 1L }
+                val start = h.now.get()
+                elapse(h, start + 29_000L)
+                assertFalse("$phase sleeps after the touch delay, not before", h.screen.isIntendedOff())
+                elapse(h, start + 30_000L)
+                assertTrue("$phase sleeps after the touch delay", h.screen.isIntendedOff())
 
-            h.offer(aggregate(
-                request,
-                revision = 2L,
-                state = HaPresenceValue.UNAVAILABLE,
-                manager = 2L,
-                phase = HaPresencePhase.NO_AREA,
-                hydrated = false,
-                sources = emptySet(),
-            ))
-            h.settle()
-            assertEquals(1L, failOffs.get())
-            h.closeWithVirtualTime(::runCurrent)
+                // A device appearing in Home Assistant ends the fallback.
+                h.offer(aggregate(request, 2L, HaPresenceValue.ON, manager = 3L, feed = 2L))
+                h.await { h.status().getString("phase") == "live" && h.status().getString("reason") != "no_presence_device" }
+                h.closeWithVirtualTime(::runCurrent)
+            }
         }
+    }
+
+    @Test fun `a transient Home Assistant failure does not fall back to the touch delay`() = runTest {
+        val h = virtualHarness()
+        val request = h.prepareAutomaticSleep()
+        h.offer(aggregate(request, 1L, HaPresenceValue.UNAVAILABLE, manager = 2L, phase = HaPresencePhase.AUTH_FAILED,
+            hydrated = false, sources = emptySet()))
+        h.settle()
+        assertFalse(h.screen.isIntendedOff())
+        elapse(h, h.now.get() + 60_000L)
+        assertFalse("an outage pauses auto-sleep", h.screen.isIntendedOff())
+        assertEquals("auth_failed", h.status().getString("phase"))
+        h.closeWithVirtualTime(::runCurrent)
     }
 
     /** Moves the panel clock and the virtual scheduler together, so a scheduled deadline fires on its own. */

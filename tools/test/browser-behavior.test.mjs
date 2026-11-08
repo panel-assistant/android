@@ -2417,12 +2417,12 @@ browserTest('Configure stops promising a value is about to apply once the panel 
 browserTest('Panel proximity Auto-sleep works without HA prerequisites or an HA history chart', async (t) => {
   let prerequisiteGets = 0, historyGets = 0;
   const schema = [
-    { key: 'auto_sleep_source', label: 'Auto-sleep presence source', group: 'Behaviour', type: 'ENUM', available: true, options: ['panel', 'home_assistant'] },
+    { key: 'presence_mode', label: 'Auto-sleep presence source', group: 'Behaviour', type: 'ENUM', available: true, options: ['automatic', 'home_assistant', 'off'], optionLabels: ['Automatic', 'Home Assistant device', 'Off'] },
     { key: 'auto_sleep', label: 'Auto sleep', group: 'Behaviour', type: 'BOOL', available: true },
   ];
   const harness = await startHarness((path) => {
     if (path === '/api/v1/config/schema') return json(schema);
-    if (path === '/api/v1/config') return json({ settings: { auto_sleep: true, auto_sleep_source: 'panel' }, ha_expose: {} });
+    if (path === '/api/v1/config') return json({ settings: { auto_sleep: true, presence_mode: 'automatic' }, ha_expose: {} });
     if (path === '/api/v1/apps') return json({ apps: [] });
     if (path === '/api/v1/radio' || path === '/api/v1/proximity') return json({ present: false });
     if (path === '/api/v1/auto-sleep/prerequisite') { prerequisiteGets++; return json({ eligible: false, phase: 'unassigned' }); }
@@ -2434,7 +2434,7 @@ browserTest('Panel proximity Auto-sleep works without HA prerequisites or an HA 
   page.setDefaultTimeout(2_000);
   t.after(async () => { await browser.close(); await new Promise((resolve) => harness.server.close(resolve)); });
   await page.goto(harness.url, { waitUntil: 'domcontentloaded', timeout: 5_000 });
-  const source = page.locator('#cfg-auto_sleep_source select');
+  const source = page.locator('#cfg-presence_mode select');
   await source.waitFor();
   await page.locator('#cfg-proximity-learning').waitFor();
   assert.deepEqual(await page.locator('#cfg-groups').evaluate((root) => Array.from(root.children).map((card) =>
@@ -2442,8 +2442,8 @@ browserTest('Panel proximity Auto-sleep works without HA prerequisites or an HA 
   )), ['Auto-sleep', 'cfg-proximity-learning'],
   'Presence follows the dedicated Auto-sleep card even when its script attaches after Configure');
   assert.equal(await page.locator('[data-config-group="Auto-sleep"] #cfg-auto_sleep').count(), 1);
-  assert.equal(await page.locator('[data-config-group="Auto-sleep"] #cfg-auto_sleep_source').count(), 1);
-  assert.deepEqual(await source.locator('option').allTextContents(), ['This panel’s proximity sensor', 'Home Assistant Area devices']);
+  assert.equal(await page.locator('[data-config-group="Auto-sleep"] #cfg-presence_mode').count(), 1);
+  assert.deepEqual(await source.locator('option').allTextContents(), ['Automatic', 'Home Assistant device', 'Off']);
   const toggle = page.locator('#cfg-auto_sleep [role=switch]');
   assert.equal(await toggle.getAttribute('aria-disabled'), 'false');
   await toggle.click();
@@ -2541,11 +2541,11 @@ for (const [engine, launcher] of [['Chromium', chromium], ['WebKit', webkit]]) {
 
 for (const [engine, launcher] of [['Chromium', chromium], ['WebKit', webkit]]) {
   browserTest(`Auto-sleep source menu refreshes prerequisites and status and retains focus in ${engine}`, async (t) => {
-    const settings = { auto_sleep_source: 'panel', auto_sleep: 'true' };
+    const settings = { presence_mode: 'automatic', auto_sleep: 'true' };
     let prerequisiteGets = 0, statusGets = 0;
     const posts = [];
     const harness = await startHarness(async (path, request) => {
-      if (path === '/api/v1/config/schema') return json([{ key: 'auto_sleep_source', label: 'Activity source', group: 'Behaviour', type: 'ENUM', available: true, options: ['panel', 'home_assistant', 'touch'] }, { key: 'auto_sleep', label: 'Auto sleep', group: 'Behaviour', type: 'BOOL', available: true }]);
+      if (path === '/api/v1/config/schema') return json([{ key: 'presence_mode', label: 'Activity source', group: 'Behaviour', type: 'ENUM', available: true, options: ['automatic', 'home_assistant', 'manual', 'hybrid', 'off'], optionLabels: ['Automatic', 'Home Assistant device', 'Manual', 'Hybrid', 'Off'] }, { key: 'auto_sleep', label: 'Auto sleep', group: 'Behaviour', type: 'BOOL', available: true }]);
       if (path === '/api/v1/config') {
         if (request.method === 'POST') {
           const values = Object.fromEntries(new URLSearchParams(await requestBody(request)));
@@ -2555,7 +2555,7 @@ for (const [engine, launcher] of [['Chromium', chromium], ['WebKit', webkit]]) {
       }
       if (path === '/api/v1/apps') return json({ apps: [] });
       if (path === '/api/v1/auto-sleep/prerequisite') { prerequisiteGets++; return json({ eligible: true, phase: 'assigned', area_name: 'Studio' }); }
-      if (path === '/api/v1/auto-sleep') { statusGets++; return json({ enabled: true, source: settings.auto_sleep_source, phase: 'live', area_name: 'Studio', source_count: statusGets, history_phase: 'ready' }); }
+      if (path === '/api/v1/auto-sleep') { statusGets++; return json({ enabled: true, source: settings.presence_mode, phase: 'live', area_name: 'Studio', source_count: statusGets, history_phase: 'ready' }); }
       if (path === '/api/v1/auto-sleep/history') return json(autoSleepHistory({ hours: 24 }));
       if (path === '/api/v1/radio' || path === '/api/v1/proximity') return json({ present: false });
     });
@@ -2564,9 +2564,9 @@ for (const [engine, launcher] of [['Chromium', chromium], ['WebKit', webkit]]) {
     t.after(async () => { await browser.close(); await new Promise(resolve => harness.server.close(resolve)); });
     await page.goto(harness.url);
     page.setDefaultTimeout(2_000);
-    const selected = page.locator('#cfg-auto_sleep_source select');
+    const selected = page.locator('#cfg-presence_mode select');
     await selected.waitFor();
-    assert.deepEqual(await selected.locator('option').allTextContents(), ['This panel’s proximity sensor', 'Home Assistant Area devices', 'Touch inactivity']);
+    assert.deepEqual(await selected.locator('option').allTextContents(), ['Automatic', 'Home Assistant device', 'Manual', 'Hybrid', 'Off']);
     await page.waitForFunction(() => document.querySelector('#auto-sleep-summary-announcement')?.textContent.includes('Phase: Live'));
     const initialStatusGets = statusGets;
     await selected.focus();
@@ -2574,7 +2574,7 @@ for (const [engine, launcher] of [['Chromium', chromium], ['WebKit', webkit]]) {
       const saved = page.waitForResponse(response => response.url().endsWith('/api/v1/config') && response.request().method() === 'POST');
       await selected.selectOption(source);
       await saved;
-      await page.waitForFunction(() => document.activeElement === document.querySelector('#cfg-auto_sleep_source select'));
+      await page.waitForFunction(() => document.activeElement === document.querySelector('#cfg-presence_mode select'));
       assert.equal(await selected.inputValue(), source);
     };
     await choose('home_assistant');
@@ -2582,17 +2582,17 @@ for (const [engine, launcher] of [['Chromium', chromium], ['WebKit', webkit]]) {
     await page.waitForFunction(() => document.querySelector('#auto-sleep-summary-announcement')?.textContent.includes('Studio'));
     assert.ok(prerequisiteGets > 0, 'choosing HA checks its prerequisite');
     assert.ok(statusGets > initialStatusGets, 'choosing HA refreshes status');
-    await choose('touch');
+    await choose('off');
     await page.getByText('Home Assistant and presence sensors are not required.', { exact: false }).waitFor();
     assert.equal(await page.locator('#auto-sleep-chart').count(), 0);
     const beforeReturn = prerequisiteGets;
     await choose('home_assistant');
     await page.locator('#auto-sleep-prerequisite-status').getByText('Home Assistant Area: Studio', { exact: true }).waitFor();
     assert.ok(prerequisiteGets > beforeReturn, 'returning to HA rechecks prerequisites');
-    await choose('panel');
+    await choose('automatic');
     await page.getByRole('link', { name: 'Set up proximity on panel' }).waitFor();
-    assert.deepEqual(posts, ['home_assistant', 'touch', 'home_assistant', 'panel'].map(auto_sleep_source => ({ auto_sleep_source })));
+    assert.deepEqual(posts, ['home_assistant', 'off', 'home_assistant', 'automatic'].map(presence_mode => ({ presence_mode })));
     assert.equal(await selected.evaluate(input => input === document.activeElement), true);
-    assert.equal(await page.locator('#cfg-auto_sleep_source').evaluate(row => row.scrollWidth <= row.clientWidth), true);
+    assert.equal(await page.locator('#cfg-presence_mode').evaluate(row => row.scrollWidth <= row.clientWidth), true);
   });
 }

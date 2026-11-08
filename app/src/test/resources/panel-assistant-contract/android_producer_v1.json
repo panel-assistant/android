@@ -857,6 +857,30 @@
     },
     {
       "entity_category": "config",
+      "unique_suffix": "presence",
+      "max": null,
+      "channel": "presence",
+      "index": null,
+      "platform": "select",
+      "unit": null,
+      "min": null,
+      "options": [
+        "automatic",
+        "home_assistant",
+        "manual",
+        "hybrid",
+        "off"
+      ],
+      "device_class": null,
+      "translation_key": "presence",
+      "step": null,
+      "enabled_default": false,
+      "state_class": null,
+      "family": null,
+      "force_update": false
+    },
+    {
+      "entity_category": "config",
       "unique_suffix": "prevent_idle_dim",
       "max": null,
       "channel": "prevent_idle_dim",
