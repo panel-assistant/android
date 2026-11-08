@@ -101,6 +101,8 @@ jobs:
           disable-animations: true
           # Keep all lines equally indented so YAML folds this into one shell command.
           # The emulator action executes each parsed newline separately.
+          # The app declares HOME, so a fresh API 35 emulator can show the system home chooser; that chooser
+          # hides every app overlay, and the wake-tap taps then reach it instead. home_preflight pins Launcher3.
           script: >-
             bash -euo pipefail -c '
             adb install app/build/outputs/apk/debug/app-debug.apk;
@@ -121,6 +123,13 @@ jobs:
             windows="$(avd_adb shell dumpsys window windows)"; test -n "$windows"; printf "%s\n" "$windows" > "$RUNNER_TEMP/$label-windows-after.txt";
             if printf "%s\n" "$windows" | grep -Eq "^  Window #[0-9]+ .*Application Not Responding:"; then return 1; fi;
             fi;
+            };
+            home_preflight() {
+            local focus;
+            avd_adb shell cmd package set-home-activity --user 0 com.android.launcher3 > /dev/null;
+            avd_adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.HOME > /dev/null;
+            focus="$(avd_adb shell dumpsys window | grep -E "mCurrentFocus=" || true)"; printf "%s\n" "$focus";
+            [[ "$focus" == *"mCurrentFocus=Window{"*" u0 com.android.launcher3/"* ]];
             };
             launcher_anr_preflight before-core;
             log="$RUNNER_TEMP/core-instrumentation.log";
@@ -153,6 +162,7 @@ jobs:
             cleared="$(adb shell pm clear io.panelassistant.android.test | tr -d "\r")"; test "$cleared" = Success;
             trap "adb shell appops set io.panelassistant.android SYSTEM_ALERT_WINDOW default" EXIT;
             adb shell appops set io.panelassistant.android SYSTEM_ALERT_WINDOW allow;
+            if [ "${{ matrix.api-level }}" -ge 29 ]; then home_preflight; fi;
             log="$RUNNER_TEMP/overlay-wake-tap-instrumentation.log";
             status=0;
             adb logcat -c;
