@@ -1377,13 +1377,16 @@ if [ -s "$publication_step" ] && [ "$publication_fail_closed" -eq 1 ]; then
 else
   fail_test "release publication fails for a stale, missing, malformed or incomplete hosted list"
 fi
-if [ -s "$publication_step" ] && ! run_publication missing-token '' 0 && \
+# Without the token the release process publishes the list itself, so the job succeeds without
+# dispatching or polling; a failed dispatch still fails before polling.
+if [ -s "$publication_step" ] && run_publication missing-token '' 0 && \
    [ ! -e "$TMP/publication-missing-token-0/actions.log" ] && \
+   [ ! -e "$TMP/publication-missing-token-0/http.log" ] && \
    ! run_publication dispatch-error fixture 1 && \
    [ ! -e "$TMP/publication-dispatch-error-1/http.log" ]; then
-  pass "release publication fails before polling when credentials or dispatch fail"
+  pass "release publication skips without a token and fails before polling when dispatch fails"
 else
-  fail_test "release publication fails before polling when credentials or dispatch fail"
+  fail_test "release publication skips without a token and fails before polling when dispatch fails"
 fi
 # Source-text reason: GitHub controls step ordering and credential injection;
 # local shell execution above cannot run the hosted job scheduler.

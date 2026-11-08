@@ -35,6 +35,8 @@ import org.junit.Test
 class HelperSocketCompositionTest {
     @Test(timeout = 30_000)
     fun allRecoveryVerbsCrossTheAdmittedMainSocketAndRealLifecycleOwner() {
+        // The recovery owner refuses to start unless it runs as root, as on a panel; GitHub's runners are not root.
+        assumeTrue("the native lifecycle owner needs root", com.sun.security.auth.module.UnixSystem().uid == 0L)
         val executable = File(requireNotNull(System.getProperty("hapaneld.helper.socketTestServer"))).absoluteFile.parentFile.resolve("adb-recovery")
         assertTrue(executable.isFile, "native lifecycle fixture was not built")
         for (chunk in listOf(Int.MAX_VALUE, 1, 3)) {
