@@ -21,6 +21,9 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import java.nio.file.Files
+import java.security.MessageDigest
+import java.sql.DriverManager
 import sun.misc.Unsafe
 
 /**
@@ -152,6 +155,108 @@ class CompanionSettingsCheckRootViewTest {
         assertTrue(line, "/data/data/$pkg/databases/HomeAssistantDB" in line)
         assertTrue(line, "Error: unable to open database" in line)
         assertTrue(banner(observed), "could not be inspected" in banner(observed))
+    }
+
+    /** Keep the writer open: both the schema and committed rows exist only in WAL. */
+    private fun withWalOnlyDatabase(row: String?, check: (File) -> Unit) {
+        val db = File(view, "data_mirror/data_ce/null/0/$pkg/databases/HomeAssistantDB")
+        db.parentFile.mkdirs()
+        File(view, "data/local/tmp").mkdirs()
+        for (tool in listOf("sqlite3", "mktemp", "cp", "cmp", "rm")) {
+            val process = ProcessBuilder("/bin/sh", "-c", "command -v $tool").start()
+            val path = process.inputStream.bufferedReader().readText().trim()
+            check(process.waitFor() == 0 && path.isNotEmpty()) { "Required fixture tool: $tool" }
+            if (tool == "sqlite3") {
+                // Recent host shells escape control characters by default; Android's older shells
+                // emit the raw unit separator used by the production query.
+                val help = ProcessBuilder(path, "-help").redirectErrorStream(true).start()
+                val flags = if ("-escape" in help.inputStream.bufferedReader().readText()) "-escape off " else ""
+                help.waitFor()
+                File(bin, tool).apply {
+                    writeText("#!/bin/sh\nexec '$path' $flags\"$@\"\n")
+                    setExecutable(true)
+                }
+            } else {
+                Files.createSymbolicLink(File(bin, tool).toPath(), File(path).toPath())
+            }
+        }
+        DriverManager.getConnection("jdbc:sqlite:${db.path}").use { writer ->
+            writer.createStatement().use { sql ->
+                sql.execute("PRAGMA journal_mode=WAL")
+                sql.execute("PRAGMA wal_autocheckpoint=0")
+                sql.execute("CREATE TABLE servers(id INTEGER PRIMARY KEY, internal_url TEXT, external_url TEXT)")
+                if (row != null) sql.execute("INSERT INTO servers VALUES($row)")
+            }
+            assertTrue("fixture has committed WAL data", File("${db.path}-wal").length() > 0)
+            val mainOnly = ProcessBuilder(File(bin, "sqlite3").path, "file:${db.path}?immutable=1", "SELECT count(*) FROM servers;")
+                .redirectErrorStream(true).start()
+            val failure = mainOnly.inputStream.bufferedReader().readText()
+            assertEquals("main file has no servers table: $failure", 1, mainOnly.waitFor())
+            assertTrue(failure, "no such table: servers" in failure)
+            val before = sourceFingerprint(db)
+            check(db)
+            assertEquals("source DB, WAL and SHM bytes and ownership are unchanged", before, sourceFingerprint(db))
+            assertTrue("private probe copies are removed", File(view, "data/local/tmp").listFiles().orEmpty().isEmpty())
+        }
+    }
+
+    private fun sourceFingerprint(db: File): List<List<Any>> = listOf("", "-wal", "-shm").map { suffix ->
+        val path = File("${db.path}$suffix").toPath()
+        listOf(
+            MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(path)).toList(),
+            Files.getAttribute(path, "unix:uid"), Files.getAttribute(path, "unix:gid"),
+            Files.getAttribute(path, "unix:mode"),
+        )
+    }
+
+    @Test fun aFreshWalOnlyCompanionHasNoServersAndNoFailedCheckBanner() {
+        withWalOnlyDatabase(null) {
+            val observations = observations()
+            repeat(2) {
+                observations.companionServerCache.invalidate()
+                val observed = observations.companionServerCache.get()
+                assertEquals(CompanionDb.ServerObservation.EMPTY, observed)
+                assertNull(DiagReader.companionDbLine(observed))
+                assertFalse(banner(observed), "could not be inspected" in banner(observed))
+            }
+        }
+    }
+
+    @Test fun walOnlyServersSupplyTheUrlAndRepairWarning() {
+        withWalOnlyDatabase("1, '', 'https://wal.example/'") {
+            val observed = observations().companionServerCache.get()
+            assertEquals(CompanionDb.Probe.SUCCEEDED, observed.probe)
+            assertEquals("https://wal.example", observed.preferredUrl)
+            assertEquals(CompanionDb.Warning.NeedsRepair(1), CompanionDb.warning(pkg, observed, true))
+            assertNull(DiagReader.companionDbLine(observed))
+        }
+    }
+
+    @Test fun anUnreadableWalCopyStillReportsAFailedCheckAndCleansUp() {
+        withWalOnlyDatabase(null) {
+            Files.delete(File(bin, "cp").toPath())
+            File(bin, "cp").apply {
+                writeText("#!/bin/sh\necho 'copy denied' >&2\nexit 1\n")
+                setExecutable(true)
+            }
+            val observed = observations().companionServerCache.get()
+            assertEquals(CompanionDb.Probe.FAILED, observed.probe)
+            assertEquals(CompanionDb.Warning.ProbeFailed, CompanionDb.warning(pkg, observed, true))
+            assertTrue(observed.failure.orEmpty(), "copy denied" in observed.failure.orEmpty())
+        }
+    }
+
+    @Test fun aChangedWalCopyIsRejectedInsteadOfReportingNoServers() {
+        withWalOnlyDatabase(null) {
+            Files.delete(File(bin, "cp").toPath())
+            File(bin, "cp").apply {
+                writeText("#!/bin/sh\n/bin/cp \"$@\" || exit ${'$'}?\ncase \"$1\" in *-wal) echo changed >> \"$2\";; esac\n")
+                setExecutable(true)
+            }
+            val observed = observations().companionServerCache.get()
+            assertEquals(CompanionDb.Probe.FAILED, observed.probe)
+            assertEquals(CompanionDb.Warning.ProbeFailed, CompanionDb.warning(pkg, observed, true))
+        }
     }
 
     private companion object {
