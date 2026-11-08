@@ -414,7 +414,7 @@ val compileBundledRootHelperArm64 = tasks.register<Exec>("compileBundledRootHelp
     commandLine(
         ndkToolchainBin.resolve("aarch64-linux-android26-clang"), "-O2", "-s", "-Ihelper/src",
         "-DHAPANELD_BUILD_ID=\"$helperBuildId\"",
-        "-o", bundledRootHelperArm64.relativeTo(rootDir).invariantSeparatorsPath, *sourcePaths.toTypedArray(),
+        "-o", bundledRootHelperArm64.relativeTo(rootDir).invariantSeparatorsPath, *sourcePaths.toTypedArray(), "-llog",
     )
     workingDir(rootDir)
 }
@@ -434,7 +434,7 @@ val compileBundledRootHelperArm32 = tasks.register<Exec>("compileBundledRootHelp
     commandLine(
         ndkToolchainBin.resolve("armv7a-linux-androideabi26-clang"), "-O2", "-s", "-Ihelper/src",
         "-DHAPANELD_BUILD_ID=\"$helperBuildId\"",
-        "-o", bundledRootHelperArm32.relativeTo(rootDir).invariantSeparatorsPath, *sourcePaths.toTypedArray(),
+        "-o", bundledRootHelperArm32.relativeTo(rootDir).invariantSeparatorsPath, *sourcePaths.toTypedArray(), "-llog",
     )
     workingDir(rootDir)
 }

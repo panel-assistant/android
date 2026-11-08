@@ -50,6 +50,7 @@ internal class LocalAdbRuntime(
     private val healthy: suspend () -> Boolean = { true },
     private val rootKnownUnusable: () -> Boolean = { false },
     private val daemon: Daemon = HelperClient,
+    private val leaseDiagnostics: LocalAdbLeaseDiagnostics = LocalAdbLeaseDiagnostics(),
 ) : PanelAssistantLocalAdb {
     private val generation = AtomicLong()
     private val effects = Mutex()
@@ -73,6 +74,7 @@ internal class LocalAdbRuntime(
             Triple(current, fresh, retain)
         }
         scope.launch(dispatcher) {
+            var leaseOperation = "state"
             try { effects.withLock {
                 if (generation.get() != current) return@withLock
                 if (!granted) {
@@ -82,29 +84,47 @@ internal class LocalAdbRuntime(
                 }
                 val state = currentDaemon()
                 if (generation.get() == current && state != null && healthy()) {
-                    transition { generation.get() == current && endpoint.arm(fresh) }
+                    leaseOperation = "arm"
+                    transition { generation.get() == current && endpoint.arm(fresh).also { if (it) leaseDiagnostics.arm() else leaseDiagnostics.skip("arm_false", "arm") } }
+                    leaseOperation = "publish"
                     publish()
                     onClosed()
-                }
+                } else if (state == null) leaseDiagnostics.skip("state_unavailable", "startup")
+                  else if (generation.get() == current) leaseDiagnostics.skip("unhealthy", "startup")
             } } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
-              catch (_: Exception) { publish() }
+              catch (_: Exception) {
+                  if (leaseOperation == "state" || leaseOperation == "arm") leaseDiagnostics.skip("socket_error", leaseOperation)
+                  publish()
+              }
             if ((granted || (retainExistingLease && hardened())) && generation.get() == current) {
                 while (scope.isActive && generation.get() == current) {
                     delay(30_000)
-                    if (!healthy()) continue
+                    if (!healthy()) { leaseDiagnostics.skip("unhealthy"); continue }
+                    val waitingSince = leaseDiagnostics.now()
+                    leaseOperation = "state"
                     try { effects.withLock {
+                        leaseDiagnostics.lockWait(waitingSince)
                         if (generation.get() == current) {
                             val state = if (granted) currentDaemon() else endpoint.state()
                             if (state != null && !state.managed && !state.recoveryHold && granted) {
-                                transition { generation.get() == current && endpoint.arm(fresh) }
+                                leaseOperation = "arm"
+                                transition { generation.get() == current && endpoint.arm(fresh).also { if (it) leaseDiagnostics.arm() else leaseDiagnostics.skip("arm_false", "arm") } }
+                                leaseOperation = "publish"
                                 publish()
                                 onClosed()
                             }
-                            else if (state != null) endpoint.beat(fresh)
+                            else if (state != null) {
+                                leaseOperation = "beat"
+                                if (endpoint.beat(fresh)) leaseDiagnostics.beat() else leaseDiagnostics.skip("beat_false", "beat")
+                            } else leaseDiagnostics.skip("state_unavailable")
+                            leaseOperation = "publish"
                             publish()
                         }
                     } } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
-                      catch (_: Exception) { publish() }
+                      catch (_: Exception) {
+                          if (leaseOperation != "publish") leaseDiagnostics.skip("socket_error", leaseOperation)
+                          publish()
+                      }
                 }
             }
         }
@@ -220,6 +240,8 @@ internal class LocalAdbRuntime(
         fun create(context: Context, scope: CoroutineScope, config: Config, daemon: Daemon = HelperClient): LocalAdbRuntime {
             val staging = LocalAdbAsset(context)
             val main = android.os.Handler(android.os.Looper.getMainLooper())
+            val leaseDiagnostics = LocalAdbLeaseDiagnostics()
+            LocalAdbLeaseDiagnosticHolder.install(leaseDiagnostics)
             return LocalAdbRuntime(scope, RootLocalAdbEndpoint(), { config.hardenedSecurityEnabled }, staging::prepare, {
                 daemon.ensureAdbRecovery()
             }, authorize = { payload, pending, admitted ->
@@ -233,7 +255,7 @@ internal class LocalAdbRuntime(
                         main.post { if (acknowledgement.isActive) acknowledgement.resume(true) }
                     }
                 } == true
-            }, rootKnownUnusable = { Su.rootKnownUnusable() }, daemon = daemon)
+            }, rootKnownUnusable = { Su.rootKnownUnusable() }, daemon = daemon, leaseDiagnostics = leaseDiagnostics)
         }
     }
 }
