@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""Build real helpers with only host paths/socket remapped for app caller tests.
+"""Build helpers for the real app replacement and stale-owner recovery callers.
 
 HAPANELD_INCUMBENT_SOURCE may name an untouched historical source checkout to qualify
-an installed incumbent independently of the candidate. Both roles use their real main.
+an installed incumbent independently of the candidate. The default old role models the
+pre-merge worker-owned listener and occupied-FD3 defect; it has no merged recovery owner.
+The candidate uses its real main. This fixture qualifies Guard replacement, while the
+separate main-socket composition fixture qualifies integrated recovery custody.
 """
 import os
 from pathlib import Path
@@ -10,6 +13,11 @@ import shutil
 import subprocess
 import socket
 import sys
+
+def replace_once(text, old, new):
+    if text.count(old) != 1:
+        raise AssertionError('historical incumbent fixture seam changed: ' + old)
+    return text.replace(old, new, 1)
 
 if sys.argv[1] == '--request':
     root = Path(sys.argv[2])
@@ -60,13 +68,26 @@ for role, source, build in [('old', incumbent, 'b'*64), ('new', candidate, 'a'*6
         # can instead name an untouched released source tree, with no behavioral substitutions.
         if role == 'old' and 'HAPANELD_INCUMBENT_SOURCE' not in os.environ:
             if path.name == 'guard_replacement.c':
-                text = text.replace('!guard_maintenance_supervisor_authoritative() || !nonce ||\n        guard_maintenance_replacement_export_lease() != 0',
+                text = replace_once(text, '!guard_maintenance_supervisor_authoritative() || !nonce ||\n        guard_maintenance_replacement_export_lease() != 0',
                                     '!guard_maintenance_supervisor_authoritative() || !nonce')
-                text = text.replace('    /* FD3 can be /dev/null inherited from su.',
+                text = replace_once(text, '    /* FD3 can be /dev/null inherited from su.',
                                     '    if (guard_owner_fd != 3 && fcntl(3, F_GETFD) >= 0) return -1;\n    /* FD3 can be /dev/null inherited from su.')
             if path.name == 'main.c':
-                text = text.replace('GUARD_REPLACEMENT_READY) {',
-                                    'GUARD_REPLACEMENT_READY || guard_maintenance_replacement_export_lease() != 0) {', 1)
+                text = replace_once(text, 'GUARD_REPLACEMENT_READY) {',
+                                    'GUARD_REPLACEMENT_READY || guard_maintenance_replacement_export_lease() != 0) {')
+                # Historical SO_PEERCRED identifies the accepting worker, whose parent owns
+                # the Guard lease. The merged parent-owned listener is not that topology.
+                text = replace_once(text,
+                                    '    int listener = open_main_listener(may_retire_replaced);\n'
+                                    '    if (listener < 0) return 1;\n'
+                                    '    int initialized = adb_recovery_owner_init();',
+                                    '    int listener = may_retire_replaced;\n'
+                                    '    int initialized = 1;')
+                text = replace_once(text,
+                                    '    _exit(run_daemon(argc, argv, replacement_nonce, listener));',
+                                    '    listener = open_main_listener(listener);\n'
+                                    '    if (listener < 0) _exit(1);\n'
+                                    '    _exit(run_daemon(argc, argv, replacement_nonce, listener));')
         path.write_text(text)
     command = ['cc', '-O1', '-g', '-Wall', '-Wextra', '-Werror', '-Wno-format-truncation',
                '-DHAPANELD_BUILD_ID="'+build+'"',
