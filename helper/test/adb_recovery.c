@@ -753,7 +753,10 @@ static void custody_tests(void) {
         snprintf(name, sizeof name, "custody-%ld", (long)fixture_guardian);
         CHECK(!strcmp(get(name), "root"), "guardian inherits independent recovery custody");
         arm();
-        int status; pid_t killed = waitpid(service, &status, WNOHANG);
+        /* SIGKILL is delivered asynchronously: a loaded host may not have reaped the service the
+         * instant ARM replies. Nothing else signals it, so a bounded wait still proves ARM killed it. */
+        int status = 0; pid_t killed = 0;
+        for (int waited = 0; waited < 200 && (killed = waitpid(service, &status, WNOHANG)) == 0; waited++) usleep(10000);
         CHECK(killed == service && WIFSIGNALED(status) && WTERMSIG(status) == SIGKILL,
               "ARM really terminates the modeled adbd service cgroup");
         CHECK(!kill(owner, 0) && !kill(fixture_guardian, 0), "owner and guardian survive adbd service termination");

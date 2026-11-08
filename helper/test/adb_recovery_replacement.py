@@ -285,7 +285,8 @@ else:
                  'ADB_RECOVERY_TCP':p/'tcp', 'ADB_RECOVERY_TCP6':p/'tcp6',
                  'ADB_RECOVERY_SOCKET':sock, 'ADB_RECOVERY_SHELL':'/bin/sh',
                  'RECOVERY_REPLACEMENT_TEST_ROOT':p}
-        sources = subprocess.check_output(['make','--no-print-directory','-s','print-core'],cwd=ROOT,text=True).split()
+        sources = subprocess.check_output(['make','--no-print-directory','-s','print-core'],cwd=ROOT,text=True,
+                                          env={k: v for k, v in os.environ.items() if k not in ('MAKEFLAGS', 'MFLAGS', 'MAKELEVEL')}).split()
         # Only these read the per-run defines below. When the Makefile has compiled every other
         # source once (RECOVERY_REPLACEMENT_OBJECTS), each run links those objects into its own
         # binaries: a fresh inode per run, so concurrent runs never match each other's processes.
