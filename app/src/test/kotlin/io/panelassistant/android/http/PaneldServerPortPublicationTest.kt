@@ -47,6 +47,8 @@ class PaneldServerPortPublicationTest {
                 rig.onReconfigure { keys ->
                     // The production owner receives a durable choice, with HTTP already listening.
                     val durablePort = rig.reconstructedPort()
+                    assertNotEquals("A collision rebind must publish a newly durable port",
+                        advertisements.last().port, durablePort)
                     assertHttp(durablePort)
                     published += keys to durablePort
                     advertiser.ensureStarted()
