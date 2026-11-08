@@ -2856,6 +2856,93 @@
       "softMaxChars": 44,
       "hardMaxChars": 72
     },
+    "configure.enum.presence_mode.automatic": {
+      "text": "Automatic",
+      "sourceHash": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
+      "surface": "configure",
+      "context": "Visible label for the exact presence_mode setting wire option; translate display text only and preserve the submitted/stored wire value.",
+      "risk": "ordinary",
+      "siblings": [
+        "configure.enum.presence_mode.home_assistant",
+        "configure.enum.presence_mode.manual",
+        "configure.enum.presence_mode.hybrid",
+        "configure.enum.presence_mode.off"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 44,
+      "hardMaxChars": 72
+    },
+    "configure.enum.presence_mode.home_assistant": {
+      "text": "Home Assistant device",
+      "sourceHash": "0e7822ccc39d40e601271e0a49edbfca5d441f5e6be7a5f018d362664b6c63be",
+      "surface": "configure",
+      "context": "Visible label for the exact presence_mode setting wire option; translate display text only and preserve the submitted/stored wire value.",
+      "risk": "ordinary",
+      "siblings": [
+        "configure.enum.presence_mode.automatic",
+        "configure.enum.presence_mode.manual",
+        "configure.enum.presence_mode.hybrid",
+        "configure.enum.presence_mode.off"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "Home Assistant"
+      ],
+      "softMaxChars": 44,
+      "hardMaxChars": 72
+    },
+    "configure.enum.presence_mode.hybrid": {
+      "text": "Hybrid",
+      "sourceHash": "6c67dc13f83949fe089ca86225b136b5f40ac5268ebf92fbefe45f1f94e8064b",
+      "surface": "configure",
+      "context": "Visible label for the exact presence_mode setting wire option; translate display text only and preserve the submitted/stored wire value.",
+      "risk": "ordinary",
+      "siblings": [
+        "configure.enum.presence_mode.automatic",
+        "configure.enum.presence_mode.home_assistant",
+        "configure.enum.presence_mode.manual",
+        "configure.enum.presence_mode.off"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 44,
+      "hardMaxChars": 72
+    },
+    "configure.enum.presence_mode.manual": {
+      "text": "Manual",
+      "sourceHash": "b0b9fe24ffa9629125bdc59b122f80d605ab604eb1b74485c2f2ecfde26576ae",
+      "surface": "configure",
+      "context": "Visible label for the exact presence_mode setting wire option; translate display text only and preserve the submitted/stored wire value.",
+      "risk": "ordinary",
+      "siblings": [
+        "configure.enum.presence_mode.automatic",
+        "configure.enum.presence_mode.home_assistant",
+        "configure.enum.presence_mode.hybrid",
+        "configure.enum.presence_mode.off"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 44,
+      "hardMaxChars": 72
+    },
+    "configure.enum.presence_mode.off": {
+      "text": "Off",
+      "sourceHash": "ca7981b46ecf2c1787b6d76d81d9fd7fa0ca95842e2fcc2a452869891a9334d1",
+      "surface": "configure",
+      "context": "Visible label for the exact presence_mode setting wire option; translate display text only and preserve the submitted/stored wire value.",
+      "risk": "ordinary",
+      "siblings": [
+        "configure.enum.presence_mode.automatic",
+        "configure.enum.presence_mode.home_assistant",
+        "configure.enum.presence_mode.manual",
+        "configure.enum.presence_mode.hybrid"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 44,
+      "hardMaxChars": 72
+    },
     "configure.enum.voice_audio_source.mic": {
       "text": "Microphone",
       "sourceHash": "186352a881d0550e2da1f74e5c317770702bc2a0f9c3da69a10e27c14a217bac",
@@ -30321,56 +30408,17 @@
       "softMaxChars": 70,
       "hardMaxChars": 90
     },
-    "settings.auto_sleep_source.help": {
-      "text": "Use the panel’s calibrated proximity sensor, Home Assistant Area devices, or touch inactivity.\n\n- Presence modes pause if their source is unavailable.\n- Touch inactivity needs no presence setup.",
-      "sourceHash": "b6ae4c9d0c2cbf29bbffafdd847901cea10c18e91e16d77c7716ae108fb0284d",
+    "settings.auto_sleep_touch_delay_seconds.help": {
+      "text": "When Presence is Off, or Home Assistant device has no usable device, switch the screen fully off after this many seconds without a touch.",
+      "sourceHash": "754ff4d9a8ed0b627c9067527d343515102816904199b50efc97091db15a46d5",
       "surface": "settings",
-      "context": "Panel proximity presence and Auto-sleep source selection.",
+      "context": "Auto-sleep touch inactivity source and fixed delay.",
       "risk": "ordinary",
       "siblings": [],
       "placeholders": [],
       "frozen": [
         "Home Assistant"
       ],
-      "softMaxChars": 348,
-      "hardMaxChars": 522
-    },
-    "settings.auto_sleep_source.label": {
-      "text": "Auto-sleep activity source",
-      "sourceHash": "485e78dd0ccd45757ad048f9805f4fe39b1260890bb7d0364b2c8d07caa926c1",
-      "surface": "settings",
-      "context": "Auto-sleep source selection, including panel, Home Assistant Area and touch inactivity.",
-      "risk": "ordinary",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 52,
-      "hardMaxChars": 80
-    },
-    "settings.auto_sleep_source.summary": {
-      "text": "What counts as presence: proximity sensor, area or touch.",
-      "sourceHash": "010e147baf066c010fda07e439cca24c3f59a22a7564b8450354fa5e8f716b33",
-      "surface": "settings",
-      "context": "Auto-sleep source selection, including panel, Home Assistant Area and touch inactivity.: one-line summary shown under the auto_sleep_source setting's label; the full help opens behind an info button. Plain text, one line.",
-      "risk": "ordinary",
-      "siblings": [
-        "settings.auto_sleep_source.label",
-        "settings.auto_sleep_source.help"
-      ],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 70,
-      "hardMaxChars": 90
-    },
-    "settings.auto_sleep_touch_delay_seconds.help": {
-      "text": "When Touch inactivity is selected, switch the screen fully off after this many seconds without a touch.",
-      "sourceHash": "2859a764da776afae021acb6fc0c9719b3c9b382f0a2e10d3d9031eaa4a1409c",
-      "surface": "settings",
-      "context": "Auto-sleep touch inactivity source and fixed delay.",
-      "risk": "ordinary",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [],
       "softMaxChars": 103,
       "hardMaxChars": 151
     },
@@ -32566,6 +32614,47 @@
       "siblings": [
         "settings.panel_id.label",
         "settings.panel_id.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
+    "settings.presence_mode.help": {
+      "text": "How the panel knows someone is nearby. Touching the screen always counts as someone being there.\n\n- **Automatic** learns the proximity sensor from your touches.\n- **Home Assistant device** uses presence devices in the panel's Home Assistant area. With no usable device it falls back to the touch delay.\n- **Manual** uses the readings you record with the calibration wizard.\n- **Hybrid** starts from the wizard readings and keeps learning from touches.\n- **Off** uses no presence; auto-sleep turns the screen off after the touch delay.",
+      "sourceHash": "29f58d54686b32bedf4ae556bb9c514cce2051c80216e2d801ee321db3bf8741",
+      "surface": "settings",
+      "context": "Presence mode: how the panel tells someone is nearby (learned proximity, Home Assistant device, wizard, hybrid or off).",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [
+        "Home Assistant"
+      ],
+      "softMaxChars": 574,
+      "hardMaxChars": 801
+    },
+    "settings.presence_mode.label": {
+      "text": "Presence",
+      "sourceHash": "d6b3e8c828d3742089ed59ebbfd89492ec2ce0bc89a19294cae52a6ac233b244",
+      "surface": "settings",
+      "context": "Presence mode: how the panel tells someone is nearby (learned proximity, Home Assistant device, wizard, hybrid or off).",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 52,
+      "hardMaxChars": 80
+    },
+    "settings.presence_mode.summary": {
+      "text": "How the panel tells that someone is nearby.",
+      "sourceHash": "237dd010ba3255b755bbfbf406c792b8965cdb630aaf68867e83188bd2421e3f",
+      "surface": "settings",
+      "context": "Presence mode: how the panel tells someone is nearby (learned proximity, Home Assistant device, wizard, hybrid or off).: one-line summary shown under the presence_mode setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.presence_mode.label",
+        "settings.presence_mode.help"
       ],
       "placeholders": [],
       "frozen": [],

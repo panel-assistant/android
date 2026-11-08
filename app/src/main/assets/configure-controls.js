@@ -223,7 +223,7 @@
         f.key === "auto_brightness_maximum_percent" || f.key === "auto_brightness_response_percent") &&
         !cfg.ambientLightSourceReady()) return ["auto_brightness_ha_entity"];
     if (f.key === "auto_sleep" && cfg.autoSleepUsesHa() && cfg.values[f.key] !== "true" &&
-        cfg.autoSleepPrerequisite.eligible !== true) return ["auto_sleep_source", "ha_area"];
+        cfg.autoSleepPrerequisite.eligible !== true) return ["presence_mode", "ha_area"];
     return [];
   }
 
@@ -266,7 +266,7 @@
       });
       s.addEventListener("change", function () {
         cfg.values[f.key] = s.value; cfg.localChange(f.key);
-        if (f.key === "auto_sleep_source") {
+        if (f.key === "presence_mode") {
           cfg.autoSleepPrerequisiteRequest++;
           cfg.invalidateAutoSleepData(true);
           var previousPanel = document.getElementById("auto-sleep-status");

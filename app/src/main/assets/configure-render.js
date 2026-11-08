@@ -81,6 +81,9 @@
 
   function shouldRenderRow(f) {
     if ((f.key === "auto_brightness_minimum_percent" || f.key === "auto_brightness_maximum_percent" || f.key === "auto_brightness_response_percent") && cfg.values.auto_brightness !== "true") return false;
+    // The touch delay applies to presence Off, and to Home Assistant device as its fallback.
+    if (f.key === "auto_sleep_touch_delay_seconds" && cfg.values.presence_mode !== "off" &&
+        cfg.values.presence_mode !== "home_assistant") return false;
     return true;
   }
   var PREVIEW_CARDS = { "Voice": true };
@@ -112,7 +115,7 @@
   };
   var BUILTIN_RENDERER_ONLY_KEYS = { dashboard_idle_return_min: true };
   var HA_CONNECTION_KEYS = { ha_url: true, ha_token: true };
-  var AUTO_SLEEP_KEYS = { auto_sleep_source: true, auto_sleep_touch_delay_seconds: true, auto_sleep: true };
+  var AUTO_SLEEP_KEYS = { presence_mode: true, auto_sleep_touch_delay_seconds: true, auto_sleep: true };
   var CONFIG_LAYOUT_KEYS = {
     "Identity": "configure-identity", "Behaviour": "configure-behaviour",
     "Auto-sleep": "configure-auto-sleep",

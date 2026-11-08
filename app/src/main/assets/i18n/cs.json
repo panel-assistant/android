@@ -953,6 +953,31 @@
       "sourceHash": "98d6ce0ae7ddc3af8406b87feaba58535a5f45b9a47286fa83adcc6db2df7808",
       "state": "machine-cross-checked"
     },
+    "configure.enum.presence_mode.automatic": {
+      "text": "Automatic",
+      "sourceHash": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
+      "state": "english-fallback"
+    },
+    "configure.enum.presence_mode.home_assistant": {
+      "text": "Home Assistant device",
+      "sourceHash": "0e7822ccc39d40e601271e0a49edbfca5d441f5e6be7a5f018d362664b6c63be",
+      "state": "english-fallback"
+    },
+    "configure.enum.presence_mode.manual": {
+      "text": "Manual",
+      "sourceHash": "b0b9fe24ffa9629125bdc59b122f80d605ab604eb1b74485c2f2ecfde26576ae",
+      "state": "english-fallback"
+    },
+    "configure.enum.presence_mode.hybrid": {
+      "text": "Hybrid",
+      "sourceHash": "6c67dc13f83949fe089ca86225b136b5f40ac5268ebf92fbefe45f1f94e8064b",
+      "state": "english-fallback"
+    },
+    "configure.enum.presence_mode.off": {
+      "text": "Off",
+      "sourceHash": "ca7981b46ecf2c1787b6d76d81d9fd7fa0ca95842e2fcc2a452869891a9334d1",
+      "state": "english-fallback"
+    },
     "configure.enum.camera_resolution.1080p": {
       "text": "1080p (Full HD)",
       "sourceHash": "d646b89f5b435e75eabfdf35e0514535ba66e149ef010ff0808c113a72068d3b",
@@ -10028,20 +10053,20 @@
       "sourceHash": "505de923eb7e143bb6607cc1871c1616f853d12d28fc40a81d3198e0c6477af3",
       "state": "machine-cross-checked"
     },
-    "settings.auto_sleep_source.help": {
-      "text": "Použijte kalibrovaný senzor přiblížení panelu, zařízení v oblasti Home Assistant nebo nečinnost dotyku.\n\n- Režimy přítomnosti se pozastaví, pokud jejich zdroj není dostupný.\n- Nečinnost dotyku nevyžaduje nastavení přítomnosti.",
-      "sourceHash": "b6ae4c9d0c2cbf29bbffafdd847901cea10c18e91e16d77c7716ae108fb0284d",
-      "state": "machine-cross-checked"
+    "settings.presence_mode.help": {
+      "text": "How the panel knows someone is nearby. Touching the screen always counts as someone being there.\n\n- **Automatic** learns the proximity sensor from your touches.\n- **Home Assistant device** uses presence devices in the panel's Home Assistant area. With no usable device it falls back to the touch delay.\n- **Manual** uses the readings you record with the calibration wizard.\n- **Hybrid** starts from the wizard readings and keeps learning from touches.\n- **Off** uses no presence; auto-sleep turns the screen off after the touch delay.",
+      "sourceHash": "29f58d54686b32bedf4ae556bb9c514cce2051c80216e2d801ee321db3bf8741",
+      "state": "english-fallback"
     },
-    "settings.auto_sleep_source.label": {
-      "text": "Zdroj aktivity pro automatické uspání",
-      "sourceHash": "485e78dd0ccd45757ad048f9805f4fe39b1260890bb7d0364b2c8d07caa926c1",
-      "state": "machine-cross-checked"
+    "settings.presence_mode.label": {
+      "text": "Presence",
+      "sourceHash": "d6b3e8c828d3742089ed59ebbfd89492ec2ce0bc89a19294cae52a6ac233b244",
+      "state": "english-fallback"
     },
-    "settings.auto_sleep_source.summary": {
-      "text": "Co se považuje za přítomnost: senzor přiblížení, oblast nebo dotyk.",
-      "sourceHash": "010e147baf066c010fda07e439cca24c3f59a22a7564b8450354fa5e8f716b33",
-      "state": "machine-cross-checked"
+    "settings.presence_mode.summary": {
+      "text": "How the panel tells that someone is nearby.",
+      "sourceHash": "237dd010ba3255b755bbfbf406c792b8965cdb630aaf68867e83188bd2421e3f",
+      "state": "english-fallback"
     },
     "settings.auto_sleep_touch_delay_seconds.help": {
       "text": "Je-li vybrána možnost Nečinnost dotykového ovládání, obrazovka se po uplynutí tohoto počtu sekund bez dotyku zcela vypne.",
