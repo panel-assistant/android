@@ -23,7 +23,7 @@ import kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn
  *
  * No Robolectric: the activity, its Handler and the cover's surface are allocated without constructors, and
  * only the collaborators those entry points use are filled in, from production classes. Framework calls
- * return mockable-jar defaults, so Handler posts are not observable; what the WebView is asked to do is.
+ * return mockable-jar defaults; Handler posts run only when a test opts into the virtual clock.
  */
 internal class DashboardRendererRig(
     prefs: Map<String, Any?> = SIGNED_IN,
@@ -38,6 +38,7 @@ internal class DashboardRendererRig(
     val owner = BuiltinDashboard.acquireActivityOwner()
     /** Clock ticks the status screens and the cover asked to have posted, in order. */
     val posted = mutableListOf<Runnable>()
+    val reloadNotices = mutableListOf<String>()
     private val recordPost: (Runnable, Long) -> Unit = { tick, _ -> posted += tick }
     /** The activity's own cover, built by its factory. */
     val cover: DashboardWebCover by lazy { factory("createWebCover") as DashboardWebCover }
@@ -81,6 +82,12 @@ internal class DashboardRendererRig(
         set("admissionRetryPolicy", AdmissionRetryPolicy())
         // The activity's own status-screen factory, wired as on a panel but posting into [posted].
         set("statusScreens", factory("createStatusScreens"))
+        val paintReload: (AppCompatActivity, android.view.View?, String) -> android.view.View = { _, _, reason ->
+            reloadNotices += reason
+            allocate(android.view.View::class.java)
+        }
+        DashboardStatusScreens::class.java.getDeclaredField("paintReloadCard").apply { isAccessible = true }
+            .set(statusScreens, paintReload)
         set("homeDashboardAttempts", HomeDashboardResolutionAttemptGate())
         set("compatibilityAttempts", DashboardV2AttemptGate())
     }

@@ -23,7 +23,7 @@ internal class HaNetworkChipVisibility {
     }
 }
 
-/** What the chip says: a title naming the fault, and one line of the panel's own ping figures. */
+/** What the chip says: a title naming the fault, and figures from the instrument that raised it. */
 internal data class HaNetworkChipText(
     @StringRes val title: Int,
     @StringRes val detail: Int,
@@ -31,23 +31,26 @@ internal data class HaNetworkChipText(
 )
 
 /**
- * Decide the chip's words from one snapshot. The probes are Home Assistant WebSocket pings, so the chip
- * says "pings"; a path raised by latency says "latency" rather than "slow", because the panel measured
- * the network, not Home Assistant's speed. Severity is in the words, never in a colour.
+ * Decide the chip's words from one snapshot. Echo verdicts use the echo history's figures and burst
+ * scope; the socket fallback uses its five-minute ping window. Severity is in the words.
  */
 internal fun haNetworkChipText(snap: HaNetworkPath.Snapshot, locale: Locale = Locale.getDefault()): HaNetworkChipText {
     val severe = snap.severity == HaNetworkPathSeverity.SEVERE
     val minutes = (snap.windowMs / 60_000L).toInt()
-    if (snap.cause == PathProbeCause.LATENCY && snap.p95Ms >= 0L) {
-        val time = if (snap.p95Ms >= 1_000L) String.format(locale, "%.1f s", snap.p95Ms / 1_000.0) else "${snap.p95Ms} ms"
+    val echo = snap.echo
+    val p95Ms = echo?.p95Ms ?: snap.p95Ms
+    if (snap.cause == PathProbeCause.LATENCY && p95Ms >= 0L) {
+        val time = if (p95Ms >= 1_000L) String.format(locale, "%.1f s", p95Ms / 1_000.0) else "$p95Ms ms"
         return HaNetworkChipText(
             if (severe) R.string.network_chip_very_high_latency else R.string.network_chip_high_latency,
-            R.string.network_chip_ping_time,
+            if (echo != null) R.string.network_chip_echo_time else R.string.network_chip_ping_time,
             listOf(time),
         )
     }
     val title = if (severe) R.string.network_chip_failing else R.string.network_chip_dropping
-    return if (snap.probes == 0) {
+    return if (echo != null) {
+        HaNetworkChipText(title, R.string.network_chip_echoes_lost, listOf(echo.sent - echo.received, echo.sent, echo.bursts))
+    } else if (snap.probes == 0) {
         HaNetworkChipText(title, R.string.network_chip_no_ping_answered, listOf(minutes))
     } else {
         HaNetworkChipText(title, R.string.network_chip_pings_lost, listOf(snap.networkFailures, snap.probes, minutes))

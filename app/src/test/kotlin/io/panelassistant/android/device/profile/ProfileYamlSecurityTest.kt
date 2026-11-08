@@ -623,6 +623,7 @@ class ProfileYamlSecurityTest {
             "access.toolbox-su" to ProfileHelperAuthorityDemand.NONE,
             "input.button-backlight" to ProfileHelperAuthorityDemand.REQUIRED,
             "input.evdev" to ProfileHelperAuthorityDemand.REQUIRED,
+            "input.android-keys" to ProfileHelperAuthorityDemand.NONE,
             "led.autodetect" to ProfileHelperAuthorityDemand.SANDBOX_FALLBACK,
             "led.rk3576-ioctl" to ProfileHelperAuthorityDemand.SANDBOX_FALLBACK,
             "led.rk3576-ioctl-daemon" to ProfileHelperAuthorityDemand.REQUIRED,

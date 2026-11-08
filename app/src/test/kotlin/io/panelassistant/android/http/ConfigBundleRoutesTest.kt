@@ -37,6 +37,35 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ConfigBundleRoutesTest {
+    @Test fun malformedStoredIntegersExportAndStrictlyReimportWithoutWriting() {
+        for (stored in listOf(-50, 50, 23)) PaneldServerHttpFixture().use { fixture ->
+            fixture.values["panel_id"] = "contract_panel"
+            fixture.values["camera_fps"] = stored
+            fixture.values["friendly_name"] = "Contract panel"
+            val before = fixture.values.toMap()
+            testApplication {
+                application { mountConfigBundleRoutes(fixture) }
+                val exported = client.get("/api/v1/config/export")
+                assertEquals(HttpStatusCode.OK, exported.status)
+                val text = exported.bodyAsText()
+                val bundle = requireNotNull(ConfigBundle.parse(text))
+                assertEquals(fixture.config.cameraFps.toString(), bundle.values["camera_fps"])
+                val preview = client.post("/api/v1/config/import?strict=1&dry_run=1") {
+                    setBody(text)
+                }
+                assertEquals(preview.bodyAsText(), HttpStatusCode.OK, preview.status)
+                assertEquals(preview.bodyAsText(), 0, JSONObject(preview.bodyAsText()).getJSONArray("changes").length())
+                assertEquals(before, fixture.values)
+                // Incoming invalid values are still rejected; only effective reads clamp legacy state.
+                val invalid = client.post("/api/v1/config/import?strict=1&dry_run=1") {
+                    setBody(ConfigBundle.fromValues(mapOf("camera_fps" to "50")).serialize())
+                }
+                assertEquals(invalid.bodyAsText(), HttpStatusCode.UnprocessableEntity, invalid.status)
+                assertEquals(before, fixture.values)
+            }
+        }
+    }
+
     @Test fun `fleet import previews portable settings and skips device local and secret ones`() {
         PaneldServerHttpFixture().use { fixture ->
             testApplication {

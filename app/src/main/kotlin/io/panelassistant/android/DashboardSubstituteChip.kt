@@ -7,6 +7,7 @@ import android.widget.FrameLayout
 import io.panelassistant.android.dashboard.EntityLearningProtocol
 import io.panelassistant.android.dashboard.homeDashboardIsSubstitute
 import io.panelassistant.android.i18n.CatalogueLoader
+import io.panelassistant.android.i18n.formatNamedTemplate
 
 /**
  * "Dashboard not found", a compact Notice at the bottom of the dashboard window while the panel shows the
@@ -28,7 +29,7 @@ internal class DashboardSubstituteChip private constructor(
             chip.hide()
             return
         }
-        chip.show(title, detail.replace("{configured}", configuredPath.trim()).replace("{shown}", shown))
+        chip.show(title, formatNamedTemplate(detail, mapOf("configured" to configuredPath.trim(), "shown" to shown)))
     }
 
     fun detach() {

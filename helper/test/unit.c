@@ -521,10 +521,10 @@ static void test_perfdump_bridge_protocol(void) {
 
 static void test_dispatch_exact_match(void) {
     char out[64];
-    CHECK(strcmp(helper_identity(), "HELPER version=1.15.0 proto=1.15") == 0,
+    CHECK(strcmp(helper_identity(), "HELPER version=1.16.0 proto=1.16") == 0,
           "helper identity is stable (got '%s')\n", helper_identity());
     dispatch_reply("VERSION", out, sizeof out);
-    CHECK(strcmp(out, "HELPER version=1.15.0 proto=1.15\n") == 0,
+    CHECK(strcmp(out, "HELPER version=1.16.0 proto=1.16\n") == 0,
           "VERSION -> machine-readable identity (got '%s')\n", out);
     dispatch_reply("VERSION extra", out, sizeof out);
     CHECK(strcmp(out, "ERR\n") == 0, "VERSION rejects arguments (got '%s')\n", out);
@@ -1486,6 +1486,18 @@ static void test_screencap_command(void) {
     CHECK(strcmp(out, payload) == 0, "SCREENCAP returns the raw actuator bytes\n");
     CHECK(sysexec_stub_count_argv("/system/bin/screencap", argv, 0) == 1,
           "SCREENCAP requests one PNG capture with exact structural argv\n");
+}
+
+// Verb matching is exact: a known verb as a prefix, a known verb with a suffix, or a case variant
+// must reach no handler.
+static void test_dispatch_exact_verb(void) {
+    char out[256];
+    static const char *const near_misses[] = { "PINGX", "PIN", "ping", "LOGCATDUMPX 5", "OFFX" };
+    for (size_t i = 0; i < sizeof near_misses / sizeof near_misses[0]; i++) {
+        dispatch_reply(near_misses[i], out, sizeof out);
+        CHECK(strcmp(out, "ERR\n") == 0, "dispatch matches verbs exactly, not by prefix ('%s' got '%s')\n",
+              near_misses[i], out);
+    }
 }
 
 static void test_line_accumulator(void) {
@@ -2580,6 +2592,10 @@ int main(int argc, char **argv) {
         sleep(30);
         return 0;
     }
+    test_dispatch_exact_verb();
+    // Every later case dispatches through the same table; an inexact matcher would route them to
+    // the wrong handlers, so stop with this verdict rather than a cascade or a signal exit.
+    if (failures) return 1;
     test_guard_test_parent();
     guard_test_reset();
     CHECK(guard_test_reconcile() == 0, "Guard package gate initializes empty for legacy unit cases\n");

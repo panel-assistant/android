@@ -338,7 +338,7 @@ internal class NetworkRuntimeRenameTest : io.panelassistant.android.testsupport.
 
     private fun awaitSettled(service: PaneldService, owner: ServiceRuntimeOwner<PaneldService.NetworkRuntime>, before: Any?) {
         val settled = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
-        while (System.nanoTime() < settled && (owner.pendingLatestCount() > 0 || read(service, "appliedNetworkConfiguration") === before)) {
+        while (System.nanoTime() < settled && (owner.observe() == null || owner.pendingLatestCount() > 0 || read(service, "appliedNetworkConfiguration") === before)) {
             Thread.sleep(20)
         }
         assertTrue(owner.reconnect(requireNotNull(owner.observe())) {}.get(5, TimeUnit.SECONDS))

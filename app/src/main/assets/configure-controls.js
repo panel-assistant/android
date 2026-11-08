@@ -223,7 +223,7 @@
         f.key === "auto_brightness_maximum_percent" || f.key === "auto_brightness_response_percent") &&
         !cfg.ambientLightSourceReady()) return ["auto_brightness_ha_entity"];
     if (f.key === "auto_sleep" && cfg.autoSleepUsesHa() && cfg.values[f.key] !== "true" &&
-        cfg.autoSleepPrerequisite.eligible !== true) return ["auto_sleep_source", "ha_area"];
+        cfg.autoSleepPrerequisite.eligible !== true) return ["presence_mode", "ha_area"];
     return [];
   }
 
@@ -266,7 +266,7 @@
       });
       s.addEventListener("change", function () {
         cfg.values[f.key] = s.value; cfg.localChange(f.key);
-        if (f.key === "auto_sleep_source") {
+        if (f.key === "presence_mode") {
           cfg.autoSleepPrerequisiteRequest++;
           cfg.invalidateAutoSleepData(true);
           var previousPanel = document.getElementById("auto-sleep-status");
@@ -518,10 +518,17 @@
         var typedPath = customInput.value.trim();
         var root = cfg.dashboardRootOf(typedPath);
         var unknown = root && cfg.homeDashboardQueried && cfg.homeDashboardItems.length && !dashboardPaths[root];
-        customNote.textContent = unknown
+        var noteText = unknown
           ? cfg.i18nText("configure.dashboard.path_not_visible", "{path} is not a dashboard this panel’s Home Assistant account can see — the panel will fall back to its default until that dashboard exists.", { path: root })
           : cfg.i18nText("configure.dashboard.path_help", "A path on this Home Assistant, starting with a dashboard from the list above.");
-        customNote.classList.toggle("warn", !!unknown);
+        if (unknown) {
+          window.HaNotice.fill(customNote, "warning", "", noteText);
+          customNote.classList.add("notice-inline", "hd-area-note", "hd-custom-note");
+        } else {
+          customNote.className = "hd-area-note hd-custom-note";
+          customNote.removeAttribute("data-severity");
+          customNote.textContent = noteText;
+        }
       }
       // Validity is decided here rather than by the browser's pattern engine, and is cleared entirely
       // whenever Custom is not the live control. A hidden control that stays invalid blocks Save with
@@ -530,7 +537,7 @@
       function validateCustom() {
         var typedPath = customInput.value.trim();
         customInput.setCustomValidity(
-          !typedPath || cfg.wellFormedDashboardPath(typedPath) ? ""
+          cfg.wellFormedDashboardPath(typedPath) ? ""
             : cfg.i18nText("configure.dashboard.path_invalid", "Enter a dashboard path such as /dashboard-name/tab-name."),
         );
       }

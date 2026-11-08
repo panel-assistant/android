@@ -162,7 +162,7 @@ class ConfigAccessorDefaultCoherenceTest {
             "camera_fps" to 50, "camera_kbps" to 9000, "auto_sleep_touch_delay_seconds" to 100_000,
             "voice_mic_gain_db" to 1000, SettingsRegistry.RESPONSE_PERCENT_KEY to 150,
             "auto_brightness_minimum_percent" to 120, "auto_brightness_maximum_percent" to 200,
-            "auto_sleep_source" to "bogus",
+            PresenceMode.KEY to "bogus",
         )))
         assertEquals(30, high.cameraFps)
         assertEquals(8000, high.cameraKbps)
@@ -171,7 +171,7 @@ class ConfigAccessorDefaultCoherenceTest {
         assertEquals(100, high.autoBrightnessResponsePercent)
         assertEquals(SettingsRegistry.MAX_AUTOMATIC_MINIMUM_PERCENT, high.autoBrightnessMinimumPercent)
         assertEquals(100, high.autoBrightnessMaximumPercent)
-        assertEquals("panel", high.autoSleepSource)
+        assertEquals(PresenceMode.AUTOMATIC, high.presenceMode)
 
         val low = Config(readOnlyPreferences(mapOf(
             "camera_fps" to 0, "camera_kbps" to 1, "auto_sleep_touch_delay_seconds" to 1,

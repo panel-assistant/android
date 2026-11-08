@@ -46,6 +46,15 @@ test('i18n helper preserves unknown placeholders and machine tokens', async () =
   assert.equal(i18n.t('toString', 'safe fallback'), 'safe fallback');
 });
 
+test('browser translations and fallback preserve the shared literal value contract', async () => {
+  const corpus = JSON.parse(await readFile(join(process.cwd(), '..', '..', 'app', 'src', 'test', 'resources', 'i18n', 'named-template-cases.json'), 'utf8'));
+  for (const { name, template, values, expected } of corpus) {
+    const i18n = await load(JSON.stringify({ strings: { template } }));
+    assert.equal(i18n.t('template', 'unused fallback', Object.fromEntries(values)), expected, name);
+    assert.equal(i18n.t('missing', template, Object.fromEntries(values)), expected, name);
+  }
+});
+
 test('text helper assigns textContent and malformed input fails safely to English', async () => {
   const translated = await load(JSON.stringify({ strings: { warning: '<b>不是标记</b>' } }));
   const node = { textContent: '' };

@@ -65,10 +65,10 @@ browserTest('Auto-sleep requires an assigned Area before OFF can be switched ON'
 browserTest('Touch inactivity can enable Auto-sleep without an Area and sends a fixed seconds delay', async (t) => {
   const calls = [];
   const posts = [];
-  const settings = { auto_sleep_source: 'panel', auto_sleep_touch_delay_seconds: '30', auto_sleep: 'false' };
+  const settings = { presence_mode: 'automatic', auto_sleep_touch_delay_seconds: '30', auto_sleep: 'false' };
   const schema = [
-    { key: 'auto_sleep_source', label: 'Auto-sleep activity source', group: 'Behaviour', type: 'ENUM',
-      available: true, options: ['panel', 'home_assistant', 'touch'] },
+    { key: 'presence_mode', label: 'Auto-sleep activity source', group: 'Behaviour', type: 'ENUM',
+      available: true, options: ['automatic', 'home_assistant', 'manual', 'hybrid', 'off'] },
     { key: 'auto_sleep_touch_delay_seconds', label: 'Touch inactivity delay (seconds)', group: 'Behaviour',
       type: 'INT', available: true, min: 5, max: 86400 },
     { key: 'auto_sleep', label: 'Auto sleep', group: 'Behaviour', type: 'BOOL', available: true },
@@ -97,8 +97,8 @@ browserTest('Touch inactivity can enable Auto-sleep without an Area and sends a 
 
   const toggle = page.locator('#cfg-auto_sleep [role=switch]');
   await toggle.waitFor();
-  await page.locator('#cfg-auto_sleep_source select').selectOption('touch');
-  assert.equal(await page.locator('#cfg-auto_sleep_source select').inputValue(), 'touch');
+  await page.locator('#cfg-presence_mode select').selectOption('off');
+  assert.equal(await page.locator('#cfg-presence_mode select').inputValue(), 'off');
   assert.equal(await page.locator('#cfg-auto_sleep_touch_delay_seconds input').inputValue(), '30');
   assert.equal(await toggle.getAttribute('aria-disabled'), 'false');
   await page.getByText('Home Assistant and presence sensors are not required.', { exact: false }).waitFor();
@@ -115,7 +115,7 @@ browserTest('Touch inactivity can enable Auto-sleep without an Area and sends a 
   for (const end = Date.now() + 10_000; posts.length < 3 && Date.now() < end;) await page.waitForTimeout(25);
   assert.equal(await page.locator('#auto-sleep-chart').count(), 0);
   // Each finished gesture sends its own setting, in the order the person made them.
-  assert.deepEqual(posts, [{ auto_sleep_source: 'touch' }, { auto_sleep: 'true' }, { auto_sleep_touch_delay_seconds: '45' }]);
+  assert.deepEqual(posts, [{ presence_mode: 'off' }, { auto_sleep: 'true' }, { auto_sleep_touch_delay_seconds: '45' }]);
   assert.equal(await toggle.getAttribute('aria-checked'), 'true');
   // The card describes the new delay at once, without a reload: the touch source has no status to wait for.
   await page.waitForFunction(() => document.querySelector('#auto-sleep-summary-announcement')?.textContent.includes('45 seconds without touch'));
@@ -498,7 +498,7 @@ for (const [detail, message] of [
   ['insufficient_history', 'This Area’s activity sensors have too little usable history or are unavailable.'],
   ['unknown_source_reason', 'No credible device-backed activity source is available in this Area.'],
 ]) {
-  browserTest(`Auto-sleep explains ${detail} in the existing red history line`, async (t) => {
+  browserTest(`Auto-sleep explains ${detail} in the inline history warning`, async (t) => {
     let historyCalls = 0;
     const harness = await startHarness((path) => {
       if (path === '/api/v1/config/schema') return json([
@@ -521,9 +521,11 @@ for (const [detail, message] of [
     t.after(async () => { await browser.close(); await new Promise((resolve) => harness.server.close(resolve)); });
     await page.goto(harness.url, { waitUntil: 'domcontentloaded', timeout: 5_000 });
     const line = page.locator('#auto-sleep-history-message');
-    await page.waitForFunction(() => document.querySelector('#auto-sleep-history-message')?.classList.contains('error'));
-    assert.equal(await line.textContent(), message);
-    assert.equal(await line.evaluate((node) => getComputedStyle(node).color), 'rgb(211, 75, 66)');
+    await line.locator('.notice-pill').waitFor();
+    assert.equal(await line.locator('.notice-pill').textContent(), 'Warning');
+    assert.equal(await line.locator('.notice-detail').textContent(), message);
+    assert.equal(await line.getAttribute('role'), 'status');
+    assert.equal(await line.getAttribute('aria-live'), 'polite');
     assert.equal(await page.locator('#auto-sleep-status').count(), 1);
     assert.equal(await page.locator('#auto-sleep-chart').count(), 1);
     assert.equal(await page.locator('.auto-sleep-lane.source').count(), 0);

@@ -13,11 +13,11 @@ For the second class, `hapaneld-helper` runs **outside the app sandbox** in a ro
 
 ## Protocol
 
-Newline-terminated ASCII on the abstract UNIX socket `@hapaneld-helper`. One or more commands per connection.
+Newline-terminated ASCII on the abstract UNIX socket `@hapaneld-helper`. Ordinary commands may share a persistent connection. Recovery operations are terminal: `VERSION` and `BUILDID` may precede one operation, then the connection closes after its reply. `SHELL` carries an exact byte-counted program immediately after its header.
 
 | Command | Effect | Reply |
 | --- | --- | --- |
-| `VERSION` | read the helper identity without touching hardware | `HELPER version=1.15.0 proto=1.15` / `ERR` when arguments are supplied |
+| `VERSION` | read the helper identity without touching hardware | `HELPER version=1.16.0 proto=1.16` / `ERR` when arguments are supplied |
 | `RGB <r> <g> <b>` | set LED colour (each 0..255) | `OK` / `ERR` |
 | `OFF` | LED off | `OK` / `ERR` |
 | `BTN <0..255>` | button-backlight brightness | `OK` / `ERR` |
@@ -59,7 +59,11 @@ Newline-terminated ASCII on the abstract UNIX socket `@hapaneld-helper`. One or 
 | `GFXINFO SELF` | fixed authenticated app cumulative HWUI counters (protocol 1.14) | `GFXINFO SINCE=<u64> TOTAL=<u32> JANKY=<u32>` / `ERR` |
 | `CDPSTATE` | argument-free fixed relay process/listener exposure observation (protocol 1.13) | `CDPSTATE PRESENT` / `CDPSTATE ABSENT` / `CDPSTATE UNKNOWN` / `ERR` |
 | `ADBSTATE` | argument-free bounded fixed Android ADB properties and direct TCP listener inventory (protocol 1.10) | `PROPS=<0 or 1 or ?> LISTEN=<0 or 1 or ?>` / `ERR` |
-| `ADBRECOVERYENSURE` | argument-free publication and readiness of the independent ADB recovery owner (protocol 1.15) | `ADBRECOVERYENSURE READY` / `ADBRECOVERYENSURE UNAVAILABLE` / `ERR` for arguments |
+| `ADBRECOVERYENSURE` | argument-free legacy readiness/bootstrap probe for the shared recovery owner (protocol 1.15) | `ADBRECOVERYENSURE READY` / `ADBRECOVERYENSURE UNAVAILABLE` / `ERR` for arguments |
+| `STATUS` | read the shared recovery lease (protocol 1.16) | `READY 1 <build-id> <managed> <hold> <security-unverified>` / `ERR` |
+| `ARM <nonce>` / `BEAT <nonce>` | arm or renew the healthy-app recovery lease using a 64-character lowercase hexadecimal nonce (protocol 1.16) | `OK` / `HELD` / `ERR` |
+| `RECOVER <nonce>` | reopen network ADB and hold it open until a fresh compatible session (protocol 1.16) | `OK` / `ERR` |
+| `SHELL <timeout-ms> <bytes>` | execute the following exact program bytes as root; timeout 1..180000 ms, program 1..65536 bytes with no NUL (protocol 1.16) | `RESULT <exit-code> <timeout-flag> <truncated-flag> <output-bytes>` then exact merged output bytes, at most 32768; `BUSY` / `ERR` |
 | `WIFISTATUS` | argument-free bounded current Wi-Fi fields from fixed Android commands (protocol 1.9) | `SSID=<hex or -> RSSI=<dBm or ->` / `ERR` |
 | `ZIGBEECONTAIN` | argument-free containment for the exact vendor-native Sonoff `/vendor/bin/siliconlabs_host` layout; targets only its guard, gateway and matching broker, then demotes a surviving gateway | `OK` / `PARTIAL` / `ERR` |
 | `PERFDUMP` | CPU/load/temp/gpu/process snapshot (for sandbox-walled apps) | marker-delimited stream, then EOF |
@@ -69,22 +73,11 @@ Newline-terminated ASCII on the abstract UNIX socket `@hapaneld-helper`. One or 
 | `PING` | liveness probe | `OK` |
 | anything else | — | `ERR` |
 
-`ADBRECOVERYENSURE` accepts no paths, build IDs or commands. It first checks the fixed recovery
-endpoint for the running helper's exact build. Otherwise it copies its pinned running executable
-(at most 8 MiB) to an exclusive root-owned stage in the fixed recovery directory, syncs it, closes
-the writer, atomically publishes `helper`, and syncs the directory. Unsafe existing metadata is
-refused. Publication failure never removes the canonical helper or custody receipt. The child
-executes a read-only pin to that published inode with fixed arguments and a clean environment;
-its startup rechecks the canonical inode before touching incumbent custody. The existing recovery
-replacement, guardian drain and receipt validation remain authoritative.
+`ADBRECOVERYENSURE` accepts no paths, build IDs or commands. A merged helper proves its shared compatibility endpoint instead of starting a competing lease owner. The fixed secondary executable and `--adb-recovery` entry remain for older bootstrap callers. When no main helper is running, a verified secondary executable can start the merged service; an occupied incompatible main socket is refused. This secondary bootstrap does not acquire canonical Guard replacement authority. The command does not arm or renew a lease.
 
-The operation shares a 25 s monotonic userspace budget, including a first readiness probe capped
-at 500 ms. Blocking kernel filesystem calls can outlast that budget. At most two children can be
-owned by pre-reserved detached reapers. An ordinary-helper exit or request timeout does not kill
-the independent recovery owner. Only a fresh root-peer, exact-build recovery `STATUS` establishes
-`READY`; launching alone does not. The reply has one trailing newline and is at most 32 bytes.
-This command does not arm or renew a recovery lease, and `ARM`, `BEAT`, `RECOVER` and `SHELL`
-remain on the separate recovery endpoint.
+Recovery framing has an absolute two-second admission/body deadline from the first header byte. Once the recovery verb is recognized, a stalled header read uses the remaining deadline. An incomplete prefix that could still become an ordinary command keeps the ordinary idle policy; completing it after two seconds cannot admit recovery. Recovery headers must contain printable ASCII, end with LF, and be shorter than 160 bytes before LF. CR, NUL, control bytes, extra arguments and oversized headers are rejected. Already-read payload bytes belong exclusively to the terminal operation, including binary bytes and ordinary-command-looking lines. Trailing bytes beyond the declared program are discarded when the connection closes. Ordinary CR/LF command and subscriber behavior is unchanged.
+
+The main lifecycle parent owns one recovery lease, an independent guardian and up to four shell executors. Its ordinary socket worker hands authenticated descriptors and bounded request bytes to that parent; the parent rechecks the real peer credentials. The compatibility recovery listener shares that same lease. Worker loss restores ADB before restart; replacement drains recovery custody before executing the new helper image. Clients admit protocol 1.16 and the exact bundled build ID on the same connection before sending recovery commands. An unchanged older client that pins a different helper build is incompatible even if its legacy socket still exists.
 
 `GOVREAD` accepts exactly `CURRENT` or `AVAILABLE`, with no extra arguments. It reads only
 `/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor` or `scaling_available_governors` in the same
@@ -153,12 +146,13 @@ shell or fallback. Success returns complete broker JSON as lowercase hex (at mos
 ## Safety
 
 - **Peer-uid authentication.** The transport is an abstract-namespace UNIX socket, so the daemon reads the connecting process's credentials (`SO_PEERCRED`) and accepts **only** ha-paneld's current live uid plus root. ADB operators use a root shell; generic Android shell uid 2000 is rejected because Shizuku also runs authorized applications under that identity. The app's uid is resolved live by `stat`-ing `/data/data/io.panelassistant.android`, because it changes on every reinstall. Every other local app is rejected and the connection closed before a single command runs. (The earlier `127.0.0.1:8889` TCP listener had no auth — any app with `INTERNET` could `REBOOT`/`SCREENCAP` it.)
-- **Airtight parsing.** A bounded per-connection line buffer (commands split across reads still parse; overlong lines are dropped, not mis-split or overflowed); every argument `sscanf` is width-bounded; unknown verbs return `ERR`.
+- **Bounded parsing.** Commands split across reads still parse; ordinary overlong lines are discarded through their delimiter, while an oversized recovery header closes the connection. Unknown verbs return `ERR`. Recovery payload bytes are never dispatched as ordinary commands.
 - **Fixed Zigbee containment.** `ZIGBEECONTAIN` accepts no arguments and admits only the exact Sonoff vendor-native directory. It does not use broad process-name matching or accept a caller-selected path.
 - **Resource limits.** Concurrent connections are capped, and an idle connection is dropped after a timeout — except long-lived `SUBSCRIBE`/`GPIOSUBSCRIBE` streams, which are meant to sit idle reading events. Evdev and GPIO each have fixed eight-watch and eight-subscriber registries, while the global 16-connection cap remains the outer bound. GPIO fallback sampling has fixed 500 ms and two-second reopen intervals, so unavailable or non-edge hardware cannot create a busy loop or a process storm.
 - **Bounded GPIO mutation.** `GPIOWATCH` accepts only a decimal number from 0 to 65535. It derives fixed `/sys/class/gpio/gpio<n>/value` and `edge` paths, writes only the recognised `edge` attribute to request `both`, and restores its prior recognised value on reset. It never writes GPIO `export`, `unexport`, `direction`, or `value`.
 - **Descriptor-anchored Companion files.** Backup and restore accept only the full/minimal HA Companion package names and the fixed login-file set; no caller pathname reaches the filesystem. Package, parent and file components are opened relative to trusted directory descriptors with `O_NOFOLLOW`, and live files must be app-owned, regular, single-link inodes within strict per-file and aggregate bounds. Restore uploads first enter a root-owned compartment, then a single helper-owned transaction stages replacement inodes, preserves owner and SELinux label, and fsyncs a fixed-format prepared marker before moving old live files. Old-to-rollback renames are directory-fsynced before new live files are installed; a separately named committed marker is atomically renamed and fsynced before rollback cleanup. After a daemon or power interruption, the next Companion data command rolls a prepared transaction back or finishes a committed transaction, and unexplained rollback artifacts fail closed rather than being deleted. Supported Companion `START`/`RELOAD` requests return `BUSY` while the mutex is held and while any durable marker or unexplained rollback remains after a daemon restart.
-- The commands that shell out (`RELOAD`, `START`, `REBOOT` via `am`/`svc`) sanitise their argument against a strict char-whitelist; the LED/backlight writes touch **only** the whitelisted nodes (`avs-pwm-led/avsux_animation`, `button-backlight/brightness`).
+- **Administrative shell exception.** `SHELL` executes caller-supplied programs as root. Kernel peer-uid admission and app-side maintenance approval govern this operation; it is not a fixed-command grammar or a restricted shell. Deadlines, output caps and process-group cleanup bound execution, not the program's privileges.
+- The fixed commands that shell out (`RELOAD`, `START`, `REBOOT` via `am`/`svc`) sanitise their argument against a strict char-whitelist; the LED/backlight writes touch **only** the whitelisted nodes (`avs-pwm-led/avsux_animation`, `button-backlight/brightness`).
 
 > [!CAUTION]
 > The daemon never writes `avs-pwm-led/avsux_select` or `custom_animation`. Those are firmware-backed and **reliably reboot the TPA10**.
@@ -198,7 +192,7 @@ The daemon is the right home for any capability that needs **root or system priv
 
 1. Add a small, self-contained handler in the module that owns the capability (a new `src/<name>.c` for a new device class), then **register the verb** with one row in the `COMMANDS` table in `src/dispatch.c`. That's the whole wiring — `dispatch()` matches the verb *exactly* and hands your handler the argument string.
 2. **Take the target as a parameter** from the app (don't hardcode a panel's path), and **whitelist it by class prefix** — the way `WATCH` restricts to `/dev/input/` and a future `LED` would restrict to `/sys/class/leds/`. For a reader (i2c/sensor), stream values to `SUBSCRIBE`rs using the existing async-line mechanism in `src/input.c`.
-3. Keep the safety model intact: the peer-uid auth gates the whole socket, but still bound every buffer, validate/clamp inputs (the `src/util.c` validators), width-bound every `sscanf`, pass request-derived values only through structural `sysexec_*_argv()` calls or direct filesystem operations, and never write firmware-backed nodes (see the CAUTION above). Shell programs are reserved for audited argument-free constants.
+3. Keep the safety model intact: the peer-uid auth gates the whole socket, but still bound every buffer, validate/clamp inputs (the `src/util.c` validators), width-bound every `sscanf`, pass request-derived values only through structural `sysexec_*_argv()` calls or direct filesystem operations, and never write firmware-backed nodes (see the CAUTION above). Fixed-command shell programs are reserved for audited argument-free constants; the administrative `SHELL` operation in `adb_recovery.c` is the explicit exception.
 4. Publish the matching HA entity from the app per `DeviceProfile` capability — the daemon stays the privileged mechanism, the profile stays the policy.
 
 A genuinely new *primitive* is the one acceptable reason to change the core daemon; per-panel *selection* of existing primitives must stay in the `DeviceProfile`. That boundary keeps a unique panel's contribution to a single profile file wherever the underlying primitive already exists.
@@ -209,7 +203,8 @@ The daemon is split by capability under `helper/src/` (the binary, `@hapaneld-he
 
 | File | Responsibility |
 | --- | --- |
-| `main.c` | accept loop, abstract-socket bind, `SO_PEERCRED` peer-auth, connection cap |
+| `main.c` | lifecycle parent, socket worker, abstract-socket bind, `SO_PEERCRED` peer-auth, connection cap |
+| `adb_recovery.c` | shared recovery lease, guardian, compatibility listener and administrative shell executors |
 | `identity.c` | the one table of app package ids, their data directories and the caller enum — read by peer-auth, the path and package validators, Guard, and the package-restricted verbs |
 | `server.c` | the bounded line accumulator (`server_serve`) + idle timeout |
 | `commands.def` / `dispatch.c` | the shared verb→handler manifest + exact-match `dispatch()` |
@@ -222,9 +217,9 @@ The daemon is split by capability under `helper/src/` (the binary, `@hapaneld-he
 | `logcat.c` | bounded full-system log stream; sends complete entries only, with a drop record when entry or rate limits apply |
 | `cht8305.c` | `CHT8305`-compatible room climate read from exact input names/axes (`EVIOCGABS`, no exec) |
 | `util.c` | clamp, node IO, the argument validators |
-| `sysexec.c` | **the only file that execs / pipes / spawns / reboots** — request values use absolute paths and argv |
+| `sysexec.c` | fixed-command execution, pipe, thread and reboot mechanisms; request values use absolute paths and argv |
 
-Isolating `sysexec` keeps the entire privilege/injection surface in one auditable file, and lets the sanitizer-smoke and unit-test builds swap it for a stub so the real parser runs on the host with no side effects.
+Fixed-command tests swap `sysexec` for a stub. Recovery fixtures additionally isolate their own process and execution boundary; replacing `sysexec` alone does not prevent administrative shell execution.
 
 ## Build and test
 
@@ -250,9 +245,9 @@ Every supported route executes `/data/local/hapaneld-helper --supervise`; system
 - Otherwise, a writable vendor init directory receives the same registration in `/vendor/etc/init`.
 - Otherwise, a read-only-system panel is accepted only when a supported Magisk, KernelSU, or APatch service runner is detected; it receives a `service.d` launcher under `/data/adb/service.d`.
 
-The bundled executable also supports `--adb-recovery`, independently of the ordinary helper daemon. This mode serves the app/root UID on a separate authenticated abstract socket and accepts bounded administrator shell programs from the app's negotiated Panel Assistant session. Browser and HTTP callers cannot use that channel. Shell execution returns merged byte output and exit status once, with a deadline, process-group cleanup and a 32 KiB output ceiling. The ordinary helper socket retains its fixed-command surface.
+The bundled executable retains `--adb-recovery` for compatibility bootstrap. The current app sends recovery and administrative shell requests through `@hapaneld-helper`; the temporary legacy recovery listener belongs to the same lifecycle owner and lease. Browser and HTTP callers cannot use this local authenticated transport.
 
-Before managed network ADB closure, this separate owner establishes a persistent positive boot fallback and an independently watched healthy-app lease. Closure stops adbd using runtime properties; the firmware's boot path restores the positive baseline, and a fresh compatible session reapplies closure. Expiry, app removal, execution-worker failure or either recovery-owner failure restores network ADB. An explicit recovery request holds it open until a later compatible session. The separate executable and its root-owned directory do not replace the ordinary helper, its boot registration or its recovery custody.
+Before managed network ADB closure, the lifecycle owner establishes a persistent positive boot fallback and an independently watched healthy-app lease. Closure stops adbd using runtime properties; the firmware's boot path restores the positive baseline, and a fresh compatible session reapplies closure. Expiry, app removal, socket-worker failure or recovery-owner failure restores network ADB. Explicit recovery holds it open until a later compatible session. The secondary executable's root-owned directory remains a compatibility bootstrap slot, distinct from canonical installation and Guard custody.
 
 Hardened mode retains physical approval for each exact maintenance request. Automatic recovery also applies in Hardened mode: it invalidates the app's durable security authority before reopening. If allocating a fence fails, recovery retires the old authority without allocating a new file. If storage prevents every durable invalidation, emergency recovery still opens ADB and reports security as unverified; fresh live OFF proof remains mandatory before database maintenance can be admitted.
 

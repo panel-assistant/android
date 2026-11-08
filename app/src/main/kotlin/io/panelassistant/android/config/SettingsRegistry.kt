@@ -76,7 +76,7 @@ object SettingsRegistry {
     }
 
     /** Bump whenever the persisted shape changes; drives bundle migration. */
-    const val SCHEMA = 17
+    const val SCHEMA = 18
     const val MAX_PANEL_ID_CHARS = 63
     const val DEFAULT_SILENCE_BOOT_CHIME = true
     const val DEFAULT_ADDRESS_FAMILY = "Automatic"
@@ -130,6 +130,8 @@ object SettingsRegistry {
      */
     val RETIRED_KEYS: Set<String> = setOf(
         LEGACY_ADDRESS_FAMILY_KEY,
+        // Replaced by presence_mode at schema 18; that step reads it before it is dropped.
+        LEGACY_AUTO_SLEEP_SOURCE_KEY,
         *LEGACY_CONTROLLER_KEYS.keys.toTypedArray(),
         "kiosk_companion_packages",
         "voice_state",
@@ -244,6 +246,15 @@ object SettingsRegistry {
     }
 
     // Closed value sets: the stable wire code beside the label the stored setting has always used. Declared ahead of SPECS, which reads them during initialisation.
+    const val PRESENCE_MODE_KEY = io.panelassistant.android.PresenceMode.KEY
+    const val LEGACY_AUTO_SLEEP_SOURCE_KEY = "auto_sleep_source"
+    val PRESENCE_OPTIONS = listOf(
+        ChannelOption("automatic", "Automatic"),
+        ChannelOption("home_assistant", "Home Assistant device"),
+        ChannelOption("manual", "Manual"),
+        ChannelOption("hybrid", "Hybrid"),
+        ChannelOption("off", "Off"),
+    )
     val NAVBAR_OPTIONS = listOf(
         ChannelOption("off", "Off"),
         ChannelOption("always_on", "Always on"),
@@ -335,18 +346,36 @@ object SettingsRegistry {
 
         // ---- Behaviour ---------------------------------------------------------------------------
         SettingSpec(
-            key = "auto_sleep_source", type = SettingType.ENUM, group = "Behaviour",
-            tier = Tier.BASIC, summary = "What counts as presence: proximity sensor, area or touch.",
-            label = "Auto-sleep activity source", default = "panel", scope = Scope.DEVICE,
-            liveApply = true, options = listOf("panel", "home_assistant", "touch"),
-            help = "Use the panel’s calibrated proximity sensor, Home Assistant Area devices, or touch inactivity.\n\n- Presence modes pause if their source is unavailable.\n- Touch inactivity needs no presence setup.",
+            key = PRESENCE_MODE_KEY, type = SettingType.ENUM, group = "Behaviour",
+            tier = Tier.BASIC, summary = "How the panel tells that someone is nearby.",
+            label = "Presence", default = PRESENCE_OPTIONS.first().code, scope = Scope.DEVICE,
+            liveApply = true, options = PRESENCE_OPTIONS.map { it.code },
+            // Every proximity mode needs a sensor. Whether it reports distance is only known after its first
+            // readings, so a restore or a fresh install must not refuse Automatic for that; a near/far sensor
+            // in Automatic or Hybrid simply keeps its setup or profile calibration, as Manual does.
+            optionRequires = mapOf(
+                "automatic" to { caps: Capabilities -> caps.hasProximity },
+                "hybrid" to { caps: Capabilities -> caps.hasProximity },
+                "manual" to { caps: Capabilities -> caps.hasProximity },
+            ),
+            derivedDefault = ::presenceModeDefault,
+            help = "How the panel knows someone is nearby. Touching the screen always counts as someone being there.\n\n" +
+                "- **Automatic** learns the proximity sensor from your touches.\n" +
+                "- **Home Assistant device** uses presence devices in the panel's Home Assistant area. With no usable device it falls back to the touch delay.\n" +
+                "- **Manual** uses the readings you record with the calibration wizard.\n" +
+                "- **Hybrid** starts from the wizard readings and keeps learning from touches.\n" +
+                "- **Off** uses no presence; auto-sleep turns the screen off after the touch delay.",
+            ha = haEntity("select", "presence") {
+                options(PRESENCE_OPTIONS)
+                entityCategory("config")
+            },
         ),
         SettingSpec(
             key = "auto_sleep_touch_delay_seconds", type = SettingType.INT, group = "Behaviour",
             tier = Tier.BASIC, summary = "Seconds without a touch before the screen goes off.",
             label = "Touch inactivity delay (seconds)", default = "30", min = 5.0, max = 86_400.0,
             step = 1.0, scope = Scope.DEVICE,
-            help = "When Touch inactivity is selected, switch the screen fully off after this many seconds without a touch.",
+            help = "When Presence is Off, or Home Assistant device has no usable device, switch the screen fully off after this many seconds without a touch.",
         ),
         SettingSpec(
             key = "auto_sleep", type = SettingType.BOOL, group = "Behaviour",
@@ -678,12 +707,13 @@ object SettingsRegistry {
             label = "Idle return to home (min)", default = "0", min = 0.0, max = 1440.0,
             scope = Scope.PORTABLE,
             liveApply = true,
-            ha = haEntity("number", "dashboard_idle_return") {
-                range(0, 1440, 1)
+        ).let { spec ->
+            spec.copy(ha = haEntity("number", "dashboard_idle_return") {
+                range(requireNotNull(spec.min).toInt(), requireNotNull(spec.max).toInt(), 1)
                 unit("min")
                 entityCategory("config")
-            },
-        ),
+            })
+        },
         SettingSpec(
             key = "ha_url", type = SettingType.STRING, group = "Dashboard",
             renderer = RendererApply.READMIT,
@@ -1240,9 +1270,13 @@ object SettingsRegistry {
             ?.takeIf { it.ha != null }
 }
 
+/** Any proximity sensor starts in Automatic; with none, presence comes from Home Assistant. */
+internal fun presenceModeDefault(caps: Capabilities): String = if (caps.hasProximity) "automatic" else "home_assistant"
+
 /** Fresh defaults use the same resolved navigation presence as Native-mode admission. A catalog-backed
  * panel with neither Recents nor buttons gets the swipe-revealed bar whatever its firmware claims; unknown
  * hardware must not be mistaken for measured absence. Stored choices are handled by Config. */
+
 internal fun navbarModeDefault(caps: Capabilities): String {
     if (caps.hasNativeNavbar) return "Native"
     if (caps.hardwareDeclarationsKnown && !caps.hasRecents && !caps.hasEvdevButtons) return "Swipe reveal"

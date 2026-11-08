@@ -88,7 +88,10 @@ object Migrations {
         // The retirements of schema 14. The address family key retired by schema 15 is renamed by the
         // next step, never dropped here.
         Migration { values ->
-            values.keys.removeAll(SettingsRegistry.RETIRED_KEYS - SettingsRegistry.LEGACY_ADDRESS_FAMILY_KEY)
+            values.keys.removeAll(
+                SettingsRegistry.RETIRED_KEYS - SettingsRegistry.LEGACY_ADDRESS_FAMILY_KEY -
+                    SettingsRegistry.LEGACY_AUTO_SLEEP_SOURCE_KEY,
+            )
         },
         // Schema 15 renames the address family setting, which governs every Home Assistant connection:
         // a chosen value moves to the new key, so an older backup still restores it.
@@ -106,7 +109,21 @@ object Migrations {
                 values[SettingsRegistry.NATIVE_KIOSK_KEY] = "false"
             }
         },
+        // Schema 18 replaces the auto-sleep activity source with the presence mode. Home Assistant and
+        // touch carry across; the panel sensor's mode depends on the importing panel's wizard model,
+        // which a values map cannot see, so it leaves the target's own presence choice in place.
+        Migration { values ->
+            legacyPresenceMode(values.remove(SettingsRegistry.LEGACY_AUTO_SLEEP_SOURCE_KEY))
+                ?.let { values.putIfAbsent(SettingsRegistry.PRESENCE_MODE_KEY, it) }
+        },
     )
+
+    /** The presence mode an explicit legacy auto-sleep source decides by itself; null for the panel sensor. */
+    internal fun legacyPresenceMode(source: String?): String? = when (source?.trim()) {
+        "home_assistant" -> "home_assistant"
+        "touch" -> "off"
+        else -> null
+    }
 
     /**
      * A schema-5 sensitivity to its schema-6 equivalent: exact up to the old neutral, full response above.

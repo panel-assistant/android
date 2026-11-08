@@ -8,6 +8,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.animation.LinearInterpolator
 import android.widget.FrameLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.annotation.StringRes
 import io.panelassistant.android.sensors.HaLifecycle
@@ -194,6 +195,7 @@ internal fun haExactDuration(ms: Long): HaExactDuration {
  */
 internal class HaLifecycleBar private constructor(
     private val notice: Notice,
+    private val scroll: ScrollView,
     private val hero: TextView,
     private val sub: TextView,
     private val track: NoticeTrack,
@@ -216,7 +218,7 @@ internal class HaLifecycleBar private constructor(
      */
     private var visible = false
     private fun visibility(next: Boolean) {
-        view.visibility = if (next) View.VISIBLE else View.GONE
+        scroll.visibility = if (next) View.VISIBLE else View.GONE
         if (visible != next) {
             visible = next
             onVisibilityChanged(next)
@@ -326,7 +328,7 @@ internal class HaLifecycleBar private constructor(
         segmentAnimator?.cancel()
         view.removeCallbacks(hide)
         visibility(false)
-        (view.parent as? ViewGroup)?.removeView(view)
+        (scroll.parent as? ViewGroup)?.removeView(scroll)
     }
 
     companion object {
@@ -349,7 +351,10 @@ internal class HaLifecycleBar private constructor(
                 gravity = Gravity.CENTER_VERTICAL or Gravity.START
                 minHeight = notice.heroNumberHeightPx()
             }
-            val sub = notice.line("")
+            val sub = notice.line("").apply {
+                maxLines = Int.MAX_VALUE
+                ellipsize = null
+            }
             val track = notice.track(
                 listOf(R.string.ha_step_stopping, R.string.ha_step_starting, R.string.ha_step_reloading)
                     .map(context::getString),
@@ -357,14 +362,18 @@ internal class HaLifecycleBar private constructor(
             )
             val footer = notice.footer("")
             notice.setBody(hero, sub, track.view, footer)
-            notice.view.visibility = View.GONE
             val margin = notice.px(Notice.MARGIN)
+            val scroll = ScrollView(context).apply {
+                clipToPadding = false
+                visibility = View.GONE
+                setPadding(0, margin, 0, margin)
+                addView(notice.view, FrameLayout.LayoutParams(notice.widthPx, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL))
+            }
             root.addView(
-                notice.view,
-                FrameLayout.LayoutParams(notice.widthPx, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.CENTER_HORIZONTAL)
-                    .apply { setMargins(margin, margin, margin, margin) },
+                scroll,
+                FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP),
             )
-            return HaLifecycleBar(notice, hero, sub, track, footer, renderer, onVisibilityChanged)
+            return HaLifecycleBar(notice, scroll, hero, sub, track, footer, renderer, onVisibilityChanged)
         }
     }
 }

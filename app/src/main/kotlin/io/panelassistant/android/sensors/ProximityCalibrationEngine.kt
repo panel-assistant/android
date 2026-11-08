@@ -144,6 +144,8 @@ internal class ProximityCalibrationEngine(
     private var ambientLastSample: Long? = null
 
     @Synchronized fun current(): Result = result()
+    /** The source has proved it reports a range: a ranged calibration or a fresh non-binary reading. */
+    @Synchronized fun observedRanged(): Boolean = observedNonBinary || calibration?.mode == Mode.RANGED
     @Synchronized fun needsTick(heldEvidence: Boolean = false): Boolean = active() || detector?.needsTick(heldEvidence) == true || waveDetector?.needsTick() == true || pendingOperationalPulse != null
     @Synchronized fun releaseGestureCooldown() { operationalCooldownUntil = 0L; waveDetector?.releaseCooldown() }
 
@@ -215,6 +217,7 @@ internal class ProximityCalibrationEngine(
             return result()
         }
         if (!live) { generation++; pendingOperationalPulse = null }
+        if (calibrationLive && raw != 0f && raw != 1f) observedNonBinary = true
         if (detector == null && calibrationLive &&
             (calibration?.mode == Mode.RANGED || observedSourceMode == Mode.RANGED || raw != 0f && raw != 1f)) {
             observeAmbientQuiet(raw, now)
@@ -243,6 +246,19 @@ internal class ProximityCalibrationEngine(
             return result()
         }
         return loseSource(now, "Sensor connection lost. Your previous calibration is unchanged.")
+    }
+
+    /**
+     * Runs a calibration learned in use without a setup session: presence keeps the given quiet band, so the
+     * change of anchors does not restart noise learning. Ignored while setup runs.
+     */
+    @Synchronized fun adopt(calibration: Calibration, quiet: ProximityPresenceBand.QuietBand?, now: Long): Result {
+        if (!admit(now) || active()) return result()
+        this.calibration = calibration
+        detector = calibration.takeIf { it.presenceSupported }?.let { PresenceDetector(it, quiet ?: detector?.learnedQuiet()) }
+        waveDetector = createWaveDetector(calibration)
+        generation++; resetOperational()
+        return result()
     }
 
     @Synchronized fun reset(calibration: Calibration?, now: Long): Result {
@@ -362,9 +378,17 @@ internal class ProximityCalibrationEngine(
                     val peak = checkNotNull(wavePeak)
                     waveStarted = null; wavePeak = null
                     if (duration !in MINIMUM_NEAR_MS..MAXIMUM_NEAR_MS) return
-                    val wave = driftMargined(
-                        WaveCalibration(pattern = requestedWavePattern, clearRaw = baseline, nearRaw = peak), driftMargin, driftDeclaredRange,
-                    ) ?: return
+                    val measured = WaveCalibration(pattern = requestedWavePattern, clearRaw = baseline, nearRaw = peak)
+                    val boundaries = if (mode(baseline, peak) == Mode.RANGED) {
+                        // The example proves a hand movement, not how close every later wave must come.
+                        // Set hysteresis above the standing position's noise; keep the measured anchors
+                        // and the source's independent drift margin.
+                        val exit = max(departure, separationFloor(peak, baseline)) / abs(peak - baseline)
+                        val enter = exit * NEAR_ENTER_DRIFT_HEADROOM
+                        if (enter > MAXIMUM_NEAR_ENTER) return
+                        measured.copy(nearEnter = enter, clearExit = exit)
+                    } else measured
+                    val wave = driftMargined(boundaries, driftMargin, driftDeclaredRange) ?: return
                     candidateWave = wave
                     candidateWaveMode = mode(wave.clearRaw, wave.nearRaw)
                     candidateDetector = Detector(wave.model(checkNotNull(candidateWaveMode))).also { it.observe(raw, now, false) }
@@ -619,10 +643,13 @@ internal class ProximityCalibrationEngine(
 
         fun observe(raw: Float, now: Long, live: Boolean): Boolean {
             presenceApproach = false
-            val level = calibration.level(raw)
+            // Decision boundaries can be a small fraction of a strong example. Rounding to the
+            // reported integer percentage would erase smaller, clearly separated hand movements.
+            val level = (raw.toDouble() - calibration.clearRaw) /
+                (calibration.nearRaw.toDouble() - calibration.clearRaw)
             val next = when {
-                level >= calibration.nearEnter * 100f -> true
-                level <= calibration.clearExit * 100f -> false
+                level >= calibration.nearEnter -> true
+                level <= calibration.clearExit -> false
                 else -> rawNear
             }
             if (next == null) return false

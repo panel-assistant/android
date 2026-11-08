@@ -1094,6 +1094,170 @@
       "softMaxChars": 24,
       "hardMaxChars": 40
     },
+    "configure.auto_sleep.sensors_add": {
+      "text": "Add a sensor",
+      "sourceHash": "c3719757d0a8743516c909067acee8412b6dd73bf87b9f3e0e7e7bd06bc958a4",
+      "surface": "configure",
+      "context": "auto_sleep",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 16,
+      "hardMaxChars": 24
+    },
+    "configure.auto_sleep.sensors_add_placeholder": {
+      "text": "Add a sensor…",
+      "sourceHash": "c01bf6a5e947b21ddaa11d9c55f70a1c5a7a1008f4c99f648a4b151596ea9446",
+      "surface": "configure",
+      "context": "auto_sleep",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 16,
+      "hardMaxChars": 24
+    },
+    "configure.auto_sleep.sensors_automatic": {
+      "text": "Automatic: motion, occupancy and presence sensors in this panel’s Area.",
+      "sourceHash": "26feb6e1dd1692c1088699da59c69d419a4a560d9003d7b13d55fdaa0aa6a172",
+      "surface": "configure",
+      "context": "auto_sleep",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 85,
+      "hardMaxChars": 120
+    },
+    "configure.auto_sleep.sensors_automatic_button": {
+      "text": "Back to automatic",
+      "sourceHash": "0c2860d83d0aee5e24f2d2b0526f8c9cc50cb80afa7561f76d13e024268b7fd2",
+      "surface": "configure",
+      "context": "auto_sleep",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 20,
+      "hardMaxChars": 28
+    },
+    "configure.auto_sleep.sensors_chosen": {
+      "text": "Only the sensors you chose are used.",
+      "sourceHash": "9f5e510037a2a93562df4b14964a3f40acf684b214a4b21a0917aaec8f82f977",
+      "surface": "configure",
+      "context": "auto_sleep",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 43,
+      "hardMaxChars": 61
+    },
+    "configure.auto_sleep.sensors_heading": {
+      "text": "Activity sensors",
+      "sourceHash": "16a1447a97a8af410448f80ffaa142400203b1418cf79b08a267b0098fed5dae",
+      "surface": "configure",
+      "context": "auto_sleep",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 19,
+      "hardMaxChars": 27
+    },
+    "configure.auto_sleep.sensors_loading": {
+      "text": "Loading Home Assistant sensors…",
+      "sourceHash": "0f67f35d081bbb09480fce2cd2e130578f12eb44beea35b70135df3efcbbbb02",
+      "surface": "configure",
+      "context": "auto_sleep",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [
+        "Home Assistant"
+      ],
+      "softMaxChars": 37,
+      "hardMaxChars": 52
+    },
+    "configure.auto_sleep.sensors_missing": {
+      "text": "Not found in Home Assistant",
+      "sourceHash": "e97d16f2c8d31cd8979a414f4bdb414e15a640666bdfc3b38fb8e190e5d17afc",
+      "surface": "configure",
+      "context": "auto_sleep",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [
+        "Home Assistant"
+      ],
+      "softMaxChars": 32,
+      "hardMaxChars": 45
+    },
+    "configure.auto_sleep.sensors_no_area": {
+      "text": "No area",
+      "sourceHash": "3fd59f11b54e96933a2b02aa304ac4702497072e362651bddfe49cffc8ba393d",
+      "surface": "configure",
+      "context": "auto_sleep",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 16,
+      "hardMaxChars": 24
+    },
+    "configure.auto_sleep.sensors_remove": {
+      "text": "Remove",
+      "sourceHash": "c3812fc4acb861d5182fc2b8155f327f736fbe5e5eb86a7bd7afcb6dc5497282",
+      "surface": "configure",
+      "context": "auto_sleep",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 16,
+      "hardMaxChars": 24
+    },
+    "configure.auto_sleep.sensors_remove_label": {
+      "text": "Remove {name}",
+      "sourceHash": "e6a3c4a1250a6ad3f10faa22333e5e50a6ba78e5b28a3b26f5743d9f8c7ede93",
+      "surface": "configure",
+      "context": "auto_sleep",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [
+        "{name}"
+      ],
+      "frozen": [],
+      "softMaxChars": 16,
+      "hardMaxChars": 24
+    },
+    "configure.auto_sleep.sensors_save_failed": {
+      "text": "Could not save the sensor choice.",
+      "sourceHash": "8a6e7cb4d77b0e4c381253d461449d25d7661efa7f6144e59630b4cb3e8db0a4",
+      "surface": "configure",
+      "context": "auto_sleep",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 39,
+      "hardMaxChars": 56
+    },
+    "configure.auto_sleep.sensors_unavailable": {
+      "text": "The Home Assistant sensor list is unavailable.",
+      "sourceHash": "2fdb70ec1722643de3eab6b56b215c69b8e2227d7d3a3fe54e9f9de384f18a34",
+      "surface": "configure",
+      "context": "auto_sleep",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [
+        "Home Assistant"
+      ],
+      "softMaxChars": 55,
+      "hardMaxChars": 78
+    },
     "configure.auto_sleep.setup_proximity": {
       "text": "Set up proximity on panel",
       "sourceHash": "e2e988d28e2af97b8efe9904775644d54099e54fd770cc808cd5b2f20a597c9c",
@@ -2856,6 +3020,93 @@
       "softMaxChars": 44,
       "hardMaxChars": 72
     },
+    "configure.enum.presence_mode.automatic": {
+      "text": "Automatic",
+      "sourceHash": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
+      "surface": "configure",
+      "context": "Visible label for the exact presence_mode setting wire option; translate display text only and preserve the submitted/stored wire value.",
+      "risk": "ordinary",
+      "siblings": [
+        "configure.enum.presence_mode.home_assistant",
+        "configure.enum.presence_mode.manual",
+        "configure.enum.presence_mode.hybrid",
+        "configure.enum.presence_mode.off"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 44,
+      "hardMaxChars": 72
+    },
+    "configure.enum.presence_mode.home_assistant": {
+      "text": "Home Assistant device",
+      "sourceHash": "0e7822ccc39d40e601271e0a49edbfca5d441f5e6be7a5f018d362664b6c63be",
+      "surface": "configure",
+      "context": "Visible label for the exact presence_mode setting wire option; translate display text only and preserve the submitted/stored wire value.",
+      "risk": "ordinary",
+      "siblings": [
+        "configure.enum.presence_mode.automatic",
+        "configure.enum.presence_mode.manual",
+        "configure.enum.presence_mode.hybrid",
+        "configure.enum.presence_mode.off"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "Home Assistant"
+      ],
+      "softMaxChars": 44,
+      "hardMaxChars": 72
+    },
+    "configure.enum.presence_mode.hybrid": {
+      "text": "Hybrid",
+      "sourceHash": "6c67dc13f83949fe089ca86225b136b5f40ac5268ebf92fbefe45f1f94e8064b",
+      "surface": "configure",
+      "context": "Visible label for the exact presence_mode setting wire option; translate display text only and preserve the submitted/stored wire value.",
+      "risk": "ordinary",
+      "siblings": [
+        "configure.enum.presence_mode.automatic",
+        "configure.enum.presence_mode.home_assistant",
+        "configure.enum.presence_mode.manual",
+        "configure.enum.presence_mode.off"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 44,
+      "hardMaxChars": 72
+    },
+    "configure.enum.presence_mode.manual": {
+      "text": "Manual",
+      "sourceHash": "b0b9fe24ffa9629125bdc59b122f80d605ab604eb1b74485c2f2ecfde26576ae",
+      "surface": "configure",
+      "context": "Visible label for the exact presence_mode setting wire option; translate display text only and preserve the submitted/stored wire value.",
+      "risk": "ordinary",
+      "siblings": [
+        "configure.enum.presence_mode.automatic",
+        "configure.enum.presence_mode.home_assistant",
+        "configure.enum.presence_mode.hybrid",
+        "configure.enum.presence_mode.off"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 44,
+      "hardMaxChars": 72
+    },
+    "configure.enum.presence_mode.off": {
+      "text": "Off",
+      "sourceHash": "ca7981b46ecf2c1787b6d76d81d9fd7fa0ca95842e2fcc2a452869891a9334d1",
+      "surface": "configure",
+      "context": "Visible label for the exact presence_mode setting wire option; translate display text only and preserve the submitted/stored wire value.",
+      "risk": "ordinary",
+      "siblings": [
+        "configure.enum.presence_mode.automatic",
+        "configure.enum.presence_mode.home_assistant",
+        "configure.enum.presence_mode.manual",
+        "configure.enum.presence_mode.hybrid"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 44,
+      "hardMaxChars": 72
+    },
     "configure.enum.voice_audio_source.mic": {
       "text": "Microphone",
       "sourceHash": "186352a881d0550e2da1f74e5c317770702bc2a0f9c3da69a10e27c14a217bac",
@@ -4309,6 +4560,18 @@
       "frozen": [],
       "softMaxChars": 242,
       "hardMaxChars": 363
+    },
+    "configure.proximity.setup.learning": {
+      "text": "Learning from everyday touches; setup is optional",
+      "sourceHash": "6bdb563b7598b760041ba87ad31015e408b6b83eb2a2b7d5a79725271ef02865",
+      "surface": "configure",
+      "context": "Proximity status while Automatic or Hybrid presence calibrates itself from screen touches; the optional on-panel setup is not required. Render as text, not HTML.",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 82,
+      "hardMaxChars": 123
     },
     "configure.proximity.setup.local": {
       "text": "Optional setup runs on the panel. Touch-to-wake remains available.",
@@ -30321,56 +30584,17 @@
       "softMaxChars": 70,
       "hardMaxChars": 90
     },
-    "settings.auto_sleep_source.help": {
-      "text": "Use the panel’s calibrated proximity sensor, Home Assistant Area devices, or touch inactivity.\n\n- Presence modes pause if their source is unavailable.\n- Touch inactivity needs no presence setup.",
-      "sourceHash": "b6ae4c9d0c2cbf29bbffafdd847901cea10c18e91e16d77c7716ae108fb0284d",
+    "settings.auto_sleep_touch_delay_seconds.help": {
+      "text": "When Presence is Off, or Home Assistant device has no usable device, switch the screen fully off after this many seconds without a touch.",
+      "sourceHash": "754ff4d9a8ed0b627c9067527d343515102816904199b50efc97091db15a46d5",
       "surface": "settings",
-      "context": "Panel proximity presence and Auto-sleep source selection.",
+      "context": "Auto-sleep touch inactivity source and fixed delay.",
       "risk": "ordinary",
       "siblings": [],
       "placeholders": [],
       "frozen": [
         "Home Assistant"
       ],
-      "softMaxChars": 348,
-      "hardMaxChars": 522
-    },
-    "settings.auto_sleep_source.label": {
-      "text": "Auto-sleep activity source",
-      "sourceHash": "485e78dd0ccd45757ad048f9805f4fe39b1260890bb7d0364b2c8d07caa926c1",
-      "surface": "settings",
-      "context": "Auto-sleep source selection, including panel, Home Assistant Area and touch inactivity.",
-      "risk": "ordinary",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 52,
-      "hardMaxChars": 80
-    },
-    "settings.auto_sleep_source.summary": {
-      "text": "What counts as presence: proximity sensor, area or touch.",
-      "sourceHash": "010e147baf066c010fda07e439cca24c3f59a22a7564b8450354fa5e8f716b33",
-      "surface": "settings",
-      "context": "Auto-sleep source selection, including panel, Home Assistant Area and touch inactivity.: one-line summary shown under the auto_sleep_source setting's label; the full help opens behind an info button. Plain text, one line.",
-      "risk": "ordinary",
-      "siblings": [
-        "settings.auto_sleep_source.label",
-        "settings.auto_sleep_source.help"
-      ],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 70,
-      "hardMaxChars": 90
-    },
-    "settings.auto_sleep_touch_delay_seconds.help": {
-      "text": "When Touch inactivity is selected, switch the screen fully off after this many seconds without a touch.",
-      "sourceHash": "2859a764da776afae021acb6fc0c9719b3c9b382f0a2e10d3d9031eaa4a1409c",
-      "surface": "settings",
-      "context": "Auto-sleep touch inactivity source and fixed delay.",
-      "risk": "ordinary",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [],
       "softMaxChars": 103,
       "hardMaxChars": 151
     },
@@ -32566,6 +32790,47 @@
       "siblings": [
         "settings.panel_id.label",
         "settings.panel_id.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
+    "settings.presence_mode.help": {
+      "text": "How the panel knows someone is nearby. Touching the screen always counts as someone being there.\n\n- **Automatic** learns the proximity sensor from your touches.\n- **Home Assistant device** uses presence devices in the panel's Home Assistant area. With no usable device it falls back to the touch delay.\n- **Manual** uses the readings you record with the calibration wizard.\n- **Hybrid** starts from the wizard readings and keeps learning from touches.\n- **Off** uses no presence; auto-sleep turns the screen off after the touch delay.",
+      "sourceHash": "29f58d54686b32bedf4ae556bb9c514cce2051c80216e2d801ee321db3bf8741",
+      "surface": "settings",
+      "context": "Presence mode: how the panel tells someone is nearby (learned proximity, Home Assistant device, wizard, hybrid or off).",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [
+        "Home Assistant"
+      ],
+      "softMaxChars": 574,
+      "hardMaxChars": 801
+    },
+    "settings.presence_mode.label": {
+      "text": "Presence",
+      "sourceHash": "d6b3e8c828d3742089ed59ebbfd89492ec2ce0bc89a19294cae52a6ac233b244",
+      "surface": "settings",
+      "context": "Presence mode: how the panel tells someone is nearby (learned proximity, Home Assistant device, wizard, hybrid or off).",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 52,
+      "hardMaxChars": 80
+    },
+    "settings.presence_mode.summary": {
+      "text": "How the panel tells that someone is nearby.",
+      "sourceHash": "237dd010ba3255b755bbfbf406c792b8965cdb630aaf68867e83188bd2421e3f",
+      "surface": "settings",
+      "context": "Presence mode: how the panel tells someone is nearby (learned proximity, Home Assistant device, wizard, hybrid or off).: one-line summary shown under the presence_mode setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.presence_mode.label",
+        "settings.presence_mode.help"
       ],
       "placeholders": [],
       "frozen": [],
@@ -36975,6 +37240,48 @@
       "softMaxChars": 220,
       "hardMaxChars": 320
     },
+    "shell.runtime.ha_network_echo_evidence": {
+      "text": "p95 {p95Ms} ms, {missCount} of {probeCount} network checks missed across {burstCount} bursts",
+      "sourceHash": "e0be4e0f11a38e2bb80f14fc572e87f6c58ed19239d135c9ab19a13748b4b00c",
+      "surface": "shell",
+      "context": "Network path verdict evidence from the same echo measurement. Counts cover recent adaptive bursts, never the socket five-minute window.",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [
+        "{p95Ms}",
+        "{missCount}",
+        "{probeCount}",
+        "{burstCount}"
+      ],
+      "frozen": [
+        "{p95Ms}",
+        "{missCount}",
+        "{probeCount}",
+        "{burstCount}"
+      ],
+      "softMaxChars": 150,
+      "hardMaxChars": 240
+    },
+    "shell.runtime.ha_network_echo_no_reply": {
+      "text": "no reply, {missCount} of {probeCount} network checks missed across {burstCount} bursts",
+      "sourceHash": "bdd1a4e418c8f95e7f9470f012c6f1497656821a6ea2ce4df4051d7f2ed97362",
+      "surface": "shell",
+      "context": "Network path verdict evidence from the same echo measurement. Counts cover recent adaptive bursts, never the socket five-minute window.",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [
+        "{missCount}",
+        "{probeCount}",
+        "{burstCount}"
+      ],
+      "frozen": [
+        "{missCount}",
+        "{probeCount}",
+        "{burstCount}"
+      ],
+      "softMaxChars": 150,
+      "hardMaxChars": 240
+    },
     "shell.runtime.ha_network_evidence_no_answer": {
       "text": "no probe answered in the last 5 min; last reply {lastReplyAge} ago",
       "sourceHash": "61d66bd6d22069ccd67549427d92a05db60734b8063501a0fed935a5887cbf81",
@@ -37106,6 +37413,24 @@
       ],
       "softMaxChars": 64,
       "hardMaxChars": 92
+    },
+    "shell.runtime.ha_network_with_evidence": {
+      "text": "{verdict}; {evidence}",
+      "sourceHash": "df42587b95447408d7bf60f413e8cb0921c3523565e128b86c4c07893776ae37",
+      "surface": "shell",
+      "context": "Network path verdict evidence from the same echo measurement. Counts cover recent adaptive bursts, never the socket five-minute window.",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [
+        "{verdict}",
+        "{evidence}"
+      ],
+      "frozen": [
+        "{verdict}",
+        "{evidence}"
+      ],
+      "softMaxChars": 150,
+      "hardMaxChars": 240
     }
   }
 }

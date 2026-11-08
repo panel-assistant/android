@@ -241,6 +241,9 @@ internal class PanelStateCore(
             else Observation.Known(if (snapshot.holdingAwake) "ON" else "OFF", autoSleepActivityProjection(snapshot).attributes)
         }
         channel("navbar") { known(config.navbarMode) }
+        channel("presence") {
+            known(SettingsRegistry.PRESENCE_OPTIONS.first { it.code == config.presenceMode.wire }.label)
+        }
         // The stored choice, so an Ambient flip, which changes only the effective scheme, leaves it alone.
         channel("dashboard_theme") { known(config.dashboardTheme) }
         // Prevent idle dim holds Android's screen-off timeout at "never", so the number is usable only while it is off.
@@ -773,6 +776,7 @@ internal class PanelStateCore(
             }
             onCapabilitiesObserved?.invoke(capabilityObservation)
         }
+        screen.maintainBrightnessZeroOff()
         val observedOffGeneration = screen.currentOffGeneration()
         val physicallyDark = screen.observedDark()
         if (physicallyDark == true) screen.noteObservedDark(observedOffGeneration)

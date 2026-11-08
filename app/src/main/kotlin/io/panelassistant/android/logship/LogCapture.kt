@@ -5,6 +5,9 @@ import io.panelassistant.android.metrics.FeatureCostOperation
 import io.panelassistant.android.metrics.FeatureCostOutcome
 import io.panelassistant.android.metrics.FeatureCostRegistry
 import io.panelassistant.android.metrics.FeatureCosts
+import io.panelassistant.android.util.BoundedLaunchGate
+import io.panelassistant.android.util.MonotonicDeadline
+import io.panelassistant.android.util.runBoundedLaunch
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -76,17 +79,27 @@ class LogCapture(
     private val restartMaxMs: Long = BACKOFF_MAX_MS,
     /** Raw long-format backlog lines from the helper; when set it is the only dump source. */
     private val helperDump: ((Int) -> List<String>)? = null,
+    private val knownNoise: () -> Set<String> = { emptySet() },
+    private val noiseSummaryIntervalMs: Long = 60_000L,
+    private val warningLogger: (String) -> Unit = { Log.w(TAG, it); Unit },
 ) {
     init {
         require(maxViewers > 0) { "maxViewers must be positive" }
         require(dumpTimeoutMs > 0) { "dumpTimeoutMs must be positive" }
         require(dumpMaxBytes > 0) { "dumpMaxBytes must be positive" }
+        require(noiseSummaryIntervalMs > 0) { "noiseSummaryIntervalMs must be positive" }
     }
 
     private val listeners = CopyOnWriteArrayList<(String) -> Unit>()
+    private val rawListeners = CopyOnWriteArrayList<(String) -> Unit>()
     private val ring = ArrayDeque<String>(RING_CAP)
+    private val rawRing = ArrayDeque<String>(RING_CAP)
+    private val noise = LogNoise(::renderRecord)
+    private var restartWarning: String? = null
+    private var restartRepeats = 0L
     private var dumpFlight: DumpFlight? = null
     private var dumpProcess: Process? = null
+    private val dumpLaunchGate = BoundedLaunchGate()
     private var activeViewers = 0
 
     // Each start() gets its own Run so a stop→start race can never orphan the new subprocess.
@@ -168,16 +181,20 @@ class LogCapture(
 
     /** Register [listener] for every future (redacted) line; starts the capture if it's the first
      *  consumer. Close the returned handle to detach — the last detach stops the subprocess. */
-    fun subscribe(listener: (String) -> Unit): AutoCloseable {
+    fun subscribe(listener: (String) -> Unit): AutoCloseable = subscribe(false, listener)
+
+    /** Raw means uncollapsed, still redacted; it shares the producer and viewer budget. */
+    fun subscribe(raw: Boolean, listener: (String) -> Unit): AutoCloseable {
+        val selected = if (raw) rawListeners else listeners
         synchronized(this) {
             if (closed) return AutoCloseable {}
-            listeners.add(listener)
+            selected.add(listener)
             if (run == null) start()
         }
         return AutoCloseable {
             synchronized(this) {
-                listeners.remove(listener)
-                if (listeners.isEmpty()) stop()
+                selected.remove(listener)
+                if (listeners.isEmpty() && rawListeners.isEmpty()) stop()
             }
         }
     }
@@ -218,15 +235,16 @@ class LogCapture(
     }.getOrNull()
 
     /** The buffered recent lines (already redacted) — instant backlog while capture is running. */
-    fun snapshot(): List<String> = synchronized(ring) { ring.toList() }
+    fun snapshot(raw: Boolean = false): List<String> = synchronized(ring) { (if (raw) rawRing else ring).toList() }
 
     /** Backlog for a new viewer. Concurrent viewers that all observe an empty ring share one bounded
      * process rather than launching a dump apiece. */
-    fun initialBacklog(lines: Int = DUMP_LINES): List<String> = snapshot().ifEmpty { dump(lines) }
+    fun initialBacklog(lines: Int = DUMP_LINES, raw: Boolean = false): List<String> =
+        snapshot(raw).ifEmpty { if (!raw && snapshot(true).isNotEmpty()) emptyList() else dump(lines, raw) }
 
     /** One-shot dump of the last [lines] log lines (redacted). A single flight is shared by all
      * callers, output is capped before decoding, and a wedged command is forcibly terminated. */
-    fun dump(lines: Int = DUMP_LINES): List<String> {
+    fun dump(lines: Int = DUMP_LINES, raw: Boolean = false): List<String> {
         if (lines <= 0 || (helperDump == null && lineStream != null)) return emptyList()
         val (flight, owner) = synchronized(this) {
             if (closed) return emptyList()
@@ -234,7 +252,7 @@ class LogCapture(
             if (current != null) current to false
             else DumpFlight().also { dumpFlight = it } to true
         }
-        if (!owner) return flight.await(dumpTimeoutMs + DUMP_CLEANUP_GRACE_MS)
+        if (!owner) return projectDump(flight.await(dumpTimeoutMs + DUMP_CLEANUP_GRACE_MS), raw)
 
         val cost = featureCosts.beginSynchronous(FeatureCostOperation.LOG_CAPTURE_BATCH)
         var outcome = FeatureCostOutcome.SUCCESS
@@ -265,12 +283,29 @@ class LogCapture(
                 dumpFlight = null
             }
         }
-        return result
+        return projectDump(result, raw)
+    }
+
+    private fun projectDump(lines: List<String>, raw: Boolean): List<String> {
+        if (raw) return lines
+        val aggregate = LogNoise(::renderRecord)
+        val rules = knownNoise()
+        return lines.flatMap { aggregate.accept(it, parseRecord(it), rules) } + aggregate.flush()
     }
 
     private fun runDump(lines: Int): List<String> {
         helperDump?.let { source -> return LongLogcatRecords.collect(source(lines), ::redact).takeLast(lines) }
-        val p = processStarter(dumpCmd(lines))
+        val deadline = MonotonicDeadline(dumpTimeoutMs)
+        // Bound process creation itself. A starter that ignores interruption retains its lease;
+        // a process returned after abandonment is destroyed before the collector can read it.
+        val p = runBoundedLaunch(
+            deadline = deadline,
+            threadName = "ha-paneld-log-dump-launch",
+            gate = dumpLaunchGate,
+            launch = { processStarter(dumpCmd(lines)) },
+            destroy = { it.destroyForcibly() },
+            consume = { it },
+        ) ?: return emptyList()
         val admitted = synchronized(this) {
             if (closed) false else {
                 dumpProcess = p
@@ -309,7 +344,8 @@ class LogCapture(
         }
 
         try {
-            if (!p.waitFor(dumpTimeoutMs, TimeUnit.MILLISECONDS)) {
+            val remainingMs = deadline.remainingMs()
+            if (remainingMs <= 0L || !p.waitFor(remainingMs, TimeUnit.MILLISECONDS)) {
                 runCatching { p.destroy() }
                 if (!p.waitFor(DUMP_DESTROY_GRACE_MS, TimeUnit.MILLISECONDS)) {
                     runCatching { p.destroyForcibly() }
@@ -344,6 +380,7 @@ class LogCapture(
         if (closed) return@synchronized
         closed = true
         listeners.clear()
+        rawListeners.clear()
         dumpFlight?.complete(emptyList())
         runCatching { dumpProcess?.destroyForcibly() }
         dumpProcess = null
@@ -355,41 +392,51 @@ class LogCapture(
         run = r
         val producer = lineStream
         r.job = scope.launch(Dispatchers.IO) {
-            var failures = 0
-            while (isActive) {
-                val emittedBefore = emitted.get()
-                try {
-                    val records = if (longLogcatRecords) LongLogcatRecords { emit(r, redact(it)) } else null
-                    if (producer != null) {
-                        producer { line ->
-                            if (records != null) records.accept(line) else emit(r, redact(line))
-                        }
-                    } else {
-                        val p = processStarter(streamCmd)
-                        if (!r.attach(p)) break
-                        try {
-                            p.inputStream.bufferedReader().use { reader ->
-                                while (isActive) {
-                                    val line = reader.readLine() ?: break
-                                    if (records != null) records.accept(line)
-                                    else if (featureCosts.recordingEnabled) captureAvailableBatch(r, reader, line)
-                                    else emit(r, redact(line))
-                                }
-                            }
-                        } finally {
-                            r.detach(p)
-                        }
-                    }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    Log.w(TAG, "capture restart: ${e.message}")
+            val summaries = launch {
+                while (isActive) {
+                    delay(noiseSummaryIntervalMs)
+                    flushNoise(r)
                 }
-                // A pass that produced output was healthy; one that failed or ended silently repeats.
-                if (emitted.get() != emittedBefore) failures = 0
-                val wait = min(restartBaseMs shl min(failures, 20), restartMaxMs)
-                failures++
-                if (isActive) delay(wait)
+            }
+            try {
+                var failures = 0
+                while (isActive) {
+                    val emittedBefore = emitted.get()
+                    try {
+                        val records = if (longLogcatRecords) LongLogcatRecords { emit(r, redact(it)) } else null
+                        if (producer != null) {
+                            producer { line ->
+                                if (records != null) records.accept(line) else emit(r, redact(line))
+                            }
+                        } else {
+                            val p = processStarter(streamCmd)
+                            if (!r.attach(p)) break
+                            try {
+                                p.inputStream.bufferedReader().use { reader ->
+                                    while (isActive) {
+                                        val line = reader.readLine() ?: break
+                                        if (records != null) records.accept(line)
+                                        else if (featureCosts.recordingEnabled) captureAvailableBatch(r, reader, line)
+                                        else emit(r, redact(line))
+                                    }
+                                }
+                            } finally {
+                                r.detach(p)
+                            }
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        warnRestart(r, "capture restart: ${e.message}")
+                    }
+                    // A pass that produced output was healthy; one that failed or ended silently repeats.
+                    if (emitted.get() != emittedBefore) failures = 0
+                    val wait = min(restartBaseMs shl min(failures, 20), restartMaxMs)
+                    failures++
+                    if (isActive) delay(wait)
+                }
+            } finally {
+                summaries.cancel()
             }
         }
     }
@@ -397,7 +444,10 @@ class LogCapture(
     private fun stop() {
         run?.cancel()
         run = null
-        synchronized(ring) { ring.clear() }
+        noise.flush()
+        flushRestartWarning()
+        restartWarning = null
+        synchronized(ring) { ring.clear(); rawRing.clear() }
     }
 
     /**
@@ -440,19 +490,63 @@ class LogCapture(
     }
 
     internal fun emit(source: Run, line: String) {
-        val targets = synchronized(this) {
+        val (targets, rawTargets, lines) = synchronized(this) {
             // A process can produce one final buffered line after destroy(). Never let that line cross a
             // stop→start boundary into the replacement generation's ring or listeners.
             if (closed || run !== source) return
             emitted.incrementAndGet()
+            val filtered = noise.accept(line, parseRecord(line), knownNoise())
             synchronized(ring) {
-                if (ring.size >= RING_CAP) ring.removeFirst()
-                ring.addLast(line)
+                addToRing(rawRing, line)
+                filtered.forEach { addToRing(ring, it) }
             }
             if (dumpFlight?.isDone() == true) dumpFlight = null
-            listeners.toList()
+            Triple(listeners.toList(), rawListeners.toList(), filtered)
         }
-        for (listener in targets) runCatching { listener(line) }
+        for (listener in rawTargets) runCatching { listener(line) }
+        for (output in lines) for (listener in targets) runCatching { listener(output) }
+    }
+
+    private fun addToRing(target: ArrayDeque<String>, line: String) {
+        if (target.size >= RING_CAP) target.removeFirst()
+        target.addLast(line)
+    }
+
+    private fun flushNoise(source: Run) {
+        val (targets, lines) = synchronized(this) {
+            if (closed || run !== source) return
+            val lines = noise.flush()
+            synchronized(ring) { lines.forEach { addToRing(ring, it) } }
+            flushRestartWarning()
+            listeners.toList() to lines
+        }
+        for (line in lines) for (listener in targets) runCatching { listener(line) }
+    }
+
+    private fun warnRestart(source: Run, message: String) = synchronized(this) {
+        if (closed || run !== source) return@synchronized
+        if (restartWarning == message) restartRepeats++ else {
+            flushRestartWarning()
+            restartWarning = message
+            warningLogger(message)
+        }
+    }
+
+    private fun flushRestartWarning() {
+        if (restartRepeats > 0) warningLogger("$restartWarning (repeated $restartRepeats times)")
+        restartRepeats = 0
+    }
+
+    private fun renderRecord(record: LogCaptureRecord): String {
+        val instant = Instant.ofEpochMilli(wallMillis())
+        val letter = "VDIWEF".getOrElse(record.priority - 2) { 'I' }
+        return if (longLogcatRecords) {
+            "[ ${instant.epochSecond}.${instant.nano.toString().padStart(9, '0')}  ${record.pid}: 0 $letter/${record.tag} ]\n${record.message}"
+        } else {
+            val stamp = java.time.format.DateTimeFormatter.ofPattern("MM-dd HH:mm:ss.SSS", java.util.Locale.ROOT)
+                .withZone(timeZone().toZoneId()).format(instant)
+            "$stamp  ${record.pid}  0 $letter ${record.tag}: ${record.message}"
+        }
     }
 
     companion object {
@@ -476,10 +570,11 @@ class LogCapture(
 
         /** Own-process logcat — no `READ_LOGS` / root. `-T 1` starts at "now" so a restart doesn't
          *  replay the whole ring buffer into the shipper. */
-        fun app(scope: CoroutineScope) = LogCapture(
+        fun app(scope: CoroutineScope, knownNoise: () -> Set<String> = { emptySet() }) = LogCapture(
             scope,
             listOf("logcat", "-v", "threadtime", "-T", "1", "*:V"),
             { n -> listOf("logcat", "-v", "threadtime", "-d", "-t", "$n", "*:V") },
+            knownNoise = knownNoise,
         )
 
         /** Full system logcat through the authenticated helper's `LOGCAT` stream only. Missing or
@@ -493,6 +588,7 @@ class LogCapture(
             processStarter: (List<String>) -> Process = { command ->
                 ProcessBuilder(command).redirectErrorStream(true).start()
             },
+            knownNoise: () -> Set<String> = { emptySet() },
         ) = LogCapture(
             scope,
             streamCmd = emptyList(),
@@ -501,6 +597,7 @@ class LogCapture(
             lineStream = helperLines,
             longLogcatRecords = true,
             helperDump = helperDump,
+            knownNoise = knownNoise,
         )
 
         /** Dashboard WebView console over the CDP relay. [enabled] keeps it idle unless log shipping is

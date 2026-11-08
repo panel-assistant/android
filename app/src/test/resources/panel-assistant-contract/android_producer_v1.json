@@ -227,7 +227,7 @@
       }
     }
   ],
-  "sourceRevision": "40e71cb7e29bd74c67b3ce1f5a1a46ae0b9b7e74",
+  "sourceRevision": "41aebe13c3b8f77323b75941d50186f640d12c73",
   "channelDescriptors": [
     {
       "entity_category": null,
@@ -849,6 +849,30 @@
       "options": null,
       "device_class": null,
       "translation_key": "network_adb",
+      "step": null,
+      "enabled_default": false,
+      "state_class": null,
+      "family": null,
+      "force_update": false
+    },
+    {
+      "entity_category": "config",
+      "unique_suffix": "presence",
+      "max": null,
+      "channel": "presence",
+      "index": null,
+      "platform": "select",
+      "unit": null,
+      "min": null,
+      "options": [
+        "automatic",
+        "home_assistant",
+        "manual",
+        "hybrid",
+        "off"
+      ],
+      "device_class": null,
+      "translation_key": "presence",
       "step": null,
       "enabled_default": false,
       "state_class": null,

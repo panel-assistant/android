@@ -11,6 +11,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -33,7 +34,7 @@ class OverlayWakeTapInstrumentedTest {
                     wakeTap.disarm()
                     woken.countDown()
                 })
-                instrumentation.waitForIdleSync()
+                awaitWakeOverlay()
 
                 val wakingDown = SystemClock.uptimeMillis()
                 inject(MotionEvent.ACTION_DOWN, wakingDown, x, y)
@@ -68,7 +69,7 @@ class OverlayWakeTapInstrumentedTest {
                     wakeTap.disarm()
                     replacementWoken.countDown()
                 })
-                instrumentation.waitForIdleSync()
+                awaitWakeOverlay()
 
                 tap(x, y)
                 assertTrue("replacement must retain a usable wake target", replacementWoken.await(2, TimeUnit.SECONDS))
@@ -102,7 +103,7 @@ class OverlayWakeTapInstrumentedTest {
                     wakeTap.disarm()
                     retried.countDown()
                 })
-                instrumentation.waitForIdleSync()
+                awaitWakeOverlay()
 
                 tap(x, y)
                 assertTrue("the initial wake path must be exercised", failedAttempt.await(2, TimeUnit.SECONDS))
@@ -172,6 +173,19 @@ class OverlayWakeTapInstrumentedTest {
         val down = SystemClock.uptimeMillis()
         inject(MotionEvent.ACTION_DOWN, down, x, y)
         inject(MotionEvent.ACTION_UP, down, x, y)
+    }
+
+    /** arm() returns once the overlay is added, but Android routes touches to a window only after its first
+     *  frame is composed; a tap sent sooner fell through to the window below on API 35 (2026-11-06/07). The
+     *  window change is reported to accessibility once the window shows, so wait for those events to go quiet.
+     *  A panel's sleeping screen is tapped seconds after arming, so this is fixture timing, not a product race. */
+    private fun awaitWakeOverlay() {
+        instrumentation.waitForIdleSync()
+        try {
+            instrumentation.uiAutomation.waitForIdle(500, 5_000)
+        } catch (_: TimeoutException) {
+            // Unrelated system events never went quiet; the wake latch below still decides the test.
+        }
     }
 
     private fun inject(action: Int, down: Long, x: Float, y: Float) {

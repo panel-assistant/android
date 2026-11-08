@@ -18,8 +18,8 @@
 //   * Concurrent connections are capped (MAX_CONN) and idle non-subscribers time out (server.c), so a
 //     connection flood can't exhaust the thread-per-conn model.
 //   * The command parser is bounded and exact-match (dispatch.c / server.c); every verb's arguments
-//     are width-bounded and validated. Request values reach only structural argv/direct operations;
-//     the sole fixed shell program has no caller-controlled bytes.
+//     are width-bounded and validated. Ordinary request values reach structural argv/direct operations. The authenticated
+//     SHELL administrator operation is handed to the independent recovery lifecycle owner.
 //
 // Protocol: see helper/README.md and the dispatch table in dispatch.c.
 
@@ -179,6 +179,7 @@ static int bind_helper_socket(
         int may_retire_replaced) {
     if (bind(fd, address, length) == 0) return 0;
     if (errno != EADDRINUSE || !may_retire_replaced) return -1;
+    if (!adb_recovery_legacy_main(SOCK_NAME)) { errno = EADDRINUSE; return -1; }
 
     int retired = retire_replaced_helper();
     if (retired < 0) {
@@ -261,8 +262,8 @@ static int request_daemon(const char *command) {
     memset(&addr, 0, sizeof addr);
     addr.sun_family = AF_UNIX;
     addr.sun_path[0] = '\0';
-    memcpy(addr.sun_path + 1, SOCK_NAME, sizeof SOCK_NAME - 1);
-    socklen_t alen = offsetof(struct sockaddr_un, sun_path) + 1 + (sizeof SOCK_NAME - 1);
+    memcpy(addr.sun_path + 1, SOCK_NAME, strlen(SOCK_NAME));
+    socklen_t alen = offsetof(struct sockaddr_un, sun_path) + 1 + strlen(SOCK_NAME);
     if (connect(fd, (struct sockaddr *)&addr, alen) < 0) {
         if ((errno != EINPROGRESS && errno != EINTR && errno != EAGAIN) ||
                 wait_for_socket(fd, POLLOUT, deadline_ms) != 0) {
@@ -339,11 +340,35 @@ static void *conn_thread(void *arg) {
     return NULL;
 }
 
+static int open_main_listener(int may_retire_replaced) {
+    int sfd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (sfd < 0) { perror("socket"); return -1; }
+    if (set_cloexec(sfd) != 0) { perror("fcntl"); close(sfd); return -1; }
+
+    // Abstract-namespace UNIX socket: leading NUL in sun_path, name follows. No filesystem entry to
+    // create, label (SELinux), permission, or clean up — and it's released automatically on close.
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof addr);
+    addr.sun_family = AF_UNIX;
+    addr.sun_path[0] = '\0';
+    memcpy(addr.sun_path + 1, SOCK_NAME, strlen(SOCK_NAME));
+    socklen_t alen = offsetof(struct sockaddr_un, sun_path) + 1 + strlen(SOCK_NAME);
+
+    if (bind_helper_socket(sfd, (struct sockaddr *)&addr, alen, may_retire_replaced) < 0) {
+        perror("bind");
+        close(sfd);
+        return -1;
+    }
+    if (listen(sfd, MAX_CONN) < 0) { perror("listen"); close(sfd); return -1; }
+    return sfd;
+}
+
 static int run_daemon(
         int argc,
         char **argv,
         const char *replacement_nonce,
-        int may_retire_replaced) {
+        int listener) {
+    int sfd = listener;
     signal(SIGPIPE, SIG_IGN);   // a dead subscriber's socket must not kill the daemon
     if (!replacement_nonce && guard_maintenance_init() != 0)
         fprintf(stderr, "hapaneld-helper guard maintenance recovery is in fail-closed hold\n");
@@ -359,25 +384,6 @@ static int run_daemon(
         else if (strcmp(argv[i], "--watch") == 0) input_watch(argv[++i], 0);
     }
 
-    int sfd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (sfd < 0) { perror("socket"); return 1; }
-    if (set_cloexec(sfd) != 0) { perror("fcntl"); close(sfd); return 1; }
-
-    // Abstract-namespace UNIX socket: leading NUL in sun_path, name follows. No filesystem entry to
-    // create, label (SELinux), permission, or clean up — and it's released automatically on close.
-    struct sockaddr_un addr;
-    memset(&addr, 0, sizeof addr);
-    addr.sun_family = AF_UNIX;
-    addr.sun_path[0] = '\0';
-    memcpy(addr.sun_path + 1, SOCK_NAME, sizeof SOCK_NAME - 1);
-    socklen_t alen = offsetof(struct sockaddr_un, sun_path) + 1 + (sizeof SOCK_NAME - 1);
-
-    if (bind_helper_socket(sfd, (struct sockaddr *)&addr, alen, may_retire_replaced) < 0) {
-        perror("bind");
-        close(sfd);
-        return 1;
-    }
-    if (listen(sfd, MAX_CONN) < 0) { perror("listen"); return 1; }
     if (replacement_nonce &&
         guard_maintenance_replacement_worker_commit_app(replacement_nonce) != 0) {
         fprintf(stderr, "hapaneld-helper replacement commit is in fail-closed hold\n");
@@ -422,22 +428,24 @@ static int run_daemon(
 
 /*
  * Same-session crash supervision for writable-/data panels with no proved init or service.d hook.
- * The app launches this exact mode as root. The parent owns no socket or transaction state; it only
- * forks the worker before threads exist, waits for it, and restarts it after a bounded delay. The
+ * The lifecycle parent owns recovery state and forks the threaded socket worker. Guard package
+ * supervision is enabled only for its explicit supervised launch modes. The
  * internal supervised flag is set only in that fork branch, so invoking the ordinary daemon cannot
  * claim SUPERVISED. This is deliberately not a reboot-persistence claim.
  */
 static pid_t spawn_socket_worker(
-        char **argv,
+        int argc, char **argv, int supervised,
         const char *replacement_nonce,
-        int may_retire_replaced) {
+        int listener) {
+    pid_t supervisor = getpid();
     pid_t worker = fork();
     if (worker != 0) return worker;
-    pid_t supervisor = getppid();
     if (supervisor <= 1 || prctl(PR_SET_PDEATHSIG, SIGTERM) != 0 ||
         getppid() != supervisor) _exit(1);
-    guard_maintenance_set_supervised(1);
-    _exit(run_daemon(1, argv, replacement_nonce, may_retire_replaced));
+    adb_recovery_owner_worker();
+    sysexec_set_lifecycle_owner(0);
+    guard_maintenance_set_supervised(supervised);
+    _exit(run_daemon(argc, argv, replacement_nonce, listener));
 }
 
 static long long supervisor_executor_deadline(long long now_ms, uint64_t phase_deadline_ms) {
@@ -448,10 +456,25 @@ static long long supervisor_executor_deadline(long long now_ms, uint64_t phase_d
         ? (long long)phase_deadline_ms : command_deadline;
 }
 
-static int run_supervisor(char **argv, const char *replacement_nonce) {
+static int run_lifecycle(int argc, char **argv, const char *replacement_nonce, int supervised, int secondary) {
     if (geteuid() != 0) return 1;
-    if (!replacement_nonce && guard_maintenance_init() != 0) return 1;
-    guard_maintenance_set_supervisor_owner();
+    sysexec_set_lifecycle_owner(1);
+    if (supervised && !replacement_nonce && guard_maintenance_init() != 0) return 1;
+    if (supervised) guard_maintenance_set_supervisor_owner();
+    int may_retire_replaced = !secondary && supervised && replacement_nonce == NULL &&
+        guard_maintenance_replacement_safe() == 0;
+#ifdef HAPANELD_TEST_ALLOW_STALE_OWNER_RETIREMENT
+    if (!secondary) may_retire_replaced = 1;
+#endif
+    /* Reserve the sole main address before touching recovery ownership. An occupied
+     * incompatible main must not cause a recovery takeover or a restart loop. */
+    int listener = open_main_listener(may_retire_replaced);
+    if (listener < 0) return 1;
+    int initialized = adb_recovery_owner_init();
+    if (initialized == -2) { close(listener); return 1; }
+    int recovery = initialized == 0;
+    if (!recovery) fprintf(stderr, "hapaneld-helper recovery custody unavailable; ARM disabled\n");
+    int worker_recovery_pending = 0;
     pid_t worker = -1;
     long long worker_after_ms = 0;
     pid_t executor = -1;
@@ -460,10 +483,15 @@ static int run_supervisor(char **argv, const char *replacement_nonce) {
     enum guard_supervisor_work pending_work = GUARD_WORK_NONE;
     long long retirement_after_ms = 0;
     for (;;) {
+        (void)sysexec_reap_pending();
         long long now = monotonic_millis();
         if (now < 0) return 1;
-        if (executor <= 1 && pending_work == GUARD_WORK_NONE && now >= retirement_after_ms &&
+        if (supervised && executor <= 1 && pending_work == GUARD_WORK_NONE && now >= retirement_after_ms &&
             helper_app_data_absent()) {
+            if (sysexec_reap_pending() || (recovery && adb_recovery_owner_drain())) {
+                if (recovery) adb_recovery_owner_poll(50);
+                continue;
+            }
             // Reap before deleting custody: no socket handler may still write or restore state.
             if (worker > 1) {
                 (void)kill(worker, SIGKILL);
@@ -471,16 +499,19 @@ static int run_supervisor(char **argv, const char *replacement_nonce) {
                 do reaped = waitpid(worker, NULL, 0); while (reaped < 0 && errno == EINTR);
                 if (reaped != worker && errno != ECHILD) return 1;
                 worker = -1;
+                worker_recovery_pending = recovery;
             }
             if (guard_maintenance_retire_uninstalled() == 0) return 0;
             // A reinstall, active Guard plan, lease or Companion restore retains the supervisor.
             // Give its socket worker time to serve recovery/status between refused cleanup attempts.
             retirement_after_ms = now + 1000;
         }
+        if (worker_recovery_pending && recovery) {
+            if (adb_recovery_owner_worker_lost()) { adb_recovery_owner_poll(50); continue; }
+            worker_recovery_pending = 0;
+        }
         if (worker <= 1 && now >= worker_after_ms) {
-            int may_retire_replaced = replacement_nonce == NULL &&
-                guard_maintenance_replacement_safe() == 0;
-            worker = spawn_socket_worker(argv, replacement_nonce, may_retire_replaced);
+            worker = spawn_socket_worker(argc, argv, supervised, replacement_nonce, listener);
             if (worker < 0) worker_after_ms = now + 1000;
         }
         if (worker > 1) {
@@ -488,7 +519,8 @@ static int run_supervisor(char **argv, const char *replacement_nonce) {
             pid_t reaped = waitpid(worker, &status, WNOHANG);
             if (reaped == worker) {
                 worker = -1;
-                if (WIFEXITED(status) && WEXITSTATUS(status) == GUARD_REPLACEMENT_EXIT) {
+                worker_recovery_pending = recovery;
+                if (supervised && WIFEXITED(status) && WEXITSTATUS(status) == GUARD_REPLACEMENT_EXIT) {
                     char nonce[65];
                     if (executor > 1 || pending_work != GUARD_WORK_NONE ||
                         guard_maintenance_replacement_parent_grant(nonce) !=
@@ -504,6 +536,11 @@ static int run_supervisor(char **argv, const char *replacement_nonce) {
                     char *const replacement_env[] = {
                         (char *)"PATH=/system/bin:/system/xbin", NULL,
                     };
+                    if (sysexec_reap_pending() || (recovery && adb_recovery_owner_drain())) {
+                        (void)guard_maintenance_replacement_parent_abort(nonce);
+                        worker_after_ms = now + 1000;
+                        continue;
+                    }
                     execve(APP_HELPER_STAGE, replacement_argv, replacement_env);
                     (void)guard_maintenance_replacement_parent_abort(nonce);
                     worker_after_ms = now + 1000;
@@ -512,6 +549,7 @@ static int run_supervisor(char **argv, const char *replacement_nonce) {
                 worker_after_ms = now + 1000;
             } else if (reaped < 0 && errno != EINTR) {
                 worker = -1;
+                worker_recovery_pending = recovery;
                 worker_after_ms = now + 1000;
             }
         }
@@ -537,7 +575,7 @@ static int run_supervisor(char **argv, const char *replacement_nonce) {
             }
         }
 
-        if (executor <= 1) {
+        if (supervised && executor <= 1) {
             if (pending_work == GUARD_WORK_NONE) {
                 int next = guard_maintenance_supervisor_tick();
                 if (next > 0) pending_work = (enum guard_supervisor_work)next;
@@ -561,8 +599,11 @@ static int run_supervisor(char **argv, const char *replacement_nonce) {
                 }
             }
         }
-        struct timespec pause = { .tv_sec = 0, .tv_nsec = 50000000L };
-        while (nanosleep(&pause, &pause) != 0 && errno == EINTR) { }
+        if (recovery) adb_recovery_owner_poll(50);
+        else {
+            struct timespec pause = { .tv_sec = 0, .tv_nsec = 50000000L };
+            while (nanosleep(&pause, &pause) != 0 && errno == EINTR) { }
+        }
     }
 }
 
@@ -579,13 +620,15 @@ static int run_supervisor_entry(char **argv) {
         char *const replacement_env[] = {
             (char *)"PATH=/system/bin:/system/xbin", NULL,
         };
+        if (sysexec_reap_pending()) return 1;
         execve(APP_HELPER_LIVE, adopted_argv, replacement_env);
         return 1;
     }
-    return run_supervisor(argv, NULL);
+    return run_lifecycle(1, argv, NULL, 1, 0);
 }
 
 int main(int argc, char **argv) {
+    sysexec_set_lifecycle_owner(1);
     if (argc >= 2 && strcmp(argv[1], "--reconcile-stale-replacement") == 0) {
         int result = argc == 2 && geteuid() == 0
             ? guard_maintenance_reconcile_stale_replacement() : -1;
@@ -593,7 +636,10 @@ int main(int argc, char **argv) {
              result == 0 ? "STALE_REPLACEMENT NONE" : "STALE_REPLACEMENT HOLD");
         return result < 0 ? 3 : 0;
     }
-    if (argc == 2 && strcmp(argv[1], "--adb-recovery") == 0) return adb_recovery_main();
+    if (argc == 2 && strcmp(argv[1], "--adb-recovery") == 0) {
+        int result = adb_recovery_bootstrap();
+        return result == 2 ? run_lifecycle(1, argv, NULL, 0, 1) : result;
+    }
     if (argc == 2 && strcmp(argv[1], "--version") == 0) {
         puts(helper_identity());
         return 0;
@@ -612,17 +658,14 @@ int main(int argc, char **argv) {
         char *const replacement_env[] = {
             (char *)"PATH=/system/bin:/system/xbin", NULL,
         };
+        if (sysexec_reap_pending()) return 1;
         execve(APP_HELPER_LIVE, adopted_argv, replacement_env);
         return 5;
     }
     if (argc == 3 && strcmp(argv[1], "--supervise-app-lease") == 0) {
         if (guard_maintenance_replacement_supervisor_adopt_app(argv[2]) != 0) return 6;
-        return run_supervisor(argv, argv[2]);
+        return run_lifecycle(1, argv, argv[2], 1, 0);
     }
     if (argc == 2 && strcmp(argv[1], "--supervise") == 0) return run_supervisor_entry(argv);
-#ifdef HAPANELD_TEST_ALLOW_STALE_OWNER_RETIREMENT
-    return run_daemon(argc, argv, NULL, 1);
-#else
-    return run_daemon(argc, argv, NULL, 0);
-#endif
+    return run_lifecycle(argc, argv, NULL, 0, 0);
 }

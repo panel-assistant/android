@@ -5,7 +5,9 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.res.AssetManager
 import io.panelassistant.android.testsupport.PanelRuntimeRig
-import io.panelassistant.android.util.EnsureWireFixture
+import io.panelassistant.android.util.MainRecoveryWireFixture
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Test
@@ -19,41 +21,39 @@ internal class LocalAdbEnsureFactoryTest : PanelRuntimeRig() {
         override fun getCacheDir(): File { stagingReads++; error("bootstrap must not stage files") }
     }
 
-    @Suppress("UNCHECKED_CAST")
-    private fun bootstrap(runtime: LocalAdbRuntime): Boolean {
-        // Invoke the actual factory callback without starting Android's UI/heartbeat machinery.
-        val callback = LocalAdbRuntime::class.java.getDeclaredField("bootstrap").apply { isAccessible = true }.get(runtime) as () -> Boolean
-        return callback()
-    }
-
-    @Test fun theRealFactoryStartsRecoveryThroughItsIdentityAdmittedHelperWithoutStaging() = runTest {
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test fun theRealFactoryUsesTheMainEndpointWithoutPublishingOrStagingRecovery() = runTest {
         val context = NoStagingContext()
+        val wire = MainRecoveryWireFixture()
         val config = newConfig(MemoryPreferences(), object : ContentResolver(null) {})
-        val wire = EnsureWireFixture()
-        val runtime = LocalAdbRuntime.create(context, backgroundScope, config, wire.client)
-        assertTrue(bootstrap(runtime))
-        assertEquals(listOf(1 to "VERSION", 1 to "BUILDID", 1 to "ADBRECOVERYENSURE"), wire.commands)
-        wire.identity = wire.identity.copy(build = "BUILDID ${"0".repeat(64)}")
-        assertFalse(bootstrap(runtime))
-        assertEquals(listOf(2 to "VERSION", 2 to "BUILDID"), wire.commands.takeLast(2))
+        val runtime = LocalAdbRuntime.create(context, backgroundScope, config, wire.client, StandardTestDispatcher(testScheduler))
+        runtime.session("session", true)
+        val result = (runtime.request("adb.ready", org.json.JSONObject(), { true }).result as org.json.JSONObject)
+        assertTrue(result.getBoolean("ready"))
+        assertTrue(wire.commands.isNotEmpty())
+        wire.commands.groupBy { it.first }.values.forEach { commands ->
+            assertEquals(listOf("VERSION", "BUILDID", "STATUS"), commands.map { it.second })
+        }
         assertEquals(0, context.stagingReads)
     }
 
-    @Test fun theRealFactoryReturnsUnavailableForMissingOldRefusedAndLostHelpersWithoutStaging() = runTest {
-        for (mode in listOf("missing", "old", "refused", "lost")) {
+    @Test fun theRealFactoryReportsOldMissingAndStaleMainHelpersUnavailableWithoutStaging() = runTest {
+        for (mode in listOf("missing", "old", "stale", "lost")) {
             val context = NoStagingContext()
-            val wire = EnsureWireFixture().apply {
+            val wire = MainRecoveryWireFixture().apply {
                 when (mode) {
                     "missing" -> missing = true
-                    "old" -> identity = identity.copy(version = "HELPER version=1.14.0 proto=1.14")
-                    "refused" -> identity = identity.copy(reply = "ADBRECOVERYENSURE UNAVAILABLE\n".toByteArray())
-                    "lost" -> identity = identity.copy(reply = null)
+                    "old" -> version = "HELPER version=1.15.0 proto=1.15"
+                    "stale" -> build = "BUILDID ${"0".repeat(64)}"
+                    "lost" -> beforeOperation = { error("lost main") }
                 }
             }
-            val runtime = LocalAdbRuntime.create(context, backgroundScope, newConfig(MemoryPreferences(), object : ContentResolver(null) {}), wire.client)
-            assertFalse(mode, bootstrap(runtime))
+            val runtime = LocalAdbRuntime.create(context, backgroundScope, newConfig(MemoryPreferences(), object : ContentResolver(null) {}), wire.client, StandardTestDispatcher(testScheduler))
+            runtime.session("session", true)
+            val result = (runtime.request("adb.ready", org.json.JSONObject(), { true }).result as org.json.JSONObject)
+            assertFalse(mode, result.getBoolean("ready"))
             assertEquals(mode, 0, context.stagingReads)
-            assertTrue(wire.commands.none { it.second == "PING" })
+            assertTrue(wire.commands.none { it.second == "ADBRECOVERYENSURE" || it.second == "PING" })
         }
     }
 }

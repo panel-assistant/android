@@ -76,7 +76,7 @@ class AssetSyntaxTest {
             const cfg=window.ConfigurePage={};
             cfg.i18nText=(key,fallback,values)=>String(fallback).replace(/\{([A-Za-z][A-Za-z0-9_]*)\}/g,
               (placeholder,name)=>values&&Object.prototype.hasOwnProperty.call(values,name)?String(values[name]):placeholder);
-            cfg.values={auto_sleep:'true',auto_sleep_source:'home_assistant'};
+            cfg.values={auto_sleep:'true',presence_mode:'home_assistant'};
             cfg.autoSleepStatus=null;cfg.autoSleepLoading=false;cfg.autoSleepRequest=0;
             cfg.autoSleepHistory=null;cfg.autoSleepHistoryLoading=false;cfg.autoSleepHistoryError='';
             cfg.autoSleepHistoryRequest=0;cfg.autoSleepHistoryHours=6;cfg.autoSleepHistoryWaiting=false;
@@ -173,7 +173,7 @@ class AssetSyntaxTest {
               if(timers.some(timer=>!timer.cancelled))process.exit(20);
               if(lines[0].textContent!=='Home Assistant Area: Office')process.exit(22);
               // Panel presence observes its own live status without requesting HA history.
-              cfg.values.auto_sleep_source='panel';
+              cfg.values.presence_mode='automatic';
               const beforePanelHistory=historyCalls;
               statuses=[{enabled:true,source:'panel',phase:'source_unavailable',reason:'all_sources_unavailable'}];
               cfg.invalidateAutoSleepData();cfg.loadAutoSleepData();await flush();

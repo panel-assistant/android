@@ -8,15 +8,12 @@ import java.util.Locale
 import org.json.JSONArray
 import org.json.JSONObject
 
-// Auto-sleep: the opt-in flag, its activity source, compare-and-set writes and the per-area source
+// Auto-sleep: the opt-in flag, its touch delay, compare-and-set writes and the per-area source
 // exclusions.
 
 /** Opt-in activity policy. Physical screen light state and explicit manual screen commands remain
  * separate authorities; this flag only admits the automatic policy runtime. */
 val Config.autoSleep: Boolean get() = boolPref("auto_sleep")
-val Config.autoSleepSource: String get() = prefs.getString("auto_sleep_source", null)
-    ?.takeIf { it in specOf("auto_sleep_source").options }
-    ?: effectiveDefault(specOf("auto_sleep_source"))
 val Config.autoSleepTouchDelaySeconds: Int get() = intPrefInRange("auto_sleep_touch_delay_seconds")
 internal val Config.autoSleepGeneration: Long get() = synchronized(CONFIG_LOCK) {
     prefs.getLong(AUTO_SLEEP_GENERATION_PREF, 0L)
@@ -26,7 +23,6 @@ internal fun Config.setAutoSleep(on: Boolean): AutoSleepWriteResult = synchroniz
     // The caller immediately asks the runtime to refresh, so durability must precede that refresh.
     val generation = nextAutoSleepGenerationLocked()
     if (durableCommit {
-            putString("auto_sleep_source", autoSleepSource)
             putBoolean("auto_sleep", on)
             putLong(AUTO_SLEEP_GENERATION_PREF, generation)
         }

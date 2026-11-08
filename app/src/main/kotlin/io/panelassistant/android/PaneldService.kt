@@ -59,6 +59,7 @@ import io.panelassistant.android.device.LedMechanism
 import io.panelassistant.android.hardware.Rk3576LedController
 import io.panelassistant.android.hardware.SocketLedController
 import io.panelassistant.android.config.Capabilities
+import io.panelassistant.android.config.presenceModeDefault
 import io.panelassistant.android.dashboard.EntityLearningManager
 import io.panelassistant.android.dashboard.EntityLearningRuntime
 import io.panelassistant.android.http.PaneldServer
@@ -278,7 +279,7 @@ internal fun configOwnerRefreshPlan(changedKeys: Set<String>): ConfigOwnerRefres
     val ha = setOf("ha_url", "ha_token", "ha_refresh_token", "ha_token_expiry", "ha_client_id", HaConnectionRoutes.EPOCH_KEY)
     return ConfigOwnerRefreshPlan(
         adaptiveBrightness = changedKeys.any(ha::contains),
-        autoSleep = changedKeys.any((ha + setOf("panel_id", "auto_sleep_source", "auto_sleep_touch_delay_seconds"))::contains),
+        autoSleep = changedKeys.any((ha + setOf("panel_id", PresenceMode.KEY, "auto_sleep_touch_delay_seconds"))::contains),
         logShipping = changedKeys.any(setOf(
             "log_ship_enabled", "log_ship_system_enabled", "log_ship_host", "log_ship_port", "log_ship_protocol",
         )::contains),
@@ -645,6 +646,7 @@ class PaneldService : Service() {
         // Resolve one immutable profile revision before constructing any hardware owner. Activations are
         // restart-bound, so every controller below observes this exact object for the service lifetime.
         profile = resolvedProfile.profile
+        io.panelassistant.android.input.AccessibilityKeyRouter.configure(profile)
         activeProfileIdentity = resolvedProfile.summary.ref.let { "${it.id}@${it.revision}" }
         profileActivationGeneration = resolvedProfile.activationGeneration
         resolvedProfile.issues.forEach { issue ->
@@ -692,12 +694,13 @@ class PaneldService : Service() {
         config.attachProfile(profile)   // supplies per-panel manufacturer/model defaults
         appliedNetworkConfiguration = currentNetworkConfigurationSnapshot()
         sensors = SensorReporter(this, config, profile)
+        sensors.screenDark = { displayPower.screen.currentOffGeneration() != null }
         wifiOutageTracker = WifiOutageTracker(store = wifiStore)
         wifiDiagnostics = AndroidWifiDiagnostics(this, HelperClient::wifiStatus)
         // Shared demand-driven logcat captures (one producer and redaction pass per source): app,
         // system and browser feed the sink and their live viewers. System uses the helper exclusively.
         // Idle-stopped — no logcat runs until something subscribes.
-        logCaptureApp = LogCapture.app(scope)
+        logCaptureApp = LogCapture.app(scope) { profile.knownLogNoise }
         logCaptureSystem = LogCapture.system(
             scope,
             helperLines = { emit ->
@@ -717,6 +720,7 @@ class PaneldService : Service() {
                 }
             },
             helperDump = HelperClient::logcatDump,
+            knownNoise = { profile.knownLogNoise },
         )
         // The dashboard's JavaScript console, read over a CDP relay the user started. Off unless log
         // shipping is configured, and never in Hardened mode, where the relay itself is refused.
@@ -824,7 +828,7 @@ class PaneldService : Service() {
                     refreshToken = login.refreshToken,
                     tokenExpiry = login.expirySec,
                     clientId = CompanionDb.COMPANION_CLIENT_ID,
-                    zoom = CompanionDb.readPageZoom(this, Su)?.coerceIn(50, 300),
+                    zoom = CompanionDb.readPageZoom(this, Su),
                 )
             },
             persist = { borrowed ->
@@ -1551,6 +1555,7 @@ class PaneldService : Service() {
             Capabilities(
                 hasProximity = sensors.hasProximity(),
                 hasLearnedProximity = sensors.hasLearnedProximity(),
+                hasRangedProximity = sensors.hasRangedProximity(),
                 hasLight = sensors.lightChannel() == true,
                 hasTemperature = sensors.hasTemperature(),
                 hasHumidity = sensors.hasHumidity(),
@@ -1588,7 +1593,17 @@ class PaneldService : Service() {
                 canCaptureAndInput = typedShellControlReady,
                 canSetDisplay = typedShellControlReady,
                 canControlBootChime = typedShellControlReady,
-            ).also { cost.work(units = 1) }
+            ).also {
+                cost.work(units = 1)
+                // Config reads the presence default from the last measured sensor capabilities. A panel with no
+                // stored choice whose default this measurement changes refreshes its presence owners, so an
+                // auto-sleep that started before the first measurement does not keep the static default.
+                val previous = PresenceCapabilityHint.capabilities
+                PresenceCapabilityHint.capabilities = it
+                if (previous?.let(::presenceModeDefault) != presenceModeDefault(it) &&
+                    ::config.isInitialized && !config.prefs.contains(PresenceMode.KEY)
+                ) reconfigure(setOf(PresenceMode.KEY))
+            }
         } catch (e: Exception) {
             cost.outcome(FeatureCostOutcome.FAILURE)
             throw e

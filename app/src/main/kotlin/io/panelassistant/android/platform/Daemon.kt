@@ -33,6 +33,10 @@ interface Daemon {
     fun supportsAdbRecoveryEnsure(): Boolean = false
     fun ensureAdbRecovery(): Boolean = false
 
+    /** Main-socket recovery requires protocol 1.16 and this APK's exact helper build. */
+    fun supportsAdbRecovery(): Boolean = false
+    fun adbRecoveryExchange(header: String, payload: ByteArray, timeoutMs: Int, submit: (() -> Unit) -> Boolean): ByteArray? = null
+
     /** Fixed SELF graphics counters; unavailable never falls back to a root shell. */
     fun gfxInfo(): HelperGfxInfo? = null
 

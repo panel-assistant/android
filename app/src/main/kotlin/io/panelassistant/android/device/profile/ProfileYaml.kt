@@ -168,7 +168,7 @@ internal object ProfileYaml {
 
     private val ROOT_KEYS = setOf(
         "schema", "id", "version", "display_name", "soc_class", "soc", "metadata", "requires", "match", "platform", "hardware",
-        "sensors", "identity", "input", "cpu", "display", "provisioning", "setting_defaults",
+        "sensors", "identity", "input", "cpu", "display", "provisioning", "setting_defaults", "logging",
     )
 
     private const val MAX_EVENTS = 20_000
@@ -188,6 +188,7 @@ private class SchemaReader(private val issues: MutableList<ProfileIssue>) {
             "author", "source", "license", "maturity", "tested_firmware", "limitations", "links",
         ), required = true).orEmpty()
         val soc = map(root["soc"], "soc", setOf("model", "introduced_year", "cpu_cores"))
+        val logging = map(root["logging"], "logging", setOf("known_noise"), required = root.containsKey("logging"))
         val requires = map(root["requires"], "requires", setOf("min_core_version", "drivers"), required = true).orEmpty()
         val match = map(root["match"], "match", setOf("priority", "fallback", "any"), required = true).orEmpty()
         val platform = map(root["platform"], "platform", setOf("su_form", "app_can_su", "has_recents", "has_native_navbar", "launcher", "vendor_mdns"), required = true).orEmpty()
@@ -207,7 +208,7 @@ private class SchemaReader(private val issues: MutableList<ProfileIssue>) {
             ) + LEGACY_PROXIMITY_CLASSIFIER_KEYS,
         ).orEmpty()
         val identity = map(root["identity"], "identity", setOf("manufacturer", "model", "model_label_strategy")).orEmpty()
-        val input = map(root["input"], "input", setOf("evdev_buttons", "has_physical_buttons")).orEmpty()
+        val input = map(root["input"], "input", setOf("evdev_buttons", "has_physical_buttons", "proximity_keys")).orEmpty()
         val cpu = map(root["cpu"], "cpu", setOf("governors")).orEmpty()
         val display = map(root["display"], "display", setOf("physical_ppi", "geometry")).orEmpty()
         val provisioning = map(
@@ -254,6 +255,12 @@ private class SchemaReader(private val issues: MutableList<ProfileIssue>) {
             version = string(root, "version", "$", required = true).orEmpty(),
             displayName = string(root, "display_name", "$", required = true).orEmpty(),
             socClass = string(root, "soc_class", "$", required = true).orEmpty(),
+            logging = ProfileLogging(
+                knownNoise = stringList(
+                    logging?.get("known_noise"), "logging.known_noise",
+                    required = logging?.containsKey("known_noise") == true,
+                ),
+            ),
             settingDefaults = map(
                 root["setting_defaults"], "setting_defaults", emptySet(),
                 required = root.containsKey("setting_defaults"), allowAnyKeys = true,
@@ -341,7 +348,7 @@ private class SchemaReader(private val issues: MutableList<ProfileIssue>) {
                 model = string(identity, "model", "identity"),
                 modelLabelStrategy = string(identity, "model_label_strategy", "identity") ?: "display-name",
             ),
-            input = ProfileInput(evdevButtons(input["evdev_buttons"]), boolean(input, "has_physical_buttons", "input")),
+            input = ProfileInput(evdevButtons(input["evdev_buttons"]), boolean(input, "has_physical_buttons", "input"), proximityKeys(input["proximity_keys"])),
             cpu = ProfileCpu(governors(cpu["governors"])),
             display = ProfileDisplay(
                 physicalPpi = integer(display, "physical_ppi", "display"),
@@ -400,14 +407,26 @@ private class SchemaReader(private val issues: MutableList<ProfileIssue>) {
 
     private fun evdevButtons(value: Any?): List<ProfileEvdevButton> = list(value, "input.evdev_buttons").mapIndexed { index, item ->
         val path = "input.evdev_buttons[$index]"
-        val map = map(item, path, setOf("node", "code", "grab", "event_type", "sw", "release"), required = true).orEmpty()
+        val map = map(item, path, setOf("node", "device_name", "code", "grab", "event_type", "sw", "release"), required = true).orEmpty()
         ProfileEvdevButton(
-            node = string(map, "node", path, required = true).orEmpty(),
+            node = string(map, "node", path).orEmpty(),
             code = integer(map, "code", path, required = true) ?: 0,
             grab = boolean(map, "grab", path, required = true) ?: false,
             eventType = string(map, "event_type", path, required = true).orEmpty(),
             sw = boolean(map, "sw", path) ?: false,
             release = boolean(map, "release", path) ?: false,
+            deviceName = string(map, "device_name", path),
+        )
+    }
+
+    private fun proximityKeys(value: Any?): ProfileProximityKeys? {
+        if (value == null) return null
+        val path = "input.proximity_keys"
+        val fields = map(value, path, setOf("device_name", "near_code", "far_code"), required = true).orEmpty()
+        return ProfileProximityKeys(
+            string(fields, "device_name", path, required = true).orEmpty(),
+            integer(fields, "near_code", path, required = true) ?: 0,
+            integer(fields, "far_code", path, required = true) ?: 0,
         )
     }
 
@@ -727,6 +746,7 @@ internal fun ProfileDocument.toYamlMap(): Map<String, Any?> = linkedMapOf(
     "display_name" to displayName,
     "soc_class" to socClass,
     "setting_defaults" to settingDefaults.takeIf { it.isNotEmpty() },
+    "logging" to logging.knownNoise.takeIf { it.isNotEmpty() }?.let { linkedMapOf("known_noise" to it) },
     "soc" to soc?.let {
         linkedMapOf(
             "model" to it.model,
@@ -833,9 +853,10 @@ internal fun ProfileDocument.toYamlMap(): Map<String, Any?> = linkedMapOf(
     ).withoutNullValues(),
     "input" to linkedMapOf(
         "evdev_buttons" to input.evdevButtons.map {
-            linkedMapOf("node" to it.node, "code" to it.code, "grab" to it.grab, "event_type" to it.eventType, "sw" to it.sw, "release" to it.release)
+            linkedMapOf("node" to it.node.takeIf(String::isNotEmpty), "device_name" to it.deviceName, "code" to it.code, "grab" to it.grab, "event_type" to it.eventType, "sw" to it.sw, "release" to it.release).withoutNullValues()
         },
         "has_physical_buttons" to input.hasPhysicalButtons,
+        "proximity_keys" to input.proximityKeys?.let { linkedMapOf("device_name" to it.deviceName, "near_code" to it.nearCode, "far_code" to it.farCode) },
     ).withoutNullValues(),
     "cpu" to linkedMapOf("governors" to cpu.governors).withoutNullValues(),
     "display" to linkedMapOf(

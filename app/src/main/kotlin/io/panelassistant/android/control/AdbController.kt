@@ -14,7 +14,6 @@ import io.panelassistant.android.platform.RootShell
 import io.panelassistant.android.util.AccessDenialMemo
 import io.panelassistant.android.util.DurableRecoveryMarker
 import java.io.File
-import java.io.InputStream
 import java.nio.channels.FileChannel
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -566,27 +565,10 @@ private fun systemPropertyAreaDenied(fixedName: String): Boolean {
     return AccessDenialMemo.openDenied("$PROPERTY_AREA_DIR/$context")
 }
 
+private val directAdbCommands = DirectAppCommands()
+
 private fun runGetprop(vararg fixedArguments: String): String? =
-    runCatching {
-        val process = ProcessBuilder(SYSTEM_GETPROP, *fixedArguments)
-            .redirectErrorStream(true)
-            .start()
-        try {
-            if (!process.waitFor(PROPERTY_READ_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
-                process.destroy()
-                if (!process.waitFor(PROPERTY_DESTROY_GRACE_MS, TimeUnit.MILLISECONDS)) {
-                    process.destroyForcibly()
-                }
-                return@runCatching null
-            }
-            if (process.exitValue() != 0) return@runCatching null
-            readBounded(process.inputStream, MAX_PROPERTY_OUTPUT_BYTES)?.trim()
-        } finally {
-            runCatching { process.inputStream.close() }
-            runCatching { process.errorStream.close() }
-            runCatching { process.outputStream.close() }
-        }
-    }.getOrNull()
+    directAdbCommands.getprop(*fixedArguments)
 
 private fun readTcpListenerInventoryDirect(path: String): String? {
     val fixedPath = NETWORK_ADB_TCP_INVENTORIES.firstOrNull { it == path } ?: return null
@@ -594,50 +576,12 @@ private fun readTcpListenerInventoryDirect(path: String): String? {
         key = "file:$fixedPath",
         what = "Kernel socket table $fixedPath",
         probeDenied = { AccessDenialMemo.openDenied(fixedPath) },
-    ) { readFixedCommand(fixedArgument = fixedPath, maxBytes = MAX_TCP_INVENTORY_BYTES) }
+    ) { directAdbCommands.tcpInventory(fixedPath) }
 }
 
-private fun readFixedCommand(fixedArgument: String, maxBytes: Int): String? = runCatching {
-    val process = ProcessBuilder(SYSTEM_CAT, fixedArgument)
-        .redirectErrorStream(true)
-        .start()
-    try {
-        if (!process.waitFor(PROPERTY_READ_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
-            process.destroy()
-            if (!process.waitFor(PROPERTY_DESTROY_GRACE_MS, TimeUnit.MILLISECONDS)) process.destroyForcibly()
-            return@runCatching null
-        }
-        if (process.exitValue() != 0) return@runCatching null
-        readBounded(process.inputStream, maxBytes)
-    } finally {
-        runCatching { process.inputStream.close() }
-        runCatching { process.errorStream.close() }
-        runCatching { process.outputStream.close() }
-    }
-}.getOrNull()
-
-private fun readBounded(input: InputStream, maxBytes: Int): String? {
-    val bytes = ByteArray(maxBytes + 1)
-    var size = 0
-    while (size < bytes.size) {
-        val read = input.read(bytes, size, bytes.size - size)
-        if (read < 0) break
-        if (read == 0) continue
-        size += read
-    }
-    if (size > maxBytes) return null
-    return String(bytes, 0, size, Charsets.UTF_8)
-}
-
-private const val SYSTEM_GETPROP = "/system/bin/getprop"
-private const val SYSTEM_CAT = "/system/bin/cat"
 private const val PROPERTY_AREA_DIR = "/dev/__properties__"
 private val PROPERTY_CONTEXT = Regex("u:object_r:[a-z0-9_]+:s0")
-private const val PROPERTY_READ_TIMEOUT_MS = 1_000L
-private const val PROPERTY_DESTROY_GRACE_MS = 100L
 private const val NETWORK_ADB_DISABLE_MARKER_FILE = "network-adb-disable.v1"
-private const val MAX_PROPERTY_OUTPUT_BYTES = 128
-private const val MAX_TCP_INVENTORY_BYTES = 64 * 1024
 private const val TCP_LISTEN_STATE = "0A"
 private val NETWORK_ADB_TCP_INVENTORIES = listOf("/proc/net/tcp", "/proc/net/tcp6")
 internal const val NETWORK_ADB_INITIAL_SETTLE_MS = 1_000L

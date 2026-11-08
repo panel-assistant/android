@@ -398,6 +398,71 @@
       "state": "machine-cross-checked",
       "text": "结果，"
     },
+    "configure.auto_sleep.sensors_add": {
+      "text": "添加传感器",
+      "sourceHash": "c3719757d0a8743516c909067acee8412b6dd73bf87b9f3e0e7e7bd06bc958a4",
+      "state": "machine-cross-checked"
+    },
+    "configure.auto_sleep.sensors_add_placeholder": {
+      "text": "添加传感器…",
+      "sourceHash": "c01bf6a5e947b21ddaa11d9c55f70a1c5a7a1008f4c99f648a4b151596ea9446",
+      "state": "machine-cross-checked"
+    },
+    "configure.auto_sleep.sensors_automatic": {
+      "text": "自动：使用此面板所在区域的移动、占用和存在传感器。",
+      "sourceHash": "26feb6e1dd1692c1088699da59c69d419a4a560d9003d7b13d55fdaa0aa6a172",
+      "state": "machine-cross-checked"
+    },
+    "configure.auto_sleep.sensors_automatic_button": {
+      "text": "恢复自动选择",
+      "sourceHash": "0c2860d83d0aee5e24f2d2b0526f8c9cc50cb80afa7561f76d13e024268b7fd2",
+      "state": "machine-cross-checked"
+    },
+    "configure.auto_sleep.sensors_chosen": {
+      "text": "仅使用你选择的传感器。",
+      "sourceHash": "9f5e510037a2a93562df4b14964a3f40acf684b214a4b21a0917aaec8f82f977",
+      "state": "machine-cross-checked"
+    },
+    "configure.auto_sleep.sensors_heading": {
+      "text": "活动传感器",
+      "sourceHash": "16a1447a97a8af410448f80ffaa142400203b1418cf79b08a267b0098fed5dae",
+      "state": "machine-cross-checked"
+    },
+    "configure.auto_sleep.sensors_loading": {
+      "text": "正在加载 Home Assistant 传感器…",
+      "sourceHash": "0f67f35d081bbb09480fce2cd2e130578f12eb44beea35b70135df3efcbbbb02",
+      "state": "machine-cross-checked"
+    },
+    "configure.auto_sleep.sensors_missing": {
+      "text": "在 Home Assistant 中未找到",
+      "sourceHash": "e97d16f2c8d31cd8979a414f4bdb414e15a640666bdfc3b38fb8e190e5d17afc",
+      "state": "machine-cross-checked"
+    },
+    "configure.auto_sleep.sensors_no_area": {
+      "text": "无区域",
+      "sourceHash": "3fd59f11b54e96933a2b02aa304ac4702497072e362651bddfe49cffc8ba393d",
+      "state": "machine-cross-checked"
+    },
+    "configure.auto_sleep.sensors_remove": {
+      "text": "移除",
+      "sourceHash": "c3812fc4acb861d5182fc2b8155f327f736fbe5e5eb86a7bd7afcb6dc5497282",
+      "state": "machine-cross-checked"
+    },
+    "configure.auto_sleep.sensors_remove_label": {
+      "text": "移除 {name}",
+      "sourceHash": "e6a3c4a1250a6ad3f10faa22333e5e50a6ba78e5b28a3b26f5743d9f8c7ede93",
+      "state": "machine-cross-checked"
+    },
+    "configure.auto_sleep.sensors_save_failed": {
+      "text": "无法保存传感器选择。",
+      "sourceHash": "8a6e7cb4d77b0e4c381253d461449d25d7661efa7f6144e59630b4cb3e8db0a4",
+      "state": "machine-cross-checked"
+    },
+    "configure.auto_sleep.sensors_unavailable": {
+      "text": "Home Assistant 传感器列表不可用。",
+      "sourceHash": "2fdb70ec1722643de3eab6b56b215c69b8e2227d7d3a3fe54e9f9de384f18a34",
+      "state": "machine-cross-checked"
+    },
     "configure.auto_sleep.setup_proximity": {
       "text": "在面板上设置接近感应",
       "sourceHash": "e2e988d28e2af97b8efe9904775644d54099e54fd770cc808cd5b2f20a597c9c",
@@ -1607,6 +1672,11 @@
       "sourceHash": "5617ef29cda6cf1af481ca3fdc7ef3c37b65981f0dcb67f0d58fd4e81e76eb18",
       "state": "machine-cross-checked",
       "text": "请按照面板上的说明操作。设置完成前，请保持浏览器标签页打开；可以将其置于后台。"
+    },
+    "configure.proximity.setup.learning": {
+      "text": "通过日常触摸学习；设置为可选",
+      "sourceHash": "6bdb563b7598b760041ba87ad31015e408b6b83eb2a2b7d5a79725271ef02865",
+      "state": "machine-cross-checked"
     },
     "configure.proximity.setup.local": {
       "sourceHash": "8f6597024bf8630ed4a363b1614be8f5feb965be8e1b86ff1b7b6569710454b7",
@@ -10013,19 +10083,44 @@
       "sourceHash": "505de923eb7e143bb6607cc1871c1616f853d12d28fc40a81d3198e0c6477af3",
       "state": "machine-cross-checked"
     },
-    "settings.auto_sleep_source.help": {
-      "text": "使用面板已校准的接近传感器、Home Assistant 区域设备或触摸空闲。\n\n- 存在检测模式的来源不可用时，该模式会暂停。\n- 触摸空闲无需设置存在检测。",
-      "sourceHash": "b6ae4c9d0c2cbf29bbffafdd847901cea10c18e91e16d77c7716ae108fb0284d",
+    "settings.presence_mode.help": {
+      "text": "面板如何判断附近是否有人。触摸屏幕始终视为有人在场。\n\n- **自动**根据你的触摸校准接近传感器。\n- **Home Assistant 设备**使用面板所在 Home Assistant 区域的存在设备。没有可用设备时，使用触摸后的延迟时间。\n- **手动**使用你通过校准向导记录的读数。\n- **混合**以向导读数为起点，并继续根据触摸学习。\n- **关闭**不使用存在检测；自动休眠会在触摸延迟时间结束后关闭屏幕。",
+      "sourceHash": "29f58d54686b32bedf4ae556bb9c514cce2051c80216e2d801ee321db3bf8741",
       "state": "machine-cross-checked"
     },
-    "settings.auto_sleep_source.label": {
-      "text": "自动休眠活动来源",
-      "sourceHash": "485e78dd0ccd45757ad048f9805f4fe39b1260890bb7d0364b2c8d07caa926c1",
+    "settings.presence_mode.label": {
+      "text": "在场感应",
+      "sourceHash": "d6b3e8c828d3742089ed59ebbfd89492ec2ce0bc89a19294cae52a6ac233b244",
       "state": "machine-cross-checked"
     },
-    "settings.auto_sleep_source.summary": {
-      "text": "存在检测来源：接近传感器、区域或触摸。",
-      "sourceHash": "010e147baf066c010fda07e439cca24c3f59a22a7564b8450354fa5e8f716b33",
+    "settings.presence_mode.summary": {
+      "text": "面板如何判断附近是否有人。",
+      "sourceHash": "237dd010ba3255b755bbfbf406c792b8965cdb630aaf68867e83188bd2421e3f",
+      "state": "machine-cross-checked"
+    },
+    "configure.enum.presence_mode.automatic": {
+      "text": "自动",
+      "sourceHash": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
+      "state": "machine-cross-checked"
+    },
+    "configure.enum.presence_mode.home_assistant": {
+      "text": "Home Assistant 设备",
+      "sourceHash": "0e7822ccc39d40e601271e0a49edbfca5d441f5e6be7a5f018d362664b6c63be",
+      "state": "machine-cross-checked"
+    },
+    "configure.enum.presence_mode.manual": {
+      "text": "手动",
+      "sourceHash": "b0b9fe24ffa9629125bdc59b122f80d605ab604eb1b74485c2f2ecfde26576ae",
+      "state": "machine-cross-checked"
+    },
+    "configure.enum.presence_mode.hybrid": {
+      "text": "混合",
+      "sourceHash": "6c67dc13f83949fe089ca86225b136b5f40ac5268ebf92fbefe45f1f94e8064b",
+      "state": "machine-cross-checked"
+    },
+    "configure.enum.presence_mode.off": {
+      "text": "关闭",
+      "sourceHash": "ca7981b46ecf2c1787b6d76d81d9fd7fa0ca95842e2fcc2a452869891a9334d1",
       "state": "machine-cross-checked"
     },
     "settings.camera_enabled.help": {
@@ -12134,8 +12229,8 @@
       "state": "machine-cross-checked"
     },
     "settings.auto_sleep_touch_delay_seconds.help": {
-      "text": "选择触摸空闲后，连续指定秒数未触摸时完全关闭屏幕。",
-      "sourceHash": "2859a764da776afae021acb6fc0c9719b3c9b382f0a2e10d3d9031eaa4a1409c",
+      "text": "当“在场感应”设为“关闭”，或“Home Assistant 设备”没有可用设备时，在连续这么多秒没有触摸后完全关闭屏幕。",
+      "sourceHash": "754ff4d9a8ed0b627c9067527d343515102816904199b50efc97091db15a46d5",
       "state": "machine-cross-checked"
     },
     "settings.auto_sleep_touch_delay_seconds.summary": {
@@ -12201,6 +12296,21 @@
     "install.approval.expired": {
       "text": "未开始：未在面板上及时批准。未做任何更改。",
       "sourceHash": "e07cad6b74d46511394598dd94d73f230e86d71c2c4e5ede5891d53694ce85b1",
+      "state": "machine-cross-checked"
+    },
+    "shell.runtime.ha_network_echo_evidence": {
+      "text": "第95百分位 {p95Ms} 毫秒，在 {burstCount} 轮中有 {missCount} 次网络检查未收到回复，共 {probeCount} 次",
+      "sourceHash": "e0be4e0f11a38e2bb80f14fc572e87f6c58ed19239d135c9ab19a13748b4b00c",
+      "state": "machine-cross-checked"
+    },
+    "shell.runtime.ha_network_echo_no_reply": {
+      "text": "无回复，在 {burstCount} 轮中有 {missCount} 次网络检查未收到回复，共 {probeCount} 次",
+      "sourceHash": "bdd1a4e418c8f95e7f9470f012c6f1497656821a6ea2ce4df4051d7f2ed97362",
+      "state": "machine-cross-checked"
+    },
+    "shell.runtime.ha_network_with_evidence": {
+      "text": "{verdict}；{evidence}",
+      "sourceHash": "df42587b95447408d7bf60f413e8cb0921c3523565e128b86c4c07893776ae37",
       "state": "machine-cross-checked"
     }
   }

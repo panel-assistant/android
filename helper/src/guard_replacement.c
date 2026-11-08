@@ -52,9 +52,15 @@ int guard_maintenance_replacement_parent_abort(const char nonce[65]) {
         replacement_boot_current(&replacement) && replacement_old_caller_exact(&replacement) == 0;
     int removed = safe && unlinkat(dir, GUARD_REPLACEMENT, 0) == 0 && fsync(dir) == 0;
     if (dir >= 0) close(dir);
-    close(GUARD_REPLACEMENT_LEASE_FD);
+    /* FD3 may itself be the authoritative owner (including after adoption). Abort
+     * revokes its exec inheritance, never the continuing supervisor's flock. */
+    int revoked = 1;
+    if (guard_owner_fd == GUARD_REPLACEMENT_LEASE_FD) {
+        int flags = fcntl(guard_owner_fd, F_GETFD, 0);
+        revoked = flags >= 0 && fcntl(guard_owner_fd, F_SETFD, flags | FD_CLOEXEC) == 0;
+    } else close(GUARD_REPLACEMENT_LEASE_FD);
     pthread_mutex_unlock(&guard_lock);
-    return removed ? 0 : -1;
+    return removed && revoked ? 0 : -1;
 }
 
 static int adopt_replacement_lease(const char nonce[65], guard_replacement *replacement,

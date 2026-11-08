@@ -318,6 +318,92 @@ class HelperClientIdentityTest {
         assertEquals(" at App.one(App.java:1)", reader.readLine())
         assertEquals("", reader.readLine())
     }
+
+    @Test
+    fun admittedLogcatStreamResumesAfterIdleErrnoWithoutLosingUtf8OrReopening() {
+        val payload = "[ 1790592713.123 123: 456 W/Vendor ]\n温度\n\n".toByteArray()
+        val utf8Pause = payload.indexOf(0xe6.toByte()) + 1
+        val pauses = mutableSetOf(0, utf8Pause, payload.size - 1)
+        var index = 0
+        val source = object : java.io.InputStream() {
+            override fun read(): Int {
+                if (pauses.remove(index)) throw errno(android.system.OsConstants.EAGAIN)
+                return if (index == payload.size) -1 else payload[index++].toInt() and 0xff
+            }
+            override fun read(bytes: ByteArray, offset: Int, length: Int): Int {
+                // A syscall returns already-available bytes before reporting idle on a later read.
+                var count = 0
+                while (count < length) {
+                    if (count > 0 && (index in pauses || index == payload.size)) break
+                    val next = read()
+                    if (next < 0) return if (count == 0) -1 else count
+                    bytes[offset + count++] = next.toByte()
+                }
+                return count
+            }
+        }
+        val transport = FakeHelperTransport(FakeGeneration(
+            lineReplies = mapOf("LOGCATCAPS" to "LOGCATCAPS 1"), logcatInput = java.io.BufferedInputStream(source, 4096),
+        ))
+        val opened = assertIs<HelperLogcatOpenResult.Open>(IdentityAdmittingHelperClient(transport).openLogcat())
+        val lines = mutableListOf<String>()
+        var timeouts = 0
+        opened.stream.use { stream ->
+            while (true) {
+                val line = try { stream.readLine() } catch (_: java.net.SocketTimeoutException) {
+                    timeouts++
+                    continue
+                } ?: break
+                lines += line
+            }
+        }
+        assertEquals(listOf("[ 1790592713.123 123: 456 W/Vendor ]", "温度", ""), lines)
+        assertEquals(3, timeouts)
+        assertEquals(1, transport.bootstrapCommands.size)
+        assertEquals(1, transport.closedSessions.size)
+    }
+
+    @Test
+    fun admittedLogcatStreamPropagatesHardErrnoAndCloseUnblocksItsReader() {
+        val entered = java.util.concurrent.CountDownLatch(1)
+        val closed = java.util.concurrent.CountDownLatch(1)
+        val source = object : java.io.InputStream() {
+            override fun read(): Int {
+                entered.countDown()
+                check(closed.await(2, TimeUnit.SECONDS))
+                throw errno(android.system.OsConstants.EAGAIN + 100)
+            }
+            override fun close() { closed.countDown() }
+        }
+        val transport = FakeHelperTransport(FakeGeneration(
+            lineReplies = mapOf("LOGCATCAPS" to "LOGCATCAPS 1"), logcatInput = java.io.BufferedInputStream(source, 4096),
+        ))
+        val stream = assertIs<HelperLogcatOpenResult.Open>(IdentityAdmittingHelperClient(transport).openLogcat()).stream
+        val executor = Executors.newSingleThreadExecutor()
+        try {
+            val result = executor.submit<Throwable?> {
+                try { stream.readLine(); null } catch (failure: Throwable) { failure }
+            }
+            assertTrue(entered.await(2, TimeUnit.SECONDS))
+            stream.close()
+            val failure = assertIs<IOException>(result.get(2, TimeUnit.SECONDS))
+            assertFalse(failure is java.net.SocketTimeoutException)
+            assertIs<android.system.ErrnoException>(failure.cause)
+            assertEquals(1, transport.closedSessions.size)
+        } finally {
+            stream.close()
+            executor.shutdownNow()
+        }
+    }
+
+    private fun errno(number: Int): android.system.ErrnoException =
+        android.system.ErrnoException("read", number).also {
+            // android.jar's host constructor is a no-op; retain the real platform errno field.
+            android.system.ErrnoException::class.java.getDeclaredField("errno").apply {
+                isAccessible = true
+                setInt(it, number)
+            }
+        }
     @Test
     fun parsesCurrentAndForwardCompatibleIdentity() {
         assertEquals(
@@ -772,6 +858,7 @@ private data class FakeGeneration(
     val bytesReplies: Map<String, ByteArray?> = emptyMap(),
     val lineReplies: Map<String, String?> = emptyMap(),
     val streamReply: DaemonStreamResult = DaemonStreamResult.Reply("OK"),
+    val logcatInput: java.io.InputStream? = null,
 ) {
     @Volatile var afterVersion: (() -> Unit)? = null
     @Volatile var afterPing: (() -> Unit)? = null
@@ -800,6 +887,7 @@ private class FakeHelperTransport(initial: FakeGeneration = FakeGeneration()) : 
     override fun open(): HelperCommandSession {
         val session = sessions.incrementAndGet()
         val snapshot = generation
+        val logcatReader = snapshot.logcatInput?.let(::HelperLogcatLineReader)
         return object : HelperCommandSession {
             override fun bootstrap(command: String, deadline: MonotonicDeadline): HelperBootstrapReply {
                 bootstrapCommands += RecordedCommand(session, snapshot.id, command)
@@ -831,7 +919,7 @@ private class FakeHelperTransport(initial: FakeGeneration = FakeGeneration()) : 
                 return snapshot.bytesReplies.getOrElse(cmd) { byteArrayOf(1, 2, 3) }
             }
 
-            override fun readLogcatLine(): String? = null
+            override fun readLogcatLine(): String? = logcatReader?.readLine()
 
             override fun backupCompanion(
                 packageName: String,
@@ -853,7 +941,7 @@ private class FakeHelperTransport(initial: FakeGeneration = FakeGeneration()) : 
                 return CompanionHelperProtocol.RestoreResult.COMMITTED
             }
 
-            override fun close() { closedSessions += session }
+            override fun close() { snapshot.logcatInput?.close(); closedSessions += session }
         }
     }
 

@@ -202,3 +202,14 @@ int __wrap_execve(const char *path,char *const argv[],char *const env[]) {
     return __real_execve(path,argv,env);
 }
 #endif
+
+/* Preserve the legacy independent recovery engine in these compatibility cases. The current
+ * production --adb-recovery entry bootstraps the merged main owner and refuses its replacement. */
+#ifdef RECOVERY_REPLACEMENT_STANDALONE_ENTRY
+#include "adb_recovery.h"
+int __real_main(int, char **);
+int __wrap_main(int argc, char **argv) {
+    if (argc == 2 && !strcmp(argv[1], "--adb-recovery")) return adb_recovery_main();
+    return __real_main(argc, argv);
+}
+#endif

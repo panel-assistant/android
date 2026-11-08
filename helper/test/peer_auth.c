@@ -70,6 +70,8 @@ int guard_maintenance_supervisor_complete(enum guard_supervisor_work work,
         enum guard_execution_result result, int status) {
     (void)work; (void)result; (void)status; return -1;
 }
+void sysexec_set_lifecycle_owner(int enabled) { (void)enabled; }
+int sysexec_reap_pending(void) { return 0; }
 int sysexec_poll_argv(pid_t pid, int *status) { (void)pid; (void)status; return -1; }
 int sysexec_terminate_argv(pid_t pid, int *status) { (void)pid; (void)status; return -1; }
 
@@ -107,7 +109,9 @@ static int accept_loop_rejects_unrelated_uid(void) {
     pid_t daemon = fork();
     if (daemon == 0) {
         char *argv[] = { "hapaneld-helper", NULL };
-        _exit(run_daemon(1, argv, NULL, 0));
+        int listener = open_main_listener(0);
+        if (listener < 0) _exit(1);
+        _exit(run_daemon(1, argv, NULL, listener));
     }
     if (daemon < 0) return 1;
     int root_bytes = -1;

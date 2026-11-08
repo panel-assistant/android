@@ -114,15 +114,17 @@ internal class PathProbeHistory(
         // keeps a single spike diagnostic rather than alarming.
         val overSevere = rtts.count { it > severeLatencyMs }
         val overWarn = rtts.count { it > warnLatencyMs }
+        val evidence = aggregate()
+        fun verdict(severity: HaNetworkPathSeverity, cause: PathProbeCause) = Verdict(severity, cause, evidence)
         return when {
-            consecutiveDead >= severeConsecutiveDead -> Verdict(HaNetworkPathSeverity.SEVERE, PathProbeCause.LOSS)
-            lossPercent > severeLossPercent -> Verdict(HaNetworkPathSeverity.SEVERE, PathProbeCause.LOSS)
+            consecutiveDead >= severeConsecutiveDead -> verdict(HaNetworkPathSeverity.SEVERE, PathProbeCause.LOSS)
+            lossPercent > severeLossPercent -> verdict(HaNetworkPathSeverity.SEVERE, PathProbeCause.LOSS)
             HaNetworkPath.exceedsShare(overSevere, rtts.size) ->
-                Verdict(HaNetworkPathSeverity.SEVERE, PathProbeCause.LATENCY)
-            lossPercent > warnLossPercent -> Verdict(HaNetworkPathSeverity.WARNING, PathProbeCause.LOSS)
+                verdict(HaNetworkPathSeverity.SEVERE, PathProbeCause.LATENCY)
+            lossPercent > warnLossPercent -> verdict(HaNetworkPathSeverity.WARNING, PathProbeCause.LOSS)
             HaNetworkPath.exceedsShare(overWarn, rtts.size) ->
-                Verdict(HaNetworkPathSeverity.WARNING, PathProbeCause.LATENCY)
-            else -> Verdict(HaNetworkPathSeverity.HEALTHY, PathProbeCause.NONE)
+                verdict(HaNetworkPathSeverity.WARNING, PathProbeCause.LATENCY)
+            else -> verdict(HaNetworkPathSeverity.HEALTHY, PathProbeCause.NONE)
         }
     }
 
@@ -146,7 +148,11 @@ internal class PathProbeHistory(
     }
 
     /** A layer-3 verdict and the evidence class that raised it. */
-    data class Verdict(val severity: HaNetworkPathSeverity, val cause: PathProbeCause)
+    data class Verdict(
+        val severity: HaNetworkPathSeverity,
+        val cause: PathProbeCause,
+        val evidence: Aggregate,
+    )
 
     data class Aggregate(
         val availability: PathProbeAvailability,

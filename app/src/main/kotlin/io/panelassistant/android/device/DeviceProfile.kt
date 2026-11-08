@@ -37,6 +37,9 @@ interface DeviceProfile {
     /** Validated canonical setting defaults, used only while a registry key has no stored value. */
     val settingDefaults: Map<String, String> get() = emptyMap()
 
+    /** Core-owned log-noise rules evidenced for this profile; unknown hardware filters nothing. */
+    val knownLogNoise: Set<String> get() = emptySet()
+
     /** Optional profile-evidenced SoC model, CPU topology and introduction year. */
     val soc: ProfileSoc? get() = null
 
@@ -64,7 +67,7 @@ interface DeviceProfile {
             screenOff == ScreenOff.DAEMON_BLPOWER ||
             hasButtonBacklight ||
             proximityGpio != null ||
-            evdevButtons.isNotEmpty()
+            evdevButtons.any { it.deviceName == null }
 
     /** Curated, annotated packages for THIS panel's "Recommended" list in the Vendor-packages card — each a
      *  [TameCandidate] carrying its tags (e.g. "vendor"/"chipset"/"test"/"overlay") and a one-line note from
@@ -199,6 +202,7 @@ interface DeviceProfile {
     /** GPIO number of a raw binary proximity line streamed by the root helper for panels whose Android
      *  `SensorManager` proximity is absent or registers but never delivers events. Scale and polarity require an explicit calibration or a corroborated profile baseline. Null selects the `SensorManager` source. */
     val proximityGpio: Int? get() = null
+    val proximityKeys: io.panelassistant.android.device.profile.ProfileProximityKeys? get() = null
 
     /** Declared ambient-light-sensor technology (e.g. "Ambient light (ALS)"), or null if unknown. */
     val lightTech: String? get() = null
@@ -435,6 +439,7 @@ data class EvdevButton(
     val sw: Boolean = false,
     /** Also emit on the up edge as `<eventType>_RELEASED`. Off by default (press-only). */
     val release: Boolean = false,
+    val deviceName: String? = null,
 )
 
 /**

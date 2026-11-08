@@ -54,4 +54,6 @@
     <string name="voice_step_understood">已理解</string>
     <string name="voice_step_answered">已回答</string>
     <string name="voice_heard">“%1$s”</string>
+    <string name="network_chip_echoes_lost">发往 Home Assistant 的网络检查丢失 %1$d 次，共 %2$d 次检查，分 %3$d 轮进行</string>
+    <string name="network_chip_echo_time">发往 Home Assistant 的网络检查耗时 p95 为 %1$s</string>
 </resources>

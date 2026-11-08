@@ -795,7 +795,7 @@ class ConfigTransactionTest {
         assertFalse("the update first restores navigation", config.dashboardNativeKiosk)
         config.setRaw(requireNotNull(SettingsRegistry.spec("dashboard_native_kiosk")), "true")
         // A later build sees this schema marker, so it must keep the new explicit choice.
-        assertEquals(17, prefs.values["config_schema"])
+        assertEquals(SettingsRegistry.SCHEMA, prefs.values["config_schema"])
         assertTrue(Config(prefs.instance).migrateLiveStore())
         assertTrue(Config(prefs.instance).dashboardNativeKiosk)
     }
@@ -830,7 +830,7 @@ class ConfigTransactionTest {
     }
 
     @Test fun autoSleepSavedOverHttpRefreshesTheControllerOnceBeforeTheBridgeRuns() {
-        val config = Config(fakePreferences(initial = mapOf("auto_sleep_source" to "touch")).instance)
+        val config = Config(fakePreferences(initial = mapOf(PresenceMode.KEY to "off")).instance)
         val spec = requireNotNull(SettingsRegistry.spec("auto_sleep"))
         val refreshes = mutableListOf<Boolean>()
         val refresh = { refreshes += config.autoSleep }
@@ -845,90 +845,93 @@ class ConfigTransactionTest {
         assertEquals(listOf(true, false), refreshes)
     }
 
-    @Test fun localPresenceIsTheFreshDefaultAndSurvivesEnablingAndRestart() {
-        val prefs = fakePreferences()
-        val config = Config(prefs.instance)
-        assertEquals("panel", config.autoSleepSource)
-        assertEquals(AutoSleepWriteResult.COMMITTED, config.setAutoSleep(true))
-        assertEquals("panel", Config(prefs.instance).autoSleepSource)
+    /** A store last written at schema 17, which still carried the auto-sleep activity source. */
+    private fun schema17Store(vararg values: Pair<String, Any>) =
+        fakePreferences(initial = mapOf<String, Any>("config_schema" to 17, *values))
+
+    private fun migratedPresence(prefs: FakePreferences): Pair<String?, Boolean> {
+        assertTrue(Config(prefs.instance).migrateLiveStore())
+        assertFalse(prefs.values.containsKey(SettingsRegistry.LEGACY_AUTO_SLEEP_SOURCE_KEY))
+        assertEquals(SettingsRegistry.SCHEMA, prefs.values["config_schema"])
+        return prefs.values[PresenceMode.KEY] as String? to prefs.values.containsKey(LEGACY_PANEL_PRESENCE_PENDING_PREF)
     }
 
-    @Test fun legacyEnabledAutoSleepPreservesHaThroughDisableAndRestart() {
-        val prefs = fakePreferences(initial = mapOf("auto_sleep" to true))
-        val config = Config(prefs.instance)
-        assertEquals("home_assistant", config.autoSleepSource)
-        assertEquals(AutoSleepWriteResult.COMMITTED, config.setAutoSleep(false))
-        assertEquals("home_assistant", Config(prefs.instance).autoSleepSource)
-        assertEquals("home_assistant", config.getRaw(SettingsRegistry.spec("auto_sleep_source")!!))
+    @Test fun schema18CarriesHomeAssistantAndTouchSourcesIntoThePresenceMode() {
+        assertEquals("home_assistant" to false, migratedPresence(schema17Store("auto_sleep_source" to "home_assistant")))
+        assertEquals("off" to false, migratedPresence(schema17Store("auto_sleep_source" to "touch", "auto_sleep" to true)))
+        // A store that had auto_sleep before the source setting existed kept the Home Assistant policy.
+        assertEquals("home_assistant" to false, migratedPresence(schema17Store("auto_sleep" to false)))
     }
 
-    @Test fun legacyDisabledAutoSleepRetainsHaWhileFreshMigrationChoosesPanel() {
-        val old = fakePreferences(initial = mapOf("auto_sleep" to false))
-        assertEquals("home_assistant", Config(old.instance).autoSleepSource)
+    @Test fun schema18LeavesThePanelSensorSourceForTheWizardAwareResolution() {
+        assertEquals(null to true, migratedPresence(schema17Store("auto_sleep_source" to "panel", "auto_sleep" to true)))
+        // An installed panel that never chose a source was on the panel-sensor default.
+        assertEquals(null to true, migratedPresence(schema17Store()))
+        // A fresh store has no auto-sleep history: it takes the capability default and needs no marker.
         val fresh = fakePreferences()
-        assertEquals("panel", Config(fresh.instance).autoSleepSource)
+        assertTrue(Config(fresh.instance).migrateLiveStore())
+        assertFalse(fresh.values.containsKey(PresenceMode.KEY))
+        assertFalse(fresh.values.containsKey(LEGACY_PANEL_PRESENCE_PENDING_PREF))
     }
 
-    @Test fun startupPreparationLeavesAProfileAutoSleepSourceDefaultUnpersisted() {
-        withProfileRegistry(
-            mapOf("generic.yaml" to ProfileYaml.serialize(
-                testProfileDocument(id = "generic", fallback = true)
-                    .copy(settingDefaults = mapOf("auto_sleep_source" to "touch")),
-            )),
-            DeviceFacts("unmatched", "unmatched", ""),
-        ) { registry ->
-            val profile = registry.resolveForStartup().profile
-            val fresh = fakePreferences()
-            Config(fresh.instance).apply {
-                migrateLiveStore(); migrateLogShipTcpDefault()
-            }
-            assertFalse(fresh.values.containsKey("auto_sleep_source"))
-            assertEquals("touch", Config(fresh.instance).also { it.attachProfile(profile) }.autoSleepSource)
-
-            val legacy = fakePreferences(initial = mapOf("auto_sleep" to false))
-            Config(legacy.instance).apply {
-                migrateLiveStore(); migrateLogShipTcpDefault()
-            }
-            assertEquals("home_assistant", Config(legacy.instance).also { it.attachProfile(profile) }.autoSleepSource)
+    @Test fun legacyPanelPresenceResolvesOnceFromTheWizardModelAndRange() {
+        listOf(
+            Triple(true, true, "hybrid"),
+            Triple(true, false, "manual"),
+            Triple(false, true, "automatic"),
+            Triple(false, false, "manual"),
+        ).forEach { (wizard, ranged, expected) ->
+            val prefs = schema17Store("auto_sleep_source" to "panel")
+            val config = Config(prefs.instance)
+            assertTrue(config.migrateLiveStore())
+            assertTrue(config.resolveLegacyPanelPresence(hasWizardModel = wizard, ranged = ranged))
+            assertEquals(expected, prefs.values[PresenceMode.KEY])
+            assertFalse(prefs.values.containsKey(LEGACY_PANEL_PRESENCE_PENDING_PREF))
+            // Idempotent: the marker is gone, so a second call with other inputs writes nothing.
+            assertFalse(config.resolveLegacyPanelPresence(hasWizardModel = !wizard, ranged = !ranged))
+            assertEquals(expected, Config(prefs.instance).presenceMode.wire)
         }
+        // Without a marker (a fresh panel, or an explicit choice) the resolution never writes.
+        val fresh = fakePreferences()
+        assertFalse(Config(fresh.instance).resolveLegacyPanelPresence(hasWizardModel = true, ranged = true))
+        assertFalse(fresh.values.containsKey(PresenceMode.KEY))
     }
 
-    @Test fun firstLiveAutoSleepWritePinsTheEffectiveSourceRatherThanTheLegacyOne() {
-        withProfileRegistry(
-            mapOf("generic.yaml" to ProfileYaml.serialize(
-                testProfileDocument(id = "generic", fallback = true)
-                    .copy(settingDefaults = mapOf("auto_sleep_source" to "touch")),
-            )),
-            DeviceFacts("unmatched", "unmatched", ""),
-        ) { registry ->
-            val profile = registry.resolveForStartup().profile
-            val spec = SettingsRegistry.spec("auto_sleep")!!
-            val profiled = fakePreferences()
-            assertTrue(commitHttpLiveSetting(Config(profiled.instance).also { it.attachProfile(profile) }, spec, "true") {})
-            assertEquals("touch", Config(profiled.instance).also { it.attachProfile(profile) }.autoSleepSource)
-
-            val bare = fakePreferences()
-            assertTrue(commitHttpLiveSetting(Config(bare.instance), spec, "true") {})
-            assertEquals("panel", Config(bare.instance).autoSleepSource)
+    @Test fun anOldBundleCarryingTheActivitySourceImportsAsThePresenceMode() {
+        fun imported(source: String): String? {
+            val (values, _) = Migrations.migrate(17, mapOf("auto_sleep_source" to source, "auto_sleep" to "true"))
+            assertFalse(values.containsKey(SettingsRegistry.LEGACY_AUTO_SLEEP_SOURCE_KEY))
+            val prefs = fakePreferences(initial = mapOf(PresenceMode.KEY to "manual"))
+            val config = Config(prefs.instance)
+            val editor = config.editor()
+            stageImport(config, editor, values)
+            assertTrue(config.commit(editor))
+            return prefs.values[PresenceMode.KEY] as String?
         }
+        assertEquals("home_assistant", imported("home_assistant"))
+        assertEquals("off", imported("touch"))
+        // The panel sensor depends on the importing panel's own wizard model, so its choice stands.
+        assertEquals("manual", imported("panel"))
+        // A bundle older than schema 14 still reaches the schema-18 step with its source.
+        assertEquals("off", Migrations.migrate(13, mapOf("auto_sleep_source" to "touch")).first[PresenceMode.KEY])
     }
 
-    @Test fun explicitPresenceSourceChangeFencesOutstandingAutoSleepWrites() {
-        val prefs = fakePreferences(initial = mapOf("auto_sleep" to true))
+    @Test fun explicitPresenceModeChangeFencesOutstandingAutoSleepWrites() {
+        val prefs = fakePreferences(initial = mapOf("auto_sleep" to true, PresenceMode.KEY to "home_assistant"))
         val config = Config(prefs.instance)
         val generation = config.autoSleepGeneration
-        assertTrue(config.commitRaw(SettingsRegistry.spec("auto_sleep_source")!!, "panel"))
-        assertEquals("panel", Config(prefs.instance).autoSleepSource)
+        assertTrue(config.commitRaw(SettingsRegistry.spec(PresenceMode.KEY)!!, "manual"))
+        assertEquals(PresenceMode.MANUAL, Config(prefs.instance).presenceMode)
         assertNull(config.setAutoSleepIf(true, generation, false))
     }
 
-    @Test fun touchInactivityChoiceAndDelaySurviveRestart() {
+    @Test fun presenceOffAndTouchDelaySurviveRestart() {
         val prefs = fakePreferences()
         val config = Config(prefs.instance)
-        assertTrue(config.commitRaw(SettingsRegistry.spec("auto_sleep_source")!!, "touch"))
+        assertTrue(config.commitRaw(SettingsRegistry.spec(PresenceMode.KEY)!!, "off"))
         assertTrue(config.commitRaw(SettingsRegistry.spec("auto_sleep_touch_delay_seconds")!!, "45"))
         val restarted = Config(prefs.instance)
-        assertEquals("touch", restarted.autoSleepSource)
+        assertEquals(PresenceMode.OFF, restarted.presenceMode)
         assertEquals(45, restarted.autoSleepTouchDelaySeconds)
     }
 
@@ -1571,6 +1574,24 @@ class ConfigTransactionTest {
         assertEquals("http://ha:8123", prefs.values["ha_url"])
         assertEquals("new-access", prefs.values["ha_token"])
         assertEquals("new-refresh", prefs.values["ha_refresh_token"])
+    }
+
+    @Test fun borrowedRendererZoomSaturatesToTheRegisteredDomainInTheConnectionCommit() {
+        val spec = requireNotNull(SettingsRegistry.spec("dashboard_zoom"))
+        val lower = requireNotNull(spec.min).toInt()
+        val upper = requireNotNull(spec.max).toInt()
+        listOf(Int.MIN_VALUE, lower - 1, lower, 125, upper, upper + 1, Int.MAX_VALUE, null).forEach { borrowed ->
+            val prefs = fakePreferences(initial = mapOf("dashboard_zoom" to 100))
+            val config = Config(prefs.instance)
+            assertTrue(config.setBorrowedRendererSettings("http://ha:8123/", "access", "refresh", 1234L, "client", borrowed))
+            assertEquals(borrowed?.coerceIn(lower, upper) ?: 100, config.dashboardZoom)
+            assertEquals("http://ha:8123", config.haUrl)
+            assertEquals("access", prefs.values["ha_token"])
+            assertEquals("refresh", prefs.values["ha_refresh_token"])
+            assertEquals(1234L, prefs.values["ha_token_expiry"])
+            assertEquals("client", prefs.values["ha_client_id"])
+            assertEquals(true, prefs.values["renderer_launch_pending"])
+        }
     }
 
     @Test fun borrowedRendererConnectionAndZoomPublishInOneCommit() {
@@ -2838,17 +2859,6 @@ class ConfigTransactionTest {
             SettingsRegistry.spec(key)?.let { spec -> config.stage(editor, spec, value) }
         }
         config.stageImportDependencies(editor, accepted)
-    }
-
-    @Test fun anImportedAutoSleepSourceSurvivesTheAutoSleepWriteStagedAfterIt() {
-        val prefs = fakePreferences()
-        val config = Config(prefs.instance)
-        val editor = config.editor()
-
-        stageImport(config, editor, linkedMapOf("auto_sleep_source" to "home_assistant", "auto_sleep" to "true"))
-        assertTrue(config.commit(editor))
-
-        assertEquals("home_assistant", Config(prefs.instance).autoSleepSource)
     }
 
     @Test fun anImportedEmbeddedSinkAddressRewritesAllThreeFieldsInOneTransaction() {

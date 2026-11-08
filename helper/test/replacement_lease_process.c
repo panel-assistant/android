@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -27,7 +28,7 @@
 #define NEW_BUILD "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
 
 static void fail(const char *message) {
-    fprintf(stderr, "replacement lease process: %s: %s\n", message, strerror(errno));
+    fprintf(stderr, "FAIL: replacement lease process: %s: %s\n", message, strerror(errno));
     exit(1);
 }
 
@@ -72,7 +73,7 @@ static void prove_lease_held(const char *where) {
     errno = 0;
     if (flock(contender, LOCK_EX | LOCK_NB) == 0 ||
         (errno != EWOULDBLOCK && errno != EAGAIN)) {
-        fprintf(stderr, "replacement lease process: lease gap at %s\n", where);
+        fprintf(stderr, "FAIL: replacement lease process: lease gap at %s\n", where);
         exit(1);
     }
     close(contender);
@@ -209,6 +210,14 @@ static int old_role(void) {
     if (guard_maintenance_replacement_parent_grant(nonce) != GUARD_REPLACEMENT_READY ||
         strcmp(nonce, NONCE) != 0 || guard_maintenance_replacement_export_lease() != 0)
         fail("grant/export");
+    if (guard_maintenance_replacement_parent_abort(nonce) != 0)
+        fail("abort granted replacement");
+    prove_lease_held("aborted replacement retains authoritative owner");
+    int flags = fcntl(GUARD_REPLACEMENT_LEASE_FD, F_GETFD, 0);
+    if (flags < 0 || !(flags & FD_CLOEXEC)) fail("aborted authoritative lease disables exec inheritance");
+    issue_retire(sha);
+    if (guard_maintenance_replacement_parent_grant(nonce) != GUARD_REPLACEMENT_READY ||
+        strcmp(nonce, NONCE) != 0) fail("grant after aborted replacement");
     prove_lease_held("old-to-stage");
     execl(STAGE, "replacement-lease-new", "--fixture-stage", nonce, NULL);
     fail("exec stage");
@@ -259,7 +268,18 @@ static int new_role(const char *nonce) {
 }
 
 int main(int argc, char **argv) {
-    if (argc == 1) return foreign_live_retirement();
+    if (argc == 1) {
+        char old_binary[PATH_MAX], new_binary[PATH_MAX];
+        ssize_t size = readlink("/proc/self/exe", old_binary, sizeof old_binary - 1);
+        if (size <= 0 || (size_t)size >= sizeof old_binary - 1) fail("resolve fixture executable");
+        old_binary[size] = 0;
+        char *leaf = strrchr(old_binary, '/');
+        if (!leaf) fail("resolve fixture directory");
+        int count = snprintf(new_binary, sizeof new_binary, "%.*s/replacement-lease-new",
+                             (int)(leaf - old_binary), old_binary);
+        if (count < 0 || (size_t)count >= sizeof new_binary) fail("resolve successor fixture");
+        return coordinator(old_binary, new_binary);
+    }
     if (argc == 3 && strcmp(argv[1], "--fixture-stage") == 0) return stage_role(argv[2]);
     if (argc == 3 && strcmp(argv[1], "--fixture-new") == 0) return new_role(argv[2]);
     if (argc == 2 && strcmp(argv[1], "--fixture-old") == 0) return old_role();

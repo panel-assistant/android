@@ -37,7 +37,12 @@ internal class HaNetworkPathMonitor(
     private val path: HaNetworkPath = HaNetworkPath(),
 ) : HaNetworkPathObserver {
     private val lock = Any()
-    private var lastReported: Triple<Boolean, Boolean, HaNetworkPathSeverity>? = null
+    private data class Reported(
+        val state: Triple<Boolean, Boolean, HaNetworkPathSeverity>,
+        val cause: PathProbeCause,
+        val echo: PathProbeHistory.Aggregate?,
+    )
+    private var lastReported: Reported? = null
 
     override fun onSocketState(state: HaSocketState) = mutate { path.onSocketState(state) }
 
@@ -45,8 +50,8 @@ internal class HaNetworkPathMonitor(
      * Hand the layer-3 verdict to the classifier, serialised like every other observation and poking
      * the surfaces when it changes what they would render.
      */
-    fun onPathProbeVerdict(severity: HaNetworkPathSeverity?, cause: PathProbeCause) =
-        mutate { path.onPathProbeVerdict(severity, cause) }
+    fun onPathProbeVerdict(verdict: PathProbeHistory.Verdict?) =
+        mutate { path.onPathProbeVerdict(verdict) }
 
     override fun onRoundTrip(rttMs: Long) {
         val now = nowMs()
@@ -78,7 +83,7 @@ internal class HaNetworkPathMonitor(
         val now = nowMs()
         val (snapshot, changed) = synchronized(lock) {
             val taken = path.snapshot(now)
-            val key = taken.reportableKey
+            val key = Reported(taken.reportableKey, taken.cause, taken.echo)
             val moved = key != lastReported
             lastReported = key
             taken to moved
@@ -91,7 +96,8 @@ internal class HaNetworkPathMonitor(
         val now = nowMs()
         val changed = synchronized(lock) {
             block()
-            val key = path.snapshot(now).reportableKey
+            val taken = path.snapshot(now)
+            val key = Reported(taken.reportableKey, taken.cause, taken.echo)
             val changed = key != lastReported
             lastReported = key
             changed

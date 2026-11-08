@@ -15,7 +15,8 @@ internal fun releaseReady(locale: String, key: String, translated: TargetString)
     TranslationState.MACHINE_CROSS_CHECKED, TranslationState.COMMUNITY_CORRECTED -> true
     TranslationState.MACHINE_DRAFT -> locale in AppLocale.EARLY_ACCESS_LOCALES
     TranslationState.ENGLISH_FALLBACK ->
-        (locale to key) in APPROVED_PROFILES_ENGLISH_FALLBACKS || EarlyAccessReviewHold.holds(locale, key, translated)
+        (locale to key) in APPROVED_PROFILES_ENGLISH_FALLBACKS ||
+            EarlyAccessReviewHold.holds(locale, key, translated)
 }
 
 class ReleaseReadinessContractTest {

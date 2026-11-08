@@ -54,4 +54,6 @@
     <string name="voice_step_understood">Compris</string>
     <string name="voice_step_answered">Répondu</string>
     <string name="voice_heard">« %1$s »</string>
+    <string name="network_chip_echoes_lost">%1$d vérifications réseau sur %2$d vers Home Assistant perdues sur %3$d salves</string>
+    <string name="network_chip_echo_time">Les vérifications réseau vers Home Assistant prennent %1$s au p95</string>
 </resources>

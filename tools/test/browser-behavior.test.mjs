@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import test from 'node:test';
 import { chromium, webkit } from 'playwright-core';
 import { i18nBridge } from './fixtures/i18n-bridge.mjs';
 import { browserTest, chrome, json, root } from './fixtures/browser-harness.mjs';
@@ -1958,10 +1959,10 @@ function dashboardHarness(options = {}) {
   return { state, routes };
 }
 
-async function openDashboardPicker(t, options = {}) {
+async function openDashboardPicker(t, options = {}, browserType = chromium) {
   const { state, routes } = dashboardHarness(options);
   const harness = await startHarness(routes);
-  const browser = await chromium.launch({ executablePath: chrome, headless: true });
+  const browser = await browserType.launch(browserType === chromium ? { executablePath: chrome, headless: true } : { headless: true });
   const page = await browser.newPage(options.viewport ? { viewport: options.viewport } : {});
   // Roomier than this file's usual 1.5s: these walks make several round trips (catalogue fetch, then a
   // send per transition), and one run timed out at 2s while a Gradle gate was saturating the machine.
@@ -2060,10 +2061,10 @@ browserTest('A view under an unknown dashboard warns but is still sent', async (
   await input.fill('/dashboard-test/alpha');
   // The renderer would silently fall back to the account default here, so the warning is the only
   // thing standing between the user and a panel showing the wrong dashboard for no visible reason.
-  await assert.doesNotReject(row.locator('.hd-custom-note.warn').waitFor());
+  await assert.doesNotReject(row.locator('.hd-custom-note .notice-pill').getByText('Warning', { exact: true }).waitFor());
 
   await input.fill('/alpha/upper-floor');
-  await assert.doesNotReject(row.locator('.hd-custom-note:not(.warn)').waitFor());
+  assert.equal(await row.locator('.hd-custom-note .notice-pill').count(), 0);
 
   // …and an unknown root must never block the send: the dashboard may not exist yet.
   await input.fill('/dashboard-test/alpha');
@@ -2123,34 +2124,51 @@ browserTest('A malformed Custom path left behind never blocks a later Auto or li
   assert.equal(await page.locator('#cfg-home_dashboard .cfg-row-message').count(), 0);
 });
 
-browserTest('The client never refuses a dashboard route the server would accept', async (t) => {
-  // Shared matrix, not a second opinion. Two independently maintained expressions once agreed as
-  // strings while differing in behaviour, so both sides read tools/test/fixtures/dashboard-path-parity.json.
-  // Exact parity is unreachable — the server percent-decodes to reject traversal and a client
-  // expression cannot — so the contract is one-directional: the client may be a superset, never
-  // stricter. A stricter client blocks a legal route, worst when the catalogue is unavailable and
-  // Custom is the only way in.
-  const matrix = JSON.parse(await readFile(join(process.cwd(), 'fixtures', 'dashboard-path-parity.json'), 'utf8'));
-  const { select, input } = await openDashboardPicker(t, { current: '/alpha' });
-  await select.selectOption('__custom__');
-
-  const refused = [];
-  for (const route of matrix.serverAccepts) {
-    await input.fill(route);
-    if (!(await input.evaluate((el) => el.checkValidity()))) refused.push(route);
-  }
-  assert.deepEqual(refused, [], 'client refused routes the server admits');
-
-  // The client is a superset by design, so it is not asked to mirror every server refusal — only to
-  // catch the shapes worth stopping before the round trip. Deciding traversal needs decoding it does
-  // not do, which is precisely why the server stays the authority.
-  const admitted = [];
-  for (const route of matrix.clientMustReject) {
-    await input.fill(route);
-    if (await input.evaluate((el) => el.checkValidity())) admitted.push(route);
-  }
-  assert.deepEqual(admitted, [], 'client admitted routes it must catch before the round trip');
-});
+// Shared with Setup and the Kotlin authority. Browser acceptance of the explicitly listed
+// server refusals is advisory only: this harness records requests, not server validation.
+for (const [engine, browserType] of [['Chromium', chromium], ['WebKit', webkit]]) {
+  test(`Configure dashboard route corpus preserves advisory validity, root notes and posted values in ${engine}`, async (t) => {
+    const matrix = JSON.parse(await readFile(new URL('./fixtures/dashboard-path-parity.json', import.meta.url), 'utf8'));
+    const { page, select, input, state } = await openDashboardPicker(t, { current: '/initial' }, browserType);
+    const reset = async () => {
+      state.current = '/initial';
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await page.waitForFunction(() => document.querySelector('#cfg-home_dashboard select option[value="__custom__"]'));
+      await select.selectOption('__custom__');
+    };
+    for (const route of [...matrix.serverAccepts, ...matrix.clientAcceptsServerRejects]) {
+      await reset();
+      await input.fill(route);
+      assert.equal(await input.evaluate((el) => el.checkValidity()), true, route);
+      const before = state.posts.length;
+      await sentOnce(page, () => input.press('Tab'));
+      assert.deepEqual(state.posts.slice(before), [route.trim()], `exact submitted route: ${route}`);
+    }
+    for (const route of [...matrix.clientMustReject, ...matrix.meansAccountDefault]) {
+      await reset();
+      await input.fill(route);
+      assert.equal(await input.evaluate((el) => el.checkValidity()), false, `invalid Custom: ${route}`);
+      const before = state.posts.length;
+      await input.press('Tab');
+      await page.locator('#cfg-home_dashboard .cfg-row-message').waitFor();
+      assert.equal(state.posts.length, before, `invalid Custom must not post: ${route}`);
+    }
+    for (const { path, unknownRoot } of matrix.rootNotes) {
+      await reset();
+      await input.fill(path);
+      const note = page.locator('#cfg-home_dashboard-path-note');
+      assert.equal(await note.evaluate((el) => el.classList.contains('warn') || el.dataset.severity === 'warning'), !!unknownRoot, path);
+      const explanation = await note.evaluate((el) => (el.querySelector('.notice-detail') || el).textContent);
+      if (unknownRoot) assert.ok(explanation.startsWith(`${unknownRoot} `), path);
+      else assert.match(explanation, /^A path on this Home Assistant/);
+    }
+    // Following the account default is an explicit choice, never an empty Custom answer.
+    await reset();
+    const before = state.posts.length;
+    await sentOnce(page, () => select.selectOption(''));
+    assert.deepEqual(state.posts.slice(before), ['']);
+  });
+}
 
 // --- Entities page: catalogue search feedback (issue #114) -----------------------------------------
 //
@@ -2399,12 +2417,12 @@ browserTest('Configure stops promising a value is about to apply once the panel 
 browserTest('Panel proximity Auto-sleep works without HA prerequisites or an HA history chart', async (t) => {
   let prerequisiteGets = 0, historyGets = 0;
   const schema = [
-    { key: 'auto_sleep_source', label: 'Auto-sleep presence source', group: 'Behaviour', type: 'ENUM', available: true, options: ['panel', 'home_assistant'] },
+    { key: 'presence_mode', label: 'Auto-sleep presence source', group: 'Behaviour', type: 'ENUM', available: true, options: ['automatic', 'home_assistant', 'off'], optionLabels: ['Automatic', 'Home Assistant device', 'Off'] },
     { key: 'auto_sleep', label: 'Auto sleep', group: 'Behaviour', type: 'BOOL', available: true },
   ];
   const harness = await startHarness((path) => {
     if (path === '/api/v1/config/schema') return json(schema);
-    if (path === '/api/v1/config') return json({ settings: { auto_sleep: true, auto_sleep_source: 'panel' }, ha_expose: {} });
+    if (path === '/api/v1/config') return json({ settings: { auto_sleep: true, presence_mode: 'automatic' }, ha_expose: {} });
     if (path === '/api/v1/apps') return json({ apps: [] });
     if (path === '/api/v1/radio' || path === '/api/v1/proximity') return json({ present: false });
     if (path === '/api/v1/auto-sleep/prerequisite') { prerequisiteGets++; return json({ eligible: false, phase: 'unassigned' }); }
@@ -2416,7 +2434,7 @@ browserTest('Panel proximity Auto-sleep works without HA prerequisites or an HA 
   page.setDefaultTimeout(2_000);
   t.after(async () => { await browser.close(); await new Promise((resolve) => harness.server.close(resolve)); });
   await page.goto(harness.url, { waitUntil: 'domcontentloaded', timeout: 5_000 });
-  const source = page.locator('#cfg-auto_sleep_source select');
+  const source = page.locator('#cfg-presence_mode select');
   await source.waitFor();
   await page.locator('#cfg-proximity-learning').waitFor();
   assert.deepEqual(await page.locator('#cfg-groups').evaluate((root) => Array.from(root.children).map((card) =>
@@ -2424,8 +2442,8 @@ browserTest('Panel proximity Auto-sleep works without HA prerequisites or an HA 
   )), ['Auto-sleep', 'cfg-proximity-learning'],
   'Presence follows the dedicated Auto-sleep card even when its script attaches after Configure');
   assert.equal(await page.locator('[data-config-group="Auto-sleep"] #cfg-auto_sleep').count(), 1);
-  assert.equal(await page.locator('[data-config-group="Auto-sleep"] #cfg-auto_sleep_source').count(), 1);
-  assert.deepEqual(await source.locator('option').allTextContents(), ['This panel’s proximity sensor', 'Home Assistant Area devices']);
+  assert.equal(await page.locator('[data-config-group="Auto-sleep"] #cfg-presence_mode').count(), 1);
+  assert.deepEqual(await source.locator('option').allTextContents(), ['Automatic', 'Home Assistant device', 'Off']);
   const toggle = page.locator('#cfg-auto_sleep [role=switch]');
   assert.equal(await toggle.getAttribute('aria-disabled'), 'false');
   await toggle.click();
@@ -2523,11 +2541,11 @@ for (const [engine, launcher] of [['Chromium', chromium], ['WebKit', webkit]]) {
 
 for (const [engine, launcher] of [['Chromium', chromium], ['WebKit', webkit]]) {
   browserTest(`Auto-sleep source menu refreshes prerequisites and status and retains focus in ${engine}`, async (t) => {
-    const settings = { auto_sleep_source: 'panel', auto_sleep: 'true' };
+    const settings = { presence_mode: 'automatic', auto_sleep: 'true' };
     let prerequisiteGets = 0, statusGets = 0;
     const posts = [];
     const harness = await startHarness(async (path, request) => {
-      if (path === '/api/v1/config/schema') return json([{ key: 'auto_sleep_source', label: 'Activity source', group: 'Behaviour', type: 'ENUM', available: true, options: ['panel', 'home_assistant', 'touch'] }, { key: 'auto_sleep', label: 'Auto sleep', group: 'Behaviour', type: 'BOOL', available: true }]);
+      if (path === '/api/v1/config/schema') return json([{ key: 'presence_mode', label: 'Activity source', group: 'Behaviour', type: 'ENUM', available: true, options: ['automatic', 'home_assistant', 'manual', 'hybrid', 'off'], optionLabels: ['Automatic', 'Home Assistant device', 'Manual', 'Hybrid', 'Off'] }, { key: 'auto_sleep', label: 'Auto sleep', group: 'Behaviour', type: 'BOOL', available: true }]);
       if (path === '/api/v1/config') {
         if (request.method === 'POST') {
           const values = Object.fromEntries(new URLSearchParams(await requestBody(request)));
@@ -2537,7 +2555,7 @@ for (const [engine, launcher] of [['Chromium', chromium], ['WebKit', webkit]]) {
       }
       if (path === '/api/v1/apps') return json({ apps: [] });
       if (path === '/api/v1/auto-sleep/prerequisite') { prerequisiteGets++; return json({ eligible: true, phase: 'assigned', area_name: 'Studio' }); }
-      if (path === '/api/v1/auto-sleep') { statusGets++; return json({ enabled: true, source: settings.auto_sleep_source, phase: 'live', area_name: 'Studio', source_count: statusGets, history_phase: 'ready' }); }
+      if (path === '/api/v1/auto-sleep') { statusGets++; return json({ enabled: true, source: settings.presence_mode, phase: 'live', area_name: 'Studio', source_count: statusGets, history_phase: 'ready' }); }
       if (path === '/api/v1/auto-sleep/history') return json(autoSleepHistory({ hours: 24 }));
       if (path === '/api/v1/radio' || path === '/api/v1/proximity') return json({ present: false });
     });
@@ -2546,9 +2564,9 @@ for (const [engine, launcher] of [['Chromium', chromium], ['WebKit', webkit]]) {
     t.after(async () => { await browser.close(); await new Promise(resolve => harness.server.close(resolve)); });
     await page.goto(harness.url);
     page.setDefaultTimeout(2_000);
-    const selected = page.locator('#cfg-auto_sleep_source select');
+    const selected = page.locator('#cfg-presence_mode select');
     await selected.waitFor();
-    assert.deepEqual(await selected.locator('option').allTextContents(), ['This panel’s proximity sensor', 'Home Assistant Area devices', 'Touch inactivity']);
+    assert.deepEqual(await selected.locator('option').allTextContents(), ['Automatic', 'Home Assistant device', 'Manual', 'Hybrid', 'Off']);
     await page.waitForFunction(() => document.querySelector('#auto-sleep-summary-announcement')?.textContent.includes('Phase: Live'));
     const initialStatusGets = statusGets;
     await selected.focus();
@@ -2556,7 +2574,7 @@ for (const [engine, launcher] of [['Chromium', chromium], ['WebKit', webkit]]) {
       const saved = page.waitForResponse(response => response.url().endsWith('/api/v1/config') && response.request().method() === 'POST');
       await selected.selectOption(source);
       await saved;
-      await page.waitForFunction(() => document.activeElement === document.querySelector('#cfg-auto_sleep_source select'));
+      await page.waitForFunction(() => document.activeElement === document.querySelector('#cfg-presence_mode select'));
       assert.equal(await selected.inputValue(), source);
     };
     await choose('home_assistant');
@@ -2564,17 +2582,17 @@ for (const [engine, launcher] of [['Chromium', chromium], ['WebKit', webkit]]) {
     await page.waitForFunction(() => document.querySelector('#auto-sleep-summary-announcement')?.textContent.includes('Studio'));
     assert.ok(prerequisiteGets > 0, 'choosing HA checks its prerequisite');
     assert.ok(statusGets > initialStatusGets, 'choosing HA refreshes status');
-    await choose('touch');
+    await choose('off');
     await page.getByText('Home Assistant and presence sensors are not required.', { exact: false }).waitFor();
     assert.equal(await page.locator('#auto-sleep-chart').count(), 0);
     const beforeReturn = prerequisiteGets;
     await choose('home_assistant');
     await page.locator('#auto-sleep-prerequisite-status').getByText('Home Assistant Area: Studio', { exact: true }).waitFor();
     assert.ok(prerequisiteGets > beforeReturn, 'returning to HA rechecks prerequisites');
-    await choose('panel');
+    await choose('automatic');
     await page.getByRole('link', { name: 'Set up proximity on panel' }).waitFor();
-    assert.deepEqual(posts, ['home_assistant', 'touch', 'home_assistant', 'panel'].map(auto_sleep_source => ({ auto_sleep_source })));
+    assert.deepEqual(posts, ['home_assistant', 'off', 'home_assistant', 'automatic'].map(presence_mode => ({ presence_mode })));
     assert.equal(await selected.evaluate(input => input === document.activeElement), true);
-    assert.equal(await page.locator('#cfg-auto_sleep_source').evaluate(row => row.scrollWidth <= row.clientWidth), true);
+    assert.equal(await page.locator('#cfg-presence_mode').evaluate(row => row.scrollWidth <= row.clientWidth), true);
   });
 }

@@ -27,6 +27,9 @@
 #include <sys/resource.h>
 #include <time.h>
 #include <unistd.h>
+#ifdef __ANDROID__
+#include <android/log.h>
+#endif
 
 #ifndef ADB_RECOVERY_SOCKET
 #define ADB_RECOVERY_SOCKET "hapaneld-adb-recovery"
@@ -47,13 +50,51 @@
 #define COMMAND_LIMIT 65536
 #define MAX_EXECUTORS 4
 static long long read_deadline;
-typedef struct { _Atomic unsigned renewed; _Atomic int armed, recovering, recovered, ever_armed, actuator, security_unverified; _Atomic int groups[MAX_EXECUTORS]; } recovery_lease;
+typedef struct { _Atomic unsigned renewed; _Atomic int armed, recovering, recovered, ever_armed, actuator, security_unverified, expiry_logged, reopen_cause; _Atomic int groups[MAX_EXECUTORS]; } recovery_lease;
 static recovery_lease *lease;
 static int executing_slot = -1;
+static int custody_lock = -1;
+static char recovery_boot_id[65] = "unknown";
+static long long recovery_owner_started_ms;
 static long long now_ms(void) {
     struct timespec ts;
     if (clock_gettime(CLOCK_MONOTONIC, &ts)) return -1;
     return (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+static void recovery_log_identity(void) {
+    recovery_owner_started_ms = now_ms();
+    int input = open("/proc/sys/kernel/random/boot_id", O_RDONLY | O_CLOEXEC);
+    if (input < 0) return;
+    char boot[65]; ssize_t count = read(input, boot, sizeof boot - 1);
+    close(input);
+    if (count <= 0) return;
+    boot[count] = 0;
+    boot[strcspn(boot, "\r\n")] = 0;
+    if (strlen(boot) == 36 && strspn(boot, "0123456789abcdef-") == 36)
+        memcpy(recovery_boot_id, boot, 37);
+}
+/* Diagnostic custody is separate from the actuator: a best-effort log never gates recovery.
+ * The unsigned subtraction matches the guardian's wrap-safe lease observation. Record that
+ * observation, rather than inflating the gap with time spent proving/retrying network recovery. */
+static void note_recovery_cause(int cause) {
+    int expected = 0;
+    (void)atomic_compare_exchange_strong(&lease->reopen_cause, &expected, cause); /* 1=lease, 2=other */
+}
+static void log_lease_reopen(unsigned renewed_at, long long triggered_at, pid_t owner, const char *actor) {
+    if (atomic_load(&lease->reopen_cause) != 1) return;
+    if (atomic_exchange(&lease->expiry_logged, 1)) return;
+    unsigned gap = (unsigned)((unsigned)triggered_at - renewed_at);
+    char line[512];
+    snprintf(line, sizeof line,
+        "adb_lease event=reopen cause=lease gap_ms=%u lease_ms=%u renewed_ms=%lld triggered_ms=%lld reopened_ms=%lld helper_build=%s boot_id=%s owner_pid=%ld owner_started_ms=%lld pid=%ld actor=%s",
+        gap, (unsigned)ADB_RECOVERY_LEASE_MS, triggered_at - gap, triggered_at, now_ms(),
+        helper_build_id(), recovery_boot_id, (long)owner, recovery_owner_started_ms, (long)getpid(), actor);
+#ifdef __ANDROID__
+    /* liblog writes directly to logd, including for detached owners whose stderr is /dev/null. */
+    (void)__android_log_write(ANDROID_LOG_WARN, "AdbLease", line);
+#else
+    fprintf(stderr, "%s\n", line);
+#endif
 }
 static int write_all(int fd, const void *bytes, size_t count) {
     const char *p = bytes;
@@ -102,30 +143,43 @@ static int peer_allowed(int fd) {
     }
     return 0;
 }
-static void *reap_later(void *argument) {
-    pid_t child = (pid_t)(intptr_t)argument;
-    while (waitpid(child, NULL, 0) < 0 && errno == EINTR) {}
-    return NULL;
+/* The lifecycle owner forks executors, so it must never create a reaper thread.
+ * A stuck killed child occupies a bounded slot until a later tick reaps it. */
+#define REAP_LIMIT 8
+static pid_t pending_reaps[REAP_LIMIT];
+static int reap_capacity(void) {
+    int free_slot = -1;
+    for (int i = 0; i < REAP_LIMIT; i++) {
+        if (pending_reaps[i]) {
+            pid_t done = waitpid(pending_reaps[i], NULL, WNOHANG);
+            if (done == pending_reaps[i] || (done < 0 && errno == ECHILD)) pending_reaps[i] = 0;
+        }
+        if (!pending_reaps[i]) free_slot = i;
+    }
+    return free_slot;
 }
-static void bounded_reap(pid_t child, int *status) {
+static int bounded_reap(pid_t child, int *status) {
     long long until = now_ms() + 500;
     while (now_ms() < until) {
         pid_t done = waitpid(child, status, WNOHANG);
-        if (done == child || (done < 0 && errno != EINTR)) return;
+        if (done == child || (done < 0 && errno != EINTR)) return 0;
         usleep(1000);
     }
-    pthread_t reaper;
-    if (!pthread_create(&reaper, NULL, reap_later, (void *)(intptr_t)child)) pthread_detach(reaper);
+    int slot = reap_capacity();
+    if (slot < 0) return -1;
+    pending_reaps[slot] = child;
+    return 1;
 }
 /* Every child has a separate process group; timeout also kills descendants holding a pipe open. */
 static int capture(const char *path, char *const argv[], unsigned timeout, unsigned char *output,
                    size_t capacity, size_t *used, int *timed_out, int *truncated) {
     *used = 0; *timed_out = 0; *truncated = 0;
+    if (reap_capacity() < 0) return -1;
     int pipes[2];
     if (pipe2(pipes, O_CLOEXEC)) return -1;
+    pid_t parent = getpid();
     pid_t child = fork();
     if (!child) {
-        pid_t parent = getppid();
         if (prctl(PR_SET_PDEATHSIG, SIGKILL) || getppid() != parent) _exit(127);
         (void)setpgid(0, 0);
         if (executing_slot >= 0) atomic_store(&lease->groups[executing_slot], getpid());
@@ -303,10 +357,12 @@ static int nonce_valid(const char *nonce) {
     for (size_t i = 0; i < 64; i++) if (!((nonce[i] >= '0' && nonce[i] <= '9') || (nonce[i] >= 'a' && nonce[i] <= 'f'))) return 0;
     return 1;
 }
-static int execute_shell(int fd, unsigned timeout, size_t bytes) {
+static int execute_shell(int fd, unsigned timeout, size_t bytes, const unsigned char *prefix, size_t prefix_len) {
     char *command = malloc(bytes + 1);
     if (!command) return -1;
-    if (exact_read(fd, command, bytes) || memchr(command, 0, bytes)) { free(command); return -1; }
+    if (prefix_len > bytes) prefix_len = bytes;
+    if (prefix_len) memcpy(command, prefix, prefix_len);
+    if (exact_read(fd, command + prefix_len, bytes - prefix_len) || memchr(command, 0, bytes)) { free(command); return -1; }
     command[bytes] = 0;
     unsigned char output[OUTPUT_LIMIT]; size_t used; int timed_out, truncated;
     char *const argv[] = { (char *)ADB_RECOVERY_SHELL, "-c", command, NULL };
@@ -316,22 +372,37 @@ static int execute_shell(int fd, unsigned timeout, size_t bytes) {
     int n = snprintf(header, sizeof header, "RESULT %d %d %d %zu\n", exit_code, timed_out, truncated, used);
     return n > 0 && !write_all(fd, header, (size_t)n) && !write_all(fd, output, used) ? 0 : -1;
 }
+static void close_child_descriptors(int keep) {
+    DIR *directory = opendir("/proc/self/fd");
+    if (!directory) _exit(1);
+    struct dirent *entry;
+    while ((entry = readdir(directory))) {
+        char *end; long fd = strtol(entry->d_name, &end, 10);
+        if (!*end && fd > 2 && fd <= INT_MAX && fd != keep && fd != dirfd(directory)) close((int)fd);
+    }
+    closedir(directory);
+}
 /* Two independent owners: guardian loss makes the socket owner reopen, and socket-owner loss
  * makes the guardian reopen. Neither relies on the app, the old helper, or app-data cleanup. */
 static pid_t start_guardian(int server) {
     pid_t owner = getpid();
     pid_t guardian = fork();
     if (!guardian) {
-        close(server);
+        (void)server;
+        close_child_descriptors(custody_lock);
         for (;;) {
             int owner_dead = getppid() != owner;
-            int expired = atomic_load(&lease->armed) &&
-                (unsigned)((unsigned)now_ms() - atomic_load(&lease->renewed)) >= ADB_RECOVERY_LEASE_MS;
+            int expired = atomic_load(&lease->armed);
+            long long expiry_observed_at = now_ms();
+            unsigned expiry_renewed_at = atomic_load(&lease->renewed);
+            expired = expired &&
+                (unsigned)((unsigned)expiry_observed_at - expiry_renewed_at) >= ADB_RECOVERY_LEASE_MS;
             if (owner_dead && !atomic_load(&lease->ever_armed)) _exit(0);
             if (owner_dead || expired) {
                 int expected = 0;
                 if (!owner_dead && !atomic_compare_exchange_strong(&lease->actuator, &expected, 2)) { usleep(20000); continue; }
                 if (owner_dead) atomic_store(&lease->actuator, 2);
+                note_recovery_cause(owner_dead ? 2 : 1);
                 atomic_store(&lease->recovering, 1);
                 atomic_store(&lease->recovered, 1);
                 atomic_store(&lease->armed, 0);
@@ -343,6 +414,7 @@ static pid_t start_guardian(int server) {
                     usleep(200000);
                 }
                 while (set_network(1)) usleep(100000);
+                if (expired && !owner_dead) log_lease_reopen(expiry_renewed_at, expiry_observed_at, owner, "guardian");
                 atomic_store(&lease->recovering, 0);
                 atomic_store(&lease->actuator, 0);
                 if (owner_dead) _exit(0);
@@ -712,11 +784,14 @@ static int ensure_status(long long deadline) {
     executable[n] = 0;
     int count = snprintf(canonical, sizeof canonical, "%s/helper", ADB_RECOVERY_DIRECTORY);
     if (count < 0 || count >= (int)sizeof canonical) goto done;
-    if (strncmp(executable, canonical, (size_t)count) ||
-        (executable[count] && strcmp(executable + count, " (deleted)"))) goto done;
+    struct stat self_image, peer_image;
+    int own_image = !stat("/proc/self/exe", &self_image) && !fstatat(process, "exe", &peer_image, 0) &&
+        ensure_same(&self_image, &peer_image);
+    if (!own_image && (strncmp(executable, canonical, (size_t)count) ||
+        (executable[count] && strcmp(executable + count, " (deleted)")))) goto done;
     struct stat image, pinned, reached; char state; unsigned long long started, checked;
     if (fstatat(process, "exe", &image, 0) || !S_ISREG(image.st_mode) || image.st_uid || image.st_gid ||
-        (image.st_mode & 07777) != 0700 || image.st_nlink > 1 ||
+        (!own_image && (image.st_mode & 07777) != 0700) || (image.st_mode & 0022) || image.st_nlink > 1 ||
         fstat(process, &pinned) || process_state(process, &state, &started) || state == 'Z') goto done;
     const char request[] = "STATUS\n"; size_t sent = 0;
     while (sent < sizeof request - 1) {
@@ -1084,18 +1159,44 @@ static int recovery_custody(void) {
     return getsid(0) == getpid() || setsid() >= 0 ? 0 : -1;
 }
 
-int adb_recovery_main(void) {
+static int server = -1, owner_channel = -1, worker_channel = -1;
+static pid_t guardian = -1;
+static char nonce[65] = ""; long long renewed = 0;
+static int managed = 0, hold = 0, recovery_pending = 0, owner_draining = 0;
+static long long retirement_after_ms = 0;
+static long long expiry_triggered_at = 0;
+static unsigned expiry_renewed_at = 0;
+static pid_t workers[MAX_EXECUTORS] = {0};
+/* The guardian retains this independent lock after abrupt parent death. Socket names
+ * can become free before it has proved network recovery; a successor must not ARM yet.
+ * Retain the lock inode so old/new open descriptions agree. */
+static int acquire_custody_lock(int directory) {
+    int fd = openat(directory, ".lease-owner.lock", O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0600);
+    struct stat status;
+    if (fd < 0) return -1;
+    if (fstat(fd, &status) || !S_ISREG(status.st_mode) || status.st_uid != 0 ||
+        (status.st_mode & 0777) != 0600 || status.st_nlink != 1) { close(fd); return -1; }
+    long long deadline = now_ms() + 6000;
+    while (flock(fd, LOCK_EX | LOCK_NB)) {
+        if ((errno != EWOULDBLOCK && errno != EINTR) || now_ms() >= deadline) { close(fd); errno = EBUSY; return -1; }
+        usleep(20000);
+    }
+    custody_lock = fd;
+    return 0;
+}
+static int owner_init(int standalone) {
     if (geteuid() || recovery_custody()) return 1;
     signal(SIGPIPE, SIG_IGN);
-    int server = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    server = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
     struct sockaddr_un address = { .sun_family = AF_UNIX };
     size_t socket_length = strlen(ADB_RECOVERY_SOCKET);
     if (socket_length + 1 > sizeof address.sun_path) return 1;
     memcpy(address.sun_path + 1, ADB_RECOVERY_SOCKET, socket_length);
     socklen_t address_length = offsetof(struct sockaddr_un, sun_path) + 1 + socket_length;
     if (server < 0) return 1;
+    if (!standalone && mkdir(ADB_RECOVERY_DIRECTORY, 0700) && errno != EEXIST) { close(server); return 1; }
     int directory = replacement_directory();
-    if (directory < 0 || !ensure_startup_current(directory)) { if (directory >= 0) close(directory); close(server); return 1; }
+    if (directory < 0 || (standalone && !ensure_startup_current(directory))) { if (directory >= 0) close(directory); close(server); return 1; }
     struct stat retiring;
     int pending = retiring_inode(directory, &retiring, NULL);
     if (pending < 0) { close(directory); close(server); return 1; }
@@ -1112,81 +1213,69 @@ int adb_recovery_main(void) {
         if (errno != EADDRINUSE) { close(directory); close(server); return 1; }
         int replaced = replace_incumbent(&address, address_length, directory);
         if (replaced || bind(server, (struct sockaddr *)&address, address_length)) {
-            close(directory); close(server); return replaced == 1 ? 0 : 1;
+            close(directory); close(server); return replaced == 1 ? 2 : 1;
         }
     }
     /* Every launcher, including a currently free bind, retains custody through publication. */
-    if (listen(server, 8)) { close(directory); close(server); return 1; }
+    if ((!standalone && acquire_custody_lock(directory)) || listen(server, 8)) {
+        if (custody_lock >= 0) close(custody_lock);
+        custody_lock = -1; close(directory); close(server); return -2;
+    }
     close(directory);
     lease = mmap(NULL, sizeof *lease, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
-    if (lease == MAP_FAILED) { close(server); return 1; }
+    if (lease == MAP_FAILED) { close(custody_lock); custody_lock = -1; close(server); return 1; }
     memset(lease, 0, sizeof *lease);
-    pid_t guardian = start_guardian(server);
-    if (guardian < 0) { close(server); return 1; }
-    char nonce[65] = ""; long long renewed = 0;
-    int managed = 0, hold = 0, recovery_pending = 0;
-    long long retirement_after_ms = 0;
-    pid_t workers[MAX_EXECUTORS] = {0};
-    for (;;) {
+    recovery_log_identity();
+    guardian = start_guardian(server);
+    if (guardian < 0) { close(custody_lock); custody_lock = -1; close(server); return 1; }
+    return 0;
+}
+
+
+static void owner_tick(void) {
+    (void)reap_capacity();
         if (atomic_load(&lease->recovered)) managed = 0;
         if (guardian > 0) {
             pid_t done = waitpid(guardian, NULL, WNOHANG);
             if (done == guardian || (done < 0 && errno != EINTR)) {
                 guardian = -1; atomic_store(&lease->actuator, 0);
-                if (atomic_load(&lease->ever_armed)) recovery_pending = 1;
+                if (atomic_load(&lease->ever_armed)) { note_recovery_cause(2); recovery_pending = 1; }
             }
         }
-        if (guardian < 0 && !managed) guardian = start_guardian(server);
+        if (guardian < 0 && !managed && !recovery_pending && !owner_draining) guardian = start_guardian(server);
         for (int i = 0; i < MAX_EXECUTORS; i++) if (workers[i] > 0) {
             int status; pid_t done = waitpid(workers[i], &status, WNOHANG);
             if (done == workers[i] || (done < 0 && errno != EINTR)) {
                 workers[i] = 0;
                 int group = atomic_exchange(&lease->groups[i], 0);
                 if (group > 1) (void)kill(-group, SIGKILL);
-                if (done < 0 || !WIFEXITED(status) || WEXITSTATUS(status)) recovery_pending = 1;
+                if (done < 0 || !WIFEXITED(status) || WEXITSTATUS(status)) { note_recovery_cause(2); recovery_pending = 1; }
             }
         }
         int absent = helper_app_data_absent();
         if (!absent) retirement_after_ms = 0;
-        if (managed && (now_ms() - renewed >= ADB_RECOVERY_LEASE_MS || absent)) recovery_pending = 1;
+        long long expiry_observed_at = now_ms();
+        if (managed && (expiry_observed_at - renewed >= ADB_RECOVERY_LEASE_MS || absent)) {
+            note_recovery_cause(absent ? 2 : 1);
+            if (!expiry_triggered_at && expiry_observed_at - renewed >= ADB_RECOVERY_LEASE_MS) {
+                expiry_triggered_at = expiry_observed_at; expiry_renewed_at = (unsigned)renewed;
+            }
+            recovery_pending = 1;
+        }
         if (recovery_pending && (!absent || now_ms() >= retirement_after_ms)) {
-            if (!set_network(1)) { managed = 0; recovery_pending = 0; atomic_store(&lease->armed, 0); }
+            if (!set_network(1)) {
+                if (expiry_triggered_at) log_lease_reopen(expiry_renewed_at, expiry_triggered_at, getpid(), "owner");
+                expiry_triggered_at = 0;
+                managed = 0; recovery_pending = 0; atomic_store(&lease->armed, 0);
+            }
             else if (absent) retirement_after_ms = now_ms() + 1000;
         }
-        if (absent && now_ms() >= retirement_after_ms && owner_actuator()) {
-            retirement_after_ms = now_ms() + 1000;
-            /* Reopen and prove the surviving route even if this owner was never armed. */
-            if (!set_network(1) && helper_app_data_absent()) {
-                atomic_store(&lease->armed, 0);
-                managed = 0;
-                if (guardian > 0) {
-                    (void)kill(guardian, SIGKILL);
-                    while (waitpid(guardian, NULL, 0) < 0 && errno == EINTR) {}
-                    guardian = -1;
-                }
-                for (int i = 0; i < MAX_EXECUTORS; i++) {
-                    int group = atomic_exchange(&lease->groups[i], 0);
-                    if (group > 1) (void)kill(-group, SIGKILL);
-                    if (workers[i] > 0) {
-                        (void)kill(workers[i], SIGKILL);
-                        while (waitpid(workers[i], NULL, 0) < 0 && errno == EINTR) {}
-                        workers[i] = 0;
-                    }
-                }
-                if (!retire_files()) { close(server); return 0; }
-            }
-            atomic_store(&lease->actuator, 0);
-        }
-        struct pollfd pfd = { .fd = server, .events = POLLIN };
-        if (poll(&pfd, 1, 100) <= 0) continue;
-        int fd = accept4(server, NULL, NULL, SOCK_CLOEXEC);
-        if (fd < 0) continue;
-        struct timeval wait = { .tv_sec = 2 };
-        (void)setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &wait, sizeof wait);
-        (void)setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &wait, sizeof wait);
-        read_deadline = now_ms() + 2000;
-        char line[160];
-        if (!peer_allowed(fd) || read_line(fd, line, sizeof line)) { close(fd); continue; }
+}
+static void owner_request(int fd, const char *line, const unsigned char *prefix, size_t prefix_len) {
+    struct timeval wait = { .tv_sec = 2 };
+    (void)setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &wait, sizeof wait);
+    if (!peer_allowed(fd)) { close(fd); return; }
+    if (owner_draining && strcmp(line, "STATUS")) { (void)write_all(fd, "ERR\n", 4); close(fd); return; }
         char candidate[65], extra;
         unsigned timeout; size_t bytes;
         const char *reply = "ERR\n";
@@ -1207,15 +1296,18 @@ int adb_recovery_main(void) {
             else if (guardian > 0 && !atomic_load(&lease->recovering) && owner_actuator()) {
                 if (establish_boot_fallback() || recovery_fence(2)) {
                     atomic_store(&lease->actuator, 0);
-                    (void)write_all(fd, reply, strlen(reply)); close(fd); continue;
+                    (void)write_all(fd, reply, strlen(reply)); close(fd); return;
                 }
                 renewed = now_ms(); managed = 1; /* recovery armed BEFORE any close attempt */
+                expiry_triggered_at = 0;
+                atomic_store(&lease->expiry_logged, 0);
+                atomic_store(&lease->reopen_cause, 0);
                 atomic_store(&lease->recovered, 0);
                 atomic_store(&lease->renewed, (unsigned)renewed);
                 atomic_store(&lease->ever_armed, 1);
                 atomic_store(&lease->armed, 1);
                 if (!set_network(0) && !atomic_load(&lease->recovered) && !recovery_fence(0)) { atomic_store(&lease->security_unverified, 0); reply = "OK\n"; }
-                else recovery_pending = 1;
+                else { note_recovery_cause(2); recovery_pending = 1; }
                 atomic_store(&lease->actuator, 0);
             }
             (void)write_all(fd, reply, strlen(reply));
@@ -1223,7 +1315,7 @@ int adb_recovery_main(void) {
             if (managed && !hold && !atomic_load(&lease->recovering) && owner_actuator()) {
                 renewed = now_ms(); atomic_store(&lease->renewed, (unsigned)renewed);
                 if (!set_network(0) && !atomic_load(&lease->recovered)) reply = "OK\n";
-                else recovery_pending = 1;
+                else { note_recovery_cause(2); recovery_pending = 1; }
                 atomic_store(&lease->actuator, 0);
             }
             else if (hold) reply = "HELD\n";
@@ -1232,8 +1324,9 @@ int adb_recovery_main(void) {
             /* Recovery may also precede the first ARM, e.g. removal immediately after bootstrap. */
             {
                 memcpy(nonce, candidate, sizeof nonce); hold = 1;
+                note_recovery_cause(2);
                 if (!set_network(1)) { managed = 0; recovery_pending = 0; atomic_store(&lease->armed, 0); reply = "OK\n"; }
-                else recovery_pending = 1;
+                else { note_recovery_cause(2); recovery_pending = 1; }
             }
             (void)write_all(fd, reply, strlen(reply));
         } else if (sscanf(line, "SHELL %u %zu %c", &timeout, &bytes, &extra) == 2 && timeout >= 1 && timeout <= 180000 && bytes >= 1 && bytes <= COMMAND_LIMIT) {
@@ -1244,13 +1337,252 @@ int adb_recovery_main(void) {
                 pid_t worker = fork();
                 if (!worker) {
                     if (prctl(PR_SET_PDEATHSIG, SIGKILL) || getppid() != owner_pid) _exit(1);
-                    close(server); executing_slot = slot;
-                    _exit(execute_shell(fd, timeout, bytes) ? 1 : 0);
+                    close_child_descriptors(fd); executing_slot = slot;
+                    _exit(execute_shell(fd, timeout, bytes, prefix, prefix_len) ? 1 : 0);
                 }
                 if (worker > 0) workers[slot] = worker;
                 else (void)write_all(fd, "ERR\n", 4);
             }
         } else (void)write_all(fd, reply, strlen(reply));
-        close(fd);
+    close(fd);
+}
+
+/* One bounded record and exactly one descriptor; this channel is private to the
+ * pre-thread lifecycle parent and its socket worker. It carries no authority. */
+typedef struct {
+    uint32_t operation, header_len, prefix_len;
+    int64_t deadline;
+    char header[160];
+    unsigned char prefix[256];
+} recovery_request;
+static unsigned recovery_operation(const char *line, size_t length) {
+    const char *verbs[] = {"ARM", "BEAT", "RECOVER", "STATUS", "SHELL"};
+    for (unsigned i = 0; i < sizeof verbs / sizeof *verbs; i++) {
+        size_t n = strlen(verbs[i]);
+        if (length >= n && !memcmp(line, verbs[i], n) && (length == n || line[n] == ' ')) return i + 1;
     }
+    return 0;
+}
+static int valid_header(const char *header, size_t length) {
+    if (!length || length >= 160) return 0;
+    for (size_t i = 0; i < length; i++) if ((unsigned char)header[i] < 32 || (unsigned char)header[i] > 126) return 0;
+    return recovery_operation(header, length) != 0;
+}
+void cmd_adb_recovery(conn_ctx *ctx, const char *args) {
+    (void)args;
+    ctx->terminal = 1;
+    recovery_request request = {0};
+    if (!ctx->request || ctx->request_terminator != '\n' ||
+        !valid_header(ctx->request, ctx->request_len) || ctx->body_prefix_len > sizeof request.prefix ||
+        (ctx->body_prefix_len && !ctx->body_prefix)) return;
+    if (worker_channel < 0) goto refused;
+    request.operation = recovery_operation(ctx->request, ctx->request_len);
+    request.header_len = (uint32_t)ctx->request_len;
+    request.prefix_len = (uint32_t)ctx->body_prefix_len;
+    long long received_at = now_ms();
+    if (ctx->request_started_ms <= 0 || ctx->request_started_ms > received_at ||
+        received_at - ctx->request_started_ms >= 2000) return;
+    request.deadline = ctx->request_started_ms + 2000;
+    memcpy(request.header, ctx->request, ctx->request_len);
+    if (ctx->body_prefix_len) memcpy(request.prefix, ctx->body_prefix, ctx->body_prefix_len);
+    struct iovec vector = { .iov_base = &request, .iov_len = sizeof request };
+    union { struct cmsghdr align; unsigned char bytes[CMSG_SPACE(sizeof(int))]; } control = {0};
+    struct msghdr message = { .msg_iov = &vector, .msg_iovlen = 1, .msg_control = control.bytes, .msg_controllen = sizeof control.bytes };
+    struct cmsghdr *rights = CMSG_FIRSTHDR(&message);
+    rights->cmsg_level = SOL_SOCKET; rights->cmsg_type = SCM_RIGHTS; rights->cmsg_len = CMSG_LEN(sizeof(int));
+    memcpy(CMSG_DATA(rights), &ctx->fd, sizeof ctx->fd);
+    if (sendmsg(worker_channel, &message, MSG_NOSIGNAL | MSG_DONTWAIT) == sizeof request) return;
+ refused:
+    (void)write_all(ctx->fd, "ERR\n", 4);
+}
+static void owner_receive(void) {
+    recovery_request request;
+    struct iovec vector = { .iov_base = &request, .iov_len = sizeof request };
+    union { struct cmsghdr align; unsigned char bytes[CMSG_SPACE(8 * sizeof(int))]; } control;
+    struct msghdr message = { .msg_iov = &vector, .msg_iovlen = 1, .msg_control = control.bytes, .msg_controllen = sizeof control.bytes };
+    ssize_t count = recvmsg(owner_channel, &message, MSG_DONTWAIT | MSG_CMSG_CLOEXEC);
+    if (count < 0) return;
+    int fd = -1, descriptors = 0, invalid = 0;
+    for (struct cmsghdr *c = CMSG_FIRSTHDR(&message); c; c = CMSG_NXTHDR(&message, c)) {
+        if (c->cmsg_level != SOL_SOCKET || c->cmsg_type != SCM_RIGHTS || c->cmsg_len < CMSG_LEN(0)) { invalid = 1; continue; }
+        size_t bytes = c->cmsg_len - CMSG_LEN(0);
+        if (bytes % sizeof(int)) invalid = 1;
+        for (size_t offset = 0; offset + sizeof(int) <= bytes; offset += sizeof(int)) {
+            int received; memcpy(&received, CMSG_DATA(c) + offset, sizeof received);
+            if (descriptors++) close(received); else fd = received;
+        }
+    }
+    if (count != sizeof request || invalid || descriptors != 1 ||
+        (message.msg_flags & (MSG_TRUNC | MSG_CTRUNC)) || request.prefix_len > sizeof request.prefix ||
+        !valid_header(request.header, request.header_len) || request.header[request.header_len] ||
+        request.operation != recovery_operation(request.header, request.header_len) ||
+        request.deadline <= now_ms() || request.deadline > now_ms() + 2000) {
+        if (fd >= 0) close(fd);
+        return;
+    }
+    read_deadline = request.deadline;
+    owner_request(fd, request.header, request.prefix, request.prefix_len);
+}
+static int owner_channel_open(void) {
+    int channel[2];
+    if (socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC | SOCK_NONBLOCK, 0, channel)) return -1;
+    owner_channel = channel[0]; worker_channel = channel[1];
+    return 0;
+}
+int adb_recovery_owner_init(void) {
+    if (owner_channel_open()) return -1;
+    int initialized = owner_init(0);
+    if (initialized) {
+        close(owner_channel); close(worker_channel); server = owner_channel = worker_channel = -1;
+        return initialized == -2 ? -2 : -1;
+    }
+    return 0;
+}
+void adb_recovery_owner_worker(void) {
+    if (custody_lock >= 0) close(custody_lock);
+    custody_lock = -1;
+    if (server >= 0) close(server);
+    if (owner_channel >= 0) close(owner_channel);
+    server = owner_channel = -1;
+}
+int adb_recovery_owner_recover(void) {
+    if (!lease || lease == MAP_FAILED) return -1;
+    note_recovery_cause(2);
+    recovery_pending = 1;
+    if (!owner_actuator()) return -1;
+    int result = set_network(1);
+    if (!result) {
+        managed = 0; recovery_pending = 0;
+        atomic_store(&lease->armed, 0); atomic_store(&lease->recovered, 1);
+    }
+    atomic_store(&lease->actuator, 0);
+    return result;
+}
+int adb_recovery_owner_worker_lost(void) {
+    if (atomic_load(&lease->ever_armed) && adb_recovery_owner_recover()) return -1;
+    if (owner_channel >= 0) close(owner_channel);
+    if (worker_channel >= 0) close(worker_channel);
+    owner_channel = worker_channel = -1;
+    owner_draining = 0;
+    return owner_channel_open();
+}
+int adb_recovery_owner_drain(void) {
+    owner_draining = 1;
+    if (adb_recovery_owner_recover()) return -1;
+    for (int i = 0; i < MAX_EXECUTORS; i++) {
+        int group = atomic_exchange(&lease->groups[i], 0);
+        if (group > 1) (void)kill(-group, SIGKILL);
+        if (workers[i] > 0) {
+            (void)kill(workers[i], SIGKILL);
+            if (bounded_reap(workers[i], NULL) < 0) return -1;
+            workers[i] = 0;
+        }
+    }
+    if (guardian > 0) {
+        (void)kill(guardian, SIGKILL);
+        if (bounded_reap(guardian, NULL) < 0) return -1;
+        guardian = -1;
+    }
+    (void)reap_capacity();
+    for (int i = 0; i < REAP_LIMIT; i++) if (pending_reaps[i]) return -1;
+    return 0;
+}
+void adb_recovery_owner_poll(int timeout_ms) {
+    owner_tick();
+    struct pollfd descriptors[] = {{ .fd = owner_channel, .events = POLLIN }, { .fd = server, .events = POLLIN }};
+    if (poll(descriptors, 2, timeout_ms) <= 0) return;
+    if (descriptors[0].revents & POLLIN) owner_receive();
+    if (descriptors[1].revents & POLLIN) {
+        int fd = accept4(server, NULL, NULL, SOCK_CLOEXEC);
+        if (fd < 0) return;
+        char line[160];
+        read_deadline = now_ms() + 2000;
+        if (!peer_allowed(fd) || read_line(fd, line, sizeof line)) { close(fd); return; }
+        owner_request(fd, line, NULL, 0);
+    }
+}
+/* Standalone engine retained for the upgrade/retirement process fixtures. Production
+ * --adb-recovery enters the main lifecycle through adb_recovery_bootstrap instead. */
+int adb_recovery_main(void) {
+    int initialized = owner_init(1);
+    if (initialized) return initialized == 2 ? 0 : 1;
+    for (;;) {
+        if (!helper_app_data_absent()) owner_draining = 0;
+        adb_recovery_owner_poll(100);
+        if (helper_app_data_absent() && now_ms() >= retirement_after_ms) {
+            retirement_after_ms = now_ms() + 1000;
+            if (!adb_recovery_owner_drain() && !retire_files()) return 0;
+        }
+    }
+}
+#ifndef ADB_RECOVERY_MAIN_SOCKET
+#define ADB_RECOVERY_MAIN_SOCKET "hapaneld-helper"
+#endif
+/* 0: exact merged main already serves; 2: safe secondary bootstrap; 1: refuse.
+ * An occupied main socket is never a licence to replace or kill its owner. */
+int adb_recovery_bootstrap(void) {
+    if (geteuid()) return 1;
+    int directory = replacement_directory();
+    if (directory < 0) return 1;
+    int current = ensure_startup_current(directory);
+    close(directory);
+    if (!current) return 1;
+    int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
+    if (fd < 0) return 1;
+    struct sockaddr_un address = { .sun_family = AF_UNIX };
+    const char *name = ADB_RECOVERY_MAIN_SOCKET;
+    size_t length = strlen(name);
+    if (length + 1 > sizeof address.sun_path) { close(fd); return 1; }
+    memcpy(address.sun_path + 1, name, length);
+    if (connect(fd, (struct sockaddr *)&address, offsetof(struct sockaddr_un, sun_path) + 1 + length)) {
+        int absent = errno == ECONNREFUSED || errno == ENOENT;
+        if (errno != EINPROGRESS || ensure_wait(fd, POLLOUT, now_ms() + 2000)) { close(fd); return absent ? 2 : 1; }
+        int error = 0; socklen_t error_size = sizeof error;
+        if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &error_size) || error) { close(fd); return 1; }
+    }
+    struct ucred peer; socklen_t size = sizeof peer;
+    if (getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &peer, &size) || peer.uid || peer.pid <= 1) { close(fd); return 1; }
+    struct timeval timeout = { .tv_sec = 2 };
+    (void)setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof timeout);
+    read_deadline = now_ms() + 2000;
+    char response[160], expected[160];
+    unsigned major = 0, minor = 0; char version[32], extra;
+    int matched = !write_all(fd, "VERSION\n", 8) && !read_line(fd, response, sizeof response) &&
+        sscanf(response, "HELPER version=%31s proto=%u.%u %c", version, &major, &minor, &extra) == 3 && major == 1 && minor >= 16;
+    matched = matched && !write_all(fd, "BUILDID\n", 8) && !read_line(fd, response, sizeof response);
+    snprintf(expected, sizeof expected, "BUILDID %s", helper_build_id());
+    /* Ordinary BUILDID carries the exact build identity. */
+    matched = matched && !strcmp(response, expected);
+    if (matched) matched = !write_all(fd, "STATUS\n", 7) && !read_line(fd, response, sizeof response);
+    snprintf(expected, sizeof expected, "READY 1 %s ", helper_build_id());
+    matched = matched && !strncmp(response, expected, strlen(expected)) && strlen(response) == strlen(expected) + 5 &&
+        (response[strlen(expected)] == '0' || response[strlen(expected)] == '1') &&
+        response[strlen(expected) + 1] == ' ' && (response[strlen(expected) + 2] == '0' || response[strlen(expected) + 2] == '1') &&
+        response[strlen(expected) + 3] == ' ' && (response[strlen(expected) + 4] == '0' || response[strlen(expected) + 4] == '1');
+    close(fd); return matched ? 0 : 1;
+}
+/* The historical inode/comm retirement path applies only to a proved legacy
+ * protocol. A merged incumbent owns an independent guardian even when its socket
+ * worker is temporarily absent, and must use the explicit Guard replacement. */
+int adb_recovery_legacy_main(const char *name) {
+    int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
+    if (fd < 0) return 0;
+    struct sockaddr_un address = { .sun_family = AF_UNIX };
+    size_t length = strlen(name);
+    if (length + 1 > sizeof address.sun_path) { close(fd); return 0; }
+    memcpy(address.sun_path + 1, name, length);
+    if (connect(fd, (struct sockaddr *)&address, offsetof(struct sockaddr_un, sun_path) + 1 + length)) {
+        if (errno != EINPROGRESS || ensure_wait(fd, POLLOUT, now_ms() + 2000)) { close(fd); return 0; }
+        int error = 0; socklen_t error_size = sizeof error;
+        if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &error_size) || error) { close(fd); return 0; }
+    }
+    struct ucred peer; socklen_t size = sizeof peer;
+    if (getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &peer, &size) || peer.uid || peer.pid <= 1) { close(fd); return 0; }
+    struct timeval timeout = { .tv_sec = 2 };
+    (void)setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof timeout);
+    read_deadline = now_ms() + 2000;
+    char response[160], version[32], extra; unsigned major = 0, minor = 0;
+    int legacy = !write_all(fd, "VERSION\n", 8) && !read_line(fd, response, sizeof response) &&
+        sscanf(response, "HELPER version=%31s proto=%u.%u %c", version, &major, &minor, &extra) == 3 && major == 1 && minor < 16;
+    close(fd); return legacy;
 }

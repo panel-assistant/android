@@ -197,6 +197,7 @@ class PanelAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         if (instance === this) {
+            AccessibilityKeyRouter.disconnected()
             cancelPortalRename()
             startupOverlayDismissal?.close()
             instance = null
@@ -365,6 +366,7 @@ class PanelAccessibilityService : AccessibilityService() {
 
     override fun onUnbind(intent: Intent?): Boolean {
         if (instance === this) {
+            AccessibilityKeyRouter.disconnected()
             cancelPortalRename()
             startupOverlayDismissal?.close()
             instance = null
@@ -374,17 +376,17 @@ class PanelAccessibilityService : AccessibilityService() {
 
     override fun onKeyEvent(event: KeyEvent): Boolean {
         if (!GuardDbProcessAdmission.ordinaryMutationsAllowed()) return super.onKeyEvent(event)
+        if (event.action != KeyEvent.ACTION_DOWN && event.action != KeyEvent.ACTION_UP) return super.onKeyEvent(event)
         val name = KeyEvent.keyCodeToString(event.keyCode)
-        ButtonEventPolicy.accessibility(
+        Log.d(TAG, "key: $name device=${event.device?.name} scan=${event.scanCode} action=${event.action} repeat=${event.repeatCount}")
+        val consumed = AccessibilityKeyRouter.dispatch(
+            deviceName = event.device?.name,
+            scanCode = event.scanCode,
             down = event.action == KeyEvent.ACTION_DOWN,
             repeatCount = event.repeatCount,
             eventType = name,
-        )?.let {
-            Log.d(TAG, "key down: $name")
-            ButtonBus.emit(it)
-        }
-        // Do not consume — let the system handle the key normally.
-        return super.onKeyEvent(event)
+        )
+        return consumed || super.onKeyEvent(event)
     }
 
     companion object : AccessibilityActions {

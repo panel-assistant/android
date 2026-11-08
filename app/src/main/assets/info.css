@@ -17,49 +17,48 @@
   --text-bright:#fff;--text-soft:#ccc;--tab:#bbb;--dim:#888;--accent:#9af;--accent2:#9cf;--ok-dim:#8a8;
   --icon:#7c8a99;--icon-dim:#6a7a8a;--hover:#1a1a1a;--knob:#eee;--disabled-bg:#222;--disabled-fg:#666;
   --shadow:#000;--shimA:#141414;--shimB:#1f1f1f;--plot:#0d0d0d;--vtagrec-bg:#1f4d2e;--vtagrec-fg:#8fe0a8;
-  --setup-bg:#3a2f10;--setup-bd:#7a5a2a;--setup-fg:#f5c451;--setup-link:#ffd97a;--crit-bg:#3a1512;
-  --crit-fg:#ffb3a6;--crit-link:#ffc9bf;--info-bg:#12233a;--info-bd:#2a557a;--info-fg:#9cc4ee;
-  --info-link:#bcd9f5;--api-desc:#667;--api-error:#d9534f;--api-ok:#5ad18a;
-  --autobright-band:rgba(74,158,255,.15);--autobright-grid:#343a44;--autobright-label:#888;
-  --backup-plain-warn:#c88;--cap-degraded:#d9a528;--cap-none:#d04a3b;--cap-ok:#48c774;--cfglink:#4a6a8a;
-  --chart-bg:#0d0d0d;--chart-blocked:#f5a623;--chart-cpu:#4a9eff;--chart-expected:#f1bd52;--chart-gpu:#f5a623;
-  --chart-grid:#383838;--chart-interaction:#d04a3b;--chart-label:#888;--chart-observed:#4a9eff;
-  --chart-proposed:#b77cff;--chart-ram:#48c774;--chart-updates:#4a9eff;--edge-crit:#e05a48;
-  --edge-info:#3d7fd0;--fact-warn:#f5c451;--fg-bad:#d04a3b;--fg-faint:#666;--fg-muted:#888;--fg-ok:#48c774;
-  --fg-warn:#d9a528;--highlight:#4a9eff;--install-rule:#2a2a2a;--link:#9cf;--listbox-shadow:rgba(0,0,0,.28);
-  --log-error:#f07868;--log-info:#cfcfcf;--log-verbose:#777;--log-warn:#f5c451;--primary-text:#fff;
-  --pkg-active:#3fb950;--pkg-dialog-bg:#1a1a1a;--pkg-dialog-border:#333;--pkg-dialog-fg:#eee;
-  --pkg-divider:#222;--pkg-note:#9aa;--pkg-protected:#777;--primary:#2557a7;--profile-danger-border:#8b342f;
-  --profile-danger-fg:#ffb3a6;--profile-editor-active-line:rgba(127,153,204,.09);
-  --profile-editor-selection:rgba(77,121,195,.35);--profile-issue-error:#d05248;--profile-issue-info:#4284bb;
-  --profile-issue-warning:#c6952d;--profile-modal-backdrop:rgba(0,0,0,.66);
-  --profile-modal-shadow:rgba(0,0,0,.5);--profile-ok-fg:#9ee5ad;--pswitch-border:#2a3550;
-  --pswitch-border-hover:#4a6ba0;--screenshot-backdrop:rgba(0,0,0,.72);--screenshot-error:#e07868;
-  --screenshot-frame-bg:#000;--self-row-border:#2a2a2a;--shot-failed-fg:#a88;--sleep-allow:#9aafc2;
-  --sleep-allow-fg:#172533;--sleep-blocked-a:#a33b3b;--sleep-blocked-b:#5b2626;--sleep-detected:#c89a18;
-  --sleep-detected-fg:#17130a;--sleep-hold:#287dcc;--sleep-inhibited-stripe:#f1bd52;--sleep-interval-fg:#fff;
-  --sleep-loading-overlay:rgba(18,22,28,.76);--sleep-off:#68727f;--sleep-off-fg:#f4f6f8;
-  --sleep-policy-lane:rgba(74,158,255,.11);--status-bad:#d34b42;--status-ok:#45a65a;--status-warn:#c58a16;
-  --uninstall-select-bg:#1c1c1c;--uninstall-select-border:#444;--uninstall-select-fg:#eee;
-  --api-response-fg:#cdd;}
+  --setup-bg:#3a2f10;--setup-fg:#f5c451;--setup-link:#ffd97a;--crit-bg:#3a1512;--crit-fg:#ffb3a6;
+  --crit-link:#ffc9bf;--info-bg:#12233a;--info-bd:#2a557a;--info-fg:#9cc4ee;--info-link:#bcd9f5;
+  --api-desc:#667;--api-error:#d9534f;--api-ok:#5ad18a;--autobright-band:rgba(74,158,255,.15);
+  --autobright-grid:#343a44;--autobright-label:#888;--backup-plain-warn:#c88;--cap-degraded:#d9a528;
+  --cap-none:#d04a3b;--cap-ok:#48c774;--cfglink:#4a6a8a;--chart-bg:#0d0d0d;--chart-blocked:#f5a623;
+  --chart-cpu:#4a9eff;--chart-expected:#f1bd52;--chart-gpu:#f5a623;--chart-grid:#383838;
+  --chart-interaction:#d04a3b;--chart-label:#888;--chart-observed:#4a9eff;--chart-proposed:#b77cff;
+  --chart-ram:#48c774;--chart-updates:#4a9eff;--edge-crit:#e05a48;--edge-info:#3d7fd0;--fact-warn:#f5c451;
+  --fg-bad:#d04a3b;--fg-faint:#666;--fg-muted:#888;--fg-ok:#48c774;--fg-warn:#d9a528;--highlight:#4a9eff;
+  --install-rule:#2a2a2a;--link:#9cf;--listbox-shadow:rgba(0,0,0,.28);--log-error:#f07868;--log-info:#cfcfcf;
+  --log-verbose:#777;--log-warn:#f5c451;--primary-text:#fff;--pkg-active:#3fb950;--pkg-dialog-bg:#1a1a1a;
+  --pkg-dialog-border:#333;--pkg-dialog-fg:#eee;--pkg-divider:#222;--pkg-note:#9aa;--pkg-protected:#777;
+  --primary:#2557a7;--profile-danger-border:#8b342f;--profile-danger-fg:#ffb3a6;
+  --profile-editor-active-line:rgba(127,153,204,.09);--profile-editor-selection:rgba(77,121,195,.35);
+  --profile-issue-error:#d05248;--profile-issue-info:#4284bb;--profile-issue-warning:#c6952d;
+  --profile-modal-backdrop:rgba(0,0,0,.66);--profile-modal-shadow:rgba(0,0,0,.5);--profile-ok-fg:#9ee5ad;
+  --pswitch-border:#2a3550;--pswitch-border-hover:#4a6ba0;--screenshot-backdrop:rgba(0,0,0,.72);
+  --screenshot-error:#e07868;--screenshot-frame-bg:#000;--self-row-border:#2a2a2a;--shot-failed-fg:#a88;
+  --sleep-allow:#9aafc2;--sleep-allow-fg:#172533;--sleep-blocked-a:#a33b3b;--sleep-blocked-b:#5b2626;
+  --sleep-detected:#c89a18;--sleep-detected-fg:#17130a;--sleep-hold:#287dcc;--sleep-inhibited-stripe:#f1bd52;
+  --sleep-interval-fg:#fff;--sleep-loading-overlay:rgba(18,22,28,.76);--sleep-off:#68727f;
+  --sleep-off-fg:#f4f6f8;--sleep-policy-lane:rgba(74,158,255,.11);--status-bad:#d34b42;--status-ok:#45a65a;
+  --status-warn:#c58a16;--uninstall-select-bg:#1c1c1c;--uninstall-select-border:#444;
+  --uninstall-select-fg:#eee;--api-response-fg:#cdd;}
 @media (prefers-color-scheme: light){:root:not([data-theme=dark]),:host(:not([theme=dark])){color-scheme:light;
   --bg:#f2f3f5;--card:#fff;--card-head:#e7ebef;--input-bg:#f6f7f9;--input-bg2:#fafbfc;--card-border:#d9dde3;
   --divider:#e4e7ec;--config-divider:#e4e7ec;--border:#c9cfd7;--border2:#c4cad2;--border-strong:#b6bec8;
   --text:#1b2430;--text-bright:#000;--text-soft:#2c3644;--tab:#4a5462;--dim:#6a7480;--accent:#1e56a8;
   --accent2:#0b6a8e;--ok-dim:#3f7d49;--icon:#5b6b7a;--icon-dim:#74818f;--hover:#e9ecef;--knob:#fff;
   --disabled-bg:#e2e5e9;--disabled-fg:#9aa3ad;--shadow:rgba(0,0,0,.18);--shimA:#e8eaee;--shimB:#f6f7f9;
-  --plot:#e8ecf0;--vtagrec-bg:#d9efe0;--vtagrec-fg:#1f6b3a;--setup-bg:#fcf4dc;--setup-bd:#e3cf94;
-  --setup-fg:#7a5a10;--setup-link:#8a6400;--crit-bg:#fceceb;--crit-fg:#a02c20;--crit-link:#7c1f16;
-  --info-bg:#e9f1fb;--info-bd:#b9d2ec;--info-fg:#26567e;--info-link:#1a4468;}}
+  --plot:#e8ecf0;--vtagrec-bg:#d9efe0;--vtagrec-fg:#1f6b3a;--setup-bg:#fcf4dc;--setup-fg:#7a5a10;
+  --setup-link:#8a6400;--crit-bg:#fceceb;--crit-fg:#a02c20;--crit-link:#7c1f16;--info-bg:#e9f1fb;
+  --info-bd:#b9d2ec;--info-fg:#26567e;--info-link:#1a4468;}}
 :root[data-theme=light],:host([theme=light]){color-scheme:light;
   --bg:#f2f3f5;--card:#fff;--card-head:#e7ebef;--input-bg:#f6f7f9;--input-bg2:#fafbfc;--card-border:#d9dde3;
   --divider:#e4e7ec;--config-divider:#e4e7ec;--border:#c9cfd7;--border2:#c4cad2;--border-strong:#b6bec8;
   --text:#1b2430;--text-bright:#000;--text-soft:#2c3644;--tab:#4a5462;--dim:#6a7480;--accent:#1e56a8;
   --accent2:#0b6a8e;--ok-dim:#3f7d49;--icon:#5b6b7a;--icon-dim:#74818f;--hover:#e9ecef;--knob:#fff;
   --disabled-bg:#e2e5e9;--disabled-fg:#9aa3ad;--shadow:rgba(0,0,0,.18);--shimA:#e8eaee;--shimB:#f6f7f9;
-  --plot:#e8ecf0;--vtagrec-bg:#d9efe0;--vtagrec-fg:#1f6b3a;--setup-bg:#fcf4dc;--setup-bd:#e3cf94;
-  --setup-fg:#7a5a10;--setup-link:#8a6400;--crit-bg:#fceceb;--crit-fg:#a02c20;--crit-link:#7c1f16;
-  --info-bg:#e9f1fb;--info-bd:#b9d2ec;--info-fg:#26567e;--info-link:#1a4468;}
+  --plot:#e8ecf0;--vtagrec-bg:#d9efe0;--vtagrec-fg:#1f6b3a;--setup-bg:#fcf4dc;--setup-fg:#7a5a10;
+  --setup-link:#8a6400;--crit-bg:#fceceb;--crit-fg:#a02c20;--crit-link:#7c1f16;--info-bg:#e9f1fb;
+  --info-bd:#b9d2ec;--info-fg:#26567e;--info-link:#1a4468;}
 /* tokens:end */
 body{font-family:system-ui,-apple-system,sans-serif;margin:0;background:var(--bg);color:var(--text)}
 .wrap{max-width:1860px;margin:0 auto;padding:20px}             /* cap + centre: up to 4 masonry cols on a 1920/2560 panel */
@@ -304,11 +303,11 @@ body.revealed input.secret,input.secret:focus,input.secret.shown{color:var(--tex
 .nav a{padding:9px 16px;color:var(--tab);text-decoration:none;border-bottom:2px solid transparent;font-size:.95rem}
 .nav a:hover{color:var(--text);background:var(--hover)}
 .nav a.active{color:var(--text-bright);border-bottom-color:var(--primary)}
-.nav .disabled-tab{padding:9px 16px;color:var(--muted);opacity:.45;border-bottom:2px solid transparent;cursor:not-allowed}
+.nav .disabled-tab{padding:9px 16px;color:var(--dim);opacity:.45;border-bottom:2px solid transparent;cursor:not-allowed}
 /* Entity diagnostics are one full-width data surface, not masonry cards. On a narrow panel the table
    keeps useful columns and scrolls inside its card instead of crushing every value into a tall strip. */
 .entity-cards{columns:auto}
-.entity-policy{border:1px solid var(--line);border-radius:8px;margin:12px 0 0;padding:8px 12px}
+.entity-policy{border:1px solid var(--border);border-radius:8px;margin:12px 0 0;padding:8px 12px}
 .entity-policy label{display:block;margin:6px 0}
 .entity-policy p{margin:7px 0 2px}
 /* The catalogue search sits between the cards and sticks under the header, so refining a query never means
@@ -321,7 +320,7 @@ body.revealed input.secret,input.secret:focus,input.secret.shown{color:var(--tex
 .entity-issues{border-left:4px solid var(--border-strong)}.entity-issues.has-blocking{border-left-color:var(--edge-crit)}.entity-issues-list:empty{display:none}.entity-issues-list{display:grid;gap:10px;margin:12px 0}.entity-issue{border:1px solid var(--divider);border-radius:8px;padding:10px 12px;background:var(--input-bg2);overflow-wrap:anywhere}.entity-issue.blocking{border-left:4px solid var(--edge-crit)}.entity-issue.advisory{border-left:4px solid var(--edge-info)}.entity-issue.allowed{border-left:4px solid var(--ok-dim)}.entity-issue-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:7px}.entity-issue-label,.entity-issue-locations>span{color:var(--accent);font-weight:600}.entity-issue code{white-space:normal;word-break:break-word}.entity-issue p{margin:7px 0 0}.entity-issue-recommendation{color:var(--text-soft)}.entity-issue-allow-note{margin:9px 0 0;color:var(--text-soft)}.entity-issue-search{margin-top:7px}.entity-issue-toggle{margin-top:10px}
 .entity-dynamic{margin:14px 0 12px;padding-top:12px;border-top:1px solid var(--divider)}.entity-dynamic[hidden]{display:none}.entity-dynamic h3{margin:0 0 6px;color:var(--accent2);font-size:.86rem;text-transform:uppercase;letter-spacing:.04em}.entity-dynamic-list{display:grid;gap:8px;margin-top:10px}.entity-dynamic-expression{border:1px solid var(--divider);border-radius:8px;padding:9px 11px;background:var(--input-bg2);overflow:hidden}.entity-dynamic-expression pre{margin:7px 0 0;padding:8px;border-radius:6px;background:var(--bg);overflow:auto;white-space:pre-wrap;word-break:break-word}.entity-dynamic-expression code{font-size:.82rem}
 @media(max-width:600px){.entity-issue{padding:9px}.entity-issue-locations code{display:block;margin-top:3px}}
-.tablewrap{overflow:hidden;max-width:100%}.entity-table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:.85rem}.entity-table th,.entity-table td{padding:8px 10px;border-bottom:1px solid var(--card-border);text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.entity-table .col-select{width:34px;padding-left:6px;padding-right:4px}.entity-table .col-entity{width:auto}.entity-table .col-access{width:190px;text-align:center}.entity-table .col-rate{width:185px;text-align:center}.entity-table .col-reason{width:145px}.entity-table .col-last{width:95px}.entity-table .col-override{width:115px}.entity-table code{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.entity-table select{width:100%;max-width:105px}.metric-rank{font-family:inherit;font-variant-numeric:tabular-nums}.rank-low{color:var(--status-ok)}.rank-mid{color:var(--status-warn)}.rank-high{color:var(--status-bad)}.reason-icons{display:none}.reason-icon{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;margin-right:3px;border:1px solid var(--border);border-radius:50%;font-size:.76rem;color:var(--muted)}
+.tablewrap{overflow:hidden;max-width:100%}.entity-table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:.85rem}.entity-table th,.entity-table td{padding:8px 10px;border-bottom:1px solid var(--card-border);text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.entity-table .col-select{width:34px;padding-left:6px;padding-right:4px}.entity-table .col-entity{width:auto}.entity-table .col-access{width:190px;text-align:center}.entity-table .col-rate{width:185px;text-align:center}.entity-table .col-reason{width:145px}.entity-table .col-last{width:95px}.entity-table .col-override{width:115px}.entity-table code{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.entity-table select{width:100%;max-width:105px}.metric-rank{font-family:inherit;font-variant-numeric:tabular-nums}.rank-low{color:var(--status-ok)}.rank-mid{color:var(--status-warn)}.rank-high{color:var(--status-bad)}.reason-icons{display:none}.reason-icon{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;margin-right:3px;border:1px solid var(--border);border-radius:50%;font-size:.76rem;color:var(--dim)}
 @media(max-width:1200px){.entity-table .col-last{display:none}.entity-table .col-entity{width:auto}}
 @media(max-width:950px){.entity-table .col-access{display:none}}
 @media(max-width:760px){.entity-table .col-rate{display:none}}
@@ -472,8 +471,8 @@ body.hdr-hide-logo .hdr .logo,body.hdr-hide-logo .hdr .sep{display:none}
 .autobright-legend .proposed::before{background:var(--chart-proposed)}
 .autobright-legend small{margin-left:auto;color:var(--dim)}
 .autobright-message{min-height:1rem;margin-top:5px;color:var(--ok-dim);font-size:.74rem;line-height:1rem}
-.autobright-message.error{color:var(--status-bad)}
-.auto-sleep-prerequisite{margin:-2px 0 8px;padding:0 8px;color:var(--warn);font-size:.72rem;line-height:1.35}
+
+.auto-sleep-prerequisite{margin:-2px 0 8px;padding:0 8px;color:var(--status-warn);font-size:.72rem;line-height:1.35}
 /* The Camera card's explanation when the panel offers no camera; dimmer than a warning, because
    a panel without camera hardware is not in a faulty state. */
 .camera-unavailable{margin:2px 0 4px;padding:0 8px;color:var(--dim);font-size:.72rem;line-height:1.35}
@@ -531,7 +530,7 @@ body.hdr-hide-logo .hdr .logo,body.hdr-hide-logo .hdr .sep{display:none}
 .hd-custom[hidden]{display:none}
 .frow .fctl .hd-custom input{display:block;width:100%;min-width:0;max-width:100%}
 .hd-custom-note{overflow-wrap:anywhere}
-.hd-custom-note.warn{color:var(--setup-fg)}
+
 /* Expose-to-HA toggle: an icon button (no checkbox) drawn with an inline link / broken-link SVG.
    Linked = bright accent (highlight); unlinked = muted grey. Overrides the generic button{} box. */
 .pip{display:inline-flex;align-items:center;justify-content:center;align-self:center;line-height:0;
@@ -669,29 +668,16 @@ body.hdr-hide-logo .hdr .logo,body.hdr-hide-logo .hdr .sep{display:none}
 .wiz-cta{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 0}
 .wiz-cta .pbtn{flex:1 1 auto;text-align:center;min-height:44px;display:inline-flex;align-items:center;justify-content:center}
 @media (max-width:600px){.wiz-cta .pbtn{flex-basis:100%}}
-/* Entity-filter verdict (setup step 5). The three tones reuse the entity data-rate rank colours already in
-   this file, so a red here means the same thing it means on the Entities tab. Each tone maps onto an existing
-   callout family (--vtagrec/--setup/--crit) rather than introducing a fourth palette. */
+/* Inline advisories keep their host's footprint and type size; severity uses the shared pill. */
+.notice.notice-inline{background:transparent;border:0;border-radius:0;padding:0;margin:0!important;
+  gap:6px 9px;font-size:inherit;color:inherit}
+.notice-inline .notice-text{flex:1 1 12rem}
+.hd-custom-note.notice-inline{color:var(--dim);font-size:smaller;margin-top:5px!important}
+.autobright-message.notice-inline{font-size:.74rem;margin-top:5px!important}
+/* Entity-filter facts and count stay in place while the verdict pill and headline change. */
 .ef-verdict{margin:14px 0 0;border:1px solid var(--divider);border-radius:10px;overflow:hidden}
-.ef-verdict-head{display:flex;align-items:center;gap:9px;margin:0;padding:10px 12px;
-  border-left:4px solid transparent;transition:background-color .45s ease,border-left-color .45s ease}
+.ef-verdict-head.notice-inline{padding:10px 12px;color:var(--text)}
 .ef-verdict-head b{font-size:.95rem}
-.ef-dot{flex:none;width:.6rem;height:.6rem;border-radius:50%;transition:background-color .45s ease}
-/* Concrete colours per level, set directly on the elements that show them, rather than routed through a
-   shared --ef-tone/--ef-bg custom property that the transitioned background/border-color then reads.
-   Unregistered custom properties do not themselves animate, and this level class changes WHILE the count
-   climbs, so the indirection puts a value that cannot animate underneath a property that is animating — a
-   pattern worth avoiding outright on the panels' older WebView rather than relying on it resolving. Verified
-   in both themes: red gives #d34b42 with --crit-bg behind it, light and dark. */
-.ef-verdict.green>.ef-verdict-head{background-color:var(--vtagrec-bg);border-left-color:var(--status-ok)}
-.ef-verdict.green>.ef-verdict-head b{color:var(--vtagrec-fg)}
-.ef-verdict.green .ef-dot{background-color:var(--status-ok)}
-.ef-verdict.amber>.ef-verdict-head{background-color:var(--setup-bg);border-left-color:var(--status-warn)}
-.ef-verdict.amber>.ef-verdict-head b{color:var(--setup-fg)}
-.ef-verdict.amber .ef-dot{background-color:var(--status-warn)}
-.ef-verdict.red>.ef-verdict-head{background-color:var(--crit-bg);border-left-color:var(--status-bad)}
-.ef-verdict.red>.ef-verdict-head b{color:var(--crit-fg)}
-.ef-verdict.red .ef-dot{background-color:var(--status-bad)}
 .ef-facts{padding:0 12px;border-top:1px solid var(--divider);font-size:.86rem}
 .ef-facts .fact>span{color:var(--dim)}
 .ef-facts .fact>b{font-weight:600;font-variant-numeric:tabular-nums;text-align:right}
@@ -703,10 +689,9 @@ body.hdr-hide-logo .hdr .logo,body.hdr-hide-logo .hdr .sep{display:none}
 .ef-basis{margin:0;padding:9px 12px;font-size:.8rem;color:var(--dim);background:var(--card);
   border-top:1px solid var(--divider);line-height:1.5}
 .ef-basis .pill{margin-right:6px}
-/* The text carries the state in every case; the dot and the colour transition are reinforcement only. */
+/* Counting motion respects the browser preference. */
 @media (prefers-reduced-motion:reduce){
   .ef-counting::before{animation:none;opacity:.85}
-  .ef-verdict-head,.ef-dot{transition:none}
 }
 /* Phone width, last so it wins over the base rules above. Phone width (Panel Assistant sidebar on a phone): a card title keeps one line in every locale, so the uppercase
    tracking goes and the type steps down; its lowercase status suffix drops onto its own line beneath. */

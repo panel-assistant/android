@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Replace a real incumbent through the production --adb-recovery entry, with isolated Android I/O."""
+"""Qualify retained legacy recovery-engine replacement with isolated Android I/O."""
 import os
 import ctypes
 import fcntl
@@ -27,7 +27,7 @@ ENSURE_TIMEOUT = 28
 WRAPS = ('kill', 'fstatat', 'fopen', 'usleep', 'fsync', 'write', 'renameat', 'execve', 'pthread_create')
 
 # A minimal entry keeps ordinary-host startup away from Guard paths. Both paths run real core:
-# the ordinary bounded socket accumulator/dispatch, and the recovery child's production main.
+# the ordinary bounded socket accumulator/dispatch, and the retained independent recovery engine.
 ORDINARY_ENTRY = r'''
 #define _GNU_SOURCE
 #include <errno.h>
@@ -265,6 +265,7 @@ else:
                             *[f'-D{k}="{v}"' for k,v in flags.items()],
                             *[recovery if s=='src/adb_recovery.c' else s for s in sources],
                             'src/main.c','src/sysexec.c',cuts,
+                            '-DRECOVERY_REPLACEMENT_STANDALONE_ENTRY','-Wl,--wrap=main',
                             *['-Wl,--wrap=' + name for name in WRAPS],'-lpthread','-o',str(binary)],cwd=ROOT,check=True)
             binaries[build]=binary
         legs = os.environ.get('RECOVERY_REPLACEMENT_LEGS', 'direct,ensure').split(',')
@@ -359,11 +360,16 @@ else:
                     s.settimeout(ENSURE_TIMEOUT); s.connect('\0' + sock + '-ordinary-' + NEW[0])
                     for command_text, expected in (
                             ('PING', 'OK\n'), ('ADBRECOVERYENSURE extra', 'ERR\n'),
-                            ('ADBRECOVERYENSURE /proc/self/exe', 'ERR\n'),
-                            ('ARM ' + 'a'*64, 'ERR\n'), ('BEAT ' + 'a'*64, 'ERR\n'),
-                            ('RECOVER', 'ERR\n'), ('SHELL 1 0', 'ERR\n')):
+                            ('ADBRECOVERYENSURE /proc/self/exe', 'ERR\n')):
                         s.sendall((command_text + '\n').encode())
-                        assert line(s, 256) == expected, 'ordinary ENSURE argument/admin-endpoint control failed: ' + command_text
+                        assert line(s, 256) == expected, 'ordinary ENSURE argument control failed: ' + command_text
+                # Recovery verbs terminate their main connection, including a refused request.
+                for command_text in ('ARM ' + 'a'*64, 'BEAT ' + 'a'*64, 'RECOVER', 'STATUS', 'SHELL 1 0'):
+                    with socket.socket(socket.AF_UNIX) as s:
+                        s.settimeout(ENSURE_TIMEOUT); s.connect('\0' + sock + '-ordinary-' + NEW[0])
+                        s.sendall((command_text + '\n').encode())
+                        assert line(s, 256) == 'ERR\n', 'ordinary admin-endpoint control failed: ' + command_text
+                        assert s.recv(1) == b'', 'refused recovery request did not close its connection: ' + command_text
                 try: peer, _ = recovery_probe.accept()
                 except BlockingIOError: pass
                 else:

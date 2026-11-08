@@ -136,6 +136,23 @@ class ConfigOwnerChoicesTest {
         assertFalse(config.apkUploadAllowed)
     }
 
+    @Test fun chosenPresenceSourcesRoundTripAndRejectMalformedArchives() {
+        val source = Config(fakePreferences().instance)
+        assertTrue(source.setPresenceHaSources(listOf("binary_sensor.kitchen_zone", "binary_sensor.hall_motion")))
+        val stored = source.prefs.getString(PRESENCE_HA_SOURCES_PREF, "")!!
+        val target = Config(fakePreferences().instance)
+        assertEquals(1, target.applyOwnerChoices(target.planOwnerChoices(listOf(row(PRESENCE_HA_SOURCES_PREF, stored)), false)))
+        assertEquals(listOf("binary_sensor.kitchen_zone", "binary_sensor.hall_motion"), target.presenceHaSources())
+        for (bad in listOf("""["light.kitchen"]""", """["binary_sensor.a","binary_sensor.a"]""", "not json", """[1]""")) {
+            assertThrows(IllegalArgumentException::class.java) {
+                target.planOwnerChoices(listOf(row(PRESENCE_HA_SOURCES_PREF, bad)), false)
+            }
+        }
+        assertFalse(target.setPresenceHaSources(listOf("sensor.kitchen")))
+        assertTrue(target.setPresenceHaSources(emptyList()))
+        assertEquals(emptyList<String>(), target.presenceHaSources())
+    }
+
     private fun row(key: String, value: String, type: String = "string") = ConfigVault.StateRow("config", key, type, value, 1L)
 
     private fun buttonKey(config: Config): String = requireNotNull(config.profile).let { "last_button_backlight.${it.id}.${it.revision}" }

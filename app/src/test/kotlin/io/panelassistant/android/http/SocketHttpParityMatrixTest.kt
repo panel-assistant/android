@@ -187,7 +187,7 @@ class SocketHttpParityMatrixTest {
 
         /** Routes the page transport sends a JSON body to (transport.js `b: "json"`). */
         val JSON_BODY = setOf(
-            "auto_sleep.source", "dashboard.entity_filter.set", "dashboard.entities.activate", "dashboard.entities.issues.set", "dashboard.entities.override",
+            "auto_sleep.source", "auto_sleep.presence_sources.choose", "dashboard.entity_filter.set", "dashboard.entities.activate", "dashboard.entities.issues.set", "dashboard.entities.override",
             "dashboard.entities.overrides", "dashboard.entities.policy", "dashboard.entities.reset", "dashboard.entities.sync.set",
             "profiles.compare", "profiles.preview", "profiles.validate", "profiles.activate", "profiles.delete",
             "profiles.rollback", "profiles.save", "profiles.select", "voice.wake_words.set",

@@ -41,6 +41,9 @@ class LoggingRoutesTest {
                     "app" to (HttpStatusCode.NotFound to "log viewer unavailable\n"),
                     "webview" to (HttpStatusCode.ServiceUnavailable to "webview console needs log shipping configured\n"),
                     "system" to (HttpStatusCode.ServiceUnavailable to "system log needs a LOGCAT helper\n"),
+                    "app-raw" to (HttpStatusCode.NotFound to "log viewer unavailable\n"),
+                    "webview-raw" to (HttpStatusCode.ServiceUnavailable to "webview console needs log shipping configured\n"),
+                    "system-raw" to (HttpStatusCode.ServiceUnavailable to "system log needs a LOGCAT helper\n"),
                     "invalid" to (HttpStatusCode.BadRequest to "unknown source 'invalid' (app|system|webview)\n"),
                 )
                 for ((source, expected) in cases) {
@@ -97,13 +100,14 @@ class LoggingRoutesTest {
                             seen
                         }
 
-                        for (source in listOf("app", "system", "webview")) {
+                        for (source in listOf("app", "system", "webview", "app-raw", "system-raw", "webview-raw")) {
                             val id = subscribe(source)
                             val seen = observe(id) { it.contains("-source-line") }
                             assertTrue(seen.toString(), seen.all { it.startsWith("known ") })
                             val lines = seen.joinToString()
-                            assertTrue(lines, lines.contains("$source-source-line"))
-                            for (other in listOf("app", "system", "webview") - source) {
+                            val selected = source.removeSuffix("-raw")
+                            assertTrue(lines, lines.contains("$selected-source-line"))
+                            for (other in listOf("app", "system", "webview") - selected) {
                                 assertFalse("$source shows $other: $lines", lines.contains("$other-source-line"))
                             }
                             unsubscribe(id)
@@ -111,7 +115,7 @@ class LoggingRoutesTest {
 
                         systemReadable.set(false)
                         consoleEnabled.set(false)
-                        for (source in listOf("system", "webview", "invalid")) {
+                        for (source in listOf("system", "webview", "system-raw", "webview-raw", "invalid")) {
                             val id = subscribe(source)
                             assertEquals(listOf("unavailable null"), observe(id) { it.startsWith("unavailable") })
                             unsubscribe(id)

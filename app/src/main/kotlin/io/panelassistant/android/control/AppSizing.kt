@@ -6,7 +6,6 @@ import android.content.pm.PackageManager
 import android.provider.Settings
 import android.util.DisplayMetrics
 import android.util.Log
-import java.util.concurrent.TimeUnit
 
 /**
  * Display sizing by the app itself, for a panel with neither root nor the helper. Text size is a
@@ -37,6 +36,7 @@ interface AppSizing {
 }
 
 internal class FrameworkSizing(private val context: Context) : AppSizing {
+    private val directCommands = DirectAppCommands()
     // The policy that hides the window service from an app cannot change while the process runs.
     private val windowCommandAnswers by lazy { windowDensity(null)?.contains("Physical density") == true }
 
@@ -63,17 +63,7 @@ internal class FrameworkSizing(private val context: Context) : AppSizing {
     }
 
     /** `cmd window density [arg]` as the app: its output, or null when it did not finish in time. */
-    private fun windowDensity(arg: String?): String? = runCatching {
-        val process = ProcessBuilder(listOfNotNull("cmd", "window", "density", arg))
-            .redirectErrorStream(true)
-            .start()
-        if (!process.waitFor(COMMAND_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
-            process.destroyForcibly()
-            null
-        } else {
-            process.inputStream.bufferedReader().readText().trim()
-        }
-    }.getOrNull()
+    private fun windowDensity(arg: String?): String? = directCommands.windowDensity(arg)
 
     override fun fontScale(): Float? =
         runCatching { Settings.System.getFloat(context.contentResolver, Settings.System.FONT_SCALE, 1.0f) }
@@ -90,6 +80,5 @@ internal class FrameworkSizing(private val context: Context) : AppSizing {
     private companion object {
         const val TAG = "ha-paneld/sizing"
         const val DENSITY_FORCED = "display_density_forced"
-        const val COMMAND_TIMEOUT_MS = 5_000L
     }
 }

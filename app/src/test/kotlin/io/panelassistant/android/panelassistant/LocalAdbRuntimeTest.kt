@@ -46,6 +46,42 @@ class LocalAdbRuntimeTest {
         }
     }
 
+    @Test fun automaticMainOperationsAdmitOutsideTheTransitionAndRecheckAuthorityAtSubmission() = runTest {
+        val wire = io.panelassistant.android.util.MainRecoveryWireFixture()
+        var inTransition = false
+        var armWrites = 0
+        val runtime = LocalAdbRuntime(backgroundScope, RootLocalAdbEndpoint(wire.client), { false }, { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), { action ->
+            inTransition = true
+            try { action() } finally { inTransition = false }
+        })
+        wire.phase = { assertFalse("identity admission must leave session transitions available", inTransition) }
+        wire.beforeOperation = { assertFalse("transport preparation must leave session transitions available", inTransition) }
+        wire.afterWrite = {
+            if (String(wire.requests.last()).startsWith("ARM ")) { assertTrue(inTransition); armWrites++ }
+        }
+        runtime.session("first", true); runCurrent()
+        assertEquals(1, armWrites)
+        wire.beforeOperation = { header ->
+            if (header.startsWith("RECOVER ")) runtime.session("replacement", true)
+        }
+        runtime.session("closed", false); runCurrent()
+        assertTrue(wire.commands.none { it.second.startsWith("RECOVER ") })
+    }
+
+    @Test fun theMainTransportRechecksSessionAuthorityAfterItsIdentityAndBeforePayloadSubmission() = runTest {
+        val wire = io.panelassistant.android.util.MainRecoveryWireFixture()
+        val endpoint = RootLocalAdbEndpoint(wire.client)
+        val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), { it() })
+        runtime.session("initial", true); runCurrent()
+        wire.requests.clear()
+        wire.beforeOperation = { header -> if (header.startsWith("SHELL ")) runtime.session("replacement", false) }
+        val result = runtime.request("adb.shell", JSONObject().put("command", "id").put("timeout_ms", 100), { true })
+        assertEquals("refused", result.outcome)
+        assertEquals("expired", result.code)
+        assertTrue(wire.requests.none { String(it).startsWith("SHELL ") })
+        assertTrue(wire.commands.none { it.second.startsWith("SHELL ") })
+    }
+
     @Test fun aGrantedSessionReplacesAStaleBuildBeforeArmingItsSuccessor() = runTest {
         val endpoint = Endpoint().apply { status = LocalAdbState(true, false, buildId = "0".repeat(64)) }
         var bootstraps = 0

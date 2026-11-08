@@ -188,7 +188,7 @@ class StringsTest {
         assertEquals(listOf("de"), Strings(source, complete).languages(setOf("settings.")))
         assertEquals(listOf("de", "en"), Strings(source, complete).languages(setOf("profiles.")))
         assertEquals(
-            "the real German catalogue now promotes the complete HTML shell",
+            "the translated shell surface uses only German",
             listOf("de"),
             Strings(source, complete).languages(setOf("shell.")),
         )

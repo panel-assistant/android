@@ -7,13 +7,14 @@ import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
+import io.panelassistant.android.util.Json
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 private const val PROXIMITY_SOURCE_REQUIRED = "{\"error\":\"proximity_source_required\"}"
 
 /** Refusals are JSON like every other answer here, so the page can show the panel's own reason. */
-private fun proximityError(message: String) = "{\"error\":\"$message\"}"
+private fun proximityError(message: String) = "{\"error\":${Json.str(message)}}"
 
 internal fun Route.proximityRoutes(
     hasProximity: () -> Boolean,

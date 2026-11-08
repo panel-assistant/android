@@ -130,7 +130,28 @@ object CompanionDb {
             if (f[0].isBlank()) null else ServerRow(f[0], f.getOrElse(1) { "" }, f.getOrElse(2) { "" })
         }.toList()
 
-    private fun dbPath(pkg: String) = "/data/data/$pkg/databases/HomeAssistantDB"
+    /** Where the Companion's data directory is looked for, in order. Android 11 and later isolate app
+     *  data: an app's mount namespace shows only its own folder under `/data/data`, and a su that keeps
+     *  the caller's namespace (a setuid su, or a root manager's default) inherits that view, so the
+     *  Companion folder is not there for this app's root shell even though `adb shell su` sees it
+     *  (Issue #24). `/data_mirror/data_ce/null/0` is the internal-storage source the isolated view is
+     *  bound from, and it stays visible inside the app's namespace. */
+    internal fun dataDirCandidates(pkg: String): List<String> =
+        listOf("/data/data/$pkg", "/data_mirror/data_ce/null/0/$pkg")
+
+    // Shell that sets `hapaneld_cdir` to the first candidate directory this root shell can see, or to the
+    // first candidate when none is visible, so a failure names the ordinary path.
+    private fun resolveDataDir(pkg: String): String {
+        val (primary, mirror) = dataDirCandidates(pkg)
+        return """hapaneld_cdir="$primary"; [ -d "${'$'}hapaneld_cdir" ] || { [ -d "$mirror" ] && hapaneld_cdir="$mirror"; }; """
+    }
+
+    private const val DB_REL = "databases/HomeAssistantDB"
+
+    /** Run [body] with `hapaneld_cdir` naming the Companion data directory this root shell can see. A
+     *  subshell, because this runs in Su's persistent shell: the variable never outlives the command and
+     *  the body's exit status is the command's. */
+    private fun inDataDir(pkg: String, body: String): String = "( " + resolveDataDir(pkg) + body + " )"
 
     // ---- login borrow: reuse the Companion's sign-in for the built-in renderer ----
     // Same panel, same HA user; HA does not rotate refresh tokens on use, so both apps refresh
@@ -182,7 +203,7 @@ object CompanionDb {
      *  Call OFF the main thread. */
     fun readPageZoom(context: Context, root: RootShell): Int? {
         val pkg = CompanionInstaller.installedPkg(context) ?: return null
-        return parsePageZoom(root.runOutput("""cat "/data/data/$pkg/shared_prefs/themes_0.xml" 2>/dev/null"""))
+        return parsePageZoom(root.runOutput(inDataDir(pkg, """cat "${'$'}hapaneld_cdir/shared_prefs/themes_0.xml" 2>/dev/null""")))
     }
 
     /** Pick the row to borrow: the active server when known, else the first signed-in row (has a
@@ -196,9 +217,12 @@ object CompanionDb {
      *  Read-only immutable open — never leaves root-owned WAL files. Call OFF the main thread. */
     fun readLogin(context: Context, root: RootShell): LoginRow? {
         val pkg = CompanionInstaller.installedPkg(context) ?: return null
-        val db = dbPath(pkg)
-        val out = root.runOutput("""sqlite3 "file:$db?immutable=1" "$LOGIN_SQL" 2>/dev/null""") ?: return null
-        val active = parseActiveServer(root.runOutput("""cat "/data/data/$pkg/shared_prefs/session_0.xml" 2>/dev/null"""))
+        val out = root.runOutput(
+            inDataDir(pkg, """sqlite3 "file:${'$'}hapaneld_cdir/$DB_REL?immutable=1" "$LOGIN_SQL" 2>/dev/null"""),
+        ) ?: return null
+        val active = parseActiveServer(
+            root.runOutput(inDataDir(pkg, """cat "${'$'}hapaneld_cdir/shared_prefs/session_0.xml" 2>/dev/null""")),
+        )
         return pickLogin(parseLogins(out), active)
     }
 
@@ -216,19 +240,32 @@ object CompanionDb {
         out.lineSequence().firstOrNull { it.startsWith(SQLITE3_FAILED) }
             ?.removePrefix(SQLITE3_FAILED)?.trim()?.take(FAILURE_MAX_CHARS)
 
-    // Opens the file as an **immutable** URI: read-only, WAL ignored, and crucially it never creates the
-    // `-wal`/`-shm` files, so a root read can't leave root-owned sidecar files the app then can't open.
-    // Safe while the Companion is running. (Android's bundled sqlite3, 3.19 on PX30, lacks the `-readonly`
-    // flag but supports `file:…?immutable=1`.) Stdout carries only rows; stderr is captured apart and
-    // reported only on failure. No `exit`, and prefixed variable names: this runs in Su's persistent shell.
+    // A nonempty WAL can hold the whole servers schema. Read a private DB+WAL copy in that case;
+    // opening the live file normally could create root-owned WAL/SHM files in the Companion's data.
+    // Compare both copies before querying: a concurrent change fails this best-effort observation,
+    // rather than falling back to stale main-file rows. This is not an atomic backup of a live writer.
+    // The no-WAL path stays immutable for older SQLite versions without a -readonly flag.
     private fun readServersOutput(pkg: String, root: RootShell): String? {
-        val db = dbPath(pkg)
+        val db = "${'$'}hapaneld_cdir/$DB_REL"
+        val read = """if [ -s "$db-wal" ]; then ( """ +
+            """umask 077; hapaneld_cdb_dir=$(mktemp -d /data/local/tmp/ha-paneld-companion.XXXXXX) || exit ${'$'}?; """ +
+            """trap 'hapaneld_cdb_status=${'$'}?; rm -rf "${'$'}hapaneld_cdb_dir" || hapaneld_cdb_status=${'$'}?; exit "${'$'}hapaneld_cdb_status"' 0; """ +
+            """trap 'exit 1' 1 2 15; """ +
+            """cp "$db" "${'$'}hapaneld_cdb_dir/HomeAssistantDB" && """ +
+            """cp "$db-wal" "${'$'}hapaneld_cdb_dir/HomeAssistantDB-wal" && """ +
+            """cmp "$db" "${'$'}hapaneld_cdb_dir/HomeAssistantDB" >&2 && """ +
+            """cmp "$db-wal" "${'$'}hapaneld_cdb_dir/HomeAssistantDB-wal" >&2 && """ +
+            """sqlite3 "${'$'}hapaneld_cdb_dir/HomeAssistantDB" "$DUMP_SQL"; """ +
+            """) else sqlite3 "file:$db?immutable=1" "$DUMP_SQL"; fi"""
         return root.runOutput(
-            """if command -v sqlite3 >/dev/null 2>&1; then """ +
-                """{ hapaneld_cdb_err=$(sqlite3 "file:$db?immutable=1" "$DUMP_SQL" 2>&1 1>&3 3>&-); hapaneld_cdb_rc=$?; } 3>&1; """ +
-                """[ "${'$'}hapaneld_cdb_rc" -eq 0 ] || echo "$SQLITE3_FAILED rc=${'$'}hapaneld_cdb_rc db=$db: ${'$'}hapaneld_cdb_err"; """ +
-                """unset hapaneld_cdb_err hapaneld_cdb_rc; """ +
-                """else echo $SQLITE3_ABSENT; fi""",
+            inDataDir(
+                pkg,
+                """if command -v sqlite3 >/dev/null 2>&1; then """ +
+                    """{ hapaneld_cdb_err=$({ $read; } 2>&1 1>&3 3>&-); hapaneld_cdb_rc=$?; } 3>&1; """ +
+                    """[ "${'$'}hapaneld_cdb_rc" -eq 0 ] || echo "$SQLITE3_FAILED rc=${'$'}hapaneld_cdb_rc db=$db: ${'$'}hapaneld_cdb_err"; """ +
+                    """unset hapaneld_cdb_err hapaneld_cdb_rc; """ +
+                    """else echo $SQLITE3_ABSENT; fi""",
+            ),
         )
     }
 

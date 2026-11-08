@@ -46,6 +46,8 @@
     "auto_brightness.source": "POST auto-brightness/source",
     "auto_sleep": "GET auto-sleep", "auto_sleep.history": "GET auto-sleep/history", "auto_sleep.prerequisite": "GET auto-sleep/prerequisite",
     "auto_sleep.source": ["POST auto-sleep/source", { b: "json" }],
+    "auto_sleep.presence_sources": "GET auto-sleep/presence-sources",
+    "auto_sleep.presence_sources.choose": ["POST auto-sleep/presence-sources/choose", { b: "json" }],
     "backup": "POST backup",
     "restore": ["POST restore", { b: "raw", h: { passphrase: "X-Backup-Passphrase" } }],
     "camera.status": "GET camera/status",

@@ -36,7 +36,7 @@ internal fun Route.loggingRoutes(
 
 /** What a log viewer's `source` selects: its capture, or the stream's refusal of it. */
 private sealed interface LogSelection {
-    class Selected(val capture: LogCapture) : LogSelection
+    class Selected(val capture: LogCapture, val raw: Boolean) : LogSelection
     class Refused(val status: HttpStatusCode, val text: String) : LogSelection
 }
 
@@ -49,7 +49,8 @@ private class LogCaptures(
     private val systemLogAvailable: () -> Boolean,
 ) : io.panelassistant.android.ManageLogSources {
     suspend fun selection(source: String): LogSelection {
-        val capture = when (source) {
+        val raw = source.endsWith("-raw")
+        val capture = when (source.removeSuffix("-raw")) {
             "app" -> app
             "system" -> if (withContext(Dispatchers.IO) { systemLogAvailable() }) system else {
                 return LogSelection.Refused(HttpStatusCode.ServiceUnavailable, "system log needs a LOGCAT helper\n")
@@ -59,11 +60,11 @@ private class LogCaptures(
             }
             else -> return LogSelection.Refused(HttpStatusCode.BadRequest, "unknown source '$source' (app|system|webview)\n")
         } ?: return LogSelection.Refused(HttpStatusCode.NotFound, "log viewer unavailable\n")
-        return LogSelection.Selected(capture)
+        return LogSelection.Selected(capture, raw)
     }
 
     override suspend fun select(source: String): io.panelassistant.android.ManageLogSource? =
-        (selection(source) as? LogSelection.Selected)?.capture?.let(::LogCaptureSource)
+        (selection(source) as? LogSelection.Selected)?.let { LogCaptureSource(it.capture, it.raw) }
 }
 
 /** System logs require an authenticated helper that advertises LOGCAT. */
@@ -80,13 +81,14 @@ internal fun systemLogReadable(send: (String) -> String?): Boolean =
  *  never back-pressure the capture; a 15s `: ping` comment detects dead peers so the
  *  subscription (and with it the logcat subprocess) is released. */
 private suspend fun handleLogStream(call: ApplicationCall, captures: LogCaptures) {
-    val cap = when (val selection = captures.selection(call.request.queryParameters["source"] ?: "app")) {
-        is LogSelection.Selected -> selection.capture
+    val selected = when (val selection = captures.selection(call.request.queryParameters["source"] ?: "app")) {
+        is LogSelection.Selected -> selection
         is LogSelection.Refused -> {
             call.respondText(selection.text, status = selection.status)
             return
         }
     }
+    val cap = selected.capture
     val viewer = when (val admission = cap.admitViewer()) {
         is LogCapture.ViewerAdmission.Accepted -> admission.lease
         LogCapture.ViewerAdmission.CapacityExceeded -> {
@@ -102,9 +104,9 @@ private suspend fun handleLogStream(call: ApplicationCall, captures: LogCaptures
     try {
         // Backlog BEFORE subscribing: a few ms of lines can fall in the gap, which beats the visible
         // duplicates the opposite order produces (the dump overlaps the live stream's first lines).
-        val backlog = withContext(Dispatchers.IO) { cap.initialBacklog() }
+        val backlog = withContext(Dispatchers.IO) { cap.initialBacklog(raw = selected.raw) }
         val chan = Channel<String>(capacity = 512, onBufferOverflow = BufferOverflow.DROP_OLDEST)
-        val sub = cap.subscribe { chan.trySend(it) }
+        val sub = cap.subscribe(selected.raw) { chan.trySend(it) }
         try {
             call.response.headers.append("Cache-Control", "no-cache")
             call.respondTextWriter(ContentType.Text.EventStream) {
@@ -126,13 +128,13 @@ private suspend fun handleLogStream(call: ApplicationCall, captures: LogCaptures
 }
 
 /** The app log capture as the `logs` family's source: the stream's backlog, then its live lines. */
-private class LogCaptureSource(private val capture: LogCapture) : io.panelassistant.android.ManageLogSource {
-    override fun backlog(): List<String> = capture.initialBacklog()
+private class LogCaptureSource(private val capture: LogCapture, private val raw: Boolean) : io.panelassistant.android.ManageLogSource {
+    override fun backlog(): List<String> = capture.initialBacklog(raw = raw)
 
     /** Holds a viewer lease like a stream does, so subscribers count against the same viewer limit. */
     override fun follow(onLine: (String) -> Unit): AutoCloseable? {
         val lease = (capture.admitViewer() as? LogCapture.ViewerAdmission.Accepted)?.lease ?: return null
-        val subscription = capture.subscribe(onLine)
+        val subscription = capture.subscribe(raw, onLine)
         return AutoCloseable {
             runCatching { subscription.close() }
             runCatching { lease.close() }

@@ -1310,8 +1310,10 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "$GH_TOKEN" ]; then
-            echo "::error::RELEASE_WEBSITE_TOKEN is required to publish the project release list."
-            exit 1
+            # The release process rebuilds the website's release list
+            # after both releases publish, so this job needs no cross-repository token.
+            echo "::notice::No RELEASE_WEBSITE_TOKEN; the release process publishes the project release list."
+            exit 0
           fi
           gh workflow run ci.yml --repo panel-assistant/panel-assistant.io \
             --ref main -f "release_tag=$RELEASE_TAG"

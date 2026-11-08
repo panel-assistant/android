@@ -212,6 +212,11 @@ android {
         unitTests.isReturnDefaultValues = true
     }
 
+    lint {
+        // Translations follow English in a planned pass, so a new string without them is reported, never a failed build.
+        warning += "MissingTranslation"
+    }
+
     packaging {
         resources {
             // These metadata files collide across the dependency graph.
@@ -409,7 +414,7 @@ val compileBundledRootHelperArm64 = tasks.register<Exec>("compileBundledRootHelp
     commandLine(
         ndkToolchainBin.resolve("aarch64-linux-android26-clang"), "-O2", "-s", "-Ihelper/src",
         "-DHAPANELD_BUILD_ID=\"$helperBuildId\"",
-        "-o", bundledRootHelperArm64.relativeTo(rootDir).invariantSeparatorsPath, *sourcePaths.toTypedArray(),
+        "-o", bundledRootHelperArm64.relativeTo(rootDir).invariantSeparatorsPath, *sourcePaths.toTypedArray(), "-llog",
     )
     workingDir(rootDir)
 }
@@ -429,7 +434,7 @@ val compileBundledRootHelperArm32 = tasks.register<Exec>("compileBundledRootHelp
     commandLine(
         ndkToolchainBin.resolve("armv7a-linux-androideabi26-clang"), "-O2", "-s", "-Ihelper/src",
         "-DHAPANELD_BUILD_ID=\"$helperBuildId\"",
-        "-o", bundledRootHelperArm32.relativeTo(rootDir).invariantSeparatorsPath, *sourcePaths.toTypedArray(),
+        "-o", bundledRootHelperArm32.relativeTo(rootDir).invariantSeparatorsPath, *sourcePaths.toTypedArray(), "-llog",
     )
     workingDir(rootDir)
 }
@@ -503,10 +508,13 @@ val buildHelperSocketTestServer = tasks.register<Exec>("buildHelperSocketTestSer
         rootProject.file("helper/Makefile"),
         rootProject.fileTree("helper/src"),
         rootProject.file("helper/test/socket_server.c"),
+        rootProject.file("helper/test/adb_recovery.c"),
+        rootProject.file("helper/test/adb_recovery_paths.h"),
+        rootProject.file("helper/test/android/log.h"),
         rootProject.file("helper/test/sysexec_stub.c"),
         rootProject.file("helper/test/sysexec_stub.h"),
     )
-    outputs.file(helperSocketTestServer)
+    outputs.files(helperSocketTestServer, helperSocketTestServer.parentFile.resolve("adb-recovery"))
 }
 
 // The JNI libraries' binding code built for the host, so NativeLibraryBindingTest loads both against

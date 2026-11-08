@@ -80,6 +80,69 @@ class BrightnessSettingObserverTest {
         assertEquals(listOf(140 to 10, 200 to 140), notes)
     }
 
+    @Test fun `outside brightness during pending off goes to its screen owner rather than preference`() {
+        val h = QueuedChanges()
+        h.offGeneration = 7L
+
+        h.change(180)
+        h.drain()
+
+        assertEquals(listOf(7L to 180), h.offWrites)
+        assertTrue("a pending off owns outside brightness changes", h.notes.isEmpty())
+    }
+
+    @Test fun `a queued outside change cannot become a preference after off begins`() {
+        val h = QueuedChanges()
+        h.change(180)
+        h.offGeneration = 8L
+
+        h.drain()
+
+        assertTrue("the later off excludes preference capture", h.notes.isEmpty())
+        assertTrue("the earlier change does not belong to the later off", h.offWrites.isEmpty())
+    }
+
+    @Test fun `queued off brightness keeps its captured owner after a newer off begins`() {
+        val h = QueuedChanges()
+        h.offGeneration = 7L
+        h.change(180)
+        h.offGeneration = 8L
+
+        h.drain()
+
+        assertEquals("the screen owner must receive the original epoch", listOf(7L to 180), h.offWrites)
+        assertTrue(h.notes.isEmpty())
+    }
+
+    private class QueuedChanges {
+        var offGeneration: Long? = null
+        private var setting = 50
+        private val pending = ArrayDeque<() -> Unit>()
+        val notes = mutableListOf<Pair<Int, Int>>()
+        val offWrites = mutableListOf<Pair<Long, Int>>()
+        private val observer = BrightnessSettingObserver(
+            handler = null,
+            initialLevel = setting,
+            readSetting = { setting },
+            levelFromSetting = { it },
+            consumeOwnedWrite = { false },
+            observedDark = { false },
+            noteExternal = { level, prior -> notes += level to prior },
+            background = { pending.addLast(it) },
+            captureOffGeneration = { offGeneration },
+            handleWhileOff = { epoch, level -> offWrites += epoch to level },
+        )
+
+        fun change(level: Int) {
+            setting = level
+            observer.onChange(false)
+        }
+
+        fun drain() {
+            while (pending.isNotEmpty()) pending.removeFirst().invoke()
+        }
+    }
+
     private fun change(value: Int) {
         setting = value
         observer.onChange(false)

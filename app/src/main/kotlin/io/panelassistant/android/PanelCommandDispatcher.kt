@@ -408,7 +408,14 @@ internal class PanelCommandDispatcher(
             // Both keep the panel on its dashboard, so kiosk lock allows them.
             "dashboard" -> { system.endDream(); system.launchHome(config.dashboardPackage) }
             // The dashboard swallows Android's Back, so in front it goes to its own previous page or says it has none.
-            "back" -> if (!((if (BuiltinDashboard.foreground) BuiltinDashboard.back() else null) ?: goBack())) throw LiveSettingUnavailableException(channel)
+            "back" -> {
+                if (screen.ensureOn() == io.panelassistant.android.control.WakeOutcome.ACTUATION_FAILED) {
+                    throw LiveSettingUnavailableException("screen")
+                }
+                if (!((if (BuiltinDashboard.foreground) BuiltinDashboard.back() else null) ?: goBack())) {
+                    throw LiveSettingUnavailableException(channel)
+                }
+            }
             "reboot" -> {
                 system.requireRebootAllowed()
                 authorizeRemoteSensitive(
@@ -428,8 +435,9 @@ internal class PanelCommandDispatcher(
     private fun handleScreen(light: CommandValue.Light) {
         val command = io.panelassistant.android.control.ScreenCommandPolicy.parse(light)
         if (!command.on) {
-            screen.sleep()
+            val outcome = screen.sleep()
             core.publishScreenOff()
+            if (outcome != io.panelassistant.android.control.SleepOutcome.APPLIED) throw ScreenSleepRefusalException()
             return
         }
         // Capture explicit intent before wake completion can reapply automatic control.
@@ -478,8 +486,8 @@ internal class PanelCommandDispatcher(
         core.reconcile("auto_sleep")
     }
 
-    override fun handleAutoSleepSource(source: String) {
-        config.setRaw(requireNotNull(SettingsRegistry.spec("auto_sleep_source")), source)
+    override fun handlePresenceMode(option: ChannelOption) {
+        config.setRaw(requireNotNull(SettingsRegistry.spec(PresenceMode.KEY)), option.code)
         onAutoSleepConfigChanged(config.autoSleep)
         core.reconcile("auto_sleep")
     }
@@ -1067,7 +1075,7 @@ internal class PanelCommandDispatcher(
 internal enum class LiveSettingEffectOwner(val settingKey: String) {
     WAKE_ON_WAVE("wake_on_wave"),
     AUTO_SLEEP("auto_sleep"),
-    AUTO_SLEEP_SOURCE("auto_sleep_source"),
+    PRESENCE_MODE(PresenceMode.KEY),
     PREVENT_IDLE_DIM("prevent_idle_dim"),
     WATCHDOG("watchdog_enabled"),
     KIOSK("kiosk_lock"),
@@ -1112,6 +1120,7 @@ internal val externalLiveSettingOwners: Map<String, String> = linkedMapOf(
     "network_adb" to "network_adb",
     "home_dashboard" to "home_dashboard",
     "navbar" to "navbar_mode",
+    "presence" to PresenceMode.KEY,
     "wake_on_wave" to "wake_on_wave",
     "auto_sleep" to "auto_sleep",
     "touch_sound" to "touch_sound",
@@ -1160,7 +1169,7 @@ internal fun settingConflationKey(key: String): String = settingChannels[key] ?:
 internal interface LiveSettingHandlers {
     fun handleWakeOnWave(on: Boolean)
     fun handleAutoSleep(on: Boolean)
-    fun handleAutoSleepSource(source: String)
+    fun handlePresenceMode(option: ChannelOption)
     fun handlePreventIdleDim(on: Boolean, approvalRequired: Boolean = true)
     fun handleWatchdog(on: Boolean)
     fun handleKiosk(on: Boolean)
@@ -1199,7 +1208,8 @@ internal fun liveSettingValue(spec: SettingSpec, normalized: String): CommandVal
         )
         spec.type == SettingType.INT -> CommandValue.Quantity(normalized.toInt().toDouble())
         spec.type == SettingType.ENUM && options != null -> CommandValue.Option(
-            requireNotNull(options.firstOrNull { it.label.equals(normalized, ignoreCase = true) }) {
+            // Most selects store the option's label; presence stores its code.
+            requireNotNull(options.firstOrNull { it.label.equals(normalized, ignoreCase = true) || it.code == normalized }) {
                 "${spec.key} has no option $normalized"
             },
         )
@@ -1230,7 +1240,7 @@ internal fun dispatchLiveSetting(
     when (LiveSettingEffectOwner.requireFor(key)) {
         LiveSettingEffectOwner.WAKE_ON_WAVE -> handlers.handleWakeOnWave(on())
         LiveSettingEffectOwner.AUTO_SLEEP -> handlers.handleAutoSleep(on())
-        LiveSettingEffectOwner.AUTO_SLEEP_SOURCE -> handlers.handleAutoSleepSource(text())
+        LiveSettingEffectOwner.PRESENCE_MODE -> handlers.handlePresenceMode(option())
         LiveSettingEffectOwner.PREVENT_IDLE_DIM -> handlers.handlePreventIdleDim(on(), sensitiveApprovalRequired)
         LiveSettingEffectOwner.WATCHDOG -> handlers.handleWatchdog(on())
         LiveSettingEffectOwner.KIOSK -> handlers.handleKiosk(on())
@@ -1484,6 +1494,8 @@ internal class SensitiveApprovalPendingException(val approvalId: String, message
 /** A remote command Hardened mode refuses outright, with no approval that could allow it. */
 internal class HardenedModeRefusalException(message: String) : IllegalStateException(message)
 
+internal class ScreenSleepRefusalException : IllegalStateException("screen off was refused")
+
 /** How a command handler's outcome reads on the native transport. */
 internal fun panelAssistantCommandResult(failure: Exception?): PanelAssistantCommandResult = when (failure) {
     null -> PanelAssistantCommandResult.Applied
@@ -1492,6 +1504,8 @@ internal fun panelAssistantCommandResult(failure: Exception?): PanelAssistantCom
         PanelAssistantCommandResult.Refused(PanelAssistantCommandProcessor.CODE_REFUSED_HARDENED)
     is DeviceCredentialRebootRefusalException ->
         PanelAssistantCommandResult.Refused(PanelAssistantCommandProcessor.CODE_NOT_COMMANDABLE)
+    is ScreenSleepRefusalException ->
+        PanelAssistantCommandResult.Refused(PanelAssistantCommandProcessor.CODE_HARDWARE_UNAVAILABLE)
     is LiveSettingUnavailableException ->
         PanelAssistantCommandResult.Failed(PanelAssistantCommandProcessor.CODE_HARDWARE_UNAVAILABLE)
     is IllegalArgumentException -> PanelAssistantCommandResult.Refused(PanelAssistantCommandProcessor.CODE_INVALID_VALUE)

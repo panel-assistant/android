@@ -32,6 +32,32 @@ class SensorReporterProximityLivenessTest {
         try { reporters.forEach { it.stop().get() } } finally { SystemClock.endSensorTest() }
     }
 
+    @Test fun namedAndroidPulsesFeedTheReporterAndDoNotRegisterTheHal() {
+        val xl = io.panelassistant.android.device.profile.BundledProfileFixtures.profile("shelly-wall-display-xl")
+        val rig = rig(deviceProfile = xl)
+        assertEquals(0, rig.sensors.successfulRegistrations)
+        assertTrue(rig.reporter.hasProximity())
+        val buttons = mutableListOf<String>()
+        val subscription = io.panelassistant.android.input.ButtonBus.subscribe(buttons::add)
+        try {
+            fun pulse(name: String, code: Int) {
+                io.panelassistant.android.input.AccessibilityKeyRouter.dispatch(name, code, true, 0, "KEYCODE_F${code - 58}")
+                advance(0)
+            }
+            pulse("gpio_keys", 64)
+            assertEquals(0.0, rig.json().getDouble("raw"), 0.0)
+            pulse("other", 63)
+            assertEquals(0.0, rig.json().getDouble("raw"), 0.0)
+            pulse("gpio_keys", 63)
+            assertEquals(1.0, rig.json().getDouble("raw"), 0.0)
+            assertTrue(buttons.isEmpty())
+            rig.reporter.stop().get()
+            pulse("gpio_keys", 64)
+            assertEquals(1.0, rig.json().getDouble("raw"), 0.0)
+            assertTrue("stopped sensor pulses must not become buttons", buttons.isEmpty())
+        } finally { subscription.close() }
+    }
+
     @Test fun denseOnChangePlateauSurvivesSilenceAndThenReportsTheNextChange() {
         val rig = rig()
         rig.densePlateau(0f)
@@ -156,6 +182,7 @@ class SensorReporterProximityLivenessTest {
     private fun rig(
         mode: Int = Sensor.REPORTING_MODE_ON_CHANGE,
         acceptsRegistration: Boolean = true,
+        deviceProfile: DeviceProfile? = null,
     ): Rig {
         val sensors = ProximitySensorManager(mode).also { it.acceptsRegistration = acceptsRegistration }
         val files = scratchDirectory("proximity-liveness").toFile()
@@ -185,7 +212,7 @@ class SensorReporterProximityLivenessTest {
                 debounceMs = 0, clearArmMs = 0, minimumNearMs = 0,
             )
         }
-        val reporter = SensorReporter(context, config, profile).also { reporters += it; it.prepare() }
+        val reporter = SensorReporter(context, config, deviceProfile ?: profile).also { reporters += it; it.prepare() }
         return Rig(reporter, sensors).also { rig ->
             reporter.start(onLux = {}, onProximity = { near, level, _ -> rig.proximity += near to level },
                 onPresenceApproach = { rig.approaches++ })

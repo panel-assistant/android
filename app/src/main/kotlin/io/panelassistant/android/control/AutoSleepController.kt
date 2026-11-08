@@ -5,7 +5,8 @@ import android.os.SystemClock
 import android.util.Log
 import io.panelassistant.android.Config
 import io.panelassistant.android.autoSleep
-import io.panelassistant.android.autoSleepSource
+import io.panelassistant.android.PresenceMode
+import io.panelassistant.android.presenceMode
 import io.panelassistant.android.autoSleepTouchDelaySeconds
 import io.panelassistant.android.haUrl
 import io.panelassistant.android.AutoSleepActivitySnapshot
@@ -132,7 +133,7 @@ internal class AutoSleepController private constructor(
         screen = screen,
         configuration = {
             AutoSleepRuntimeConfig(
-                config.autoSleep, config.haUrl, config.haArea, config.autoSleepSource,
+                config.autoSleep, config.haUrl, config.haArea, autoSleepSourceFor(config.presenceMode),
                 config.autoSleepTouchDelaySeconds,
             )
         },
@@ -210,12 +211,15 @@ internal class AutoSleepController private constructor(
     private var lastProximityNear: Boolean? = null
     private var localRevision = 0L
     private val usesPanelPresence: Boolean get() = configured.source == "panel"
-    private val usesTouchInactivity: Boolean get() = configured.source == "touch"
+    private val usesTouchInactivity: Boolean get() = configured.source == "touch" || haTouchFallback != null
+    /** The Home Assistant phase that left this panel with no presence device to use; null unless the Home
+     *  Assistant source has fallen back to the touch delay for that reason. */
+    private var haTouchFallback: HaPresencePhase? = null
+    private var fallbackDetail = ""
     private var deadlineToken = 0L
     private var deadlineJob: Job? = null
     private var rediscoveryToken = 0L
     private var rediscoveryJob: Job? = null
-    private var noAreaFailOffRequested = false
     /** A presence-feed gap held for [PRESENCE_GAP_GRACE_MS] instead of treated as presence lost; null while none. */
     private var presenceGapJob: Job? = null
     private var presenceGapToken = 0L
@@ -598,12 +602,13 @@ internal class AutoSleepController private constructor(
         rediscoveryToken++
         deadlineToken++
         val sourceChanged = configured.source != next.value.source
-        val touchDelayChanged = next.value.source == "touch" &&
+        val touchDelayChanged = (next.value.source == "touch" || haTouchFallback != null) &&
             configured.touchDelaySeconds != next.value.touchDelaySeconds
         // Another Home Assistant or another Area is a new presence source; a route or credential is not.
         val presenceOriginChanged = next.value.source == "home_assistant" &&
             (normalizedHaUrl(configured.haUrl) != normalizedHaUrl(next.value.haUrl) ||
                 configured.haArea != next.value.haArea)
+        if (sourceChanged || presenceOriginChanged || !next.value.enabled) haTouchFallback = null
         configured = next.value
         if (sourceChanged || presenceOriginChanged) {
             wakeOwnedScreen()
@@ -628,10 +633,8 @@ internal class AutoSleepController private constructor(
             rearmOffGeneration = null
             touchSubscription?.close()
             touchSubscription = null
-            noAreaFailOffRequested = false
             publishProjection()
         } else if (touchSubscription == null) {
-            noAreaFailOffRequested = false
             touchSubscription = subscribeToTouches {
                 admit(Slot.TOUCH, Touch(elapsedRealtime(), screen.currentOffGeneration()))
             }
@@ -664,26 +667,8 @@ internal class AutoSleepController private constructor(
             preferredAreaName = next.value.haArea,
         ))
         if (next.value.enabled && usesTouchInactivity) {
-            partition = "touch_inactivity"
-            if (policy == null) {
-                policy = AutoSleepPolicyReducer.initial(
-                    setOf(LOCAL_SOURCE), AutoSleepPolicyConfig(
-                        fixedLeaseMs = next.value.touchDelaySeconds.coerceIn(5, 86_400) * 1_000L,
-                        qualifiedProximityExtensionMs = 0L,
-                    ),
-                )
-                aggregate = HaPresenceAggregate(
-                    phase = HaPresencePhase.LIVE,
-                    controllerEpoch = next.epoch,
-                    selectedEntityIds = setOf(LOCAL_SOURCE),
-                )
-                reduce(AutoSleepEvent.SourcesHydrated(
-                    eventTime(), mapOf(LOCAL_SOURCE to AutoSleepSourceState.OFF),
-                    AutoSleepFeedPosition(next.epoch, ++localRevision),
-                ), actuate = !screen.isIntendedOff())
-            } else {
-                decision?.let { acceptDecision(it, shouldActuate = false) }
-            }
+            installTouchInactivity(next.epoch)
+            if (haTouchFallback != null) scheduleRediscovery(next.epoch, rediscoveryToken)
         } else if (next.value.enabled && usesPanelPresence) {
             partition = "panel_proximity|v1"
             val learned = learning.learnedLease(partition, MIN_AUTO_SLEEP_LEASE_MS)
@@ -702,6 +687,30 @@ internal class AutoSleepController private constructor(
         }
     }
 
+    /** Touch inactivity: a fixed lease of the touch delay, renewed by every touch. */
+    private fun installTouchInactivity(epoch: Long) {
+        partition = "touch_inactivity"
+        if (policy == null) {
+            policy = AutoSleepPolicyReducer.initial(
+                setOf(LOCAL_SOURCE), AutoSleepPolicyConfig(
+                    fixedLeaseMs = configured.touchDelaySeconds.coerceIn(5, 86_400) * 1_000L,
+                    qualifiedProximityExtensionMs = 0L,
+                ),
+            )
+            aggregate = HaPresenceAggregate(
+                phase = HaPresencePhase.LIVE,
+                controllerEpoch = epoch,
+                selectedEntityIds = setOf(LOCAL_SOURCE),
+            )
+            reduce(AutoSleepEvent.SourcesHydrated(
+                eventTime(), mapOf(LOCAL_SOURCE to AutoSleepSourceState.OFF),
+                AutoSleepFeedPosition(epoch, ++localRevision),
+            ), actuate = !screen.isIntendedOff())
+        } else {
+            decision?.let { acceptDecision(it, shouldActuate = false) }
+        }
+    }
+
     private fun scheduleRediscovery(epoch: Long, token: Long) {
         rediscoveryJob?.cancel()
         rediscoveryJob = scope.launch(workerDispatcher) {
@@ -714,6 +723,29 @@ internal class AutoSleepController private constructor(
         if (configured.source != "home_assistant") return
         if (next.controllerEpoch != controllerEpoch.get()) return
         if (next.managerGeneration < acceptedManagerGeneration) return
+        if (configured.enabled && next.phase in CONFIGURATION_ABSENCE_PHASES) {
+            // Home Assistant answered that this panel has no presence device to use, which is a setup
+            // state rather than an outage: behave as presence Off and sleep after the touch delay.
+            acceptedManagerGeneration = next.managerGeneration
+            endPresenceGap()
+            if (haTouchFallback == null) {
+                releaseForPresenceLoss(transient = next.phase != HaPresencePhase.NO_AREA)
+                policy = null
+                decision = null
+            }
+            haTouchFallback = next.phase
+            fallbackDetail = diagnosticDetail(next)
+            installTouchInactivity(next.controllerEpoch)
+            publishProjection()
+            return
+        }
+        // Only a live feed ends the fallback; an outage while falling back keeps the touch delay.
+        if (haTouchFallback != null) {
+            if (next.phase != HaPresencePhase.LIVE || !next.hydrated) return
+            haTouchFallback = null
+            policy = null
+            decision = null
+        }
         val currentFeed = policy?.feed
         if (next.hydrated && currentFeed != null && next.selectedEntityIds == policy?.sources?.keys &&
             (next.feedGeneration < currentFeed.generation ||
@@ -731,12 +763,6 @@ internal class AutoSleepController private constructor(
             // The stream reports DISABLED before it subscribes, so only a resolved missing Area releases an
             // adopted off here; turning auto-sleep off goes through configure(), which always releases it.
             releaseForPresenceLoss(transient = next.phase != HaPresencePhase.NO_AREA)
-            if (configured.enabled && next.phase == HaPresencePhase.NO_AREA && !noAreaFailOffRequested) {
-                noAreaFailOffRequested = true
-                runCatching { onNoArea(next.controllerEpoch) }.onFailure {
-                    Log.e(TAG, "auto-sleep Area-removal fail-off request failed", it)
-                }
-            }
             return
         }
         endPresenceGap()
@@ -973,8 +999,9 @@ internal class AutoSleepController private constructor(
         if (admission != Admission.OPEN || !configured.enabled || aggregate.phase != HaPresencePhase.LIVE) return
         when {
             next.output == AutoSleepOutput.ALLOW_SLEEP && !screen.isIntendedOff() && !manualSuppression -> {
-                automaticEpoch = screen.sleepAutomatically()
-                automaticEpoch?.let {
+                val slept = screen.sleepAutomatically()
+                automaticEpoch = slept ?: screen.automaticRecoveryEpoch()
+                slept?.let {
                     reduce(AutoSleepEvent.AutomaticSleepRecorded(eventTime()), actuate = false)
                     onScreenChanged(false)
                 }
@@ -1040,7 +1067,8 @@ internal class AutoSleepController private constructor(
                 current.output != AutoSleepOutput.INHIBITED,
             enabled = configured.enabled,
             source = configured.source,
-            reason = if (aggregate.phase == HaPresencePhase.LIVE) {
+            reason = if (haTouchFallback != null) TOUCH_FALLBACK_REASON
+            else if (aggregate.phase == HaPresencePhase.LIVE) {
                 current?.reason?.name?.lowercase(Locale.ROOT) ?: "live"
             } else aggregate.phase.name.lowercase(Locale.ROOT),
             learnedLeaseMs = current?.effectiveLeaseMs,
@@ -1049,10 +1077,13 @@ internal class AutoSleepController private constructor(
             sourceCount = aggregate.selectedEntityIds.size,
             discoveredSourceCount = aggregate.discoveredEntityIds.size,
             areaName = aggregate.areaName,
-            phase = if (usesPanelPresence && configured.enabled && current?.output == AutoSleepOutput.INHIBITED)
-                "source_unavailable" else aggregate.phase.name.lowercase(Locale.ROOT),
+            phase = haTouchFallback?.name?.lowercase(Locale.ROOT)
+                ?: if (usesPanelPresence && configured.enabled && current?.output == AutoSleepOutput.INHIBITED)
+                    "source_unavailable" else aggregate.phase.name.lowercase(Locale.ROOT),
             manualSuppression = manualSuppression,
-            detail = if (usesPanelPresence && configured.enabled && current?.output == AutoSleepOutput.INHIBITED)
+            detail = if (haTouchFallback != null) "No usable Home Assistant presence device ($fallbackDetail); " +
+                "using the touch delay."
+            else if (usesPanelPresence && configured.enabled && current?.output == AutoSleepOutput.INHIBITED)
                 "Calibrate panel proximity or wait for a trustworthy presence reading." else diagnosticDetail(aggregate),
             projectionRevision = revision,
         )
@@ -1084,6 +1115,13 @@ internal class AutoSleepController private constructor(
     private companion object {
         const val TAG = "AutoSleep"
         const val LOCAL_SOURCE = "panel_proximity"
+        const val TOUCH_FALLBACK_REASON = "no_presence_device"
+        /** Home Assistant phases that mean nothing is set up to report presence, not that it is unreachable. */
+        val CONFIGURATION_ABSENCE_PHASES = setOf(
+            HaPresencePhase.NO_AREA,
+            HaPresencePhase.NO_CREDIBLE_SOURCES,
+            HaPresencePhase.NO_INCLUDED_SOURCES,
+        )
         const val REDISCOVERY_INTERVAL_MS = 24L * 60L * 60_000L
         const val HOUR_MS = 60L * 60_000L
         const val HISTORY_WARMUP_MS = HOUR_MS
@@ -1135,3 +1173,10 @@ internal const val PRESENCE_GAP_GRACE_MS = 5L * 60_000L
 
 /** Gap between startup adoption attempts; two retries still land before the never-blank guard's 15 s first check. */
 internal const val ADOPTION_RETRY_MS = 4_000L
+
+/** The controller's activity source for a presence mode: the panel's own sensor, Home Assistant, or touch. */
+internal fun autoSleepSourceFor(mode: PresenceMode): String = when (mode) {
+    PresenceMode.AUTOMATIC, PresenceMode.MANUAL, PresenceMode.HYBRID -> "panel"
+    PresenceMode.HOME_ASSISTANT -> "home_assistant"
+    PresenceMode.OFF -> "touch"
+}
