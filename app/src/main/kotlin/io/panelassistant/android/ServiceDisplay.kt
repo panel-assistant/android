@@ -299,10 +299,13 @@ internal class ServiceDisplay(
                     config = config(),
                     streamOwner = haLinks().haExactEntityStream,
                     offerAggregate = offerAggregate,
-                )
+                ).also { presenceSourceManager = it }
             },
         )
     }
+
+    /** The live source manager, for the owner's presence-sensor picker routes. */
+    @Volatile private var presenceSourceManager: io.panelassistant.android.sensors.HaPresenceSourceManager? = null
 
     /** Runtime lane, startup: adaptive inputs, the Ambient theme return listener and idle-dim prevention. */
     fun startAdaptive() {
@@ -389,6 +392,10 @@ internal class ServiceDisplay(
         override suspend fun prerequisite() = autoSleep.prerequisite()
         override fun setSourceIncluded(areaKey: String, sourceKey: String, included: Boolean) =
             autoSleep.setSourceIncluded(areaKey, sourceKey, included)
+        override suspend fun presenceSources() = presenceSourceManager?.sourceCatalog()
+        override fun setPresenceSources(entityIds: List<String>) =
+            presenceSourceManager?.setChosenSources(entityIds)
+                ?: io.panelassistant.android.sensors.HaPresenceSourceUpdate.UNAVAILABLE
         override fun noteAreaChanged() {
             refreshAutoSleepPresence()
         }
