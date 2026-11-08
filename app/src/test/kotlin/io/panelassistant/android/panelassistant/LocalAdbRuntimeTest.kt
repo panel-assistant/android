@@ -735,7 +735,8 @@ class LocalAdbRuntimeTest {
             endpoint.commandReply = it
             val busy = runtime.request("adb.cmd", commandArgs("PA_HOME", "1", "repair"), { true })
             assertEquals("failed", busy.outcome)
-            assertEquals("busy", busy.code)
+            assertEquals("failed", busy.code)
+            assertEquals("busy", (busy.result as JSONObject).getString("code"))
         }
     }
 
@@ -763,13 +764,36 @@ class LocalAdbRuntimeTest {
         assertEquals("applied", first.await().outcome)
         assertEquals(listOf("cmd PA_REPAIR 1 0"), endpoint.effects)
 
+        // The identical request again: the spent approval is gone, so it waits for a fresh one.
+        val same = async { runtime.request("adb.cmd", commandArgs("PA_REPAIR", "1", "0"), { true }) }
+        runCurrent(); advanceTimeBy(5); runCurrent()
+        assertEquals(2, payloads.size)
+        assertEquals(payloads[0], payloads[1])
+        assertEquals(2, ids.size)
+        assertEquals(listOf("cmd PA_REPAIR 1 0"), endpoint.effects)
+        assertTrue(broker.approve(ids[1]))
+        advanceTimeBy(2); runCurrent()
+        assertEquals("applied", same.await().outcome)
+        assertEquals(listOf("cmd PA_REPAIR 1 0", "cmd PA_REPAIR 1 0"), endpoint.effects)
+        endpoint.effects.clear(); endpoint.effects += "cmd PA_REPAIR 1 0"
+
+        // An approval nobody answers expires; the command never runs.
+        val unanswered = async { runtime.request("adb.cmd", commandArgs("PA_REPAIR", "1", "0"), { true }) }
+        runCurrent()
+        assertEquals(3, payloads.size)
+        advanceTimeBy(io.panelassistant.android.security.ApprovalBroker.DEFAULT_TTL_MS + 5); runCurrent()
+        assertEquals("approval_denied", unanswered.await().code)
+        // Session heartbeats run during the long wait; only commands matter here.
+        assertEquals(listOf("cmd PA_REPAIR 1 0"), endpoint.effects.filter { it.startsWith("cmd ") })
+        endpoint.effects.clear(); endpoint.effects += "cmd PA_REPAIR 1 0"
+
         // A replay with other arguments needs its own approval; the spent one cannot carry it.
         val replay = async { runtime.request("adb.cmd", commandArgs("PA_REPAIR", "0", "1"), { true }) }
         runCurrent(); advanceTimeBy(5); runCurrent()
-        assertEquals(2, payloads.size)
-        assertEquals("adb.cmd:$nonce:PA_REPAIR:${sha256("0\n1")}", payloads[1])
+        assertEquals(4, payloads.size)
+        assertEquals("adb.cmd:$nonce:PA_REPAIR:${sha256("0\n1")}", payloads[3])
         assertEquals(listOf("cmd PA_REPAIR 1 0"), endpoint.effects)
-        assertTrue(broker.deny(ids[1]))
+        assertTrue(broker.deny(ids[3]))
         advanceTimeBy(2); runCurrent()
         assertEquals("approval_denied", replay.await().code)
         assertEquals(listOf("cmd PA_REPAIR 1 0"), endpoint.effects)
@@ -777,9 +801,9 @@ class LocalAdbRuntimeTest {
         // Read-only verbs are approved exactly like the rest.
         val identity = async { runtime.request("adb.cmd", commandArgs("PA_IDENTITY"), { true }) }
         runCurrent()
-        assertEquals("adb.cmd:$nonce:PA_IDENTITY:${sha256("")}", payloads[2])
+        assertEquals("adb.cmd:$nonce:PA_IDENTITY:${sha256("")}", payloads[4])
         assertEquals(listOf("cmd PA_REPAIR 1 0"), endpoint.effects)
-        assertTrue(broker.approve(ids[2]))
+        assertTrue(broker.approve(ids[4]))
         advanceTimeBy(2); runCurrent()
         assertEquals("applied", identity.await().outcome)
         assertEquals(listOf("cmd PA_REPAIR 1 0", "cmd PA_IDENTITY"), endpoint.effects)

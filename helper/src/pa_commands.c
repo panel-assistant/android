@@ -31,11 +31,14 @@
 #define PA_HOME_LOCK_PATH "/tmp/.hapaneld-pa-test-lock"
 #define PA_DUMP_PARENT "/tmp"
 #define PA_DUMP_NAME ".hapaneld-pa-test-chooser"
+const char *pa_test_boot_id_path = "/proc/sys/kernel/random/boot_id";
+#define PA_BOOT_ID_PATH pa_test_boot_id_path
 #else
 #define PA_RECORD_DIR PA_RECORD_DIR_PANEL
 #define PA_HOME_LOCK_PATH "/system"
 #define PA_DUMP_PARENT "/data/local"
 #define PA_DUMP_NAME ".hapaneld-pa-chooser"
+#define PA_BOOT_ID_PATH "/proc/sys/kernel/random/boot_id"
 #endif
 #define PA_DUMP_FILE "chooser.xml"
 #define PA_DUMP_PATH PA_DUMP_PARENT "/" PA_DUMP_NAME "/" PA_DUMP_FILE
@@ -76,6 +79,7 @@ static uint64_t pa_now_ms(void) {
 }
 
 static unsigned pa_left(pa_run *r) {
+    if (r->expired) return 0; // a child that timed out spent the budget, whatever the clock says
     uint64_t now = pa_now_ms();
     if (!now || now >= r->deadline) { r->expired = 1; return 0; }
     return (unsigned)(r->deadline - now);
@@ -1291,6 +1295,18 @@ void cmd_pa_vendor(conn_ctx *ctx, const char *args) {
 
 static int pa_mode_in(const char *mode, const char *const modes[]) { return pa_in_list(mode, modes); }
 
+// A recorded screensaver value: empty, null, or `,`-separated strict components (one when single).
+static int pa_valid_components(const char *value, int single) {
+    if (!value[0] || strcmp(value, "null") == 0) return 1;
+    char copy[PA_RECORD_MAX + 1];
+    if (snprintf(copy, sizeof copy, "%s", value) >= (int)sizeof copy) return 0;
+    if (copy[strlen(copy) - 1] == ',') return 0;
+    int n = 0;
+    for (char *save = NULL, *c = strtok_r(copy, ",", &save); c; c = strtok_r(NULL, ",", &save), n++)
+        if (!valid_component_strict(c)) return 0;
+    return n >= 1 && !strstr(value, ",,") && value[0] != ',' && (!single || n == 1);
+}
+
 static const char *pa_restore_vendor(pa_run *r) {
     pa_record meta, verifier, shelly;
     int have_meta = pa_record_load(PA_RECORD_META, PA_RECORD_META_KEYS, &meta);
@@ -1300,8 +1316,11 @@ static const char *pa_restore_vendor(pa_run *r) {
     static const char *const META_RESTORED[] = { "absent", "allow", "ignore", "default", "foreground", NULL };
     if (have_meta || have_verifier) {
         const char *result = "restored";
-        if (have_meta) {
-            const char *c = meta.value[0], *d = meta.value[1], *o = meta.value[2];
+        const char *c = meta.value[0], *d = meta.value[1], *o = meta.value[2];
+        // The record directory is shell-writable: a value of the wrong shape is never written.
+        if (have_meta && (!pa_valid_components(c, 0) || !pa_valid_components(d, 1))) {
+            result = "unrestored";
+        } else if (have_meta) {
             pa_settings_restore(r, "secure", PA_SETTING_SCREENSAVER_COMPONENTS, c);
             pa_settings_restore(r, "secure", PA_SETTING_SCREENSAVER_DEFAULT, d);
             if (pa_mode_in(o, META_ALLOW) && pa_package_present(r, PA_META_CONTROL_CENTER))
@@ -1318,7 +1337,7 @@ static const char *pa_restore_vendor(pa_run *r) {
         }
         if (have_verifier) {
             const char *v = verifier.value[0];
-            if (!v[0]) {
+            if (strcmp(v, "0") && strcmp(v, "1") && strcmp(v, "null")) {
                 result = "unrestored";
             } else {
                 pa_settings_restore(r, "global", PA_SETTING_VERIFIER, v);
@@ -1437,7 +1456,7 @@ static void pa_observe_move(pa_run *r) {
 
 static int pa_observe_recovery(pa_run *r) {
     char boot[128], uptime[128], line[PA_LINE];
-    first_line("/proc/sys/kernel/random/boot_id", boot, sizeof boot);
+    first_line(PA_BOOT_ID_PATH, boot, sizeof boot);
     first_line("/proc/uptime", uptime, sizeof uptime);
     char *space = strchr(uptime, ' ');
     if (space) *space = '\0';
@@ -1501,7 +1520,7 @@ void cmd_pa_handback(conn_ctx *ctx, const char *args) {
     pa_run *r = pa_begin(ctx, PA_FRAMEWORK_TIMEOUT_MS);
     if (!r) return;
     const char *target = vendor ? PA_SHELLY_SPLASH : b;
-    if (component && !valid_home_target(b, pa_package_present_current)) {
+    if (vendor ? !pa_package_present(r, PA_SHELLY_PACKAGE) : !valid_home_target(b, pa_package_present_current)) {
         pa_refuse(r, r->expired ? "deadline" : "home-unsafe");
         return;
     }

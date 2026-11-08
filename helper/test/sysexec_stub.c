@@ -169,6 +169,20 @@ int sysexec_stub_count_argv(const char *path, const char *const argv[], int quie
     return count;
 }
 
+// Calls of any path and quietness whose leading arguments are exactly [prefix].
+int sysexec_stub_count_argv_prefix(const char *const prefix[]) {
+    int count = 0;
+    pthread_mutex_lock(&run_block_lock);
+    for (int i = 0; i < argv_history_count; i++) {
+        const argv_call *call = &argv_history[i];
+        int arg = 0;
+        while (prefix[arg] && arg < call->argc && strcmp(call->args[arg], prefix[arg]) == 0) arg++;
+        if (!prefix[arg]) count++;
+    }
+    pthread_mutex_unlock(&run_block_lock);
+    return count;
+}
+
 int sysexec_stub_count_argv_calls(void) {
     pthread_mutex_lock(&run_block_lock);
     int count = argv_history_count;

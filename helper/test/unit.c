@@ -32,6 +32,7 @@
 #include <sys/ioctl.h>
 #include "vi530x.h"
 #include "dispatch.h"
+#include "pa_commands.h"
 #include "server.h"
 #include "sysctl.h"
 #include "input.h"
@@ -3174,6 +3175,7 @@ static void test_pa_handback_admin_observe(void) {
           "PA_HANDBACK reports the move observation\n");
 
     sysexec_stub_reset();
+    sysexec_stub_add_popen("pm path cloud.shelly.stargate", "package:/system/app/stargate.apk\n", 0);
     sysexec_stub_add_popen(PA_HOME_QUERY, "cloud.shelly.stargate/.activities.SplashActivity\n", 0);
     dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "PA_HANDBACK vendor", out, sizeof out);
     const char *const vendor_home[] = { "cmd", "package", "set-home-activity", "cloud.shelly.stargate/.activities.SplashActivity", NULL };
@@ -3207,6 +3209,142 @@ static void test_pa_handback_admin_observe(void) {
           "PA_OBSERVE recovery reports the vendor pid and stopped state\n");
 }
 
+// Review gaps: deadline and overflow refusals, launch 0, the policy restore, OBSERVE move and its
+// recovery failure, VENDOR on another device, HANDBACK vendor without Shelly, and planted records.
+static int pa_ran(const char *a, const char *b) {
+    const char *const prefix[] = { a, b, strcmp(a, "cmd") == 0 ? "set-home-activity" : NULL, NULL };
+    return sysexec_stub_count_argv_prefix(prefix);
+}
+
+static void test_pa_review_gaps(void) {
+    char out[8192];
+
+    // A child that times out spends the budget: ERR deadline, and no later write runs.
+    sysexec_stub_reset();
+    pa_stub_repair_base("33\n");
+    sysexec_stub_add_popen("settings get secure enabled_accessibility_services", PA_ACCESSIBILITY_OLD "\n", 0);
+    sysexec_stub_add_popen("settings get secure accessibility_enabled", "0\n", 0);
+    sysexec_stub_add_popen("appops get " SUCCESSOR_ID " WRITE_SETTINGS", "WRITE_SETTINGS: deny\n", 0);
+    sysexec_stub_timeout_run("settings get secure enabled_accessibility_services");
+    dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "PA_REPAIR 1 0", out, sizeof out);
+    CHECK(strcmp(out, "ERR deadline\n") == 0, "PA_REPAIR past its budget answers ERR deadline (got '%s')\n", out);
+    CHECK(pa_ran("settings", "put") == 0 && pa_ran("appops", "set") == 0 &&
+          pa_ran("pm", "grant") == 0, "PA_REPAIR runs no write after its budget is spent\n");
+
+    // launch 0 claims the older dashboard class.
+    const char *const set_home0[] = {
+        "cmd", "package", "set-home-activity", "io.panelassistant.android/io.github.maxlyth.hapaneld.DashboardActivity", NULL
+    };
+    sysexec_stub_reset();
+    pa_stub_identity("29\n");
+    sysexec_stub_add_popen("--es operation dashboard_home_policy",
+        "Broadcast completed: result=1, data=\"panel-assistant-home-builtin\"\n", 0);
+    sysexec_stub_add_popen("--es operation setup_eligibility",
+        "Broadcast completed: result=1, data=\"panel-assistant-setup-eligible\"\n", 0);
+    sysexec_stub_add_popen_times(PA_HOME_QUERY, "com.example.home/.Home\n", 0, 1);
+    sysexec_stub_add_popen(PA_HOME_QUERY, "io.panelassistant.android/io.github.maxlyth.hapaneld.DashboardActivity\n", 0);
+    dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "PA_HOME 0 repair", out, sizeof out);
+    CHECK(captured_argv("/system/bin/cmd", set_home0) == 1 && pa_field_is(out, "chooser", "set"),
+          "PA_HOME 0 sets and reads back the launch-0 dashboard (got '%s')\n", out);
+
+    // The policy names a previous HOME: it is put back under the lock and acknowledged on readback.
+    mkdir(PA_TEST_LOCK, 0755);
+    const char *const set_previous[] = { "cmd", "package", "set-home-activity", "com.example.home/.Home", NULL };
+    const char *const ack_retained[] = {
+        "am", "broadcast", "--include-stopped-packages", "-n", PA_RECEIVER, "--es", "operation", "acknowledge_retained_home",
+        "--es", "previous_home_component", "com.example.home/.Home", NULL
+    };
+    for (int readback_ok = 1; readback_ok >= 0; readback_ok--) {
+        sysexec_stub_reset();
+        pa_stub_identity("29\n");
+        sysexec_stub_add_popen("--es operation dashboard_home_policy",
+            "Broadcast completed: result=3, data=\"panel-assistant-home-restore:com.example.home/.Home\"\n", 0);
+        sysexec_stub_add_popen("pm path com.example.home", "package:/data/app/home.apk\n", 0);
+        sysexec_stub_add_popen("--es operation restore_previous_home_shell_lock_eligibility",
+            "Broadcast completed: result=1, data=\"panel-assistant-home-restore-shell-locked\"\n", 0);
+        sysexec_stub_add_popen(PA_HOME_QUERY, readback_ok ? "com.example.home/.Home\n" : "com.other/.Launcher\n", 0);
+        dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "PA_HOME 1 repair", out, sizeof out);
+        CHECK(captured_argv("/system/bin/cmd", set_previous) == 1, "PA_HOME restores the previous HOME (got '%s')\n", out);
+        CHECK(pa_field_is(out, "policy", "restore") &&
+              pa_field_is(out, "chooser", readback_ok ? "retained" : "deferred") &&
+              (captured_argv("/system/bin/am", ack_retained) == readback_ok),
+              "PA_HOME acknowledges a restore only when it reads back (ok=%d, got '%s')\n", readback_ok, out);
+    }
+
+    // OBSERVE move reports each package, HOME and firmware.
+    sysexec_stub_reset();
+    pa_stub_identity("29\n");
+    sysexec_stub_add_popen("pm list packages io.github.maxlyth.hapaneld", "package:io.github.maxlyth.hapaneld\n", 0);
+    sysexec_stub_add_popen("pm list packages " SUCCESSOR_ID, "package:" SUCCESSOR_ID "\n", 0);
+    sysexec_stub_add_popen("pm list packages cloud.shelly.stargate", "package:cloud.shelly.stargate\n", 0);
+    sysexec_stub_add_popen(PA_HOME_QUERY, "x\ncloud.shelly.stargate/.activities.SplashActivity\n", 0);
+    sysexec_stub_add_popen("getprop ro.build.display.id", "1.2.3 beta\n", 0);
+    dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "PA_OBSERVE move", out, sizeof out);
+    CHECK(pa_field_is(out, "legacy", "installed") && pa_field_is(out, "new", "installed") &&
+          pa_field_is(out, "shelly", "installed") && pa_field_is(out, "firmware", "1.2.3 beta") &&
+          pa_field_is(out, "home", "cloud.shelly.stargate/.activities.SplashActivity"),
+          "PA_OBSERVE move reports packages, HOME and firmware (got '%s')\n", out);
+
+    // OBSERVE recovery without a boot id refuses rather than reporting a partial answer.
+    pa_test_boot_id_path = "/nonexistent/boot_id";
+    sysexec_stub_reset();
+    dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "PA_OBSERVE recovery", out, sizeof out);
+    pa_test_boot_id_path = "/proc/sys/kernel/random/boot_id";
+    CHECK(strcmp(out, "ERR failed\n") == 0, "PA_OBSERVE recovery without a boot id answers ERR failed (got '%s')\n", out);
+
+    // VENDOR setup on a device that is neither Meta nor Shelly writes nothing.
+    pa_reset_records();
+    sysexec_stub_reset();
+    pa_stub_identity("29\n");
+    sysexec_stub_add_popen("getprop ro.product.device", "nspanel\n", 0);
+    dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "PA_VENDOR setup", out, sizeof out);
+    CHECK(pa_field_is(out, "device", "other") && pa_field_is(out, "converged", "1"),
+          "PA_VENDOR setup on another device reports device=other (got '%s')\n", out);
+    CHECK(pa_ran("settings", "put") == 0 && pa_ran("appops", "set") == 0 &&
+          access(PA_META_RECORD, F_OK) != 0 && access(PA_SHELLY_RECORD, F_OK) != 0 && access(PA_VERIFIER_RECORD, F_OK) != 0,
+          "PA_VENDOR setup on another device writes no setting, op or record\n");
+
+    // HANDBACK vendor without the Shelly launcher refuses instead of naming a missing HOME.
+    sysexec_stub_reset();
+    sysexec_stub_add_popen(PA_HOME_QUERY, "com.other/.Launcher\n", 0);
+    dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "PA_HANDBACK vendor", out, sizeof out);
+    CHECK(strcmp(out, "ERR home-unsafe\n") == 0 && pa_ran("cmd", "package") == 0,
+          "PA_HANDBACK vendor without Shelly answers home-unsafe and sets nothing (got '%s')\n", out);
+
+    // A planted Meta or verifier record whose values are not the expected shape is never written back.
+    const char *const planted[] = {
+        "screensaver_components=com.meta/.Dream;reboot\nscreensaver_default_component=null\ncontrolcenter_overlay=allow\n",
+        "screensaver_components=com.meta/.Dream\nscreensaver_default_component=--user 0\ncontrolcenter_overlay=allow\n",
+    };
+    for (size_t i = 0; i < sizeof planted / sizeof planted[0]; i++) {
+        pa_reset_records();
+        pa_write_fixture(PA_META_RECORD, planted[i], 0644);
+        sysexec_stub_reset();
+        dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "PA_RESTORE vendor", out, sizeof out);
+        CHECK(pa_field_is(out, "result", "unrestored") && pa_ran("settings", "put") == 0 &&
+              pa_ran("settings", "delete") == 0 && access(PA_META_RECORD, F_OK) == 0,
+              "PA_RESTORE refuses a malformed Meta record %zu and keeps it (got '%s')\n", i, out);
+    }
+    pa_reset_records();
+    pa_write_fixture(PA_VERIFIER_RECORD, "package_verifier_enable=7\n", 0644);
+    sysexec_stub_reset();
+    dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "PA_RESTORE vendor", out, sizeof out);
+    CHECK(pa_field_is(out, "result", "unrestored") && pa_ran("settings", "put") == 0,
+          "PA_RESTORE refuses a verifier value other than 0, 1 or null (got '%s')\n", out);
+    // A well-formed two-component list still restores.
+    pa_reset_records();
+    pa_write_fixture(PA_META_RECORD,
+        "screensaver_components=com.meta/.Dream,com.meta.b/.Frame\nscreensaver_default_component=null\ncontrolcenter_overlay=absent\n", 0644);
+    sysexec_stub_reset();
+    sysexec_stub_add_popen("settings get secure screensaver_components", "com.meta/.Dream,com.meta.b/.Frame\n", 0);
+    sysexec_stub_add_popen("settings get secure screensaver_default_component", "null\n", 0);
+    dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "PA_RESTORE vendor", out, sizeof out);
+    const char *const put_list[] = { "settings", "put", "secure", "screensaver_components", "com.meta/.Dream,com.meta.b/.Frame", NULL };
+    CHECK(ran_argv("/system/bin/settings", put_list) == 1,
+          "PA_RESTORE writes back a well-formed component list (got '%s')\n", out);
+    pa_reset_records();
+}
+
 static void test_pa_commands(void) {
     test_pa_admission_and_grammar();
     test_pa_identity();
@@ -3215,6 +3353,7 @@ static void test_pa_commands(void) {
     test_pa_home_lock();
     test_pa_records();
     test_pa_handback_admin_observe();
+    test_pa_review_gaps();
 }
 
 

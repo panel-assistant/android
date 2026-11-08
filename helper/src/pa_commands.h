@@ -22,4 +22,8 @@ void cmd_pa_restore(conn_ctx *ctx, const char *args);
 void cmd_pa_observe(conn_ctx *ctx, const char *args);
 void cmd_pa_handback(conn_ctx *ctx, const char *args);
 
+#ifdef HAPANELD_TEST
+extern const char *pa_test_boot_id_path; // OBSERVE recovery reads this in place of the kernel boot id
+#endif
+
 #endif

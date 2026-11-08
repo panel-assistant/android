@@ -181,7 +181,8 @@ internal class LocalAdbRuntime(
     override suspend fun request(op: String, args: JSONObject, admit: () -> Boolean, onPending: () -> Unit): PanelAssistantManageReply {
         fun refused(code: String = "invalid_value") = PanelAssistantManageReply("refused", code, null)
         // A held helper lock clears by itself, so Panel Assistant may send the same command again.
-        fun busy() = PanelAssistantManageReply("failed", "busy", JSONObject().put("code", "busy"))
+        // The wire code must be one the transport contract lists; the helper reason rides in the result.
+        fun busy() = PanelAssistantManageReply("failed", "failed", JSONObject().put("code", "busy"))
         val (current, requestNonce) = RemoteDebugSecurityTransitionGate.withLock { generation.get() to nonce }
         val command = if (op == "adb.shell") (args.opt("command") as? String)?.toByteArray(Charsets.UTF_8) else null
         val rawTimeout = args.opt("timeout_ms")
