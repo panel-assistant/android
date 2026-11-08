@@ -1,4 +1,5 @@
 #define _GNU_SOURCE
+#include "test_tmp.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
@@ -16,7 +17,7 @@
 #include "sha256.h"
 #include "sysexec_stub.h"
 
-#define ROOT "/tmp/.hapaneld-companion-test/data/user/0"
+#define ROOT HAPANELD_TEST_TMP "/.hapaneld-companion-test/data/user/0"
 #define PKG  "io.homeassistant.companion.android.minimal"
 #define BASE ROOT "/" PKG
 #define DB   BASE "/databases/HomeAssistantDB"
@@ -24,7 +25,7 @@
 #define SHM  BASE "/databases/HomeAssistantDB-shm"
 #define SESSION BASE "/shared_prefs/session_0.xml"
 #define INTEGRATION BASE "/shared_prefs/integration_0.xml"
-#define ROOT_STAGE "/tmp/.hapaneld-companion-stage-test"
+#define ROOT_STAGE HAPANELD_TEST_TMP "/.hapaneld-companion-stage-test"
 
 static int failures;
 #define CHECK(cond, ...) do { if (!(cond)) { \
@@ -99,7 +100,7 @@ static void unlink_fixture_names(void) {
         ROOT_STAGE "/.companion-restore.prepared",
         ROOT_STAGE "/.companion-restore.committed",
         ROOT_STAGE "/.companion-restore.marker.tmp",
-        "/tmp/.hapaneld-companion-sentinel",
+        HAPANELD_TEST_TMP "/.hapaneld-companion-sentinel",
     };
     for (size_t i = 0; i < sizeof names / sizeof names[0]; i++) (void)unlink(names[i]);
     const char *const stages[] = {
@@ -111,9 +112,9 @@ static void unlink_fixture_names(void) {
 }
 
 static void setup_fixture(void) {
-    mkdir_one("/tmp/.hapaneld-companion-test");
-    mkdir_one("/tmp/.hapaneld-companion-test/data");
-    mkdir_one("/tmp/.hapaneld-companion-test/data/user");
+    mkdir_one(HAPANELD_TEST_TMP "/.hapaneld-companion-test");
+    mkdir_one(HAPANELD_TEST_TMP "/.hapaneld-companion-test/data");
+    mkdir_one(HAPANELD_TEST_TMP "/.hapaneld-companion-test/data/user");
     mkdir_one(ROOT);
     mkdir_one(BASE);
     mkdir_one(BASE "/databases");
@@ -271,9 +272,9 @@ static void test_backup_frames_raw_fixed_files(void) {
 
 static void test_backup_rejects_links_and_reports_relaunch_failure(void) {
     setup_fixture();
-    write_file("/tmp/.hapaneld-companion-sentinel", "sentinel");
+    write_file(HAPANELD_TEST_TMP "/.hapaneld-companion-sentinel", "sentinel");
     unlink(DB);
-    CHECK(symlink("/tmp/.hapaneld-companion-sentinel", DB) == 0, "preplant DB symlink\n");
+    CHECK(symlink(HAPANELD_TEST_TMP "/.hapaneld-companion-sentinel", DB) == 0, "preplant DB symlink\n");
     sysexec_stub_fail_run("monkey -p", 1);
 
     int peer[2];
@@ -284,13 +285,13 @@ static void test_backup_rejects_links_and_reports_relaunch_failure(void) {
     read_line(peer[1], line, sizeof line);
     CHECK(strcmp(line, "ERR RELAUNCH_ERR\n") == 0, "unsafe DB and relaunch failure are explicit (got %s)\n", line);
     finish(thread, peer[1]);
-    CHECK(strcmp(slurp("/tmp/.hapaneld-companion-sentinel", sentinel, sizeof sentinel), "sentinel") == 0,
+    CHECK(strcmp(slurp(HAPANELD_TEST_TMP "/.hapaneld-companion-sentinel", sentinel, sizeof sentinel), "sentinel") == 0,
           "backup never follows unsafe live symlink\n");
 }
 
 static void test_backup_rejects_hardlinked_live_file(void) {
     setup_fixture();
-    CHECK(link(DB, "/tmp/.hapaneld-companion-sentinel") == 0, "hardlink live DB fixture\n");
+    CHECK(link(DB, HAPANELD_TEST_TMP "/.hapaneld-companion-sentinel") == 0, "hardlink live DB fixture\n");
     int peer[2];
     job work;
     pthread_t thread;
@@ -327,7 +328,7 @@ static void test_backup_hold_leaves_captured_companion_stopped(void) {
 
 static void test_backup_hold_relaunches_a_failed_capture(void) {
     setup_fixture();
-    CHECK(link(DB, "/tmp/.hapaneld-companion-sentinel") == 0, "hardlink live DB fixture\n");
+    CHECK(link(DB, HAPANELD_TEST_TMP "/.hapaneld-companion-sentinel") == 0, "hardlink live DB fixture\n");
     char line[64];
     dispatch_once("COMPANIONBACKUP " PKG " HOLD", line, sizeof line);
     CHECK(strcmp(line, "ERR\n") == 0, "held backup of an unsafe DB fails (got %s)\n", line);
@@ -438,8 +439,8 @@ static void test_restore_stream_failure_never_mutates_target(void) {
 
 static void test_restore_replaces_preplanted_stage_symlink_without_following(void) {
     setup_fixture();
-    write_file("/tmp/.hapaneld-companion-sentinel", "sentinel");
-    CHECK(symlink("/tmp/.hapaneld-companion-sentinel",
+    write_file(HAPANELD_TEST_TMP "/.hapaneld-companion-sentinel", "sentinel");
+    CHECK(symlink(HAPANELD_TEST_TMP "/.hapaneld-companion-sentinel",
                   BASE "/databases/.HomeAssistantDB.hapaneld-restore") == 0,
           "preplant target-stage symlink\n");
     int peer[2];
@@ -453,15 +454,15 @@ static void test_restore_replaces_preplanted_stage_symlink_without_following(voi
     read_line(peer[1], line, sizeof line);
     CHECK(strcmp(line, "OK\n") == 0, "safe stage replacement succeeds (got %s)\n", line);
     finish(thread, peer[1]);
-    CHECK(strcmp(slurp("/tmp/.hapaneld-companion-sentinel", content, sizeof content), "sentinel") == 0,
+    CHECK(strcmp(slurp(HAPANELD_TEST_TMP "/.hapaneld-companion-sentinel", content, sizeof content), "sentinel") == 0,
           "target-stage symlink destination untouched\n");
 }
 
 static void test_restore_rejects_root_stage_directory_symlink(void) {
     setup_fixture();
     (void)rmdir(ROOT_STAGE);
-    mkdir_one("/tmp/.hapaneld-companion-stage-target");
-    CHECK(symlink("/tmp/.hapaneld-companion-stage-target", ROOT_STAGE) == 0,
+    mkdir_one(HAPANELD_TEST_TMP "/.hapaneld-companion-stage-target");
+    CHECK(symlink(HAPANELD_TEST_TMP "/.hapaneld-companion-stage-target", ROOT_STAGE) == 0,
           "preplant root-stage directory symlink\n");
     int peer[2];
     job work;
@@ -474,7 +475,7 @@ static void test_restore_rejects_root_stage_directory_symlink(void) {
     CHECK(strcmp(slurp(DB, content, sizeof content), "database") == 0,
           "root-stage rejection retains live DB\n");
     unlink(ROOT_STAGE);
-    rmdir("/tmp/.hapaneld-companion-stage-target");
+    rmdir(HAPANELD_TEST_TMP "/.hapaneld-companion-stage-target");
 }
 
 static void test_restore_distinguishes_committed_relaunch_failure(void) {

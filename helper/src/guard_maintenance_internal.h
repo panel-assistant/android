@@ -30,11 +30,12 @@
 #include <unistd.h>
 
 #ifdef HAPANELD_TEST
-#define GUARD_PARENT "/tmp"
+#include "test_tmp.h"
+#define GUARD_PARENT HAPANELD_TEST_TMP
 #define GUARD_DIR_NAME ".hapaneld-guard-db-test"
-#define GUARD_APP_USER_ROOT "/tmp/.hapaneld-guard-app-test/data/user/0"
-#define GUARD_BOOT_ID "/tmp/.hapaneld-guard-db-test.boot-id"
-#define GUARD_INSTALLED_APK "/tmp/.hapaneld-guard-installed/base.apk"
+#define GUARD_APP_USER_ROOT HAPANELD_TEST_TMP "/.hapaneld-guard-app-test/data/user/0"
+#define GUARD_BOOT_ID HAPANELD_TEST_TMP "/.hapaneld-guard-db-test.boot-id"
+#define GUARD_INSTALLED_APK HAPANELD_TEST_TMP "/.hapaneld-guard-installed/base.apk"
 #else
 #define GUARD_PARENT "/data/local"
 #define GUARD_DIR_NAME ".hapaneld-guard-db"
@@ -86,12 +87,12 @@
 #define GUARD_APP_RESTORE_MAX_RECORD_BYTES 2048
 #define GUARD_REPLACEMENT_MAX_BINARY_BYTES (16ULL * 1024ULL * 1024ULL)
 #ifdef HAPANELD_TEST
-#define GUARD_APP_HELPER_PARENT "/tmp"
+#define GUARD_APP_HELPER_PARENT HAPANELD_TEST_TMP
 #define GUARD_APP_HELPER_LIVE ".hapaneld-helper-live-test"
 #define GUARD_APP_HELPER_STAGE ".hapaneld-helper-live-test.new"
 #define GUARD_APP_HELPER_PREVIOUS ".hapaneld-helper-live-test.previous"
 #define GUARD_APP_HELPER_PREVIOUS_TMP ".hapaneld-helper-live-test.previous.tmp"
-#define HELPER_TRANSACTION_LOCK_PARENT "/tmp"
+#define HELPER_TRANSACTION_LOCK_PARENT HAPANELD_TEST_TMP
 #define HELPER_TRANSACTION_LOCK_NAME ".hapaneld-helper-transaction-lock-test"
 #else
 #define GUARD_APP_HELPER_PARENT "/data/local"

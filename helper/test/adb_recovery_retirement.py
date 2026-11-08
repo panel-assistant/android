@@ -51,11 +51,12 @@ else:
                  'ADB_RECOVERY_GETPROP':prop, 'ADB_RECOVERY_SETPROP':prop,
                  'ADB_RECOVERY_TCP':p/'tcp', 'ADB_RECOVERY_TCP6':p/'tcp6',
                  'ADB_RECOVERY_SOCKET':sock, 'ADB_RECOVERY_SHELL':'/bin/sh'}
-        sources = subprocess.check_output(['make','--no-print-directory','-s','print-core'],cwd=ROOT,text=True).split()
+        sources = subprocess.check_output(['make','--no-print-directory','-s','print-core'],cwd=ROOT,text=True,
+                                          env={k: v for k, v in os.environ.items() if k not in ('MAKEFLAGS', 'MFLAGS', 'MAKELEVEL')}).split()
         subprocess.run(['cc','-O1','-g','-Wall','-Wextra','-Werror','-Wno-format-truncation',
                         '-Isrc', *[f'-D{k}="{v}"' for k,v in flags.items()],
                         *sources,'src/main.c','src/sysexec.c','test/adb_recovery_retirement_cuts.c',
-                        '-Wl,--wrap=main','-Wl,--wrap=unlinkat','-Wl,--wrap=rmdir','-Wl,--wrap=mkdirat','-lpthread','-o',str(binary)],cwd=ROOT,check=True)
+                        '-Wl,--wrap=main','-Wl,--wrap=unlinkat','-Wl,--wrap=rmdir','-Wl,--wrap=mkdirat','-lpthread','-o',str(binary)],cwd=ROOT,check=True,preexec_fn=lambda: os.nice(10))
         def request(command):
             with socket.socket(socket.AF_UNIX) as s:
                 s.settimeout(4)

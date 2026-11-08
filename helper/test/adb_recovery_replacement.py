@@ -24,6 +24,39 @@ NEW = '2' * 64
 THIRD = '3' * 64
 CASE_WAIT = 8
 ENSURE_TIMEOUT = 28
+DIRECT_CASES = tuple('locked-fresh,stale,matching,failed-open,unproven-open,foreign-owner,scan-error,concurrent,staggered,timeout-retry,malformed-custody,symlink-custody,fifo-custody,receipt-sync-fails'.split(','))
+EXTRA_CASES = tuple('source-bound,fresh,source-pinned,lost-ack,unsafe-target,publication-faults,reaper-failure,superseded,readiness-faults'.split(','))
+EXTRA_VARIANTS = {
+    'source-bound': ('exact', 'overflow'),
+    'unsafe-target': ('symlink', 'fifo', 'directory', 'hardlink', 'mode', 'owner', 'directory-symlink'),
+    'publication-faults': ('ensure-copy-error', 'ensure-file-sync-error', 'ensure-dir-sync-error', 'ensure-exec-error'),
+    'readiness-faults': ('wrong', 'malformed', 'stall'),
+}
+
+def selection(environ=os.environ):
+    """The (leg, case, variant) runs this invocation makes, in order, from its environment.
+
+    RECOVERY_REPLACEMENT_LEGS and RECOVERY_REPLACEMENT_CASES select legs and cases;
+    RECOVERY_REPLACEMENT_VARIANTS selects variants of one ensure-only case. The Makefile
+    shards the driver with these, and `--plan` prints the result so a check can prove the
+    shards cover every run exactly once."""
+    legs = environ.get('RECOVERY_REPLACEMENT_LEGS', 'direct,ensure').split(',')
+    assert legs and all(leg in ('direct', 'ensure') for leg in legs), 'unknown replacement fixture leg'
+    selected = environ.get('RECOVERY_REPLACEMENT_CASES')
+    cases = list(DIRECT_CASES + EXTRA_CASES) if selected is None else selected.split(',')
+    assert all(case in DIRECT_CASES + EXTRA_CASES for case in cases), 'unknown replacement fixture case'
+    chosen = environ.get('RECOVERY_REPLACEMENT_VARIANTS')
+    assert chosen is None or (len(cases) == 1 and cases[0] in EXTRA_VARIANTS and 'ensure' in legs), 'variants select within one ensure-only case'
+    runs = [(leg, case, '') for leg in legs for case in cases if case in DIRECT_CASES]
+    if 'ensure' in legs:
+        for case in (case for case in cases if case in EXTRA_CASES):
+            variants = EXTRA_VARIANTS.get(case, ('',))
+            if chosen is not None:
+                assert all(variant in variants for variant in chosen.split(',')), 'unknown replacement fixture variant for ' + case
+                variants = tuple(variant for variant in variants if variant in chosen.split(','))
+            runs += [('ensure', case, variant) for variant in variants]
+    return legs, cases, runs
+
 WRAPS = ('kill', 'fstatat', 'fopen', 'usleep', 'fsync', 'write', 'renameat', 'execve', 'pthread_create')
 
 # A minimal entry keeps ordinary-host startup away from Guard paths. Both paths run real core:
@@ -252,7 +285,26 @@ else:
                  'ADB_RECOVERY_TCP':p/'tcp', 'ADB_RECOVERY_TCP6':p/'tcp6',
                  'ADB_RECOVERY_SOCKET':sock, 'ADB_RECOVERY_SHELL':'/bin/sh',
                  'RECOVERY_REPLACEMENT_TEST_ROOT':p}
-        sources = subprocess.check_output(['make','--no-print-directory','-s','print-core'],cwd=ROOT,text=True).split()
+        sources = subprocess.check_output(['make','--no-print-directory','-s','print-core'],cwd=ROOT,text=True,
+                                          env={k: v for k, v in os.environ.items() if k not in ('MAKEFLAGS', 'MFLAGS', 'MAKELEVEL')}).split()
+        # Only these read the per-run defines below. When the Makefile has compiled every other
+        # source once (RECOVERY_REPLACEMENT_OBJECTS), each run links those objects into its own
+        # binaries: a fresh inode per run, so concurrent runs never match each other's processes.
+        per_run = ('src/adb_recovery.c', 'src/identity.c', 'src/version.c')
+        objects = os.environ.get('RECOVERY_REPLACEMENT_OBJECTS')
+        if objects:
+            assert ROOT == FIXTURE_ROOT, 'prebuilt objects come from the fixture tree only'
+            def shared(path):
+                if path in per_run: return path
+                built = Path(objects)/(Path(path).stem + '.o')
+                assert built.is_file(), 'missing prebuilt object ' + str(built)
+                return str(built)
+            sources = [shared(s) for s in sources]
+            linked = [shared('src/sysexec.c')]
+            main_source = shared('src/main.c')
+        else:
+            linked = ['src/sysexec.c']
+            main_source = 'src/main.c'
         cuts = str(FIXTURE_ROOT/'test/adb_recovery_replacement_cuts.c')
         # The incumbent starts on a free socket, so current source with an older build
         # exercises the shipped STATUS/RECOVER contract. Exact-base proof may supply its source.
@@ -264,12 +316,11 @@ else:
                             '-Isrc',f'-DHAPANELD_BUILD_ID="{build}"',
                             *[f'-D{k}="{v}"' for k,v in flags.items()],
                             *[recovery if s=='src/adb_recovery.c' else s for s in sources],
-                            'src/main.c','src/sysexec.c',cuts,
+                            main_source,*linked,cuts,
                             '-DRECOVERY_REPLACEMENT_STANDALONE_ENTRY','-Wl,--wrap=main',
-                            *['-Wl,--wrap=' + name for name in WRAPS],'-lpthread','-o',str(binary)],cwd=ROOT,check=True)
+                            *['-Wl,--wrap=' + name for name in WRAPS],'-lpthread','-o',str(binary)],cwd=ROOT,check=True,preexec_fn=lambda: os.nice(10))
             binaries[build]=binary
-        legs = os.environ.get('RECOVERY_REPLACEMENT_LEGS', 'direct,ensure').split(',')
-        assert legs and all(leg in ('direct', 'ensure') for leg in legs), 'unknown replacement fixture leg'
+        legs, cases, runs = selection()
         ordinary_binaries = {}
         if 'ensure' in legs:
             entry = p/'ordinary_entry.c'; entry.write_text(ORDINARY_ENTRY)
@@ -279,9 +330,9 @@ else:
                                 '-Isrc',f'-DHAPANELD_BUILD_ID="{build}"',
                                 f'-DRECOVERY_REPLACEMENT_ORDINARY_SOCKET="{sock}-ordinary-{build[0]}"',
                                 *[f'-D{k}="{v}"' for k,v in flags.items()], *sources,
-                                str(entry),'src/sysexec.c',cuts,
+                                str(entry),*linked,cuts,
                                 *['-Wl,--wrap=' + name for name in WRAPS],
-                                '-lpthread','-o',str(binary)],cwd=ROOT,check=True)
+                                '-lpthread','-o',str(binary)],cwd=ROOT,check=True,preexec_fn=lambda: os.nice(10))
                 ordinary_binaries[build] = binary
         owned = None
         def line(s, bound, deadline=None):
@@ -429,12 +480,7 @@ else:
                 if contender_failures:
                     print('CLEANUP_FAILURES', json.dumps([str(failure) for failure in contender_failures]), flush=True)
                     if not active_failure: raise contender_failures[0]
-        direct_cases = 'locked-fresh,stale,matching,failed-open,unproven-open,foreign-owner,scan-error,concurrent,staggered,timeout-retry,malformed-custody,symlink-custody,fifo-custody,receipt-sync-fails'.split(',')
-        extra_cases = 'source-bound,fresh,source-pinned,lost-ack,unsafe-target,publication-faults,reaper-failure,superseded,readiness-faults'.split(',')
-        selected = os.environ.get('RECOVERY_REPLACEMENT_CASES')
-        cases = direct_cases + extra_cases if selected is None else selected.split(',')
-        assert all(case in direct_cases + extra_cases for case in cases), 'unknown replacement fixture case'
-        for leg, case in ((leg, case) for leg in legs for case in cases if case in direct_cases):
+        for leg, case in ((leg, case) for leg, case, _ in runs if case in DIRECT_CASES):
             CASE_WAIT = ENSURE_TIMEOUT if leg == 'ensure' else 8
             owned = OwnedProcesses(p)
             ordinary = ordinary_start()[0] if leg == 'ensure' else None
@@ -588,10 +634,8 @@ else:
 
         if 'ensure' not in legs: return
         CASE_WAIT = ENSURE_TIMEOUT
-        for case in (case for case in cases if case in extra_cases):
-            variants = ('exact', 'overflow') if case == 'source-bound' else ('symlink', 'fifo', 'directory', 'hardlink', 'mode', 'owner', 'directory-symlink') if case == 'unsafe-target' else (
-                ('ensure-copy-error', 'ensure-file-sync-error', 'ensure-dir-sync-error', 'ensure-exec-error') if case == 'publication-faults' else (
-                    ('wrong', 'malformed', 'stall') if case == 'readiness-faults' else ('',)))
+        for case in dict.fromkeys(case for _, case, _ in runs if case in EXTRA_CASES):
+            variants = tuple(variant for _, selected_case, variant in runs if selected_case == case)
             for variant in variants:
                 reset_live(); owned = OwnedProcesses(p); attempts = []
                 ordinary, ordinary_path = ordinary_start(padded_size=(8 * 1024 * 1024 + (variant == 'overflow')) if case == 'source-bound' else None)
@@ -749,6 +793,9 @@ else:
                     cleanup(attempts)
 
 if __name__=='__main__':
+    if sys.argv[1:] == ['--plan']:
+        for run_selected in selection()[2]: print(' '.join(field or '-' for field in run_selected))
+        raise SystemExit(0)
     try: run()
     except AssertionError as failure:
         print('FAIL:', failure, flush=True)

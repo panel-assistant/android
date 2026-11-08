@@ -1,4 +1,5 @@
 #define _GNU_SOURCE
+#include "test_tmp.h"
 #include <ftw.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,17 +12,17 @@
 #define main helper_main
 #include "../src/main.c"
 #undef main
-#define LIVE "/tmp/.hapaneld-helper-live-test"
-#define STAGE "/tmp/.hapaneld-companion-stage-test"
-#define LEASE "/tmp/.hapaneld-helper-transaction-lock-test"
-#define BOOT "/tmp/.hapaneld-guard-db-test.boot-id"
-#define APP_ROOT "/tmp/.hapaneld-guard-app-test"
+#define LIVE HAPANELD_TEST_TMP "/.hapaneld-helper-live-test"
+#define STAGE HAPANELD_TEST_TMP "/.hapaneld-companion-stage-test"
+#define LEASE HAPANELD_TEST_TMP "/.hapaneld-helper-transaction-lock-test"
+#define BOOT HAPANELD_TEST_TMP "/.hapaneld-guard-db-test.boot-id"
+#define APP_ROOT HAPANELD_TEST_TMP "/.hapaneld-guard-app-test"
 #define DB_DIR APP_ROOT "/data/user/0/io.panelassistant.android/databases"
 #define DB DB_DIR "/ha-paneld.db"
-#define COMPANION_ROOT "/tmp/.hapaneld-companion-test"
+#define COMPANION_ROOT HAPANELD_TEST_TMP "/.hapaneld-companion-test"
 #define COMPANION_DATA COMPANION_ROOT "/data/user/0/io.homeassistant.companion.android"
 #define COMPANION_ROLLBACK COMPANION_DATA "/databases/.HomeAssistantDB.hapaneld-rollback"
-#define INSTALLED "/tmp/.hapaneld-guard-installed"
+#define INSTALLED HAPANELD_TEST_TMP "/.hapaneld-guard-installed"
 #define SESSION "1111111111111111111111111111111111111111111111111111111111111111"
 #define SIGNER "2222222222222222222222222222222222222222222222222222222222222222"
 static char fixture[256];

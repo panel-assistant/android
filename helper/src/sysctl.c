@@ -782,7 +782,8 @@ void cmd_grant(conn_ctx *ctx, const char *args) {
 static pthread_mutex_t install_lock = PTHREAD_MUTEX_INITIALIZER;
 
 #ifdef HAPANELD_TEST
-#define INSTALL_STAGE_PARENT "/tmp"
+#include "test_tmp.h"
+#define INSTALL_STAGE_PARENT HAPANELD_TEST_TMP
 #define INSTALL_STAGE_NAME   ".hapaneld-helper-test"
 #else
 #define INSTALL_STAGE_PARENT "/data/local"

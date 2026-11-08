@@ -7,6 +7,7 @@
 #pragma GCC diagnostic ignored "-Wunused-variable"
 
 #define _GNU_SOURCE
+#include "test_tmp.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
@@ -30,13 +31,13 @@
 #include "sha256.h"
 #include "sysexec_stub.h"
 
-#define CUSTODY "/tmp/.hapaneld-guard-db-test"
-#define BOOT_FILE "/tmp/.hapaneld-guard-db-test.boot-id"
-#define APP_ROOT "/tmp/.hapaneld-guard-app-test"
+#define CUSTODY HAPANELD_TEST_TMP "/.hapaneld-guard-db-test"
+#define BOOT_FILE HAPANELD_TEST_TMP "/.hapaneld-guard-db-test.boot-id"
+#define APP_ROOT HAPANELD_TEST_TMP "/.hapaneld-guard-app-test"
 #define APP_PKG "io.panelassistant.android"
 #define DB_DIR APP_ROOT "/data/user/0/" APP_PKG "/databases"
 #define DB_PATH DB_DIR "/ha-paneld.db"
-#define INSTALLED_DIR "/tmp/.hapaneld-guard-installed"
+#define INSTALLED_DIR HAPANELD_TEST_TMP "/.hapaneld-guard-installed"
 #define INSTALLED_APK INSTALLED_DIR "/base.apk"
 #define SESSION "1111111111111111111111111111111111111111111111111111111111111111"
 #define SIGNER  "2222222222222222222222222222222222222222222222222222222222222222"
@@ -47,10 +48,10 @@
 #define REPLACEMENT_BUILD "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 #define WRONG_REPLACEMENT_BUILD "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
 #define REPLACEMENT_NONCE "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-#define HELPER_LIVE "/tmp/.hapaneld-helper-live-test"
-#define HELPER_STAGE "/tmp/.hapaneld-helper-live-test.new"
-#define HELPER_PREVIOUS "/tmp/.hapaneld-helper-live-test.previous"
-#define SHARED_LOCK "/tmp/.hapaneld-helper-transaction-lock-test"
+#define HELPER_LIVE HAPANELD_TEST_TMP "/.hapaneld-helper-live-test"
+#define HELPER_STAGE HAPANELD_TEST_TMP "/.hapaneld-helper-live-test.new"
+#define HELPER_PREVIOUS HAPANELD_TEST_TMP "/.hapaneld-helper-live-test.previous"
+#define SHARED_LOCK HAPANELD_TEST_TMP "/.hapaneld-helper-transaction-lock-test"
 #define SHARED_LOCK_PID SHARED_LOCK "/pid"
 static const char SETTINGS_AUTHORITY[] =
     "S2\n616c706861|737472696e67|64656661756c74\n";
