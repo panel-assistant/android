@@ -39,7 +39,7 @@ jobs:
   # `ubuntu-24.04`, and `auto` below sends the Android build there instead of the project runner. Pull
   # requests, schedules and anything a bot starts stay GitHub-hosted. Unset the
   # variable to stop using Blacksmith; runners without the variable never see it. The jobs on a release's
-  # critical path (the Android builds, helper units, lint, instrumentation) take the runner named by
+  # critical path (the Android builds, helper units, lint, release unit tests, instrumentation) take the runner named by
   # CI_BLACKSMITH_HEAVY_RUNNER (a larger Blacksmith size), or the 4-vCPU size when it is unset.
   #
   # CI_ANDROID_RUNNER (repository variable) or the dispatch input selects `hosted`, `self-hosted` or
