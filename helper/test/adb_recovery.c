@@ -581,30 +581,49 @@ static void guardian_drain_exec_test(void) {
     CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 0,
           "guardian drain reaps guardian suppresses restart rejects ARM and permits same-PID exec");
 }
+static int wait_tracked_child(pid_t *child, int milliseconds) {
+    if (*child <= 1) return 0;
+    long long deadline = now_ms() + milliseconds;
+    for (;;) {
+        pid_t done = waitpid(*child, NULL, WNOHANG);
+        if (done == *child) { *child = -1; return 1; }
+        if (done < 0 && errno == ECHILD) { *child = -1; return 0; }
+        if (done < 0 && errno != EINTR) return 0;
+        if (now_ms() >= deadline) return 0;
+        usleep(10000);
+    }
+}
 static void successor_guardian_test(void) {
+    int client = -1, reaped;
     fixture_lease_ms = 60000; start(); arm();
     CHECK(!adb_recovery_legacy_main(fixture_main_socket),
           "merged incumbent cannot authorize the generic legacy process sweep");
     put("pause-restart", "yes"); unlink(fixture_path("restart.calls"));
-    pid_t old_guardian = fixture_guardian;
-    kill(owner, SIGKILL); waitpid(owner, NULL, 0); owner = -1;
-    waitpid(socket_worker, NULL, 0); socket_worker = -1;
+    kill(owner, SIGKILL);
+    reaped = wait_tracked_child(&owner, 2000);
+    CHECK(reaped, "killed lifecycle owner exits before successor admission");
+    if (!reaped) goto cleanup;
+    reaped = wait_tracked_child(&socket_worker, 2000);
+    CHECK(reaped, "socket worker exits after lifecycle owner death");
+    if (!reaped) goto cleanup;
     long long until = now_ms() + 2000;
     while (!line_count("restart.calls") && now_ms() < until) usleep(5000);
     CHECK(line_count("restart.calls") == 1, "orphan guardian begins recovery before successor admission");
     owner = fork();
     if (!owner) { char *arguments[] = {"hapaneld-helper", NULL}; _exit(lifecycle_fixture_main(1, arguments)); }
     usleep(150000);
-    int client = connect_owner(); if (client >= 0) (void)write_all(client, "ARM aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n", 69);
+    client = connect_owner(); if (client >= 0) (void)write_all(client, "ARM aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n", 69);
     struct pollfd ready = {.fd = client, .events = POLLIN};
     CHECK(client >= 0 && poll(&ready, 1, 150) == 0 && network_is("stopped"),
           "successor cannot admit ARM while orphan guardian recovery is unproved");
     unlink(fixture_path("pause-restart"));
-    waitpid(old_guardian, NULL, 0);
+    reaped = wait_tracked_child(&fixture_guardian, 4000);
+    CHECK(reaped, "orphan guardian exits after reopening before successor admission");
+    if (!reaped) goto cleanup;
     char reply[160]; read_deadline = now_ms() + 4000;
     CHECK(client >= 0 && !read_line(client, reply, sizeof reply) && !strcmp(reply, "OK"),
           "successor admits queued ARM only after orphan guardian finishes recovery");
-    if (client >= 0) close(client);
+    if (client >= 0) { close(client); client = -1; }
     CHECK(!request("RECOVER aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n", reply, sizeof reply) && !strcmp(reply, "OK") && network_is("running"),
           "successor retains a working independent recovery route");
     int ready_main = 0;
@@ -614,6 +633,9 @@ static void successor_guardian_test(void) {
     FILE *file = fopen(proc, "r"); long first = -1, second = -1;
     if (file) { if (fscanf(file, "%ld %ld", &first, &second) != 2) second = -1; fclose(file); }
     fixture_guardian = (pid_t)first; socket_worker = (pid_t)second;
+ cleanup:
+    if (client >= 0) close(client);
+    unlink(fixture_path("pause-restart"));
     stop(); fixture_lease_ms = 600;
 }
 static void shell_tests(void) {

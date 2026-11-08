@@ -124,7 +124,7 @@ $(BUILD)/sysexec-platform-wrapper: $(SRC_DIR)/sysexec.c test/sysexec_platform_wr
 	$(CC) $(CFLAGS) -I$(SRC_DIR) $(SRC_DIR)/sysexec.c test/sysexec_platform_wrapper.c $(LDLIBS) -Wl,--wrap=execve -o $@
 
 # Peer-credential policy is owned by main.c rather than CORE_SRCS. The white-box test includes that
-# production implementation and supplies inert module stubs; it never opens a socket or executes a verb.
+# production implementation and opens a real listener for credential checks with inert module stubs.
 peer-auth-test: $(BUILD)/peer-auth
 	$(BUILD)/peer-auth
 $(BUILD)/peer-auth: test/peer_auth.c $(SRC_DIR)/main.c $(SRC_DIR)/adb_recovery.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c $(SRC_DIR)/identity.c | $(BUILD)
