@@ -93,6 +93,11 @@ internal fun proximityCadenceAfterStale(): ProximityCadenceRecovery = ProximityC
     sampleCount = 0,
 )
 
+/** A count at the 16-bit ceiling cannot rise further, so an on-change HAL falls silent there by
+ * design: a covered NSPanel 86 went 1531 -> 65535 and then reported nothing until uncovered. The
+ * declared `maximumRange` (9.0 on that HAL) does not describe its counts, so it cannot be used. */
+internal fun proximityReadingAtFullScale(raw: Float): Boolean = raw >= 65535f
+
 internal fun proximityNeedsHalLivenessProbe(
     acquisition: ProximityAcquisition,
     onChangeHalLiveness: Boolean,
@@ -819,8 +824,9 @@ class SensorReporter(
         val sparseForObservation = reportingSparse()
         lastRaw = raw
         if (raw.isFinite() && fresh) {
-            // A last changed callback alone cannot establish that dense delivery ended at rest.
-            proximityReadingStable = raw == previousFreshProximityRaw
+            // A last changed callback alone cannot establish that dense delivery ended at rest,
+            // except at full scale: a cover clips the noise that keeps an on-change HAL reporting.
+            proximityReadingStable = raw == previousFreshProximityRaw || proximityReadingAtFullScale(raw)
             previousFreshProximityRaw = raw
             liveProximityAt = now
             if (!proximityPolicy.sparseLearning && !continuousCadenceConfirmed) {
