@@ -360,11 +360,16 @@ else:
                     s.settimeout(ENSURE_TIMEOUT); s.connect('\0' + sock + '-ordinary-' + NEW[0])
                     for command_text, expected in (
                             ('PING', 'OK\n'), ('ADBRECOVERYENSURE extra', 'ERR\n'),
-                            ('ADBRECOVERYENSURE /proc/self/exe', 'ERR\n'),
-                            ('ARM ' + 'a'*64, 'ERR\n'), ('BEAT ' + 'a'*64, 'ERR\n'),
-                            ('RECOVER', 'ERR\n'), ('SHELL 1 0', 'ERR\n')):
+                            ('ADBRECOVERYENSURE /proc/self/exe', 'ERR\n')):
                         s.sendall((command_text + '\n').encode())
-                        assert line(s, 256) == expected, 'ordinary ENSURE argument/admin-endpoint control failed: ' + command_text
+                        assert line(s, 256) == expected, 'ordinary ENSURE argument control failed: ' + command_text
+                # Recovery verbs terminate their main connection, including a refused request.
+                for command_text in ('ARM ' + 'a'*64, 'BEAT ' + 'a'*64, 'RECOVER', 'STATUS', 'SHELL 1 0'):
+                    with socket.socket(socket.AF_UNIX) as s:
+                        s.settimeout(ENSURE_TIMEOUT); s.connect('\0' + sock + '-ordinary-' + NEW[0])
+                        s.sendall((command_text + '\n').encode())
+                        assert line(s, 256) == 'ERR\n', 'ordinary admin-endpoint control failed: ' + command_text
+                        assert s.recv(1) == b'', 'refused recovery request did not close its connection: ' + command_text
                 try: peer, _ = recovery_probe.accept()
                 except BlockingIOError: pass
                 else:
