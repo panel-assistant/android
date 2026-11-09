@@ -3109,6 +3109,46 @@ static void test_pa_records(void) {
           pa_file_is(PA_DISPLAY_RECORD, "density=420\n"),
           "PA_RESTORE display keeps a record missing a key and writes nothing (got '%s')\n", out);
 
+    // A partial Meta or verifier record is no baseline: restore writes nothing and keeps it.
+    const char *const partial[][2] = {
+        { PA_META_RECORD, "screensaver_default_component=com.meta/.Dream\ncontrolcenter_overlay=allow\n" },
+        { PA_META_RECORD, "screensaver_components=com.meta/.Dream\ncontrolcenter_overlay=allow\n" },
+        { PA_META_RECORD, "screensaver_components=com.meta/.Dream\nscreensaver_default_component=com.meta/.Dream\n" },
+        { PA_VERIFIER_RECORD, "" },
+    };
+    for (size_t i = 0; i < sizeof partial / sizeof partial[0]; i++) {
+        pa_reset_records();
+        pa_write_fixture(partial[i][0], partial[i][1], 0644);
+        sysexec_stub_reset();
+        sysexec_stub_add_popen("settings get secure screensaver_components", "\n", 0);
+        sysexec_stub_add_popen("settings get secure screensaver_default_component", "\n", 0);
+        sysexec_stub_add_popen("settings get global package_verifier_enable", "0\n", 0);
+        sysexec_stub_add_popen("pm path com.facebook.alohaapps.controlcenter", "package:/system/app/cc.apk\n", 0);
+        sysexec_stub_add_popen("appops get com.facebook.alohaapps.controlcenter SYSTEM_ALERT_WINDOW", "SYSTEM_ALERT_WINDOW: deny\n", 0);
+        dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "PA_RESTORE vendor", out, sizeof out);
+        CHECK(pa_field_is(out, "result", "unrestored") && pa_ran("settings", "put") == 0 &&
+              pa_ran("settings", "delete") == 0 && pa_ran("appops", "set") == 0 &&
+              pa_file_is(partial[i][0], partial[i][1]),
+              "PA_RESTORE keeps partial vendor record %zu and writes nothing (got '%s')\n", i, out);
+    }
+
+    // Setup treats a partial existing Meta record as invalid and changes nothing.
+    pa_reset_records();
+    pa_write_fixture(PA_META_RECORD, partial[0][1], 0644);
+    sysexec_stub_reset();
+    pa_stub_identity("29\n");
+    sysexec_stub_add_popen("getprop ro.product.device", "omni\n", 0);
+    sysexec_stub_add_popen("settings get secure screensaver_components", "com.meta/.Dream\n", 0);
+    sysexec_stub_add_popen("settings get secure screensaver_default_component", "com.meta/.Dream\n", 0);
+    sysexec_stub_add_popen("pm path com.facebook.alohaapps.controlcenter", "package:/system/app/cc.apk\n", 0);
+    sysexec_stub_add_popen("appops get com.facebook.alohaapps.controlcenter SYSTEM_ALERT_WINDOW", "SYSTEM_ALERT_WINDOW: allow\n", 0);
+    sysexec_stub_add_popen("settings get global package_verifier_enable", "1\n", 0);
+    dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "PA_VENDOR setup", out, sizeof out);
+    CHECK(pa_ran("settings", "put") == 0 && pa_ran("appops", "set") == 0 &&
+          pa_field_is(out, "record", "invalid") && pa_field_is(out, "converged", "0") &&
+          pa_file_is(PA_META_RECORD, partial[0][1]),
+          "setup keeps a partial Meta record and writes nothing (got '%s')\n", out);
+
     // Meta setup retry: the record already exists and must not be rewritten from blanked values.
     const char *meta = "screensaver_components=com.meta/.Dream\nscreensaver_default_component=com.meta/.Dream\ncontrolcenter_overlay=allow\n";
     pa_reset_records();
