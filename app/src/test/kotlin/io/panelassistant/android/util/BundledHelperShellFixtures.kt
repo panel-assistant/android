@@ -65,7 +65,7 @@ internal object BundledHelperShellFixtures {
           ${if (candidate) "echo REPLACE_SAFE; exit 0" else "exit 2"}
         fi
         if [ "${'$'}1" = --supervise ]; then
-          ${if (signalOnSupervise) "kill -$superviseSignal \"${'$'}PPID\"; sleep 1" else ":"}
+          ${if (signalOnSupervise) "sent=${'$'}{0%/*}/.supervise-signalled; if [ ! -f \"${'$'}sent\" ]; then : > \"${'$'}sent\"; kill -$superviseSignal \"${'$'}PPID\"; sleep 1; fi" else ":"}
           ${if (supervisePidFile != null) "echo ${'$'}${'$'} > '${supervisePidFile.absolutePath}'; exec sleep 30" else ":"}
           exit ${if (starts) 0 else 7}
         fi
@@ -133,7 +133,7 @@ internal object BundledHelperShellFixtures {
     fun runCommand(command: String): CommandResult = runCommandWithInput(command, "")
 
     // The pre-canonical /system rc a Guard-era helper still runs under, exactly: 119 bytes, sha256 9b430712.
-    val officeSystemRegistration = """
+    val preCanonicalSystemRegistration = """
         service hapaneld_helper /system/bin/hapaneld-helper
             class main
             user root
@@ -183,7 +183,7 @@ internal object BundledHelperShellFixtures {
     fun withCustodyFiles(
         candidateStarts: Boolean = true,
         staleBytes: String? = fakeHelper("f".repeat(64), candidate = true, starts = true),
-        registrationBytes: String = officeSystemRegistration,
+        registrationBytes: String = preCanonicalSystemRegistration,
         signalOnReplacementCheck: Boolean = false,
         signalOnSupervise: Boolean = false,
         superviseSignal: String = "TERM",
