@@ -93,7 +93,7 @@ class PanelAssistantTransportProtocolTest {
         )
     }
 
-    @Test fun `a webview install manage event takes Panel Assistant 1_0_0's top-level request fields as its arguments`() {
+    @Test fun `a webview install manage event takes the top-level request fields Panel Assistant 1_0_0 sent as its arguments`() {
         fun manage(body: JSONObject) = PanelAssistantTransportProtocol.sessionEvent(
             JSONObject().put("id", 1).put("type", "event").put("event", body.put("kind", "manage").put("command_id", "c")), 1L,
         ) as PanelAssistantSessionEvent.Manage
