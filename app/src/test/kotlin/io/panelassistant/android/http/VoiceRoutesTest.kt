@@ -30,6 +30,7 @@ import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -118,7 +119,9 @@ class VoiceRoutesTest {
         val started = submit("level")
         assertEquals(HttpStatusCode.Accepted, started.status)
         assertEquals("no-store", started.headers[HttpHeaders.CacheControl])
-        assertTrue(JSONObject(started.bodyAsText()).has("last_command"))
+        val reply = JSONObject(started.bodyAsText())
+        assertTrue("the reply carries the session's own view", reply.has("wake_test") && reply.has("route"))
+        assertFalse("but never the transcript, which command replay memory would keep", reply.has("last_command"))
         assertEquals(HttpStatusCode.Accepted, submit("wake_test").status)
         assertEquals(HttpStatusCode.Accepted, submit("heartbeat").status)
 

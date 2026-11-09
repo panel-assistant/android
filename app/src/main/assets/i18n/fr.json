@@ -2343,6 +2343,11 @@
       "sourceHash": "28d03596d24eeb4eab2d6fe21ca1cb95be7cb1fa6f92933db05e2cc4f4cdfa06",
       "state": "english-fallback"
     },
+    "configure.voice.tuning.source_not_opened": {
+      "text": "{source}: the panel could not use this setting, so it was not compared",
+      "sourceHash": "85bb22785da080062319ba092802f5e9f0575a972247982a20de557089f9a679",
+      "state": "english-fallback"
+    },
     "configure.voice.tuning.source_result": {
       "text": "{source}: heard {fired} of 3, best score {peak}",
       "sourceHash": "569c0264430d3554d376791682dfb0f4f372bae7eb4913b90909f52ddf98bff7",

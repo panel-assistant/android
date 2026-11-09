@@ -90,7 +90,7 @@ internal fun Route.voiceRoutes(
             call.respondText("{\"error\":${Json.str(refusal)}}", ContentType.Application.Json, HttpStatusCode.Conflict)
             return@post
         }
-        call.respondText(voiceDiagnosticsJson(voiceDiagnostics.diagnostics(), microphone()),
+        call.respondText(voiceDiagnosticsJson(voiceDiagnostics.diagnostics(), microphone(), withLastCommand = false),
             ContentType.Application.Json, HttpStatusCode.Accepted)
     }
     // One-shot voice-assistant test run. Refused with 409 before ever reaching the trigger

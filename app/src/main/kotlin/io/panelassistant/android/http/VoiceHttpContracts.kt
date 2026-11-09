@@ -74,11 +74,13 @@ private fun decimal(value: Float?, places: Int): String =
 /**
  * `GET /api/v1/voice/diagnostics`: the owner's live view. `level` while a tuning session meters the
  * microphone, the wake-word test against its cutoff, the last command (in memory only; never in `/diag`),
- * and the capture route.
+ * and the capture route. [withLastCommand] false leaves the last command out: the tuning POST's reply is
+ * kept in command replay memory, which would otherwise hold the transcript after voice is turned off.
  */
 internal fun voiceDiagnosticsJson(
     snapshot: io.panelassistant.android.assist.VoiceDiagnosticsSnapshot,
     microphone: io.panelassistant.android.audio.MicrophoneStatus,
+    withLastCommand: Boolean = true,
 ): String {
     val level = snapshot.level?.let {
         "{\"rms_dbfs\":${decimal(it.rmsDbfs, 1)},\"peak_dbfs\":${decimal(it.peakDbfs, 1)}," +
@@ -96,7 +98,7 @@ internal fun voiceDiagnosticsJson(
             "\"code\":${it.code?.let(Json::str) ?: "null"},\"listen_ms\":${it.listenMs ?: "null"}}"
     } ?: "null"
     return "{\"session\":${snapshot.session?.let(Json::str) ?: "null"},\"level\":$level,\"wake_test\":$test," +
-        "\"last_command\":$last,\"route\":${voiceRouteJson(microphone)}}"
+        (if (withLastCommand) "\"last_command\":$last," else "") + "\"route\":${voiceRouteJson(microphone)}}"
 }
 
 /** The `/diag` voice line: what a report needs to say why a panel does not hear or answer. Settings and

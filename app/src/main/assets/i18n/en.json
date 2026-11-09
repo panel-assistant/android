@@ -6455,6 +6455,20 @@
       "softMaxChars": 16,
       "hardMaxChars": 24
     },
+    "configure.voice.tuning.source_not_opened": {
+      "text": "{source}: the panel could not use this setting, so it was not compared",
+      "sourceHash": "85bb22785da080062319ba092802f5e9f0575a972247982a20de557089f9a679",
+      "surface": "configure",
+      "context": "Configure page, Voice card, microphone tuning (shown while voice is on). Render as text, not HTML. One compared setting the panel could not open, so it heard through its standard microphone setting instead and the result is not used; {source} is the setting's name and value (for example “Capture rate: 48 kHz”).",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [
+        "{source}"
+      ],
+      "frozen": [],
+      "softMaxChars": 72,
+      "hardMaxChars": 104
+    },
     "configure.voice.tuning.source_result": {
       "text": "{source}: heard {fired} of 3, best score {peak}",
       "sourceHash": "569c0264430d3554d376791682dfb0f4f372bae7eb4913b90909f52ddf98bff7",

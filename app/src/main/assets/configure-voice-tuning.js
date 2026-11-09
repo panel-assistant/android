@@ -44,6 +44,7 @@
     step_source_text: "Try an audio source or capture setting, then say the wake word three times again. The others go back as they were.",
     source_try: "Try this setting",
     source_result: "{source}: heard {fired} of 3, best score {peak}",
+    source_not_opened: "{source}: the panel could not use this setting, so it was not compared",
     review: "Suggested settings",
     review_gain: "Microphone gain: {value} dB",
     review_sensitivity: "Wake word sensitivity: {value}",
@@ -127,7 +128,8 @@
       error.reason = reason;
       throw error;
     }
-    if (reply.result && typeof reply.result === "object") show(reply.result);
+    // The reply leaves the last command out (only the GET family carries it), so keep the one already shown.
+    if (reply.result && typeof reply.result === "object") show(Object.assign({}, latest, reply.result));
     return reply.result;
   }
 
@@ -349,14 +351,26 @@
     if (!sourcePick.options.length) sourceRow.hidden = true;
   }
 
+  // Whether the microphone is open on the route it was asked for. The open ladder and the panel's fallback to
+  // its standard route can open another one, and what that heard says nothing about the setting tried.
+  function openedAsAsked(route) {
+    var a = route && route.active, r = route && route.requested;
+    if (!a || !r) return false;
+    return a.source === r.source && a.rate_hz === r.rate_hz && a.channels === r.channels &&
+      (r.channels < 2 || a.downmix === r.downmix);
+  }
+
   function recordSource() {
     var test = latest && latest.wake_test;
     if (!wizard.trying || !test || test.peak == null) return;
+    var usable = !wizard.tryRefused && openedAsAsked(latest.route);
     wizard.sources = wizard.sources.filter(function (s) { return s.source !== wizard.trying; });
-    wizard.sources.push({ source: wizard.trying, fired: test.fired, peak: test.peak });
+    wizard.sources.push({ source: wizard.trying, fired: test.fired, peak: test.peak, usable: usable });
     sourceResults.textContent = "";
     wizard.sources.forEach(function (s) {
-      sourceResults.appendChild(el("p", { class: "note", text: L("source_result", { source: candidateLabel(s.source), fired: s.fired, peak: fixed(s.peak, 2) }) }));
+      var text = s.usable ? L("source_result", { source: candidateLabel(s.source), fired: s.fired, peak: fixed(s.peak, 2) })
+        : L("source_not_opened", { source: candidateLabel(s.source) });
+      sourceResults.appendChild(el("p", { class: "note", text: text }));
     });
   }
 
@@ -377,13 +391,20 @@
     var values = routeWith(value), tried = candidate(value).key;
     // Put the others back first, so the microphone never opens on two changes at once.
     var order = Object.keys(values).filter(function (k) { return k !== tried; }).concat([tried]);
+    var refused = false;
     for (var i = 0; i < order.length; i++) {
       var key = order[i];
       if (values[key] === "" || setting(key) === values[key]) continue;
       var reply = await window.PaneldTransport.command(key, values[key]);
-      if (reply && reply.outcome && reply.outcome !== "applied") status.textContent = L("refused", { reason: reply.code || reply.outcome });
+      if (reply && reply.outcome && reply.outcome !== "applied") {
+        // Not applied: the panel keeps its value, so a later write of this key must not be skipped.
+        refused = true;
+        status.textContent = L("refused", { reason: reply.code || reply.outcome });
+        continue;
+      }
       cfg.values[key] = values[key];
     }
+    wizard.tryRefused = refused;
     await new Promise(function (done) { setTimeout(done, SOURCE_SETTLE_MS); });
     wizard.trying = value;
     sourceTry.disabled = false;
@@ -415,6 +436,7 @@
   function bestSource() {
     var best = null;
     wizard.sources.forEach(function (s) {
+      if (!s.usable) return;
       if (!best || s.fired > best.fired || (s.fired === best.fired && s.peak > best.peak)) best = s;
     });
     return best ? best.source : null;

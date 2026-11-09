@@ -45,12 +45,24 @@ async function panel() {
     last: null, actions: [], unmarked: 0,
   };
   const writes = [];
-  const json = () => JSON.stringify({
+  // Settings the panel cannot open (it falls back to its standard route) and writes it refuses, as `key=value`.
+  const unopened = new Set(), refuse = new Set();
+  const route = () => {
+    const rate = settings.voice_capture_rate === 'auto' ? 16000 : Number(settings.voice_capture_rate);
+    const channels = settings.voice_capture_channels === 'auto' ? 1 : Number(settings.voice_capture_channels);
+    const requested = { source: settings.voice_audio_source, rate_hz: rate, channels, downmix: 'dominance' };
+    const fellBack = Object.entries(settings).some(([key, value]) => unopened.has(`${key}=${value}`));
+    const active = fellBack ? { source: 'voice_recognition', rate_hz: 16000, channels: 1, downmix: null }
+      : { source: requested.source, rate_hz: rate, channels, downmix: channels === 2 ? 'dominance' : null };
+    return { requested, active, rebuilds: 0 };
+  };
+  const json = (post = false) => JSON.stringify({
     session: voice.session,
     level: voice.level ? voice.hearing : null,
     wake_test: voice.test ? { ...voice.test, state: 'running', remaining_ms: 20000 } : voice.lastTest,
-    last_command: voice.last,
-    route: null,
+    // The panel's POST reply leaves the last command out; only the GET family carries it.
+    ...(post ? {} : { last_command: voice.last }),
+    route: route(),
   });
   const server = createServer(async (request, response) => {
     const url = new URL(request.url, 'http://panel.test');
@@ -75,12 +87,16 @@ async function panel() {
         voice.session = null; voice.level = false; voice.test = null;
       }
       if (action === 'heartbeat' && !(voice.level || voice.test)) return send('{"error":"this tuning session has ended"}', 'application/json', 409);
-      return send(json(), 'application/json', 202);
+      return send(json(true), 'application/json', 202);
     }
     if (path === '/api/v1/config/schema') return send(JSON.stringify(SCHEMA));
     if (path === '/api/v1/config' && request.method === 'POST') {
       const form = await body();
-      for (const [key, value] of form) { writes.push(`${key}=${value}`); settings[key] = value; }
+      for (const [key, value] of form) {
+        writes.push(`${key}=${value}`);
+        if (refuse.has(`${key}=${value}`)) return send('{"error":"refused"}', 'application/json', 409);
+        settings[key] = value;
+      }
       return send('{}');
     }
     if (path === '/api/v1/config' || path === '/api/v1/config/values') return send(JSON.stringify({ settings, ha_expose: {}, ha_auth: { configured: false } }));
@@ -91,7 +107,7 @@ async function panel() {
     response.statusCode = 404; response.end('not found');
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  return { voice, writes, settings, server, url: `http://127.0.0.1:${server.address().port}` };
+  return { voice, writes, settings, unopened, refuse, server, url: `http://127.0.0.1:${server.address().port}` };
 }
 
 const text = (p, id) => p.evaluate((i) => document.getElementById(i)?.textContent ?? null, id);
@@ -247,6 +263,56 @@ for (const engine of engines) {
     assert.deepEqual(h.writes.filter((w) => w.startsWith('voice_capture') || w.startsWith('voice_audio')), ['voice_capture_rate=auto', 'voice_capture_channels=2']);
     assert.equal(h.settings.voice_capture_rate, 'auto');
     assert.equal(h.settings.voice_capture_channels, '2');
+    assert.equal(h.settings.voice_audio_source, 'voice_recognition');
+  });
+
+  test(`${engine.name}: a setting the panel could not open, or heard beside a refused put-back, is never compared`, async (t) => {
+    const { p, h } = await open(t);
+    await p.click('#voice-tuning-start');
+    await eventually('the wake word step', async () => (await text(p, 'voice-tuning-step')) === 'Step 3 of 4: the wake word' || await text(p, 'voice-tuning-step'), 12000);
+    h.voice.test.peak = 0.6; h.voice.test.cutoff = 0.97; h.voice.test.fired = 0;
+    h.voice.lastTest = { ...h.voice.test, state: 'done', remaining_ms: 0 };
+    h.voice.test = null;
+    await eventually('the test ran out', async () => !(await p.locator('#voice-tuning-next').isDisabled()));
+    await p.click('#voice-tuning-next');
+    await eventually('the source step', async () => (await text(p, 'voice-tuning-step')) === 'Step 4 of 4: compare settings (optional)' || await text(p, 'voice-tuning-step'));
+
+    // 48 kHz is accepted as a setting, but the panel cannot open it and listens on its standard route instead,
+    // where the wake word happens to fire three times.
+    h.unopened.add('voice_capture_rate=48000');
+    await p.selectOption('#voice-tuning-source', 'voice_capture_rate=48000');
+    await p.click('#voice-tuning-try');
+    await eventually('48 kHz is tried', async () => h.writes.includes('voice_capture_rate=48000') && h.voice.test !== null || JSON.stringify(h.writes), 6000);
+    h.voice.test.peak = 0.99; h.voice.test.cutoff = 0.97; h.voice.test.fired = 3;
+    await eventually('the score is read', async () => (await text(p, 'voice-tuning-progress')) === 'Heard 3 of 3. Best score 0.99, needs 0.97.' || await text(p, 'voice-tuning-progress'));
+
+    // Two channels next: the rate goes back first, and two channels open as asked and hear twice.
+    await p.selectOption('#voice-tuning-source', 'voice_capture_channels=2');
+    await p.click('#voice-tuning-try');
+    await eventually('two channels are tried', async () => h.writes.includes('voice_capture_channels=2') && h.voice.test !== null || JSON.stringify(h.writes), 6000);
+    assert.equal(await text(p, 'voice-tuning-source-results'), 'Capture rate: 48 kHz: the panel could not use this setting, so it was not compared');
+    h.voice.test.peak = 0.98; h.voice.test.cutoff = 0.97; h.voice.test.fired = 2;
+    await eventually('the second score is read', async () => (await text(p, 'voice-tuning-progress')) === 'Heard 2 of 3. Best score 0.98, needs 0.97.' || await text(p, 'voice-tuning-progress'));
+
+    // Then the other audio source, but the panel refuses to put the channels back, so what it hears next is
+    // not the source on its own, however well it hears.
+    h.refuse.add('voice_capture_channels=auto');
+    await p.selectOption('#voice-tuning-source', 'voice_audio_source=mic');
+    await p.click('#voice-tuning-try');
+    await eventually('the other source is tried', async () => h.writes.includes('voice_audio_source=mic') && h.voice.test !== null || JSON.stringify(h.writes), 6000);
+    h.voice.test.peak = 0.99; h.voice.test.cutoff = 0.97; h.voice.test.fired = 3;
+    await eventually('the third score is read', async () => (await text(p, 'voice-tuning-progress')) === 'Heard 3 of 3. Best score 0.99, needs 0.97.' || await text(p, 'voice-tuning-progress'));
+    h.refuse.clear();
+
+    await p.click('#voice-tuning-skip');
+    await eventually('the suggestions', async () => (await text(p, 'voice-tuning-step')) === 'Suggested settings' || await text(p, 'voice-tuning-step'));
+    assert.match(await text(p, 'voice-tuning-source-results'), /Audio source: Microphone: the panel could not use this setting, so it was not compared/);
+    assert.match(await text(p, 'voice-tuning-progress'), /Heard best with Capture channels: Two/, 'only a setting heard as asked is suggested');
+
+    await p.click('#voice-tuning-cancel');
+    await eventually('cancel restores them', async () => (await text(p, 'voice-tuning-status')) === 'Cancelled. The settings are as they were.' || await text(p, 'voice-tuning-status'));
+    assert.equal(h.settings.voice_capture_rate, 'auto');
+    assert.equal(h.settings.voice_capture_channels, 'auto', 'the refused put-back is written again');
     assert.equal(h.settings.voice_audio_source, 'voice_recognition');
   });
 }
