@@ -82,16 +82,78 @@ private fun requireFilesystemRoot(filesystemRoot: String) = require(filesystemRo
     (filesystemRoot.startsWith("/") && !filesystemRoot.endsWith("/") &&
         SAFE_ABSOLUTE_PATH.matches(filesystemRoot) && filesystemRoot.split('/').none { it == ".." }))
 
+/**
+ * Reads the migration record for a start. A temporary with no record is a cut before the first record write,
+ * when nothing beyond staging had changed: it is discarded under the transaction lock (a live transaction
+ * holds that lock and keeps its own temporary), so the layout probe and staging see the panel as it was.
+ */
 internal fun systemCustodyMigrationRecordReadCommand(filesystemRoot: String = ""): String {
     requireFilesystemRoot(filesystemRoot)
+    val d = '$'
     return """
     record=$filesystemRoot/data/local/.hapaneld-helper.custody-migration
-    [ -f "${'$'}record" ] && [ ! -L "${'$'}record" ] &&
-    meta=${'$'}(stat -c '%u:%g:%a:%h:%s' "${'$'}record" 2>/dev/null || toybox stat -c '%u:%g:%a:%h:%s' "${'$'}record" 2>/dev/null) &&
-    case "${'$'}meta" in 0:0:600:1:*) ;; *) false ;; esac &&
-    bytes=${'$'}{meta##*:} && [ "${'$'}bytes" -ge 1 ] && [ "${'$'}bytes" -le 1024 ] &&
-    dd if="${'$'}record" bs=1025 count=1 2>/dev/null
+    record_tmp=${d}record.tmp
+    lock=$filesystemRoot/dev/.hapaneld-helper-transaction.lock
+    file_meta() { stat -c '%u:%g:%a:%h:%s' "${d}1" 2>/dev/null || toybox stat -c '%u:%g:%a:%h:%s' "${d}1" 2>/dev/null; }
+    if [ ! -e "${d}record" ] && [ ! -L "${d}record" ] && { [ -e "${d}record_tmp" ] || [ -L "${d}record_tmp" ]; }; then
+      locked=0
+      if mkdir "${d}lock" 2>/dev/null; then locked=1
+      else
+        holder=${d}(cat "${d}lock/pid" 2>/dev/null || true)
+        case "${d}holder" in ''|*[!0-9]*) ;; *)
+          if [ ! -d "/proc/${d}holder" ] && rm -rf "${d}lock" 2>/dev/null && mkdir "${d}lock" 2>/dev/null; then locked=1; fi ;;
+        esac
+      fi
+      if [ "${d}locked" = 1 ]; then
+        trap 'rm -rf "${d}lock"' 0
+        echo ${d}${d} > "${d}lock/pid"
+        if [ ! -e "${d}record" ] && [ ! -L "${d}record" ] && [ -f "${d}record_tmp" ] && [ ! -L "${d}record_tmp" ]; then
+          tmp_meta=${d}(file_meta "${d}record_tmp") &&
+          case "${d}tmp_meta" in 0:0:600:1:*) [ "${d}{tmp_meta##*:}" -le 1024 ] && true ;; esac
+        fi
+        rm -rf "${d}lock"; trap - 0
+      fi
+    fi
+    [ -f "${d}record" ] && [ ! -L "${d}record" ] &&
+    meta=${d}(file_meta "${d}record") &&
+    case "${d}meta" in 0:0:600:1:*) ;; *) false ;; esac &&
+    bytes=${d}{meta##*:} && [ "${d}bytes" -ge 1 ] && [ "${d}bytes" -le 1024 ] &&
+    dd if="${d}record" bs=1025 count=1 2>/dev/null
 """.trimIndent()
+}
+
+/**
+ * A start's answer to an unfinished migration: none without a record; otherwise the record's own build, with
+ * nothing but its candidate (or nothing) serving, drives the takeover shell forward from the cut.
+ */
+internal fun systemCustodyStartOutcome(
+    recordReply: String?,
+    currentBuildId: String,
+    statusProbe: () -> GuardDbMaintenanceClient.StatusProbe,
+    selfIdentity: () -> GuardDbMaintenanceProtocol.SelfIdentity?,
+    drive: (SystemCustodyMigrationRecord) -> Boolean,
+    refused: (BundledHelperInstaller.Result, String) -> BundledHelperInstaller.Result,
+): BundledHelperInstaller.Result? {
+    val reply = recordReply ?: return null
+    val record = parseSystemCustodyMigrationRecord(reply)
+        ?: return refused(BundledHelperInstaller.Result.FAILED, "custody_record_malformed")
+    if (record.stagedBuildId != currentBuildId) {
+        return refused(BundledHelperInstaller.Result.REPROVISION_REQUIRED, "custody_record_other_build")
+    }
+    val serving = when (val status = statusProbe()) {
+        is GuardDbMaintenanceClient.StatusProbe.Valid -> {
+            if (status.status.ownsMaintenance) {
+                return refused(BundledHelperInstaller.Result.BLOCKED_ACTIVE, "custody_guard_maintenance")
+            }
+            selfIdentity()
+        }
+        GuardDbMaintenanceClient.StatusProbe.Unreachable -> null
+        else -> return refused(BundledHelperInstaller.Result.FAILED, "custody_status_unusable")
+    }
+    if (serving != null && serving != record.candidateIdentity) {
+        return refused(BundledHelperInstaller.Result.FAILED, "custody_foreign_helper")
+    }
+    return if (drive(record)) BundledHelperInstaller.Result.INSTALLED else BundledHelperInstaller.Result.FAILED
 }
 
 /** Layout F is the only reason a Guard-capable incumbent that cannot name itself is not reprovision-gated. */
@@ -105,9 +167,10 @@ internal fun bundledHelperCustodyMigrationMode(
     ) BundledHelperReplacementMode.SYSTEM_CUSTODY_MIGRATION else mode
 
 /**
- * The root work at the head of a start. An already-current start makes only the released takeover check it
- * always made; the migration record is read only on a start that is going to root anyway (the bundled
- * helper is not the one serving, or nothing answers).
+ * The root work at the head of a start. An unfinished migration record outranks whatever answers the socket:
+ * a cut after the candidate launched leaves the bundled build serving with the /system files and the record
+ * still there, so an already-current start reads the record before the released takeover check, and only a
+ * start without root (no record can be read) keeps its admission unread.
  */
 internal fun bundledHelperStartGate(
     admission: BundledHelperInstaller.Result?,
@@ -115,7 +178,7 @@ internal fun bundledHelperStartGate(
     systemCustody: () -> BundledHelperInstaller.Result?,
 ): BundledHelperInstaller.Result? = when (admission) {
     null -> systemCustody()
-    BundledHelperInstaller.Result.ALREADY_CURRENT -> currentLegacyCustody() ?: admission
+    BundledHelperInstaller.Result.ALREADY_CURRENT -> systemCustody() ?: currentLegacyCustody() ?: admission
     else -> admission
 }
 

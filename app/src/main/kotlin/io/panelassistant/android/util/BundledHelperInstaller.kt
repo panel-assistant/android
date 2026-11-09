@@ -247,30 +247,22 @@ internal object BundledHelperInstaller {
      * and finds one drives the same takeover shell forward from wherever a kill or power cut left it (the shell
      * relaunches the bundled copy and finishes or rolls back the removal), and nothing else runs meanwhile.
      */
-    private fun systemCustodyMigrationOutcome(): Result? {
-        val reply = Su.runOutputLong(systemCustodyMigrationRecordReadCommand(), INSTALL_TIMEOUT_MS) ?: return null
-        val record = parseSystemCustodyMigrationRecord(reply) ?: return refused(Result.FAILED, "custody_record_malformed")
-        if (record.stagedBuildId != BuildConfig.HELPER_BUILD_ID) {
-            return refused(Result.REPROVISION_REQUIRED, "custody_record_other_build")
-        }
-        val serving = when (val status = GuardDbMaintenance.client.statusProbe()) {
-            is GuardDbMaintenanceClient.StatusProbe.Valid -> {
-                if (status.status.ownsMaintenance) return refused(Result.BLOCKED_ACTIVE, "custody_guard_maintenance")
-                GuardDbMaintenance.client.selfIdentity()
-            }
-            GuardDbMaintenanceClient.StatusProbe.Unreachable -> null
-            else -> return refused(Result.FAILED, "custody_status_unusable")
-        }
-        if (serving != null && serving != record.candidateIdentity) return refused(Result.FAILED, "custody_foreign_helper")
-        val driven = runSystemCustodyShell(
-            bundledLegacyHelperTakeoverCommand(
-                record.candidateSha256, record.stagedBuildId, record.incumbentBuildId,
-                systemCustodyMigration = true,
-            ),
-            "custody_migration_incomplete",
-        )
-        return if (driven) Result.INSTALLED else Result.FAILED
-    }
+    private fun systemCustodyMigrationOutcome(): Result? = systemCustodyStartOutcome(
+        Su.runOutputLong(systemCustodyMigrationRecordReadCommand(), INSTALL_TIMEOUT_MS),
+        BuildConfig.HELPER_BUILD_ID,
+        statusProbe = GuardDbMaintenance.client::statusProbe,
+        selfIdentity = GuardDbMaintenance.client::selfIdentity,
+        drive = { record ->
+            runSystemCustodyShell(
+                bundledLegacyHelperTakeoverCommand(
+                    record.candidateSha256, record.stagedBuildId, record.incumbentBuildId,
+                    systemCustodyMigration = true,
+                ),
+                "custody_migration_incomplete",
+            )
+        },
+        refused = ::refused,
+    )
 
     /** One bounded root attempt; its output is kept for the diag dump and names the refusal. */
     private fun runSystemCustodyShell(command: String, refusal: String): Boolean {

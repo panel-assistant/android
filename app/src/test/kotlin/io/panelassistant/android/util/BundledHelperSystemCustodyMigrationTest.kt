@@ -207,14 +207,19 @@ class BundledHelperSystemCustodyMigrationTest {
         }
     }
 
-    @Test fun `an already current start makes no root call beyond the released takeover check`() {
+    @Test fun `an already current start reads the migration record before the released takeover check`() {
         val calls = mutableListOf<String>()
         val current = { calls += "legacy takeover record"; null }
         val custody = { calls += "custody record"; null }
         assertEquals(BundledHelperInstaller.Result.ALREADY_CURRENT,
             bundledHelperStartGate(BundledHelperInstaller.Result.ALREADY_CURRENT, current, custody))
-        // The same single check the base build made on an already-current start, and nothing new.
-        assertEquals(listOf("legacy takeover record"), calls)
+        assertEquals(listOf("custody record", "legacy takeover record"), calls)
+        calls.clear()
+        // A pending record wins: the released takeover check is not reached.
+        assertEquals(BundledHelperInstaller.Result.INSTALLED, bundledHelperStartGate(
+            BundledHelperInstaller.Result.ALREADY_CURRENT, current,
+        ) { calls += "custody record"; BundledHelperInstaller.Result.INSTALLED })
+        assertEquals(listOf("custody record"), calls)
         calls.clear()
         listOf(BundledHelperInstaller.Result.SKIPPED, BundledHelperInstaller.Result.REPROVISION_REQUIRED).forEach {
             assertEquals(it, bundledHelperStartGate(it, current, custody))
@@ -222,6 +227,123 @@ class BundledHelperSystemCustodyMigrationTest {
         assertEquals(emptyList<String>(), calls)
         assertNull(bundledHelperStartGate(null, current, custody))
         assertEquals(listOf("custody record"), calls)
+    }
+
+    @Test fun `a cut after the candidate serves is finished by the next start through the start routing`() {
+        val record = ".hapaneld-helper.custody-migration"
+        val cuts = listOf<Pair<String, (CustodyFixture) -> Unit>>(
+            "during swap" to { _ -> },
+            "before removal" to { f -> f.signalOn("signal-on-remount-rw", "KILL") },
+            "after removal" to { f -> f.signalOn("signal-on-remount-ro", "KILL") },
+            "between the removals" to { f -> f.killAtSyncWhen(
+                "[ ! -e '${f.root.absolutePath}/system/etc/init/hapaneld-helper.rc' ] && " +
+                    "[ -e '${f.root.absolutePath}/system/bin/hapaneld-helper' ]") },
+            "before the record is retired" to { f -> f.killAtSyncWhen(
+                "[ ! -e '${f.root.absolutePath}/system/bin/hapaneld-helper' ] && [ -f '${f.dataLocal.absolutePath}/$record' ]") },
+        )
+        for (reboot in listOf(false, true)) cuts.forEach { (point, arm) ->
+            val label = "$point reboot=$reboot"
+            withCustodyFiles(signalOnSupervise = point == "during swap", superviseSignal = "KILL") { fixture ->
+                arm(fixture)
+                assertEquals(label, 137, runCommand(migrate(fixture)).exitCode)
+                assertTrue(label, fixture.record.isFile)
+                if (reboot) fixture.reboot() else fixture.sameBoot()
+                // The bundled build answers as current: the start must still finish the transaction.
+                val reasons = mutableListOf<String>()
+                val outcome = startGate(fixture, BundledHelperInstaller.Result.ALREADY_CURRENT, reasons,
+                    serving = { record -> record.candidateIdentity })
+                assertEquals("$label $reasons", BundledHelperInstaller.Result.INSTALLED, outcome)
+                assertMigrated(fixture, label)
+            }
+        }
+    }
+
+    @Test fun `a kill before the first record write reaches the migration again through the start routing`() {
+        val record = ".hapaneld-helper.custody-migration"
+        for (reboot in listOf(false, true)) withCustodyFiles { fixture ->
+            val label = "reboot=$reboot"
+            fixture.killAtSyncWhen("[ -f '${fixture.dataLocal.absolutePath}/$record.tmp' ] && " +
+                "[ ! -f '${fixture.dataLocal.absolutePath}/$record' ]")
+            assertEquals(label, 137, runCommand(migrate(fixture)).exitCode)
+            File(fixture.root, "kill-on-sync").delete()
+            assertTrue(label, File(fixture.dataLocal, "$record.tmp").isFile)
+            assertFalse(label, fixture.record.exists())
+            if (reboot) fixture.reboot() else fixture.sameBoot()
+            // The incumbent still serves, so nothing answers as the bundled build.
+            val reasons = mutableListOf<String>()
+            assertNull("$label $reasons", startGate(fixture, null, reasons, serving = { null }))
+            assertFalse(label, File(fixture.dataLocal, "$record.tmp").exists())
+            assertTrue("$label ${probe(fixture)}", probe(fixture) is SystemCustodyLayout.LayoutF)
+            fixture.stage.delete()
+            val staged = runCommandWithInput(
+                bundledHelperStageCommand(fixture.candidateSha, fixture.root.absolutePath), fixture.candidateBytes,
+            )
+            assertEquals("$label ${staged.output}", 0, staged.exitCode)
+            val resumed = runCommand(migrate(fixture))
+            assertEquals("$label: ${resumed.output}", 0, resumed.exitCode)
+            assertMigrated(fixture, label)
+        }
+    }
+
+    @Test fun `the start leaves a live transaction's temporary and a record's temporary alone`() {
+        val record = ".hapaneld-helper.custody-migration"
+        withCustodyFiles { fixture ->
+            val tmp = File(fixture.dataLocal, "$record.tmp").apply { writeText("partial") }.also { setMode(it, 600) }
+            val lock = File(fixture.root, "dev/.hapaneld-helper-transaction.lock").apply { mkdirs() }
+            File(lock, "pid").writeText("${ProcessHandle.current().pid()}\n")
+            assertEquals(1, runCommand(systemCustodyMigrationRecordReadCommand(fixture.root.absolutePath)).exitCode)
+            assertTrue(tmp.isFile)
+            assertTrue(lock.isDirectory)
+            // A dead holder's lock is reclaimed and released.
+            File(lock, "pid").writeText("999999999\n")
+            assertEquals(1, runCommand(systemCustodyMigrationRecordReadCommand(fixture.root.absolutePath)).exitCode)
+            assertFalse(tmp.exists())
+            assertFalse(lock.exists())
+        }
+        withCustodyFiles { fixture ->
+            val line = "OK CUSTODYMIGRATION 1 ARCHIVED ${"1".repeat(64)} 10 ${"2".repeat(64)} 119 NONE 0 " +
+                "$incumbentBuild $stagedBuild ${"3".repeat(64)} 20\n"
+            fixture.record.writeText(line); setMode(fixture.record, 600)
+            val tmp = File(fixture.dataLocal, "$record.tmp").apply { writeText("partial") }.also { setMode(it, 600) }
+            val read = runCommand(systemCustodyMigrationRecordReadCommand(fixture.root.absolutePath))
+            assertEquals(0, read.exitCode)
+            assertEquals(line, read.output)
+            assertTrue(tmp.isFile)
+        }
+        withCustodyFiles { fixture ->
+            // Anything but a root 0600 single-link file stays for the probe to refuse.
+            val tmp = File(fixture.dataLocal, "$record.tmp").apply { writeText("partial") }.also { setMode(it, 644) }
+            assertEquals(1, runCommand(systemCustodyMigrationRecordReadCommand(fixture.root.absolutePath)).exitCode)
+            assertTrue(tmp.isFile)
+            assertEquals(SystemCustodyLayout.Refused("custody_record_present", emptyList()), probe(fixture).withoutInventory())
+        }
+    }
+
+    @Test fun `a start refuses a pending record it cannot own`() {
+        val reasons = mutableListOf<String>()
+        val refuse = { result: BundledHelperInstaller.Result, reason: String -> reasons += reason; result }
+        val line = "OK CUSTODYMIGRATION 1 SWAPPED ${"1".repeat(64)} 10 ${"2".repeat(64)} 119 NONE 0 " +
+            "$incumbentBuild $stagedBuild ${"3".repeat(64)} 20\n"
+        val candidate = requireNotNull(parseSystemCustodyMigrationRecord(line)).candidateIdentity
+        val valid = GuardDbMaintenanceClient.StatusProbe.Valid(requireNotNull(GuardDbMaintenanceProtocol.parseStatus(emptyStatus)))
+        var driven = 0
+        fun start(reply: String?, build: String = stagedBuild,
+                  status: GuardDbMaintenanceClient.StatusProbe = valid,
+                  self: GuardDbMaintenanceProtocol.SelfIdentity? = candidate) =
+            systemCustodyStartOutcome(reply, build, { status }, { self }, { driven++; true }, refuse)
+        assertNull(start(null))
+        assertEquals(BundledHelperInstaller.Result.FAILED, start("garbage\n"))
+        assertEquals(BundledHelperInstaller.Result.REPROVISION_REQUIRED, start(line, build = "e".repeat(64)))
+        assertEquals(BundledHelperInstaller.Result.FAILED,
+            start(line, self = candidate.copy(sha256 = "f".repeat(64))))
+        assertEquals(BundledHelperInstaller.Result.FAILED, start(line, status = GuardDbMaintenanceClient.StatusProbe.Malformed))
+        assertEquals(listOf("custody_record_malformed", "custody_record_other_build", "custody_foreign_helper",
+            "custody_status_unusable"), reasons)
+        assertEquals(0, driven)
+        assertEquals(BundledHelperInstaller.Result.INSTALLED, start(line))
+        assertEquals(BundledHelperInstaller.Result.INSTALLED,
+            start(line, status = GuardDbMaintenanceClient.StatusProbe.Unreachable, self = null))
+        assertEquals(2, driven)
     }
 
     @Test fun `a removal init still sees is restored and rolled back`() {
@@ -501,6 +623,45 @@ class BundledHelperSystemCustodyMigrationTest {
         assertNull(parseSystemCustodyMigrationRecord(line.replace(" NONE 0 ", " NONE 5 ")))
         assertNull(parseSystemCustodyMigrationRecord(line.replace("OK ", "OK  ")))
     }
+
+    /**
+     * The production start routing over a fixture: the gate, the record command, the start outcome and the
+     * takeover shell the record names. [serving] stands in for the socket's GUARDSELF answer.
+     */
+    private fun startGate(
+        fixture: CustodyFixture,
+        admission: BundledHelperInstaller.Result?,
+        reasons: MutableList<String>,
+        serving: (SystemCustodyMigrationRecord) -> GuardDbMaintenanceProtocol.SelfIdentity?,
+    ): BundledHelperInstaller.Result? = bundledHelperStartGate(
+        admission,
+        currentLegacyCustody = { null },
+        systemCustody = {
+            val read = runCommand(systemCustodyMigrationRecordReadCommand(fixture.root.absolutePath))
+            val reply = read.output.takeIf { read.exitCode == 0 }
+            val pending = reply?.let(::parseSystemCustodyMigrationRecord)
+            systemCustodyStartOutcome(
+                reply, stagedBuild,
+                statusProbe = {
+                    if (pending != null && serving(pending) != null) {
+                        GuardDbMaintenanceClient.StatusProbe.Valid(
+                            requireNotNull(GuardDbMaintenanceProtocol.parseStatus(emptyStatus)))
+                    } else GuardDbMaintenanceClient.StatusProbe.Unreachable
+                },
+                selfIdentity = { pending?.let(serving) },
+                drive = { record ->
+                    val driven = runCommand("PATH='${File(fixture.root, "stubbin").absolutePath}':\$PATH\n" +
+                        bundledLegacyHelperTakeoverCommand(
+                            record.candidateSha256, record.stagedBuildId, record.incumbentBuildId,
+                            filesystemRoot = fixture.root.absolutePath, polls = 1, systemCustodyMigration = true,
+                        ))
+                    if (driven.exitCode != 0) reasons += driven.output.takeLast(400)
+                    driven.exitCode == 0
+                },
+                refused = { result, reason -> reasons += reason; result },
+            )
+        },
+    )
 
     private fun migrate(fixture: CustodyFixture, polls: Int = 1) =
         "PATH='${File(fixture.root, "stubbin").absolutePath}':\$PATH\n" + bundledLegacyHelperTakeoverCommand(
