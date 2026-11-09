@@ -39,10 +39,14 @@ class AndroidMicrophoneSource(
     private val applicationContext = context.applicationContext
 
     private val fanOut = MicrophoneFanOut(
-        deviceFactory = {
-            val device = AudioRecordCaptureDevice(androidRecorderFactory(applicationContext, route))
-            if (route.passthrough) device else ConvertingCaptureDevice(device, route.downmix, route.warmupReads)
-        },
+        deviceFactory = FallbackCaptureDevices(
+            requested = route,
+            build = { chosen ->
+                val device = AudioRecordCaptureDevice(androidRecorderFactory(applicationContext, chosen))
+                if (chosen.passthrough) device else ConvertingCaptureDevice(device, chosen.downmix, chosen.warmupReads)
+            },
+            log = { Log.w(TAG, it) },
+        ),
         logger = { message, error -> if (error != null) Log.w(TAG, message, error) else Log.i(TAG, message) },
     )
 
@@ -60,6 +64,102 @@ class AndroidMicrophoneSource(
     override fun shutdown(timeoutMs: Long): Boolean = fanOut.shutdown(timeoutMs)
 
     override fun close() = fanOut.close()
+}
+
+/**
+ * The capture devices for one requested route, with the canonical route behind it.
+ *
+ * The open ladder only sees whether a recorder can be built. A HAL can build the requested recorder and
+ * then refuse to start it, or start it and fail every read, and on such a panel the requested route would
+ * leave the microphone deaf where the canonical `VOICE_RECOGNITION` 16 kHz mono route works. So a refused
+ * start falls back to the canonical route inside the same generation, and a generation that ended on failed
+ * reads without ever delivering audio counts against the route. After [maxFailures] such failures in a row
+ * every later generation opens the canonical route directly, for as long as this source lives; a route
+ * setting change builds a new source, which tries the requested route again. The route report's active
+ * capture then shows what is really open, beside the route that was asked for.
+ *
+ * The requested route being the canonical one changes nothing: its devices are built exactly as before.
+ */
+internal class FallbackCaptureDevices(
+    private val requested: CaptureRoute,
+    private val build: (CaptureRoute) -> PcmCaptureDevice,
+    private val log: (String) -> Unit = {},
+    private val maxFailures: Int = MAX_ROUTE_FAILURES,
+) : () -> PcmCaptureDevice {
+
+    private val canonical = CaptureRoute()
+
+    /** Consecutive generations the requested route failed; read and written only by devices of this factory. */
+    private val failures = java.util.concurrent.atomic.AtomicInteger()
+
+    override fun invoke(): PcmCaptureDevice =
+        if (requested == canonical || failures.get() >= maxFailures) build(canonical) else Attempt(build(requested))
+
+    private fun routeFailed(why: String) {
+        val count = failures.incrementAndGet()
+        log(
+            if (count >= maxFailures) "capture route $requested $why; using the canonical route from now on"
+            else "capture route $requested $why; falling back to the canonical route for this capture",
+        )
+    }
+
+    /** One generation on the requested route, holding the canonical device it falls back to. */
+    private inner class Attempt(private val primary: PcmCaptureDevice) : PcmCaptureDevice {
+        private val lock = Any()
+        private var revoked = false
+        private var closed = false
+        @Volatile private var current: PcmCaptureDevice = primary
+        @Volatile private var heardAudio = false
+        @Volatile private var failedRead = false
+
+        override fun open(): Boolean {
+            if (primary.open()) return true
+            primary.close()
+            val fallback = synchronized(lock) {
+                // A stop or close while the requested route was refusing ends this generation outright.
+                if (revoked) return false
+                build(canonical).also { current = it }
+            }
+            routeFailed("could not be started")
+            return fallback.open()
+        }
+
+        override fun read(into: ShortArray, offsetSamples: Int, maxSamples: Int): Int {
+            val device = current
+            val read = device.read(into, offsetSamples, maxSamples)
+            if (device === primary) {
+                if (read > 0) heardAudio = true else if (read < 0) failedRead = true
+            }
+            return read
+        }
+
+        override fun stop() {
+            synchronized(lock) {
+                revoked = true
+                current
+            }.stop()
+        }
+
+        override fun close() {
+            val (closing, first) = synchronized(lock) {
+                revoked = true
+                val first = !closed
+                closed = true
+                current to first
+            }
+            closing.close()
+            if (first && closing === primary) {
+                if (heardAudio) failures.set(0) else if (failedRead) routeFailed("delivered no audio before its reads failed")
+            }
+        }
+
+        override fun describe(): ActiveCapture? = current.describe()
+    }
+
+    companion object {
+        /** Failed generations in a row after which the requested route is no longer tried. */
+        const val MAX_ROUTE_FAILURES = 2
+    }
 }
 
 /**
