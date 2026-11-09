@@ -158,3 +158,34 @@ internal fun systemMountShell(): String {
         }
     """.trimIndent().replace("\n", "\n        ")
 }
+
+/**
+ * The last helper install outcome for the diag dump, as one line: result, reason, wall-clock time and elapsed
+ * time, and whether a run is in progress now, so a start that returned silently or never returned shows.
+ */
+internal class BundledHelperInstallDiagnostics(
+    private val wallClock: () -> Long = System::currentTimeMillis,
+    private val monotonic: () -> Long = { android.os.SystemClock.elapsedRealtime() },
+) {
+    private data class Outcome(val result: BundledHelperInstaller.Result, val reason: String, val atMs: Long, val elapsedMs: Long)
+
+    @Volatile private var startedAt: Long? = null
+    @Volatile private var last: Outcome? = null
+
+    fun began() {
+        startedAt = monotonic()
+    }
+
+    fun finished(result: BundledHelperInstaller.Result, reason: String?) {
+        val elapsed = startedAt?.let { (monotonic() - it).coerceAtLeast(0L) } ?: 0L
+        last = Outcome(result, reason?.takeIf { it.isNotBlank() }?.replace(Regex("\\s+"), "_") ?: "unrecorded", wallClock(), elapsed)
+        startedAt = null
+    }
+
+    fun summary(): String {
+        val running = if (startedAt != null) "running=yes" else "running=no"
+        val outcome = last ?: return "never_run $running"
+        val at = java.time.Instant.ofEpochSecond(outcome.atMs / 1000).toString()
+        return "last=${outcome.result} reason=${outcome.reason} at=$at elapsed_ms=${outcome.elapsedMs} $running"
+    }
+}

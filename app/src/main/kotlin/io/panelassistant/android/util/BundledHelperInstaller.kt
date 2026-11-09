@@ -49,10 +49,28 @@ internal object BundledHelperInstaller {
     var lastReason: String? = null
         private set
 
+    /** The last outcome, its reason and timing, and whether a run is in progress, for `/api/v1/diag`. */
+    val diagnostics = BundledHelperInstallDiagnostics()
+
     @Synchronized
     fun ensureCurrent(context: Context): Result {
         lastReason = null
-        return ensureCurrentAttempt(context, retryStalled = true)
+        diagnostics.began()
+        val startedAt = android.os.SystemClock.elapsedRealtime()
+        Log.i(TAG, "bundled helper check started")
+        val result = try {
+            ensureCurrentAttempt(context, retryStalled = true)
+        } catch (failure: RuntimeException) {
+            lastReason = "exception:${failure.javaClass.simpleName}"
+            diagnostics.finished(Result.FAILED, lastReason)
+            Log.w(TAG, "bundled helper check threw", failure)
+            throw failure
+        }
+        val reason = lastReason ?: result.name.lowercase()
+        lastReason = reason
+        diagnostics.finished(result, reason)
+        Log.i(TAG, "bundled helper check -> $result ($reason) in ${android.os.SystemClock.elapsedRealtime() - startedAt}ms")
+        return result
     }
 
     private fun refused(result: Result, reason: String): Result {
@@ -61,13 +79,21 @@ internal object BundledHelperInstaller {
         return result
     }
 
+    /** Records why [ensureCurrentAttempt] returned here unless a deeper step already said why. */
+    private fun because(result: Result, reason: String): Result {
+        if (lastReason == null) lastReason = reason
+        return result
+    }
+
     private fun ensureCurrentAttempt(context: Context, retryStalled: Boolean): Result {
         when (resumeRetainedCurrentOutcome(context)) {
-            true -> return Result.INSTALLED
-            false -> return Result.FAILED
+            true -> return because(Result.INSTALLED, "legacy_takeover_resumed")
+            false -> return because(Result.FAILED, "legacy_takeover_resume_failed")
             null -> Unit
         }
-        if (!GuardDbProcessAdmission.ordinaryMutationsAllowed()) return Result.BLOCKED_ACTIVE
+        if (!GuardDbProcessAdmission.ordinaryMutationsAllowed()) {
+            return because(Result.BLOCKED_ACTIVE, "guard_db_maintenance_active")
+        }
         val companionSupported = HelperClient.supportsCompanionData()
         val bundledBuildMatches = HelperClient.matchesBundledHelper()
         val guardSupported = companionSupported && bundledBuildMatches && GuardDbMaintenance.client.supported()
@@ -77,12 +103,18 @@ internal object BundledHelperInstaller {
             guardSupported = guardSupported,
             rootObserved = { Su.available() },
         )
-        if (admission == Result.REPROVISION_REQUIRED) lastReason = "equal_build_not_canonical"
+        when (admission) {
+            Result.REPROVISION_REQUIRED -> lastReason = "equal_build_not_canonical"
+            Result.SKIPPED -> lastReason = "root_not_observed"
+            Result.ALREADY_CURRENT -> lastReason = "bundled_build_serving"
+            else -> Unit
+        }
         bundledHelperStartGate(
             admission,
             currentLegacyCustody = {
                 if (Su.available()) {
                     currentBundledLegacyTakeoverRecordResult(BuildConfig.HELPER_BUILD_ID)?.also { result ->
+                        lastReason = "legacy_takeover_custody"
                         Log.w(TAG, "current helper has legacy takeover custody requiring $result")
                     }
                 } else null
@@ -90,30 +122,32 @@ internal object BundledHelperInstaller {
             systemCustody = ::systemCustodyMigrationOutcome,
         )?.let { return it }
         val stagedBuildId = BuildConfig.HELPER_BUILD_ID
-            .takeIf(GuardDbMaintenanceProtocol::validSha256) ?: return Result.FAILED
-        val asset = helperAssetName(Build.SUPPORTED_ABIS.asIterable()) ?: return Result.SKIPPED
+            .takeIf(GuardDbMaintenanceProtocol::validSha256) ?: return because(Result.FAILED, "bundled_build_id_invalid")
+        val asset = helperAssetName(Build.SUPPORTED_ABIS.asIterable())
+            ?: return because(Result.SKIPPED, "no_bundled_helper_for_abi")
         // A journal the deleted installers left before this APK arrived can no longer stop its helper.
         val appInstalledAt = runCatching {
             context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime / 1000
         }.getOrDefault(0L).coerceAtLeast(0L)
         val staged = runCatching { File.createTempFile("hapaneld-helper-", ".bin", context.cacheDir) }
-            .getOrElse { return Result.FAILED }
+            .getOrElse { return because(Result.FAILED, "stage_file_unavailable") }
         return try {
             context.assets.open(asset).use { input -> staged.outputStream().use(input::copyTo) }
             val expectedSha256 = AppInstaller.sha256(staged)
             // Reacquire authority after native reconciliation. Staging still independently proves
             // the replacement namespace empty before it can touch any candidate bytes.
             val statusProbe = bundledHelperReplacementStatusAfterRecovery(staged, expectedSha256)
-                ?: return Result.FAILED
+                ?: return because(Result.FAILED, "replacement_reconcile_refused")
             val replacementProbe = bundledHelperReplacementProbe(statusProbe) {
                 probeBundledLegacyHelper(staged, expectedSha256, stagedBuildId)
-            } ?: return Result.FAILED
-            val probedMode = bundledHelperReplacementMode(replacementProbe.status) ?: return Result.BLOCKED_ACTIVE
+            } ?: return because(Result.FAILED, "legacy_probe_refused")
+            val probedMode = bundledHelperReplacementMode(replacementProbe.status)
+                ?: return because(Result.BLOCKED_ACTIVE, "helper_status_owns_maintenance_or_malformed")
             val incumbentBuildId = if (probedMode == BundledHelperReplacementMode.FRESH_INSTALL) {
                 null
             } else {
                 (replacementProbe.incumbentBuildId ?: HelperClient.installedBuildId())
-                    ?.takeIf { it != stagedBuildId } ?: return Result.FAILED
+                    ?.takeIf { it != stagedBuildId } ?: return because(Result.FAILED, "incumbent_build_unknown")
             }
             val incumbentIdentity = if (probedMode == BundledHelperReplacementMode.GUARDED_RETIRE) {
                 GuardDbMaintenance.client.selfIdentity()
@@ -130,7 +164,7 @@ internal object BundledHelperInstaller {
             ) lastReason = "incumbent_identity_mismatch"
             val priorRecordReply = Su.runOutputLong(bundledLegacyTakeoverRecordReadCommand(), INSTALL_TIMEOUT_MS)
             val priorRecord = priorRecordReply?.let {
-                parseBundledLegacyTakeoverRecord(it) ?: return Result.FAILED
+                parseBundledLegacyTakeoverRecord(it) ?: return because(Result.FAILED, "legacy_record_malformed")
             }
             val result = installBundledHelperReplacement(
                 replacementMode, stagedBuildId, incumbentBuildId, incumbentIdentity, priorRecord,
@@ -201,7 +235,7 @@ internal object BundledHelperInstaller {
             )
         } catch (failure: Exception) {
             Log.w(TAG, "bundled helper migration failed", failure)
-            Result.FAILED
+            because(Result.FAILED, "exception:${failure.javaClass.simpleName}")
         } finally {
             staged.delete()
         }
@@ -220,7 +254,7 @@ internal object BundledHelperInstaller {
         }
         val serving = when (val status = GuardDbMaintenance.client.statusProbe()) {
             is GuardDbMaintenanceClient.StatusProbe.Valid -> {
-                if (status.status.ownsMaintenance) return Result.BLOCKED_ACTIVE
+                if (status.status.ownsMaintenance) return refused(Result.BLOCKED_ACTIVE, "custody_guard_maintenance")
                 GuardDbMaintenance.client.selfIdentity()
             }
             GuardDbMaintenanceClient.StatusProbe.Unreachable -> null

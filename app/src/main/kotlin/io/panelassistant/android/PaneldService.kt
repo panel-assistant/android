@@ -609,7 +609,9 @@ class PaneldService : Service() {
             BundledHelperInstaller.Result.REPROVISION_REQUIRED ->
                 Log.w(TAG, "root helper reprovision required: ${BundledHelperInstaller.lastReason ?: "no reason recorded"}")
             BundledHelperInstaller.Result.ALREADY_CURRENT,
-            BundledHelperInstaller.Result.SKIPPED -> Unit
+            BundledHelperInstaller.Result.SKIPPED -> Log.i(
+                TAG, "root helper check: ${BundledHelperInstaller.diagnostics.summary()}",
+            )
         }
         if (GuardDbProcessAdmission.ordinaryMutationsAllowed() && !teardownBoundary.isStopping) {
             PanelPermissionRepair.repair(
