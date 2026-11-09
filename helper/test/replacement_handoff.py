@@ -79,10 +79,14 @@ for role, source, build in [('old', incumbent, 'b'*64), ('new', candidate, 'a'*6
                 # the Guard lease. The merged parent-owned listener is not that topology.
                 text = replace_once(text,
                                     '    int listener = open_main_listener(may_retire_replaced);\n'
-                                    '    if (listener < 0) return 1;\n'
-                                    '    int initialized = adb_recovery_owner_init();',
-                                    '    int listener = may_retire_replaced;\n'
-                                    '    int initialized = 1;')
+                                    '    if (listener < 0) return 1;\n',
+                                    '    int listener = may_retire_replaced;\n')
+                text = replace_once(text, '    int recovery = adb_recovery_owner_init() == 0;',
+                                    '    int recovery = 0;')
+                # The incumbent stands in for a release without custody retries.
+                text = replace_once(text,
+                                    '        if (!recovery && executor <= 1 && pending_work == GUARD_WORK_NONE',
+                                    '        if (0 && !recovery && executor <= 1 && pending_work == GUARD_WORK_NONE')
                 text = replace_once(text,
                                     '    _exit(run_daemon(argc, argv, replacement_nonce, listener));',
                                     '    listener = open_main_listener(listener);\n'
