@@ -121,7 +121,8 @@ class PageRoutesHttpTest {
                         .map { it.groupValues[1] }.toList()
                     assertEquals(listOf(
                         "configure-state.js", "configure-view.js", "configure-help.js", "configure-controls.js",
-                        "configure-brightness.js", "configure-auto-sleep.js", "configure-cards.js", "configure-render.js", "configure.js",
+                        "configure-brightness.js", "configure-auto-sleep.js", "configure-cards.js", "configure-render.js", "configure-voice-tuning.js",
+                        "configure.js",
                     ), scripts)
                     assertEquals(proximity, html.contains("id=\"proximity-learning-mount\""))
                     assertEquals(proximity, html.contains("src=\"assets/proximity-learning.js\""))

@@ -1793,6 +1793,281 @@
    "sourceHash": "9a789161001e3b76ebe9ac218c75adf8be5646374ffb1dcca89748408b0371ea",
    "state": "machine-cross-checked"
   },
+  "configure.voice.tuning.cancel": {
+   "text": "Cancel",
+   "sourceHash": "19766ed6ccb2f4a32778eed80d1928d2c87a18d7c275ccb163ec6709d3eb2e27",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.cancelled": {
+   "text": "Cancelled. The settings are as they were.",
+   "sourceHash": "a9d6b965359b47a782f9cbbfdc34fb1f3e47b8d5a42963250b12a6463c1d6bc8",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.last_heard": {
+   "text": "Assist heard: {text}",
+   "sourceHash": "7f85cfe2dc02c58acdbec97deb6abe6370bb9ae4687d83d2a0354e38ba9621d0",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.last_heard_nothing": {
+   "text": "Assist heard nothing it could transcribe.",
+   "sourceHash": "5e4641e03e5f2b95d707fda53e530d2e93666ae8250bddd3e868552d7df4497e",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.last_none": {
+   "text": "No command heard since voice was turned on.",
+   "sourceHash": "0a2be9fb4aca5487ad24403d4e8f897eef26c3fd3f7e19fd058f9745aac65e45",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.last_reply": {
+   "text": "Replied: {text}",
+   "sourceHash": "101a52cfaf868a2a7ea7a044444267cd9a6b0a7d8aa44d11e11210f213c8875a",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.last_title": {
+   "text": "Last command",
+   "sourceHash": "c5c9f9eb955483bf0220b6c094232f31225e163d534e53182c775e6e21611b52",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.last_woke": {
+   "text": "Woke at {score}.",
+   "sourceHash": "f948f7664ff95b45956734c4c8c9dc6f01cf17d62067e69dd1d7cac8212e1b70",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.level_clipped": {
+   "text": "Clipped {count} times: the microphone is overloaded.",
+   "sourceHash": "14a48c93acb2c3cb5f1295002e9d6b15acd713de630c8134beac59660fa27c4f",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.level_idle": {
+   "text": "The level shows while it is measured; measuring keeps the microphone open beside the wake word.",
+   "sourceHash": "d62fc74ddc63bc5af6ef69f6cc1e4b33e9c228c411873e8fb30bb5aa0f3b7f74",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.level_show": {
+   "text": "Show the microphone level",
+   "sourceHash": "52a8a0ca49e53fddc21e04bb2c999c4b9ea373adb99622150ca9bd92eba86168",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.level_stop": {
+   "text": "Stop the level",
+   "sourceHash": "4ce3728ad020a5226eb78e5fbf4337c0608d3501cf731943156e71355c49cf3d",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.level_value": {
+   "text": "Level {rms} dBFS, peak {peak} dBFS, room {floor} dBFS",
+   "sourceHash": "742576a41d30df8f996a844d24645b0b1adbdab27792a261083be78d836741b3",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.measuring": {
+   "text": "Measuring… {seconds} s",
+   "sourceHash": "fb8da4b35f038b1a50773ffddcf4061a93ab596df3f91cc50ff84930fae0a07d",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.next": {
+   "text": "Next",
+   "sourceHash": "1ff57a29d7c9d11bdf61c1b80f2b289b44c1ea844824d4b94a0d52b6ba5fc858",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.refused": {
+   "text": "The panel did not accept that: {reason}",
+   "sourceHash": "daf356cb5cf63cb4a65b9a84b8f0d6c87b8b7e0102055f49e450bf6baf98ce71",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.result_action_done": {
+   "text": "Result: done.",
+   "sourceHash": "611fc22ec612f0b971c0521c193feb75bcf9e576f8754f1bfe12cb5a61dc03d1",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.result_error": {
+   "text": "Result: failed ({code}).",
+   "sourceHash": "fe6cc7ba9931e297e283fb29f777066823aea408e730de3c6a02a1a67d4c7e88",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.result_no_intent_match": {
+   "text": "Result: not understood.",
+   "sourceHash": "879f1dcdfc38e4d3864eabae32688c606323000623714c68d04cfc1fe19c2c6f",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.result_no_reply": {
+   "text": "Result: no reply.",
+   "sourceHash": "64a73ea60ad227e7dd4b4920cd304c05645d4c85436f946ddc663c53f4eac13d",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.result_query_answer": {
+   "text": "Result: answered.",
+   "sourceHash": "ef65419712a49623121f57723a96349bc7074079b074c69cf9ff8de3d3d511df",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.result_replied": {
+   "text": "Result: replied.",
+   "sourceHash": "9db90d170e8531f420ce5b0efa6a6ad8aeed64b473ddbc3dfc22e057b407df11",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.review": {
+   "text": "Suggested settings",
+   "sourceHash": "e968c53639ad0fd3a36af57be146c40f598db84ba917cd2e9ed63bb0dd9ceccc",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.review_far": {
+   "text": "The wake word stayed well short of its cutoff. Move the panel or try another audio source; gain does not reach the wake word.",
+   "sourceHash": "0c147070d32d765a6e3e2ce0904026392f665ff26f7cdc6af80867e5e4e885b2",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.review_gain": {
+   "text": "Microphone gain: {value} dB",
+   "sourceHash": "53c01141f3cbff88c8940ff2e2c79b0bdd957d924629c4a90284981a18bfa9a8",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.review_good_gain": {
+   "text": "Your voice reached {peak} dBFS, which needs no change.",
+   "sourceHash": "b75b0c22e0ac09eb1897a39f31473c4e499cdcb5c6f3b57e81b89d271e76e534",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.review_high": {
+   "text": "The wake word came close to its cutoff without firing every time, so the panel can wake more readily.",
+   "sourceHash": "9d83757d14dc007f12cd181d2f2d6022f6080045a019e9e4dff08dd82027d442",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.review_loud_gain": {
+   "text": "Your voice clipped or came close; the gain is lowered.",
+   "sourceHash": "ba094f0c93cef42ab69cb0e827b7c99e0f8d571f66fe8772d28159a176e7e86e",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.review_low": {
+   "text": "The panel woke while the room was quiet, so it asks for a clearer match.",
+   "sourceHash": "af858707ad31af788572faabb786c10be37c331362888a3fa430865ede7404b2",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.review_ok": {
+   "text": "The wake word fired reliably.",
+   "sourceHash": "0725fa9b253bdd2b6e4b83ea576347d5f903839e21259ee434d3e388974f3fa1",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.review_quiet_gain": {
+   "text": "Your voice reached {peak} dBFS; the gain lifts the command towards -20 dBFS.",
+   "sourceHash": "0467aab7595217eb71b5aa0f6191ad3175f608bdf83329d016ae9e9303a39d84",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.review_sensitivity": {
+   "text": "Wake word sensitivity: {value}",
+   "sourceHash": "4eb950ccacc1e72f001d4e076c1ddf25d34265e99472d2b1b2da668b09f8dc77",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.review_source": {
+   "text": "Audio source: {value}",
+   "sourceHash": "ff5ab594c0c4a4adc78a6af5940615ee5b7de27ce4d7a3bff0f27996bc97bf16",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.save": {
+   "text": "Save",
+   "sourceHash": "1509f561f2416598629b886ad7d3c05a7e221e4e0675c84bbff4ee6d9e03913d",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.saved": {
+   "text": "Saved.",
+   "sourceHash": "fca046ccd586c67f7fe0b3c12c29873a8abf9376f7cd514fc6272ec03b2de0b3",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.skip": {
+   "text": "Skip",
+   "sourceHash": "28d03596d24eeb4eab2d6fe21ca1cb95be7cb1fa6f92933db05e2cc4f4cdfa06",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.source_result": {
+   "text": "{source}: heard {fired} of 3, best score {peak}",
+   "sourceHash": "569c0264430d3554d376791682dfb0f4f372bae7eb4913b90909f52ddf98bff7",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.source_try": {
+   "text": "Try this source",
+   "sourceHash": "c28945df27f538edd17e0aa4a47eb2269df09b7693b414f34c0993f72fe6895c",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.start": {
+   "text": "Tune the microphone",
+   "sourceHash": "8d814f479857e8a598d1b3a78038b83e189695d119b1f86d4354454b5183e03f",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.step_quiet": {
+   "text": "Step 1 of 4: the room",
+   "sourceHash": "c0ba54951829465a0b190300f33b0caa4d52b96eea7df55fbb03b5a226b8609e",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.step_quiet_text": {
+   "text": "Stay quiet for a few seconds so the panel can hear the room.",
+   "sourceHash": "7fcb22970779a56beed3fa82ba706a94b69433f9d5a93d338da945abd9b64aa3",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.step_source": {
+   "text": "Step 4 of 4: audio source (optional)",
+   "sourceHash": "d90c21c6ac3034d5b44dd1e5f36ccf8ff724701df5218ef0e8b17a54943b6f38",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.step_source_text": {
+   "text": "Try another audio source and say the wake word three times again. The panel reopens its microphone for each.",
+   "sourceHash": "65b7db2d8d208924e342565c64eac4bae6d6e718bcb50c2a98b9c62f7b59cd4c",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.step_speak": {
+   "text": "Step 2 of 4: your voice",
+   "sourceHash": "dcd211986743fb82304cac595adc5026b2c3ba5db39d971046dc383dca3d15f6",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.step_speak_text": {
+   "text": "From where you usually stand, speak normally for a few seconds, as if giving a command.",
+   "sourceHash": "12282faf4911662a0fe82abd3a7d13edd697f7c9bfd265c1577c4790f704afc5",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.step_wake": {
+   "text": "Step 3 of 4: the wake word",
+   "sourceHash": "2a4565114e5e43d49237c2d88c3b2acf5c63ec2ffe82fce626cd4543279bcab5",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.step_wake_progress": {
+   "text": "Heard {fired} of 3. Best score {peak}, needs {cutoff}.",
+   "sourceHash": "aebf0e8c982a357bd61a3442cad4da4c03a439f5d65af8b2e78198908753ed87",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.step_wake_text": {
+   "text": "Go to the far side of the room and say {wake_word} three times, pausing between each.",
+   "sourceHash": "eeecd2de49684a98de6f5ea948275c5c14b8a82f7791c1d3cab74938788265fd",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.title": {
+   "text": "Microphone tuning",
+   "sourceHash": "638873145d7801932a520590c4fbb735bb9c1c46d330fa43ca8e960aa90522b4",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.wake_done": {
+   "text": "Best score {peak}, needed {cutoff}; heard {fired} times.",
+   "sourceHash": "085b78523ecc99ef3015ee6f1091988db0b42748d6f8e941330c3f392232af67",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.wake_note": {
+   "text": "While the test runs, the panel counts the wake word instead of answering it.",
+   "sourceHash": "658688632ea9260bfc99c6db706af7adb2c2d32e2fb6065aba6c56e5943b1b8e",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.wake_running": {
+   "text": "Say the wake word. Best score {peak}, needs {cutoff}; heard {fired} times; {seconds} s left.",
+   "sourceHash": "952b2032681cafd571dea5f73f60fb68e9235026d80c2274f8e7e7136fc16b46",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.wake_stop": {
+   "text": "Stop the test",
+   "sourceHash": "1317e849e8d38e3a61635ef65ce32237a69e6c3e959c9122efe425155690a071",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.wake_test": {
+   "text": "Test the wake word",
+   "sourceHash": "3c7d169c2e1ecea2e9621a62e34df39f1a94b1edb9426a6fced1bd7fa37681f1",
+   "state": "english-fallback"
+  },
+  "configure.voice.tuning.wake_waiting": {
+   "text": "Say the wake word. Waiting for a score; {seconds} s left.",
+   "sourceHash": "be2bc602f2bb7382e5109e60fac5ab321addf511619a8a1175cf4f6091284d7f",
+   "state": "english-fallback"
+  },
   "configure.zigbee.already_joined": {
    "text": "Цей маршрутизатор Zigbee уже приєднано.",
    "sourceHash": "0db7f81371f05fcfbc9a6507fd43e5666ee10bad28d337a85635d78d7264fc63",

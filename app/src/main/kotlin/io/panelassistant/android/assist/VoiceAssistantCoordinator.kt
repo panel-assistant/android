@@ -725,7 +725,10 @@ class VoiceAssistantCoordinator internal constructor(
     override fun diagnostics(): VoiceDiagnosticsSnapshot = synchronized(lock) {
         VoiceDiagnosticsSnapshot(
             session = diagnosticsSession,
-            level = levelMeter?.reading(),
+            // Silence until the first frame, so a held meter always reads as held.
+            level = levelMeter?.let { meter ->
+                meter.reading() ?: VoiceLevel(VoiceLevelMeter.SILENCE_DBFS, VoiceLevelMeter.SILENCE_DBFS, VoiceLevelMeter.SILENCE_DBFS, 0)
+            },
             wakeTest = wakeTest?.reading("running", System.nanoTime()) ?: lastWakeTest,
             lastCommand = lastCommand,
         )

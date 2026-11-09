@@ -344,6 +344,8 @@
         if (f.key === "voice_enabled") {
           var quiet = cfg.voiceMicrophoneNode();
           if (quiet) card.appendChild(quiet);
+          // The owner's tuning and diagnostics, while voice is on (configure-voice-tuning.js).
+          if (cfg.values.voice_enabled === "true" && cfg.voiceTuningNode) card.appendChild(cfg.voiceTuningNode());
         }
         if (f.picker === "voice_wake_words" && Array.isArray(cfg.voiceWakeWordsCatalog)) {
           var download = cfg.voiceWakeWordDownloadRow();
