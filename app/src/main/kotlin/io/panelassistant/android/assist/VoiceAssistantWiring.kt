@@ -149,11 +149,12 @@ internal class ConfiguredMicrophoneSource(
         val wanted = route()
         val existing = current
         if (existing != null && (currentRoute == wanted || existing.state.value !is MicState.Closed)) {
-            // A stale source kept for the camera stream: re-apply the setting once the stream lets go.
-            // Voice holders re-apply through the coordinator's own start(), so only a stream holder waits.
-            if (currentRoute != wanted && waiting?.isActive != true && existing.state.value.streaming()) {
+            // A stale source kept for a holder the coordinator's start() does not release (the camera
+            // stream, the owner's level meter, a capture check): re-apply the setting once it lets go.
+            // The wake word and an Assist run re-apply through start() itself, so they never wait.
+            if (currentRoute != wanted && waiting?.isActive != true && existing.state.value.heldBeyondStart()) {
                 waiting = scope.launch {
-                    existing.state.first { !it.streaming() }
+                    existing.state.first { !it.heldBeyondStart() }
                     onFree()
                 }
             }
@@ -177,9 +178,10 @@ internal class ConfiguredMicrophoneSource(
         return (current as? MicrophoneSourceLifecycle)?.shutdown(timeoutMs) ?: true
     }
 
-    private fun MicState.streaming(): Boolean = when (this) {
-        is MicState.Open -> holders.any { it.purpose == MicPurpose.STREAM }
-        is MicState.Error -> holders.any { it.purpose == MicPurpose.STREAM }
+    /** Held by anything other than the wake word or an Assist run, which start() releases and re-takes. */
+    private fun MicState.heldBeyondStart(): Boolean = when (this) {
+        is MicState.Open -> holders.any { it.purpose != MicPurpose.WAKE_WORD && it.purpose != MicPurpose.ASSIST }
+        is MicState.Error -> holders.any { it.purpose != MicPurpose.WAKE_WORD && it.purpose != MicPurpose.ASSIST }
         MicState.Closed -> false
     }
 

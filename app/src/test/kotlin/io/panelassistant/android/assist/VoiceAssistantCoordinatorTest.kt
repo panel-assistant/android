@@ -205,6 +205,36 @@ class VoiceAssistantCoordinatorTest {
         assertTrue("nothing still listens through the old source", first.activeLeases.isEmpty())
     }
 
+    @Test
+    fun `an audio source chosen while the level meter is on is applied once the meter ends`() {
+        var setting = "voice_recognition"
+        val built = CopyOnWriteArrayList<Pair<Int, FakeMicrophoneSource>>()
+        lateinit var c: VoiceAssistantCoordinator
+        val shared = ConfiguredMicrophoneSource(
+            audioSource = { setting },
+            build = { kind -> FakeMicrophoneSource().also { built += kind to it } },
+            scope = scope,
+            onFree = { c.start() },
+        )
+        c = coordinator(from = shared::get)
+        c.start()
+        assertNull(c.diagnosticsAction("level", "tab-1"))
+        val first = built.single().second
+        assertEquals(listOf(MicPurpose.WAKE_WORD, MicPurpose.CALIBRATION), first.activeLeases.map { it.purpose })
+
+        // The owner tries another audio source on the same card; the voice_* listener re-arms the assistant.
+        setting = "mic"
+        c.start()
+        assertEquals("the meter keeps its capture while it is on", 1, built.size)
+
+        assertNull(c.diagnosticsAction("stop", "tab-1"))
+        settleUntil { built.size == 2 && built[1].second.activeLeases.isNotEmpty() }
+        assertEquals("the chosen audio source is built once the meter lets go", 2, built.size)
+        assertEquals(ConfiguredMicrophoneSource.audioSourceFor("mic"), built[1].first)
+        assertEquals(listOf(MicPurpose.WAKE_WORD), built[1].second.activeLeases.map { it.purpose })
+        assertTrue("nothing still listens through the old source", first.activeLeases.isEmpty())
+    }
+
     @After
     fun tearDown() {
         scope.cancel()
@@ -810,6 +840,23 @@ class VoiceAssistantCoordinatorTest {
         assertNull(engines.single().scores)
         engines.single().onActivation(WakeWordActivation("okay_nabu", "okay nabu"))
         awaitRunner(0)
+    }
+
+    @Test
+    fun `a voice setting changed while the owner tunes moves the wake-word test to the new listener and keeps the meter's claim`() {
+        val c = coordinator()
+        c.start()
+        assertNull(c.diagnosticsAction("level", "tab-1"))
+        assertNull(c.diagnosticsAction("wake_test", "tab-1"))
+        // The owner changes a voice setting on the same card; the voice_* listener re-arms the assistant.
+        c.start()
+        assertEquals("the listener was replaced", 2, engines.size)
+        val scores = requireNotNull(engines[1].scores) { "the test follows the listener that replaced it" }
+        scores.onScore("okay_nabu", 0.7f, 0.97f)
+        assertEquals("running", c.diagnostics().wakeTest.state)
+        assertEquals(0.7f, c.diagnostics().wakeTest.peak ?: -1f, 0.0001f)
+        assertEquals("the meter keeps the microphone claim across the re-arm", listOf(true), foregroundCalls.toList())
+        assertNull(c.diagnosticsAction("stop", "tab-1"))
     }
 
     @Test
