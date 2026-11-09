@@ -20,6 +20,9 @@ internal class FakeRecorder(
     val stopped = AtomicInteger()
     val released = AtomicInteger()
 
+    /** Calls to [read], counted as each begins: one past a chunk means the capture thread has handed it on. */
+    val reads = AtomicInteger()
+
     @Volatile var recording = false
     @Volatile var startSucceeds = true
     @Volatile var nextRead = 0
@@ -47,6 +50,7 @@ internal class FakeRecorder(
     }
 
     override fun read(into: ShortArray, offsetSamples: Int, maxSamples: Int): Int {
+        reads.incrementAndGet()
         var chunk = current
         if (chunk == null || consumed >= chunk.size) {
             val next = if (blockWhenIdle) {

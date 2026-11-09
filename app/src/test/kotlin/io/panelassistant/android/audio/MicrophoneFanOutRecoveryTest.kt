@@ -109,7 +109,7 @@ class MicrophoneFanOutRecoveryTest {
 
     @Test fun rebuildsBackOffWhileTheyFailAndStartAgainFromTheFirstStepOnceAudioFlows() {
         val wake = Listener()
-        val lease = fan.lease(MicPurpose.WAKE_WORD, consumer = wake, queueFrames = 32)
+        val lease = fan.lease(MicPurpose.WAKE_WORD, consumer = wake, queueFrames = 256)
         awaitTrue("the first recorder starts") { recorders.size == 1 && recorders[0].recording }
         recorders[0].offer(frame())
         awaitTrue("audio flows") { wake.frames.get() == 1 }
@@ -124,13 +124,63 @@ class MicrophoneFanOutRecoveryTest {
         awaitTrue("and so does the one after it") { delays.size == 3 }
         fireNextTimer()
         awaitTrue("the third rebuild opens") { recorders.size == 4 && recorders[3].recording }
-        recorders[3].offer(frame())
-        awaitTrue("audio flows again") { wake.frames.get() == 2 }
+        repeat(MIC_SUSTAINED_AUDIO_FRAMES) { recorders[3].offer(frame()) }
+        awaitTrue("a second of audio flows again") { wake.frames.get() == 1 + MIC_SUSTAINED_AUDIO_FRAMES }
 
         recorders[3].offerCode(MIC_READ_DEAD_OBJECT)
         awaitTrue("a later failure is scheduled too") { delays.size == 4 }
-        assertEquals("250 ms doubling while it fails, back to 250 ms after audio", listOf(250L, 500L, 1_000L, 250L), delays)
+        assertEquals("250 ms doubling while it fails, back to 250 ms after sustained audio", listOf(250L, 500L, 1_000L, 250L), delays)
         assertEquals(3, fan.rebuilds)
+        lease.close()
+    }
+
+    @Test fun aRecorderThatDiesAfterEveryStartKeepsBackingOff() {
+        val wake = Listener()
+        val lease = fan.lease(MicPurpose.WAKE_WORD, consumer = wake, queueFrames = 32)
+        for (generation in 0 until 4) {
+            awaitTrue("generation $generation starts") { recorders.size == generation + 1 && recorders[generation].recording }
+            // One frame, then the audio server loses the recorder again.
+            recorders[generation].offer(frame())
+            recorders[generation].offerCode(MIC_READ_DEAD_OBJECT)
+            awaitTrue("generation $generation schedules a rebuild") { delays.size == generation + 1 }
+            if (generation < 3) fireNextTimer()
+        }
+        assertEquals("a frame or two per start does not reset the backoff", listOf(250L, 500L, 1_000L, 2_000L), delays)
+        assertEquals("every generation was heard", 4, wake.frames.get())
+        lease.close()
+    }
+
+    @Test fun framesStillQueuedFromALostRecorderAreDiscardedBeforeTheNewOnesAreHeard() {
+        val gate = java.util.concurrent.CountDownLatch(1)
+        val events = CopyOnWriteArrayList<String>()
+        val lease = fan.lease(MicPurpose.WAKE_WORD, consumer = object : PcmConsumer {
+            override fun onFrame(frame: PcmFrame) {
+                events.add("frame ${frame.samples[0]}")
+                // The consumer is busy with its first frame while the rest of the old generation queues up.
+                if (frame.samples[0] == 1.toShort()) gate.await(5L, TimeUnit.SECONDS)
+            }
+
+            override fun onReset() {
+                events.add("reset")
+            }
+        }, queueFrames = 32)
+        awaitTrue("the first recorder starts") { recorders.size == 1 && recorders[0].recording }
+        recorders[0].offer(frame(1))
+        awaitTrue("the consumer is inside its first frame") { events.size == 1 }
+        recorders[0].offer(frame(2))
+        recorders[0].offer(frame(3))
+        recorders[0].offerCode(MIC_READ_DEAD_OBJECT)
+        awaitTrue("the lost recorder is released, its frames queued") { recorders[0].released.get() == 1 }
+
+        fireNextTimer()
+        awaitTrue("the rebuild starts a new recorder") { recorders.size == 2 && recorders[1].recording }
+        recorders[1].offer(frame(9))
+        // Its first read takes the whole frame; a second read begins only once the frame is queued.
+        awaitTrue("the new generation's frame is queued") { recorders[1].reads.get() >= 2 }
+        gate.countDown()
+
+        awaitTrue("the new frame is heard") { events.contains("frame 9") }
+        assertEquals("nothing from before the gap is heard after it", listOf("frame 1", "reset", "frame 9"), events.toList())
         lease.close()
     }
 

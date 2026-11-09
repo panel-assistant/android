@@ -63,7 +63,8 @@ interface MicrophoneSourceLifecycle : AutoCloseable {
 
 /**
  * Retry delay after [consecutiveFailures] consecutive capture failures (failed opens, or failed reads that
- * ended a generation): 250 ms doubling to a 5 s ceiling, back to 250 ms once a generation reads audio.
+ * ended a generation): 250 ms doubling to a 5 s ceiling, back to 250 ms once a generation has read
+ * [MIC_SUSTAINED_AUDIO_FRAMES] frames.
  */
 internal fun micOpenBackoffMs(consecutiveFailures: Int): Long {
     if (consecutiveFailures <= 0) return 0L
@@ -90,6 +91,13 @@ internal const val MIC_READ_DEAD_OBJECT = -6
  * a wait.
  */
 internal const val MIC_MAX_CONSECUTIVE_READ_ERRORS = 25
+
+/**
+ * Frames a generation must deliver, one second of audio, before its capture counts as working again and the
+ * backoff starts over. A recorder that dies after every start still delivers a frame or two first, and a
+ * single frame resetting the backoff would rebuild it every 250 ms indefinitely.
+ */
+internal const val MIC_SUSTAINED_AUDIO_FRAMES = 100
 
 /**
  * The platform-free half of the shared microphone: lease table, per-lease queues, fan-out and the
@@ -339,6 +347,7 @@ class MicrophoneFanOut(
             generation
         }
         var readAudio = false
+        var framesRead = 0
         var failedReads = 0
         try {
             while (capturing) {
@@ -369,11 +378,12 @@ class MicrophoneFanOut(
                 if (ended) break
                 if (!readAudio) {
                     readAudio = true
+                    // Audio flows again: nothing more is owed a rebuild until something fails.
+                    synchronized(lock) { rebuildWanted = false }
+                }
+                if (framesRead < MIC_SUSTAINED_AUDIO_FRAMES && ++framesRead == MIC_SUSTAINED_AUDIO_FRAMES) {
                     // This generation works: the next failure starts the backoff from the beginning.
-                    synchronized(lock) {
-                        consecutiveFailures = 0
-                        rebuildWanted = false
-                    }
+                    synchronized(lock) { consecutiveFailures = 0 }
                 }
                 val snapshot = targets
                 for (target in snapshot) {
