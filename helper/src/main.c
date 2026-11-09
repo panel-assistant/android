@@ -457,6 +457,16 @@ static long long supervisor_executor_deadline(long long now_ms, uint64_t phase_d
         ? (long long)phase_deadline_ms : command_deadline;
 }
 
+#ifndef RECOVERY_RETRY_FIRST_MS
+#define RECOVERY_RETRY_FIRST_MS 30000LL
+#endif
+#ifndef RECOVERY_RETRY_CAP_MS
+#define RECOVERY_RETRY_CAP_MS 300000LL
+#endif
+#if !defined(HAPANELD_TEST) && (RECOVERY_RETRY_FIRST_MS != 30000LL || RECOVERY_RETRY_CAP_MS != 300000LL)
+#error recovery retry timing is shortened only in test builds
+#endif
+
 static int run_lifecycle(int argc, char **argv, const char *replacement_nonce, int supervised, int secondary) {
     if (geteuid() != 0) return 1;
     sysexec_set_lifecycle_owner(1);
@@ -471,10 +481,16 @@ static int run_lifecycle(int argc, char **argv, const char *replacement_nonce, i
      * incompatible main must not cause a recovery takeover or a restart loop. */
     int listener = open_main_listener(may_retire_replaced);
     if (listener < 0) return 1;
-    int initialized = adb_recovery_owner_init();
-    if (initialized == -2) { close(listener); return 1; }
-    int recovery = initialized == 0;
-    if (!recovery) fprintf(stderr, "hapaneld-helper recovery custody unavailable; ARM disabled\n");
+    /* Recovery custody is retried for the process's life: a refused incumbent, an
+     * owner held elsewhere or a predecessor guardian's custody lock (-2) all clear without
+     * a restart. Until then ARM is refused, so retrying weakens no custody check. */
+    int recovery = adb_recovery_owner_init() == 0;
+    long long recovery_retry_delay_ms = RECOVERY_RETRY_FIRST_MS;
+    long long recovery_retry_at_ms = 0;
+    if (!recovery) {
+        fprintf(stderr, "hapaneld-helper recovery custody unavailable; ARM disabled\n");
+        recovery_retry_at_ms = monotonic_millis() + recovery_retry_delay_ms;
+    }
     int worker_recovery_pending = 0;
     pid_t worker = -1;
     long long worker_after_ms = 0;
@@ -599,6 +615,21 @@ static int run_lifecycle(int argc, char **argv, const char *replacement_nonce, i
                     pending_work = next > 0 ? (enum guard_supervisor_work)next : GUARD_WORK_NONE;
                 }
             }
+        }
+        if (!recovery && executor <= 1 && pending_work == GUARD_WORK_NONE && now >= recovery_retry_at_ms) {
+            recovery = adb_recovery_owner_init() == 0;
+            if (recovery) {
+                fprintf(stderr, "hapaneld-helper recovery custody acquired on retry\n");
+                /* The running worker predates the owner channel; its successor carries it. */
+                if (worker > 1) (void)kill(worker, SIGTERM);
+            } else {
+                fprintf(stderr, "hapaneld-helper recovery custody retry refused\n");
+                if (recovery_retry_delay_ms < RECOVERY_RETRY_CAP_MS / 2) recovery_retry_delay_ms *= 2;
+                else recovery_retry_delay_ms = RECOVERY_RETRY_CAP_MS;
+                long long after = monotonic_millis();
+                recovery_retry_at_ms = (after < 0 ? now : after) + recovery_retry_delay_ms;
+            }
+            continue;
         }
         if (recovery) adb_recovery_owner_poll(50);
         else {

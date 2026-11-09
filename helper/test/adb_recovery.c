@@ -12,6 +12,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <stdarg.h>
+#include <sys/file.h>
 static const char *fixture_path(const char *name) {
     static char paths[4][512]; static unsigned next;
     char *path = paths[next++ % 4];
@@ -197,7 +198,7 @@ static void stop(void) {
     if(socket_worker>1){kill(socket_worker,SIGKILL);waitpid(socket_worker,NULL,0);socket_worker=-1;}
     while(waitpid(-1,NULL,WNOHANG)>0){}
 }
-static void start(void) {
+static void prepare(void) {
     unlink(fixture_path("android.log"));
     unlink(fixture_path("no_backup/network-adb-recovery.fence"));
     unlink(fixture_path("no_backup/.remote-debug-security-authority.v1.publish"));
@@ -210,6 +211,9 @@ static void start(void) {
     char bytes[16384]; ssize_t n;
     while((n=read(source,bytes,sizeof bytes))>0){ ssize_t used=0; while(used<n){ssize_t w=write(target,bytes+used,(size_t)(n-used));if(w<=0)abort();used+=w;} }
     if(n<0 || close(source) || close(target))abort();
+}
+static void start(void) {
+    prepare();
     owner=fork();if(!owner){
         int null = open("/dev/null", O_WRONLY);
         if (null < 0 || dup2(null, STDERR_FILENO) < 0) _exit(99);
@@ -802,6 +806,132 @@ static void custody_tests(void) {
     stop(); clear_custody_receipts(); fixture_custody = fixture_migrated = 0;
     unlink(fixture_path("cgroup/cgroup.procs")); rmdir(fixture_path("cgroup"));
 }
+
+/* Recovery custody retry: a lifecycle owner whose first init failed keeps serving and
+ * acquires custody once the obstacle clears, without killing a healthy same-build owner. */
+static pid_t launch_logged_lifecycle(void) {
+    unlink(fixture_path("lifecycle.err"));
+    pid_t child = fork();
+    if (!child) {
+        int log = open(fixture_path("lifecycle.err"), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+        if (log < 0 || dup2(log, STDERR_FILENO) < 0) _exit(99);
+        char *arguments[] = {"hapaneld-helper", NULL};
+        _exit(lifecycle_fixture_main(1, arguments));
+    }
+    return child;
+}
+static int log_count(const char *needle) {
+    FILE *f = fopen(fixture_path("lifecycle.err"), "r"); char line[256]; int count = 0;
+    if (f) { while (fgets(line, sizeof line, f)) if (strstr(line, needle)) count++; fclose(f); }
+    return count;
+}
+static int main_answers(const char *command, const char *prefix, int milliseconds) {
+    char reply[160]; long long until = now_ms() + milliseconds;
+    do {
+        if (!request(command, reply, sizeof reply) && !strncmp(reply, prefix, strlen(prefix))) return 1;
+        usleep(20000);
+    } while (now_ms() < until);
+    return 0;
+}
+static void kill_lifecycle(pid_t *lifecycle) {
+    if (*lifecycle <= 1) return;
+    char proc[128]; snprintf(proc, sizeof proc, "/proc/%ld/task/%ld/children", (long)*lifecycle, (long)*lifecycle);
+    FILE *f = fopen(proc, "r"); long child;
+    if (f) { while (fscanf(f, "%ld", &child) == 1) if (child > 1) kill((pid_t)child, SIGKILL); fclose(f); }
+    kill(*lifecycle, SIGKILL); waitpid(*lifecycle, NULL, 0); *lifecycle = -1;
+    long long until = now_ms() + 2000;
+    while (now_ms() < until) { pid_t r = waitpid(-1, NULL, WNOHANG); if (r < 0) break; if (!r) usleep(10000); }
+}
+static pid_t refusing_incumbent(void) {
+    int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    struct sockaddr_un address = { .sun_family = AF_UNIX };
+    memcpy(address.sun_path + 1, fixture_socket, strlen(fixture_socket));
+    if (fd < 0 || bind(fd, (struct sockaddr *)&address, offsetof(struct sockaddr_un, sun_path) + 1 + strlen(fixture_socket)) ||
+        listen(fd, 8)) abort();
+    pid_t child = fork();
+    if (!child) { for (;;) { int c = accept(fd, NULL, NULL); if (c >= 0) close(c); } }
+    close(fd); return child;
+}
+static void retry_refused_incumbent_test(void) {
+    prepare();
+    /* Not a recovery image: replacement must refuse it, as for an unrecognised legacy owner. */
+    pid_t incumbent = refusing_incumbent();
+    pid_t lifecycle = launch_logged_lifecycle();
+    CHECK(main_answers("PING\n", "OK", 3000), "refused recovery custody still serves the main socket");
+    CHECK(main_answers("STATUS\n", "ERR", 1000), "recovery STATUS refuses while another process holds custody");
+    long long window = now_ms(); int before = log_count("retry refused");
+    while (now_ms() < window + 2000) usleep(20000);
+    int attempts = log_count("retry refused") - before;
+    CHECK(attempts >= 2, "refused recovery custody is retried");
+    CHECK(attempts <= 6, "recovery custody retry backs off");
+    char reply[160];
+    CHECK(!request("ARM aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n", reply, sizeof reply) && !strcmp(reply, "ERR") &&
+          network_is("running"), "ARM stays refused until custody is acquired");
+    kill(incumbent, SIGKILL); waitpid(incumbent, NULL, 0);
+    CHECK(main_answers("STATUS\n", "READY 1 ", 3000), "main helper acquires recovery custody once the incumbent exits");
+    CHECK(log_count("acquired on retry") == 1, "custody retry reports acquisition once");
+    CHECK(!request("ARM aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n", reply, sizeof reply) && !strcmp(reply, "OK") &&
+          network_is("stopped"), "retried custody admits ARM through the main socket");
+    kill_lifecycle(&lifecycle);
+}
+static void retry_same_build_owner_test(void) {
+    prepare(); unlink(fixture_path("restart.calls"));
+    if (setenv("HAPANELD_FIXTURE_SOCKET", fixture_socket, 1)) abort();
+    pid_t incumbent = fork();
+    if (!incumbent) {
+        char *arguments[] = {"helper", "--standalone-owner", NULL};
+        extern char **environ;
+        execve(fixture_path("helper/helper"), arguments, environ); _exit(98);
+    }
+    char reply[160]; int ready = 0, direct;
+    for (int i = 0; i < 300 && !ready; i++) {
+        direct = connect_recovery(fixture_socket);
+        if (direct >= 0) {
+            read_deadline = now_ms() + 4000;
+            ready = !write_all(direct, "STATUS\n", 7) && !read_line(direct, reply, sizeof reply) && !strncmp(reply, "READY 1 " HAPANELD_BUILD_ID " ", strlen("READY 1 " HAPANELD_BUILD_ID " "));
+            close(direct);
+        }
+        if (!ready) usleep(10000);
+    }
+    CHECK(ready, "same-build standalone owner serves recovery");
+    pid_t lifecycle = launch_logged_lifecycle();
+    CHECK(main_answers("PING\n", "OK", 3000), "main socket serves beside a same-build recovery owner");
+    long long until = now_ms() + 1500;
+    while (now_ms() < until) usleep(20000);
+    CHECK(log_count("retry refused") >= 2, "main helper retries beside a same-build owner");
+    CHECK(waitpid(incumbent, NULL, WNOHANG) == 0 && !kill(incumbent, 0), "retry never terminates a healthy same-build owner");
+    direct = connect_recovery(fixture_socket); struct ucred peer; socklen_t size = sizeof peer;
+    CHECK(direct >= 0 && !getsockopt(direct, SOL_SOCKET, SO_PEERCRED, &peer, &size) && peer.pid == incumbent,
+          "same-build owner keeps the recovery socket");
+    if (direct >= 0) close(direct);
+    CHECK(access(fixture_path("restart.calls"), F_OK) != 0, "same-build owner is not asked to recover");
+    kill(incumbent, SIGKILL); waitpid(incumbent, NULL, 0);
+    CHECK(main_answers("STATUS\n", "READY 1 ", 3000), "main helper converges on sole custody after the other owner exits");
+    kill_lifecycle(&lifecycle);
+    unsetenv("HAPANELD_FIXTURE_SOCKET");
+}
+static void retry_custody_lock_test(void) {
+    prepare();
+    /* A separate holder: flock follows the open description, which a forked lifecycle would share. */
+    unlink(fixture_path("lock-held"));
+    pid_t holder = fork();
+    if (!holder) {
+        int lock = open(fixture_path("helper/.lease-owner.lock"), O_RDWR | O_CREAT | O_CLOEXEC, 0600);
+        if (lock < 0 || fchmod(lock, 0600) || flock(lock, LOCK_EX | LOCK_NB)) _exit(1);
+        put("lock-held", "yes"); for (;;) pause();
+    }
+    for (int i = 0; i < 200 && access(fixture_path("lock-held"), F_OK); i++) usleep(10000);
+    CHECK(!access(fixture_path("lock-held"), F_OK), "fixture holds the custody lock as a draining guardian would");
+    pid_t lifecycle = launch_logged_lifecycle();
+    long long until = now_ms() + 7500;
+    while (now_ms() < until) usleep(50000);
+    CHECK(waitpid(lifecycle, NULL, WNOHANG) == 0, "a held custody lock does not end the main helper");
+    CHECK(main_answers("PING\n", "OK", 2000), "a held custody lock leaves the main socket serving");
+    CHECK(main_answers("STATUS\n", "ERR", 1000), "a held custody lock keeps recovery refused");
+    kill(holder, SIGKILL); waitpid(holder, NULL, 0);
+    CHECK(main_answers("STATUS\n", "READY 1 ", 9000), "main helper takes custody once the lock is released");
+    kill_lifecycle(&lifecycle);
+}
 int main(int argc,char **argv) {
     if (argc == 3 && !strcmp(argv[1], "--drain-exec")) {
         pid_t prior = (pid_t)strtol(argv[2], NULL, 10);
@@ -811,6 +941,16 @@ int main(int argc,char **argv) {
         if (fd >= 0) close(fd);
         if (directory >= 0) close(directory);
         return valid ? 0 : 97;
+    }
+    if (argc == 2 && !strcmp(argv[1], "--standalone-owner")) {
+        const char *directory = getenv("HAPANELD_ADB_FIXTURE"), *name = getenv("HAPANELD_FIXTURE_SOCKET");
+        if (!directory || !name) return 90;
+        snprintf(fixture_socket, sizeof fixture_socket, "%s", name);
+        snprintf(fixture_app_data, sizeof fixture_app_data, "%s/app-data", directory);
+        snprintf(fixture_app_user_data, sizeof fixture_app_user_data, "%s/app-user-data", directory);
+        fixture_lease_region = mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+        if (fixture_lease_region == MAP_FAILED) return 91;
+        return adb_recovery_main();
     }
     int serve = argc == 2 && !strcmp(argv[1], "--serve");
     if(argc==2 && !serve){fputs(get(argv[1]),stdout);put("getprop.calls","yes");return 0;}
@@ -862,6 +1002,13 @@ int main(int argc,char **argv) {
         char cleanup[700]; snprintf(cleanup, sizeof cleanup, "rm -rf -- '%s'", directory);
         return system(cleanup) || failures ? 1 : 0;
     }
+    if (getenv("HAPANELD_RETRY_ONLY")) {
+        retry_refused_incumbent_test(); retry_same_build_owner_test(); retry_custody_lock_test();
+        char command[700]; snprintf(command, sizeof command, "rm -rf -- '%s'", directory); if (system(command)) failures++;
+        if (!failures) puts("adb recovery retry contracts passed");
+        return failures ? 1 : 0;
+    }
+    retry_refused_incumbent_test(); retry_same_build_owner_test(); retry_custody_lock_test();
     ipc_peer_test(); occupied_main_test(); main_worker_loss_test(); guardian_drain_exec_test(); successor_guardian_test();
     custody_tests(); heartbeat_tests(); reopen_diagnostic_tests(); absent_data_test(); managed_absent_trigger_test();
     start();unauthorized_test();combined_frame_test();shell_tests();malformed_request_tests();worker_death_test();stop();start();arm();

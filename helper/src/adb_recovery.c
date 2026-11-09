@@ -1205,10 +1205,10 @@ static int acquire_custody_lock(int directory) {
 static int owner_init(int standalone) {
     if (geteuid() || recovery_custody()) return 1;
     signal(SIGPIPE, SIG_IGN);
-    server = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
     struct sockaddr_un address = { .sun_family = AF_UNIX };
     size_t socket_length = strlen(ADB_RECOVERY_SOCKET);
     if (socket_length + 1 > sizeof address.sun_path) return 1;
+    server = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
     memcpy(address.sun_path + 1, ADB_RECOVERY_SOCKET, socket_length);
     socklen_t address_length = offsetof(struct sockaddr_un, sun_path) + 1 + socket_length;
     if (server < 0) return 1;
@@ -1240,7 +1240,9 @@ static int owner_init(int standalone) {
         custody_lock = -1; close(directory); close(server); return -2;
     }
     close(directory);
-    lease = mmap(NULL, sizeof *lease, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+    /* A retried init reuses a mapping left by a failed guardian start rather than leak it. */
+    if (!lease || lease == MAP_FAILED)
+        lease = mmap(NULL, sizeof *lease, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
     if (lease == MAP_FAILED) { close(custody_lock); custody_lock = -1; close(server); return 1; }
     memset(lease, 0, sizeof *lease);
     recovery_log_identity();
