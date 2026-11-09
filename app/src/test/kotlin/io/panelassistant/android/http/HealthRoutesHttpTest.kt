@@ -69,6 +69,38 @@ class HealthRoutesHttpTest {
         }
     }
 
+    @Test fun `the panel's own DHCP host name passes the host guard and other names do not`() {
+        // A stock NSPanel Pro registers itself in the router's DNS by its own host name; the page and the
+        // Home Assistant integration reach it by that name with no operator allowlist configured.
+        val own = { OwnHostNames.names(listOf("Sonoff-NSPanelPro", "NSPanel Pro"), listOf("home.example.com.")) }
+        PaneldServerHttpFixture(ownHostNames = own).use { fixture ->
+            initializeHealth(fixture)
+            testApplication {
+                application { fixture.mount(this) }
+                val direct = createClient { followRedirects = false }
+                for (host in listOf(
+                    "sonoff-nspanelpro.home.example.com:8888",
+                    "SONOFF-NSPANELPRO.Home.Example.Com",
+                    "sonoff-nspanelpro:8888",
+                    "nspanel-pro.home.example.com:8888",
+                )) {
+                    val response = direct.get("/api/v1/health") { header(HttpHeaders.Host, host) }
+                    assertEquals(host, HttpStatusCode.OK, response.status)
+                }
+                for (host in listOf(
+                    "attacker.example:8888",
+                    "sonoff-nspanelpro.attacker.example",
+                    "home.example.com",
+                    "x.sonoff-nspanelpro.home.example.com",
+                )) {
+                    val response = direct.get("/api/v1/health") { header(HttpHeaders.Host, host) }
+                    assertEquals(host, HttpStatusCode.Forbidden, response.status)
+                    assertEquals("host not allowed\n", response.bodyAsText())
+                }
+            }
+        }
+    }
+
     @Test fun `a broker-era upgrade that never met Panel Assistant gets no notice on its pages or health`() {
         PaneldServerHttpFixture().use { fixture ->
             fixture.values.putAll(BROKER_ERA_STORE)

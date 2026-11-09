@@ -570,8 +570,10 @@ class Config private constructor(
     /**
      * Extra hostnames allowed in the HTTP `Host` header — the anti-DNS-rebinding allowlist for the
      * `:8888` guard ([http.OriginGuard.hostAllowed]). The guard always allows IP literals, `localhost`,
-     * and `*.local` (mDNS), which covers reaching a panel by IP or its mDNS name, so this is only needed
-     * when a panel is fronted by a **custom DNS name** (e.g. `device-a.example.lan`). Set it via the
+     * and `*.local` (mDNS), and it also accepts the panel's own host name (bare and qualified with the
+     * active network's search domains, [http.OwnHostNames]), which covers reaching a panel by IP, its mDNS
+     * name or the name the router registered for it. This is only needed when a panel is fronted by some
+     * other **custom DNS name** (e.g. `device-a.example.lan`). Set it via the
      * always-allowed IP path (`POST /config` to `http://<ip>:8888`) or provisioning — never a lockout.
      * Whitespace/comma-separated; matched case-insensitively; default empty.
      */
