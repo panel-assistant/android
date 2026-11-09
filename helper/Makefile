@@ -46,7 +46,7 @@ $(BUILD)/hapaneld-helper: $(DAEMON_SRCS) | $(BUILD)
 # Output is grouped per target, so a failing test prints its own log and make names it; -k runs every
 # test even after one fails, so one run reports every failure. Most of the wall
 # time is the recovery replacement driver waiting on real deadlines, so it is split into shards
-# (REPLACEMENT_SHARDS) and listed first, where make starts it first.
+# (REPLACEMENT_SHARDS); the long ones and the slowest binaries are listed first, where make starts them first.
 #
 # Isolation: each test binary is compiled with its own HAPANELD_TEST_TMP (src/test_tmp.h), the directory
 # that stands in for /tmp in the fixed guard, companion, install-stage, live-helper and transaction-lock
@@ -65,24 +65,29 @@ TEST_BINS := $(BUILD)/actuator-exec $(BUILD)/adb-recovery $(BUILD)/uninstall-sup
 # test/adb_recovery_replacement.py with its own temporary directory, socket name and linked binaries.
 # Together they select every (leg, case, variant) the unsharded driver runs, once each; the
 # replacement-shard-check target proves that against the driver's own case and variant lists.
-REPLACEMENT_SHARDS := \
-	ensure:readiness-faults:wrong ensure:readiness-faults:malformed ensure:readiness-faults:stall \
-	ensure:timeout-retry: \
-	ensure:unproven-open+foreign-owner: ensure:symlink-custody+fifo-custody: ensure:scan-error+failed-open: \
-	ensure:malformed-custody+receipt-sync-fails: ensure:superseded: \
+# An ensure-leg failure case waits out the product's 25 s ENSURE deadline, so a long shard holds at most
+# two of them (timeout-retry has two alone); with the fuzz runs and the slow binaries they fill one wave
+# of TEST_JOBS, and the suite takes about as long as its longest shard.
+REPLACEMENT_LONG_SHARDS := \
+	ensure:timeout-retry: direct:timeout-retry+staggered: ensure:readiness-faults:wrong+malformed ensure:readiness-faults:stall \
+	ensure:superseded: ensure:unproven-open+foreign-owner: ensure:symlink-custody+fifo-custody: ensure:scan-error+failed-open: \
+	ensure:malformed-custody+receipt-sync-fails: ensure:stage-short+stage-upper: ensure:stage-nested+stage-live:
+REPLACEMENT_SHORT_SHARDS := \
 	ensure:locked-fresh+stale: ensure:matching+concurrent: ensure:staggered: \
 	ensure:fresh+reaper-failure: ensure:lost-ack+source-pinned: ensure:source-bound: \
 	ensure:unsafe-target: ensure:publication-faults: \
-	ensure:stage-owner+ensure-stage-owner+stage-matching: ensure:stage-short+stage-upper+stage-nested+stage-live: \
-	direct:timeout-retry+staggered: direct:locked-fresh+stale+matching+failed-open+unproven-open+foreign-owner: \
+	ensure:stage-owner+ensure-stage-owner+stage-matching: \
+	direct:locked-fresh+stale+matching+failed-open+unproven-open+foreign-owner: \
 	direct:scan-error+concurrent+malformed-custody+symlink-custody+fifo-custody+receipt-sync-fails: \
 	direct:stage-owner+ensure-stage-owner+stage-matching+stage-short+stage-upper+stage-nested+stage-live:
+REPLACEMENT_SHARDS := $(REPLACEMENT_LONG_SHARDS) $(REPLACEMENT_SHORT_SHARDS)
 comma := ,
 shard_field = $(word $(2),$(subst :, ,$(subst ::,: :,$(1)):))
 shard_name = replacement-$(subst :,-,$(patsubst %:,%,$(1)))
 REPLACEMENT_RUNS := $(foreach s,$(REPLACEMENT_SHARDS),run-$(call shard_name,$(s)))
 
-UNIT_RUNS := $(REPLACEMENT_RUNS) run-adb-recovery run-uninstall-supervisor run-adb-recovery-retirement \
+UNIT_RUNS := $(foreach s,$(REPLACEMENT_LONG_SHARDS),run-$(call shard_name,$(s))) run-adb-recovery run-uninstall-supervisor \
+	run-adb-recovery-retirement $(foreach s,$(REPLACEMENT_SHORT_SHARDS),run-$(call shard_name,$(s))) \
 	run-unit run-lifecycle-reap run-adb-exec run-wifi-exec run-zigbee-role-exec run-actuator-exec \
 	run-logcat-boundary run-bounded-exec run-gfxinfo-exec run-socket-framing run-guard-maintenance-boundary \
 	run-zigbee-boundary run-sysexec-platform-wrapper run-cdprelay-resource-test run-guard-maintenance-gates \
