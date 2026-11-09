@@ -54,12 +54,34 @@ class NavbarCapabilityDefaultTest {
 
     @Test fun `explicit navbar declaration overrides misleading firmware probes`() {
         for (declaration in listOf(false, true)) {
-            val present = resolveNativeNavbar(declaration, if (declaration) "false" else "true", !declaration)
+            // A declared false is overruled only by the Sonoff vendor property, covered below.
+            val present = resolveNativeNavbar(declaration, if (declaration) "false" else null, !declaration, if (declaration) "1" else "0")
             assertEquals(declaration, present)
             val caps = Capabilities(hasNativeNavbar = present == true, androidShowsNavbar = present)
             assertEquals(declaration, SettingsRegistry.spec("navbar_mode")!!.optionsFor(caps).contains("Native"))
             assertEquals(if (declaration) "Native" else "Swipe reveal", resolveNavbarMode(null, caps))
             assertEquals("Off", resolveNavbarMode("Off", caps))
+        }
+    }
+
+    /**
+     * A stock NSPanel Pro 120 whose firmware keeps Android's bar (`persist.smatek.show.navigationbar`
+     * true) must not also get the drawn Swipe reveal bar: one swipe would reveal both. The fleet's
+     * panels read false, and a panel with no readable property must keep the drawn bar.
+     */
+    @Test fun `nspanel pro follows the Sonoff vendor navbar property`() {
+        val nspanel = BundledProfileFixtures.profile("nspanel-pro")
+        assertEquals("the profile declares no native bar", false, nspanel.hasNativeNavbar)
+        val shown = capsOf(nspanel, vendorNavbarProperty = "true")
+        assertEquals("Native", navbarModeDefault(shown))
+        assertEquals("Native", resolveNavbarMode(null, shown))
+        assertTrue(navbarModePermitted("Native", shown.hasNativeNavbar))
+        assertEquals("Native", resolveNavbarMode("Native", shown))
+        assertEquals("Native", navbarModeDefault(capsOf(nspanel, vendorNavbarProperty = " 1 ")))
+        for (vendor in listOf("false", null, "", "garbage")) {
+            val caps = capsOf(nspanel, androidShowsNavbar = true, vendorNavbarProperty = vendor)
+            assertEquals("vendor=$vendor", "Swipe reveal", resolveNavbarMode(null, caps))
+            assertEquals("vendor=$vendor", "Swipe reveal", resolveNavbarMode("Native", caps))
         }
     }
 
@@ -130,7 +152,8 @@ class NavbarCapabilityDefaultTest {
         // The rule must not depend on the signals it is there to overrule.
         assertEquals("Swipe reveal", navbarModeDefault(capsOf(x2i, androidShowsNavbar = false)))
         assertEquals("Swipe reveal", navbarModeDefault(capsOf(x2i, androidShowsNavbar = null)))
-        assertEquals("Swipe reveal", navbarModeDefault(capsOf(x2i, vendorNavbarProperty = "true")))
+        // persist.smatek.show.navigationbar is a Sonoff key; Stargate firmware never sets it.
+        assertEquals("Swipe reveal", navbarModeDefault(capsOf(x2i, vendorNavbarProperty = "false")))
     }
 
     @Test fun `an explicit choice on an x2i shaped panel is respected including off`() {
