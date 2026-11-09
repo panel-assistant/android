@@ -863,7 +863,7 @@ class PaneldService : Service() {
             assistPipelines = io.panelassistant.android.assist.HaAssistPipelineDirectory(config),
             voiceTest = io.panelassistant.android.assist.VoiceTestTrigger { voiceAudio.voice.trigger() },
             voiceDiagnostics = io.panelassistant.android.assist.VoiceDiagnosticsControl.following { voiceAudio.voice },
-            voiceMicrophone = { voiceAudio.voice.microphoneStatus() },
+            voiceMicrophone = { voiceAudio.voice.microphoneStatus().copy(route = voiceAudio.captureRoute()) },
             wakeWords = voiceAudio.wakeWordCatalog,
             onWakeWordsChanged = { voiceAudio.restartVoice() },
             // Controller-sourced setting values (their state isn't in the config namespace) so the

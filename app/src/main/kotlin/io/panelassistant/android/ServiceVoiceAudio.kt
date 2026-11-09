@@ -78,6 +78,10 @@ internal class ServiceVoiceAudio(
             wakeWordCatalog.available(),
             wakeWordCatalog::importedSha256,
         )
+    /** The shared microphone's capture route for status surfaces; reads the built source only, never opens one. */
+    fun captureRoute(): io.panelassistant.android.audio.CaptureRouteReport? =
+        if (::sharedMicrophone.isInitialized) sharedMicrophone.captureRoute() else null
+
     /** The one place the profile's microphone declaration meets Android's report. */
     fun microphonePresence(of: DeviceProfile = profile()) =
         io.panelassistant.android.audio.MicrophonePresence.of(of.microphoneDeclared, service)

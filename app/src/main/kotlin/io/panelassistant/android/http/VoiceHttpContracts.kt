@@ -21,21 +21,52 @@ internal fun voicePipelinesResponse(
         HttpStatusCode.ServiceUnavailable to "{\"error\":\"unavailable\",\"reason\":${Json.str(result.reason)}}"
 }
 
-/** `GET /api/v1/voice/microphone`: `{presence, check, detail, muted}`, detail null unless the capture gave one. */
+/** `GET /api/v1/voice/microphone`: `{presence, check, detail, muted, route, aec}`, detail null unless the capture
+ *  gave one; route as [voiceRouteJson] renders it, and aec the open capture's echo canceller, null while closed. */
 internal fun voiceMicrophoneJson(status: io.panelassistant.android.audio.MicrophoneStatus): String =
     "{\"presence\":${Json.str(status.presence.wireValue)},\"check\":${Json.str(status.check.wireValue)}," +
-        "\"detail\":${status.detail?.let(Json::str) ?: "null"},\"muted\":${status.muted}" +
-        // ROUTE: the capture route and its echo-canceller read-back join here as `"route":{...}` once
-        // MicrophoneStatus carries them; [voiceRouteJson] is the one place that renders it.
-        "}"
+        "\"detail\":${status.detail?.let(Json::str) ?: "null"},\"muted\":${status.muted}," +
+        "\"route\":${voiceRouteJson(status)},\"aec\":${status.route?.active?.aec?.wireValue?.let(Json::str) ?: "null"}}"
 
 /**
- * ROUTE: the capture route the panel opened (source, rate, channels, downmix, echo canceller) as a JSON
- * object, or `null` until [io.panelassistant.android.audio.MicrophoneStatus] carries it. Shared by
- * `voice/microphone` and `voice/diagnostics`.
+ * The capture route the panel opened, as a JSON object shared by `voice/microphone` and `voice/diagnostics`:
+ * what was requested, what is open now (null while the microphone is closed, its echo canceller read from the
+ * platform for this report) and how many times capture has rebuilt itself. `null` when no source has been built.
  */
-@Suppress("UNUSED_PARAMETER")
-internal fun voiceRouteJson(status: io.panelassistant.android.audio.MicrophoneStatus): String = "null"
+internal fun voiceRouteJson(status: io.panelassistant.android.audio.MicrophoneStatus): String {
+    val report = status.route ?: return "null"
+    val requested = report.requested.let {
+        "{\"source\":${Json.str(io.panelassistant.android.audio.CaptureRoute.sourceName(it.source))}," +
+            "\"rate_hz\":${it.sampleRateHz},\"channels\":${it.channels},\"downmix\":${Json.str(it.downmix.wireValue)}," +
+            "\"preferred_device\":${Json.str(it.preferredDevice.wireValue)},\"warmup_reads\":${it.warmupReads}," +
+            "\"platform_aec\":${Json.str(it.platformAec.wireValue)}}"
+    }
+    val active = report.active?.let {
+        "{\"source\":${Json.str(io.panelassistant.android.audio.CaptureRoute.sourceName(it.source))}," +
+            "\"rate_hz\":${it.sampleRateHz},\"channels\":${it.channels}," +
+            "\"downmix\":${it.downmix?.wireValue?.let(Json::str) ?: "null"}," +
+            "\"routed_device\":${it.routedDevice?.let(Json::str) ?: "null"},\"aec\":${Json.str(it.aec.wireValue)}," +
+            "\"warmup_reads\":${it.warmupReads}}"
+    } ?: "null"
+    return "{\"requested\":$requested,\"active\":$active,\"rebuilds\":${report.rebuilds}}"
+}
+
+/** The `/diag` words for the capture route: `source/rate/channels[/downmix]` of the open capture, else of the
+ *  requested one, its echo canceller (`-` while closed) and the rebuild count; `-` before any source is built. */
+private fun routeWords(status: io.panelassistant.android.audio.MicrophoneStatus): String {
+    val report = status.route ?: return "route=- aec=- rebuilds=-"
+    val active = report.active
+    val route = if (active != null) {
+        "${io.panelassistant.android.audio.CaptureRoute.sourceName(active.source)}/${active.sampleRateHz}/${active.channels}" +
+            (active.downmix?.let { "/${it.wireValue}" } ?: "")
+    } else {
+        report.requested.let {
+            "${io.panelassistant.android.audio.CaptureRoute.sourceName(it.source)}/${it.sampleRateHz}/${it.channels}" +
+                (if (it.channels > 1) "/${it.downmix.wireValue}" else "") + "(closed)"
+        }
+    }
+    return "route=$route aec=${active?.aec?.wireValue ?: "-"} rebuilds=${report.rebuilds}"
+}
 
 private fun decimal(value: Float?, places: Int): String =
     value?.takeIf { it.isFinite() }?.let { String.format(java.util.Locale.ROOT, "%.${places}f", it) } ?: "null"
@@ -85,7 +116,7 @@ internal fun voiceDiagnosticLine(
         "muted=${microphone.muted} detail=${microphone.detail?.let(Json::str) ?: "-"} " +
         "wake_words=${wakeWords.ifBlank { "-" }} pipelines=${pipelines.ifBlank { "-" }} " +
         "source=${audioSource.ifBlank { "-" }} sensitivity=${sensitivity.ifBlank { "-" }} " +
-        "gain_db=$micGainDb stop_word=$stopWord"
+        "gain_db=$micGainDb stop_word=$stopWord ${routeWords(microphone)}"
 
 /** Refuses `POST /api/v1/voice/test` before the trigger is ever called — returns the 409 reason, or
  *  null to proceed. Checked ahead of [io.panelassistant.android.assist.VoiceTestTrigger] so a disabled
