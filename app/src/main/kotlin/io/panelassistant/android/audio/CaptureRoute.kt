@@ -5,9 +5,9 @@ import android.media.MediaRecorder
 /** How two captured channels become the canonical mono stream. */
 enum class CaptureDownmix(val wireValue: String) {
     /**
-     * Per sample: a channel at least four times louder than the other is taken alone, otherwise the
-     * two are averaged. Protects against a dead or near-silent channel, which a plain average halves
-     * the signal for.
+     * Per 10 ms block, with hysteresis: a channel at least four times louder than the other is taken
+     * alone, otherwise the two are averaged (see [ChannelMixer]). Protects against a dead or near-silent
+     * channel, which a plain average halves the signal for.
      */
     DOMINANCE("dominance"),
     AVERAGE("average"),

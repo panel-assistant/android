@@ -133,7 +133,7 @@ object ProfileMetadata {
             field("hardware.microphone_capture.source", "enum", false, "Android audio source the microphone opens through; the owner's audio source setting overrides it.", MICROPHONE_CAPTURE_SOURCES),
             field("hardware.microphone_capture.sample_rate_hz", "integer", false, "Rate the recorder is asked for: 16000, 44100 or 48000; resampled to 16 kHz before any consumer."),
             field("hardware.microphone_capture.channels", "integer", false, "Channel count the recorder is asked for, 1 or 2 (Android channels, never raw ALSA slots)."),
-            field("hardware.microphone_capture.downmix", "enum", false, "How two channels become one: dominance takes a channel four times louder than the other, else averages.", CaptureDownmix.entries.map { it.wireValue }),
+            field("hardware.microphone_capture.downmix", "enum", false, "How two channels become one: dominance takes a channel four times louder than the other over each 10 ms, else averages.", CaptureDownmix.entries.map { it.wireValue }),
             field("hardware.microphone_capture.preferred_device", "enum", false, "Input device the recorder prefers once built; auto keeps Android's routing.", PreferredMicDevice.entries.map { it.wireValue }),
             field("hardware.microphone_capture.warmup_reads", "integer", false, "Reads discarded after every open, 0 through 200; defaults to 16."),
             field("hardware.microphone_capture.platform_aec", "enum", false, "Platform echo canceller: auto attaches it when available, kept only when it reads back enabled.", PlatformAecMode.entries.map { it.wireValue }),

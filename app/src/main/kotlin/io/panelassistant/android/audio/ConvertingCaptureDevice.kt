@@ -43,6 +43,7 @@ internal class ConvertingCaptureDevice(
     private var outStart = 0
     private var outEnd = 0
     private var warmupLeft = warmupReads
+    private var mixer = ChannelMixer(downmix, MicrophoneSource.SAMPLE_RATE_HZ / 100)
 
     override fun open(): Boolean {
         if (!inner.open()) return false
@@ -52,6 +53,7 @@ internal class ConvertingCaptureDevice(
         val framesPerRead = (format.sampleRateHz / 100).coerceAtLeast(1)
         raw = ShortArray(framesPerRead * channels)
         mono = ShortArray(framesPerRead)
+        mixer = ChannelMixer(downmix, framesPerRead)
         resampler = if (format.sampleRateHz == MicrophoneSource.SAMPLE_RATE_HZ) null
         else PolyphaseResampler(format.sampleRateHz, MicrophoneSource.SAMPLE_RATE_HZ)
         out = ShortArray(framesPerRead + MicrophoneSource.SAMPLES_PER_FRAME)
@@ -89,7 +91,7 @@ internal class ConvertingCaptureDevice(
         if (channels == 1) System.arraycopy(raw, 0, mono, 0, frames)
         else for (frame in 0 until frames) {
             val base = frame * channels
-            mono[frame] = mixDown(raw[base], raw[base + 1], downmix)
+            mono[frame] = mixer.mix(raw[base], raw[base + 1])
         }
         val stage = resampler
         if (stage == null) {
@@ -110,12 +112,60 @@ internal class ConvertingCaptureDevice(
         downmix = if (channels == 2) downmix else null,
         warmupReads = warmupReads,
     )
+}
+
+/**
+ * Two channels to one, frame by frame, in the order the recorder delivered them.
+ *
+ * [CaptureDownmix.LEFT], [CaptureDownmix.RIGHT] and [CaptureDownmix.AVERAGE] are fixed per sample.
+ * [CaptureDownmix.DOMINANCE] decides per block of [blockFrames] frames (10 ms at the opened rate) from the
+ * block's energy, and the decision applies to the next block: a channel at least four times louder than the
+ * other (16 times the energy) is taken alone, and is kept while it stays at least twice as loud (four times the
+ * energy), otherwise the two are averaged. Choosing per block rather than per sample keeps two live channels
+ * from being switched between inside a waveform, and the hysteresis keeps a channel near the threshold from
+ * flapping. Blocks are counted from the open, so the output does not depend on how reads split the stream.
+ */
+internal class ChannelMixer(private val mode: CaptureDownmix, private val blockFrames: Int) {
+    private var chosen = CaptureDownmix.AVERAGE
+    private var energyLeft = 0.0
+    private var energyRight = 0.0
+    private var framesInBlock = 0
+
+    fun mix(left: Short, right: Short): Short {
+        if (mode != CaptureDownmix.DOMINANCE) return mixDown(left, right, mode)
+        val mixed = mixDown(left, right, chosen)
+        val l = left.toDouble()
+        val r = right.toDouble()
+        energyLeft += l * l
+        energyRight += r * r
+        framesInBlock += 1
+        if (framesInBlock >= blockFrames) {
+            chosen = nextChoice()
+            energyLeft = 0.0
+            energyRight = 0.0
+            framesInBlock = 0
+        }
+        return mixed
+    }
+
+    private fun nextChoice(): CaptureDownmix = when {
+        chosen == CaptureDownmix.LEFT && energyLeft >= HOLD_ENERGY_RATIO * energyRight -> CaptureDownmix.LEFT
+        chosen == CaptureDownmix.RIGHT && energyRight >= HOLD_ENERGY_RATIO * energyLeft -> CaptureDownmix.RIGHT
+        energyLeft > 0.0 && energyLeft >= ENTER_ENERGY_RATIO * energyRight -> CaptureDownmix.LEFT
+        energyRight > 0.0 && energyRight >= ENTER_ENERGY_RATIO * energyLeft -> CaptureDownmix.RIGHT
+        else -> CaptureDownmix.AVERAGE
+    }
 
     companion object {
+        /** Four times the amplitude takes a channel alone. */
+        const val ENTER_ENERGY_RATIO = 16.0
+
+        /** Twice the amplitude keeps it. */
+        const val HOLD_ENERGY_RATIO = 4.0
+
         /**
-         * One stereo sample to mono. Dominance takes a channel at least four times louder than the other on
-         * its own and averages otherwise, so a dead channel never halves the signal. Compared in [Int], so
-         * four times a full-scale sample does not overflow.
+         * One stereo sample to mono by a fixed rule; [CaptureDownmix.DOMINANCE] is decided per block by a
+         * [ChannelMixer] and averages here. Compared in [Int], so a full-scale sum does not overflow.
          */
         fun mixDown(left: Short, right: Short, mode: CaptureDownmix): Short {
             val l = left.toInt()
@@ -123,12 +173,7 @@ internal class ConvertingCaptureDevice(
             val mixed = when (mode) {
                 CaptureDownmix.LEFT -> l
                 CaptureDownmix.RIGHT -> r
-                CaptureDownmix.AVERAGE -> (l + r) / 2
-                CaptureDownmix.DOMINANCE -> when {
-                    abs(l) >= 4 * abs(r) -> l
-                    abs(r) >= 4 * abs(l) -> r
-                    else -> (l + r) / 2
-                }
+                CaptureDownmix.AVERAGE, CaptureDownmix.DOMINANCE -> (l + r) / 2
             }
             return mixed.coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
         }

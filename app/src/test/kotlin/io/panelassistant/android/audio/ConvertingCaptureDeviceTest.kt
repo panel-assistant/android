@@ -57,9 +57,10 @@ class ConvertingCaptureDeviceTest {
         }
     }
 
-    private fun mixAll(interleaved: ShortArray, channels: Int, mode: CaptureDownmix): ShortArray =
+    /** The whole stream mixed in one pass, with 10 ms blocks at [rate]: the reference a chunked read must equal. */
+    private fun mixAll(interleaved: ShortArray, channels: Int, mode: CaptureDownmix, rate: Int = 16_000): ShortArray =
         if (channels == 1) interleaved.copyOf()
-        else ShortArray(interleaved.size / 2) { ConvertingCaptureDevice.mixDown(interleaved[2 * it], interleaved[2 * it + 1], mode) }
+        else ChannelMixer(mode, rate / 100).let { mixer -> ShortArray(interleaved.size / 2) { mixer.mix(interleaved[2 * it], interleaved[2 * it + 1]) } }
 
     private fun chunked(recorder: FakeRecorder, samples: ShortArray, random: Random) {
         var at = 0
@@ -75,7 +76,7 @@ class ConvertingCaptureDeviceTest {
         for ((rate, channels) in listOf(48_000 to 2, 44_100 to 1, 44_100 to 2, 48_000 to 1)) {
             val input = sweep(rate, channels, seconds = 0.75)
             val oneShot = ShortArray(input.size).let { out ->
-                val written = PolyphaseResampler(rate, 16_000).process(mixAll(input, channels, CaptureDownmix.DOMINANCE), input.size / channels, out)
+                val written = PolyphaseResampler(rate, 16_000).process(mixAll(input, channels, CaptureDownmix.DOMINANCE, rate), input.size / channels, out)
                 out.copyOf(written)
             }
             val recorder = FakeRecorder(RecorderFormat(MediaRecorder.AudioSource.VOICE_RECOGNITION, rate, channels))
@@ -113,24 +114,69 @@ class ConvertingCaptureDeviceTest {
         }
     }
 
-    @Test fun dominanceTakesAChannelFourTimesLouderAndAveragesOtherwise() {
-        val mix = { l: Int, r: Int -> ConvertingCaptureDevice.mixDown(l.toShort(), r.toShort(), CaptureDownmix.DOMINANCE).toInt() }
-        assertEquals("left four times louder is taken alone", 1_000, mix(1_000, 250))
-        assertEquals("just under four times is averaged", 625, mix(1_000, 251))
-        assertEquals("right four times louder is taken alone", -1_000, mix(100, -1_000))
-        assertEquals("a dead right channel does not halve the left", 8_000, mix(8_000, 0))
-        assertEquals("silence stays silence", 0, mix(0, 0))
-        assertEquals("full scale is compared without overflow", 20_479, mix(32_767, 8_192))
-        assertEquals("the most negative sample survives", -32_768, mix(-32_768, -32_768))
-        assertEquals(650, ConvertingCaptureDevice.mixDown(1_000, 300, CaptureDownmix.AVERAGE).toInt())
-        assertEquals(1_000, ConvertingCaptureDevice.mixDown(1_000, 300, CaptureDownmix.LEFT).toInt())
-        assertEquals(300, ConvertingCaptureDevice.mixDown(1_000, 300, CaptureDownmix.RIGHT).toInt())
+    /** [blocks] 10 ms blocks of a 16 kHz stereo stream: left at [left] times a tone, right at [right] times another. */
+    private fun stereoBlocks(blocks: Int, left: Double, right: Double, from: Int = 0): ShortArray =
+        ShortArray(blocks * 160 * 2) { index ->
+            val n = from + index / 2
+            if (index % 2 == 0) (left * sin(2 * PI * 440 * n / 16_000.0)).roundToInt().toShort()
+            else (right * sin(2 * PI * 1_270 * n / 16_000.0 + 1.0)).roundToInt().toShort()
+        }
+
+    private fun mixStereo(interleaved: ShortArray): ShortArray {
+        val recorder = FakeRecorder(RecorderFormat(MediaRecorder.AudioSource.VOICE_RECOGNITION, 16_000, 2))
+        recorder.offer(interleaved)
+        return drain(device(recorder, CaptureDownmix.DOMINANCE))
     }
 
-    @Test fun aStereoRecorderIsMixedPerSampleEvenWhenAReadSplitsAPair() {
+    private fun blockOf(out: ShortArray, block: Int) = out.copyOfRange(block * 160, (block + 1) * 160)
+
+    private fun averaged(interleaved: ShortArray, block: Int) =
+        ShortArray(160) { (interleaved[(block * 160 + it) * 2] + interleaved[(block * 160 + it) * 2 + 1]).div(2).toShort() }
+
+    private fun leftOf(interleaved: ShortArray, block: Int) = ShortArray(160) { interleaved[(block * 160 + it) * 2] }
+
+    @Test fun twoLiveChannelsOfSimilarLevelAreAveragedForEverySample() {
+        // Per-sample dominance would take whichever channel crosses zero later at each instant; two live
+        // channels must be averaged throughout, never switched between inside a waveform.
+        val input = stereoBlocks(blocks = 20, left = 8_000.0, right = 6_000.0)
+        val out = mixStereo(input)
+        for (block in 0 until 20) assertArrayEquals("block $block is the average", averaged(input, block), blockOf(out, block))
+    }
+
+    @Test fun aDeadChannelIsDroppedFromTheBlockAfterItIsHeard() {
+        val input = stereoBlocks(blocks = 6, left = 8_000.0, right = 0.0)
+        val out = mixStereo(input)
+        assertArrayEquals("the first block has no block before it to judge, so it averages", averaged(input, 0), blockOf(out, 0))
+        for (block in 1 until 6) assertArrayEquals("block $block takes the live channel alone", leftOf(input, block), blockOf(out, block))
+    }
+
+    @Test fun aDominantChannelIsKeptWhileTwiceAsLoudAndReleasedBelowThat() {
+        val enter = stereoBlocks(blocks = 3, left = 8_000.0, right = 1_000.0)
+        val hold = stereoBlocks(blocks = 3, left = 8_000.0, right = 3_000.0, from = 3 * 160)
+        val release = stereoBlocks(blocks = 3, left = 8_000.0, right = 6_000.0, from = 6 * 160)
+        val input = enter + hold + release
+        val out = mixStereo(input)
+        assertArrayEquals("eight times louder takes the left alone", leftOf(input, 1), blockOf(out, 1))
+        for (block in 3..6) {
+            assertArrayEquals("block $block: under four times but over twice keeps the left", leftOf(input, block), blockOf(out, block))
+        }
+        assertArrayEquals("barely louder than the right releases it", averaged(input, 7), blockOf(out, 7))
+        assertArrayEquals(averaged(input, 8), blockOf(out, 8))
+        val fresh = mixStereo(hold)
+        assertArrayEquals("without the history, under four times louder is averaged", averaged(hold, 1), blockOf(fresh, 1))
+    }
+
+    @Test fun theFixedDownmixesAreTakenPerSample() {
+        assertEquals(650, ChannelMixer(CaptureDownmix.AVERAGE, 160).mix(1_000, 300).toInt())
+        assertEquals(1_000, ChannelMixer(CaptureDownmix.LEFT, 160).mix(1_000, 300).toInt())
+        assertEquals(300, ChannelMixer(CaptureDownmix.RIGHT, 160).mix(1_000, 300).toInt())
+        assertEquals("the most negative sample survives", -32_768, ChannelMixer(CaptureDownmix.AVERAGE, 160).mix(-32_768, -32_768).toInt())
+    }
+
+    @Test fun aStereoRecorderIsMixedTheSameEvenWhenAReadSplitsAPair() {
         val recorder = FakeRecorder(RecorderFormat(MediaRecorder.AudioSource.VOICE_RECOGNITION, 16_000, 2))
-        val left = ShortArray(320) { (it * 50).toShort() }
-        val interleaved = ShortArray(640) { if (it % 2 == 0) left[it / 2] else 3 }
+        val left = ShortArray(640) { (it * 50).toShort() }
+        val interleaved = ShortArray(1_280) { if (it % 2 == 0) left[it / 2] else 3 }
         var at = 0
         var size = 3
         while (at < interleaved.size) {
