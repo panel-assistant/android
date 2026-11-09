@@ -456,8 +456,11 @@
     return { value: current, why: L("review_far") };
   }
 
+  // A tried setting is suggested only when it heard better than the settings the wizard started with, whose
+  // wake-word test (step 3) is the baseline; a tie keeps the starting settings.
   function bestSource() {
-    var best = null;
+    var wake = wizard.wake || {};
+    var best = wake.peak == null ? null : { source: null, fired: wake.fired || 0, peak: wake.peak };
     wizard.sources.forEach(function (s) {
       if (!s.usable) return;
       if (!best || s.fired > best.fired || (s.fired === best.fired && s.peak > best.peak)) best = s;

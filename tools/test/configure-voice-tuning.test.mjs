@@ -283,6 +283,27 @@ for (const engine of engines) {
     assert.deepEqual(errors, []);
   });
 
+  test(`${engine.name}: a tried setting that heard worse than the starting settings is not suggested`, async (t) => {
+    const { p, h } = await open(t);
+    await p.click('#voice-tuning-start');
+    await eventually('the wake word step', async () => (await text(p, 'voice-tuning-step')) === 'Step 3 of 4: the wake word' || await text(p, 'voice-tuning-step'), 12000);
+    h.voice.test.peak = 0.99; h.voice.test.cutoff = 0.97; h.voice.test.fired = 3;
+    await eventually('heard three times', async () => !(await p.locator('#voice-tuning-next').isDisabled()));
+    await p.click('#voice-tuning-next');
+    await eventually('the source step', async () => (await text(p, 'voice-tuning-step')) === 'Step 4 of 4: compare settings (optional)' || await text(p, 'voice-tuning-step'));
+    await p.selectOption('#voice-tuning-source', 'voice_audio_source=mic');
+    await p.click('#voice-tuning-try');
+    await eventually('the other source is tried', async () => h.writes.includes('voice_audio_source=mic') && h.voice.test !== null || JSON.stringify(h.writes), 6000);
+    h.voice.test.peak = 0.4; h.voice.test.cutoff = 0.97; h.voice.test.fired = 0;
+    await eventually('the score is read', async () => (await text(p, 'voice-tuning-progress')) === 'Heard 0 of 3. Best score 0.40, needs 0.97.' || await text(p, 'voice-tuning-progress'));
+    await p.click('#voice-tuning-skip');
+    await eventually('the suggestions', async () => (await text(p, 'voice-tuning-step')) === 'Suggested settings' || await text(p, 'voice-tuning-step'));
+    assert.doesNotMatch(await text(p, 'voice-tuning-progress'), /Heard best with/, 'the starting settings heard better');
+    await p.click('#voice-tuning-save');
+    await eventually('saved', async () => (await text(p, 'voice-tuning-status')) === 'Saved.' || await text(p, 'voice-tuning-status'));
+    assert.equal(h.settings.voice_audio_source, 'voice_recognition', 'the starting source is kept');
+  });
+
   test(`${engine.name}: the comparison tries capture routes one at a time and saves the one that heard best`, async (t) => {
     const { p, h } = await open(t);
     await p.click('#voice-tuning-start');
