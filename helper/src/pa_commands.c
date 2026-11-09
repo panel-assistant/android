@@ -537,7 +537,7 @@ void cmd_pa_repair(conn_ctx *ctx, const char *args) {
     int path_status = pa_capture(r, path_argv, line, sizeof line);
     if (path_status != 0 || strncmp(line, "package:", 8) != 0) {
         // Exit 1 with nothing printed is the shell route's installed-package-missing test.
-        pa_refuse(r, r->expired ? "deadline" : (path_status == 1 && !line[0]) ? "absent" : "failed");
+        pa_refuse(r, r->expired ? "deadline" : (path_status > 0 && WIFEXITED(path_status) && WEXITSTATUS(path_status) == 1 && !line[0]) ? "absent" : "failed");
         return;
     }
 
@@ -1104,6 +1104,9 @@ static int pa_record_load(const char *name, const char *const keys[], pa_record 
         snprintf(rec->value[k], sizeof rec->value[k], "%s", eq + 1);
         rec->present[k] = 1;
     }
+    // A record missing a key is no baseline: setup acts only on 1; restore keeps it and reports unrestored.
+    for (int k = 0; keys[k] && k < 4; k++)
+        if (!rec->present[k]) return 2;
     return 1;
 }
 
@@ -1231,7 +1234,8 @@ static void pa_vendor_meta(pa_run *r) {
         if (n > 0 && (size_t)n < sizeof content) (void)pa_record_write_once(PA_RECORD_META_VERIFIER, content);
     }
     pa_record vrec;
-    int have_verifier = pa_record_load(PA_RECORD_META_VERIFIER, PA_RECORD_VERIFIER_KEYS, &vrec) == 1;
+    int have_verifier = pa_record_load(PA_RECORD_META_VERIFIER, PA_RECORD_VERIFIER_KEYS, &vrec) == 1 &&
+                        (!strcmp(vrec.value[0], "1") || !strcmp(vrec.value[0], "0") || !strcmp(vrec.value[0], "null"));
     if (have_verifier) {
         pa_kv(r, "verifier_record", vrec.value[0]);
         if (!pa_setting_is(r, "global", PA_SETTING_VERIFIER, "0")) pa_settings_put(r, "global", PA_SETTING_VERIFIER, "0");
@@ -1312,6 +1316,7 @@ static const char *pa_restore_vendor(pa_run *r) {
     int have_meta = pa_record_load(PA_RECORD_META, PA_RECORD_META_KEYS, &meta);
     int have_verifier = pa_record_load(PA_RECORD_META_VERIFIER, PA_RECORD_VERIFIER_KEYS, &verifier);
     if (have_meta < 0 || have_verifier < 0) return NULL;
+    if (have_meta == 2 || have_verifier == 2) return "unrestored";
     static const char *const META_ALLOW[] = { "allow", "ignore", "default", "foreground", NULL };
     static const char *const META_RESTORED[] = { "absent", "allow", "ignore", "default", "foreground", NULL };
     if (have_meta || have_verifier) {
@@ -1350,6 +1355,7 @@ static const char *pa_restore_vendor(pa_run *r) {
     int have_shelly = pa_record_load(PA_RECORD_SHELLY, PA_RECORD_SHELLY_KEYS, &shelly);
     if (have_shelly < 0) return NULL;
     if (!have_shelly) return "none";
+    if (have_shelly == 2) return "unrestored";
     const char *o = shelly.value[0];
     if (pa_mode_in(o, PA_OVERLAY_MODES) && pa_package_present(r, PA_SHELLY_PACKAGE)) pa_overlay_set(r, PA_SHELLY_PACKAGE, o);
     const char *now = pa_overlay(r, PA_SHELLY_PACKAGE);
@@ -1380,6 +1386,7 @@ static const char *pa_restore_display(pa_run *r) {
     int have = pa_record_load(PA_RECORD_DISPLAY, PA_RECORD_DISPLAY_KEYS, &rec);
     if (have < 0) return NULL;
     if (!have) return "none";
+    if (have == 2) return "unrestored";
     const char *d = rec.value[0], *f = rec.value[1];
     if (strcmp(d, "none") == 0) {
         const char *const reset[] = { "wm", "density", "reset", NULL };

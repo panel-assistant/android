@@ -2850,9 +2850,17 @@ static void test_pa_repair(void) {
     // The app is not installed: nothing is repaired.
     sysexec_stub_reset();
     pa_stub_identity("33\n");
-    sysexec_stub_add_popen("pm path " SUCCESSOR_ID, "", 1);
+    // sysexec returns the raw wait status: pm exiting 1 arrives as 1 << 8.
+    sysexec_stub_add_popen("pm path " SUCCESSOR_ID, "", 1 << 8);
     dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "PA_REPAIR 1 1", out, sizeof out);
     CHECK(strcmp(out, "ERR absent\n") == 0, "PA_REPAIR without the app installed answers ERR absent (got '%s')\n", out);
+
+    // A pm killed by a signal (raw status SIGKILL) proves nothing about the package: ERR failed.
+    sysexec_stub_reset();
+    pa_stub_identity("33\n");
+    sysexec_stub_add_popen("pm path " SUCCESSOR_ID, "", SIGKILL);
+    dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "PA_REPAIR 1 1", out, sizeof out);
+    CHECK(strcmp(out, "ERR failed\n") == 0, "PA_REPAIR with a signal-killed pm answers ERR failed (got '%s')\n", out);
 
     // A build that asks for WRITE_SECURE_SETTINGS gets it when the dump proves it missing.
     sysexec_stub_reset();
@@ -3331,6 +3339,32 @@ static void test_pa_review_gaps(void) {
     dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "PA_RESTORE vendor", out, sizeof out);
     CHECK(pa_field_is(out, "result", "unrestored") && pa_ran("settings", "put") == 0,
           "PA_RESTORE refuses a verifier value other than 0, 1 or null (got '%s')\n", out);
+    // An empty or partial record is no baseline: setup never disables the verifier or blanks Meta's
+    // screensaver on it, and restore keeps it and reports unrestored.
+    const char *const off[] = { "settings", "put", "global", "package_verifier_enable", "0", NULL };
+    const char *const thin[][2] = {
+        { PA_VERIFIER_RECORD, "" },
+        { PA_VERIFIER_RECORD, "package_verifier_enable=\n" },
+        { PA_META_RECORD, "screensaver_components=com.meta/.Dream\n" },
+    };
+    for (size_t i = 0; i < sizeof thin / sizeof thin[0]; i++) {
+        pa_reset_records();
+        pa_write_fixture(thin[i][0], thin[i][1], 0644);
+        sysexec_stub_reset();
+        pa_stub_identity("29\n");
+        sysexec_stub_add_popen("getprop ro.product.device", "omni\n", 0);
+        dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "PA_VENDOR setup", out, sizeof out);
+        int disabled = ran_argv("/system/bin/settings", off);
+        int blanked = pa_ran("settings", "put") - disabled;
+        CHECK((i < 2 ? disabled : blanked) == 0 && access(thin[i][0], F_OK) == 0,
+              "PA_VENDOR setup never acts on thin record %zu (got '%s')\n", i, out);
+        sysexec_stub_reset();
+        pa_stub_identity("29\n");
+        dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "PA_RESTORE vendor", out, sizeof out);
+        CHECK(pa_field_is(out, "result", "unrestored") && pa_ran("settings", "put") == 0 &&
+              access(thin[i][0], F_OK) == 0,
+              "PA_RESTORE keeps thin record %zu and reports unrestored (got '%s')\n", i, out);
+    }
     // A well-formed two-component list still restores.
     pa_reset_records();
     pa_write_fixture(PA_META_RECORD,
