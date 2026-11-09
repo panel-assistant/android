@@ -9,7 +9,10 @@ import android.webkit.WebViewClient
 /**
  * The client of the bare on-panel Home Assistant sign-in WebView: it keeps the page to the OAuth flow for
  * [haUrl], hands over once the callback reports success, and retries a failed page load quietly before
- * giving the panel's verdict after [LOAD_RETRIES_MAX] failures in a row.
+ * giving the panel's verdict after [LOAD_RETRIES_MAX] failures in a row. A callback that reports anything
+ * but success (an expired or superseded link, or one the panel's server no longer knows after a restart)
+ * starts the sign-in again from a fresh start page: its "back" link points at a page this WebView may not
+ * open, so without the restart the panel would stay on that message for good.
  */
 internal class PanelHaSignInClient(private val haUrl: String, private val httpPort: Int, private val host: Host) : WebViewClient() {
     interface Host {
@@ -28,6 +31,10 @@ internal class PanelHaSignInClient(private val haUrl: String, private val httpPo
 
     private var loadRetries = 0
 
+    /** Callbacks that did not report success. Each restart needs the person to sign in again, so this
+     *  bound only stops a callback that keeps failing on its own from restarting the sign-in for ever. */
+    private var callbackRestarts = 0
+
     /** The current main frame failed. WebView then finishes loading its own error page in its place, so a
      *  finished page counts as working only when no error came first. */
     private var loadFailed = false
@@ -45,8 +52,23 @@ internal class PanelHaSignInClient(private val haUrl: String, private val httpPo
         loadFailed = false
         if (!isPanelHaOAuthCallback(url, httpPort)) return
         view.evaluateJavascript("document.body&&document.body.dataset?document.body.dataset.haOauthStatus:\"\"") { result ->
-            if (host.isCurrent(view) && result?.trim('"') == "success") host.onSignedIn(view)
+            if (!host.isCurrent(view)) return@evaluateJavascript
+            when (result?.trim('"')) {
+                "success" -> host.onSignedIn(view)
+                "failure" -> restartAfterFailedCallback(view)
+            }
         }
+    }
+
+    private fun restartAfterFailedCallback(view: WebView) {
+        if (callbackRestarts >= CALLBACK_RESTARTS_MAX) {
+            host.showUnreachable()
+            return
+        }
+        callbackRestarts++
+        Log.i(DashboardActivity.TAG, "panel sign-in callback failed — fresh sign-in $callbackRestarts/$CALLBACK_RESTARTS_MAX")
+        // Long enough to read why, short enough that nobody is left waiting on a dead end.
+        host.retryLater(view, CALLBACK_RESTART_MS)
     }
 
     // The error is never read: which failure it was does not change the retry.
@@ -70,5 +92,7 @@ internal class PanelHaSignInClient(private val haUrl: String, private val httpPo
     companion object {
         const val LOAD_RETRIES_MAX = 4
         const val LOAD_RETRY_MS = 4_000L
+        const val CALLBACK_RESTARTS_MAX = 5
+        const val CALLBACK_RESTART_MS = 5_000L
     }
 }
