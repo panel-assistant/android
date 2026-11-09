@@ -33,17 +33,25 @@ internal fun resolveNavbarMode(
     return stored
 }
 
-/** Profile declarations win; only an undeclared navbar consults firmware visibility and Android. */
+/**
+ * Profile declarations win over Android's own signals; an undeclared navbar consults firmware
+ * visibility and Android. One exception: a profile declaring no native bar yields to the Sonoff vendor
+ * property `persist.smatek.show.navigationbar` reading explicitly true, because Sonoff SystemUI then
+ * draws Android's bar and a drawn overlay would stack a second bar on it. A missing or malformed
+ * property keeps the declaration, so a panel with nothing readable never defaults to Native.
+ */
 internal fun resolveNativeNavbar(
     declared: Boolean?,
     vendorProperty: String?,
     androidShowsNavbar: Boolean?,
     mainKeys: String? = null,
 ): Boolean? {
+    val vendor = vendorProperty?.trim()?.lowercase(java.util.Locale.ROOT)
+    if (declared == false && vendor in VENDOR_TRUE) return true
     if (declared != null) return declared
-    return when (vendorProperty?.trim()?.lowercase(java.util.Locale.ROOT)) {
+    return when (vendor) {
         "false", "0", "no", "off" -> false
-        "true", "1", "yes", "on" -> true
+        in VENDOR_TRUE -> true
         null, "" -> when (mainKeys?.trim()) {
             "1" -> false
             "0" -> true
@@ -53,6 +61,8 @@ internal fun resolveNativeNavbar(
         else -> null
     }
 }
+
+private val VENDOR_TRUE = setOf("true", "1", "yes", "on")
 
 /** Whether [mode] may be selected on a panel with this capability. Shared by the read-side coercion
  *  and by the HTTP and command write admission, so they cannot drift apart. */
@@ -87,13 +97,14 @@ internal fun Config.navbarCapabilities(): Capabilities = Capabilities(
     hardwareDeclarationsKnown = profile?.declarationsFromCatalog == true,
 )
 
-/** Usable native navigation: an explicit profile declaration, otherwise the firmware probe. */
+/** Usable native navigation: an explicit profile declaration, otherwise the firmware probe ([resolveNativeNavbar]). */
 internal val Config.hasNativeNavbar: Boolean get() = nativeNavbarPresence == true
 
 private val Config.nativeNavbarPresence: Boolean? get() {
-    profile?.hasNativeNavbar?.let { return it }
+    val declared = profile?.hasNativeNavbar
+    if (declared == true) return true
     return resolveNativeNavbar(
-        null,
+        declared,
         SystemProps.get("persist.smatek.show.navigationbar"),
         resourceShowsNavbar(),
         SystemProps.get("qemu.hw.mainkeys"),

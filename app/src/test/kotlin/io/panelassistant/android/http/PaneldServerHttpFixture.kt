@@ -45,6 +45,8 @@ internal class PaneldServerHttpFixture(
     systemLogAvailable: () -> Boolean = { false },
     /** Whether the panel's system font replaces Roboto (PanelFont.bundled). */
     panelFont: Boolean = false,
+    /** The panel's own DNS host names the Host guard accepts. */
+    ownHostNames: () -> Set<String> = { emptySet() },
 ) : java.io.Closeable {
     val directory = scratchDirectory("paneld-http-baseline").toFile()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -166,6 +168,7 @@ internal class PaneldServerHttpFixture(
             override fun bytes(name: String) = File(root, name).readBytes()
         })
         field("panelFontBundled", { panelFont })
+        field("ownHostNames", ownHostNames)
         field("pendingApks", pending)
         field("guardDbStaging", guardDbAppStaging(context))
         wakeWords?.let { field("wakeWords", it) }

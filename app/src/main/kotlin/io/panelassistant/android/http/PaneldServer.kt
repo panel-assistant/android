@@ -229,6 +229,8 @@ class PaneldServer internal constructor(
     private val bundleAssets: UiBundleAssets = UiBundleAssets.ofApk { appContext.applicationInfo.sourceDir },
     /** Whether this panel's system font replaces Roboto, so its own WebView's pages take the bundled face. */
     private val panelFontBundled: () -> Boolean = { io.panelassistant.android.PanelFont.bundled },
+    /** The panel's own DNS host names, accepted by the Host guard alongside the operator's list. */
+    private val ownHostNames: () -> Set<String> = OwnHostNames.android(appContext),
 ) {
     /** The dispatcher the sidebar relay enters, as the stub's door does (protocol section 20.2). */
     internal fun manageDoor(): io.panelassistant.android.ManageDoor? = door()
@@ -459,7 +461,7 @@ class PaneldServer internal constructor(
     internal fun mount(application: io.ktor.server.application.Application) {
         with(application) {
             paneldRoot(
-                allowedHosts = { config.httpAllowedHosts },
+                allowedHosts = { config.httpAllowedHosts + ownHostNames() },
                 setupNeedsUser = { setupState.setupNeedsUser() },
                 setupRedirectLocation = ::setupRedirectLocation,
                 uiRoutesClosed = { config.uiRoutesClosed },

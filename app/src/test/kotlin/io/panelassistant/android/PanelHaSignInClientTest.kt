@@ -1,5 +1,7 @@
 package io.panelassistant.android
 
+import android.content.ContextWrapper
+import android.webkit.ValueCallback
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import io.panelassistant.android.DashboardRendererRig.Companion.HA
@@ -61,5 +63,43 @@ class PanelHaSignInClientTest {
 
         assertEquals(List(4) { PanelHaSignInClient.LOAD_RETRY_MS }, retries)
         assertEquals("sign-in page unavailable, once", 1, unreachable)
+    }
+
+    /** A sign-in page whose callback reports [status] the way the panel's callback page marks it. */
+    private class CallbackPage(private val status: String) : WebView(ContextWrapper(null)) {
+        override fun evaluateJavascript(script: String, resultCallback: ValueCallback<String>?) {
+            resultCallback?.onReceiveValue("\"$status\"")
+        }
+    }
+
+    private val callback = "http://127.0.0.1:8889/api/v1/ha/oauth/callback?state=s&code=c"
+
+    @Test fun aFailedCallbackStartsAFreshSignInInsteadOfStrandingThePanel() {
+        // An install restarted the panel's server mid sign-in, so the callback no longer knows the link.
+        client.onPageFinished(CallbackPage("failure"), callback)
+
+        assertEquals("a fresh sign-in, after a moment to read why", listOf(PanelHaSignInClient.CALLBACK_RESTART_MS), retries)
+        assertEquals(0, unreachable)
+    }
+
+    @Test fun aCallbackThatKeepsFailingStopsRestarting() {
+        repeat(PanelHaSignInClient.CALLBACK_RESTARTS_MAX + 1) { client.onPageFinished(CallbackPage("failure"), callback) }
+
+        assertEquals(List(PanelHaSignInClient.CALLBACK_RESTARTS_MAX) { PanelHaSignInClient.CALLBACK_RESTART_MS }, retries)
+        assertEquals("then the panel's verdict, once", 1, unreachable)
+    }
+
+    @Test fun aSuccessfulCallbackHandsOverWithoutRestarting() {
+        var signedIn = 0
+        val signingIn = PanelHaSignInClient(HA, 8889, object : PanelHaSignInClient.Host {
+            override fun isCurrent(view: WebView) = true
+            override fun retryLater(view: WebView, delayMs: Long) { retries += delayMs }
+            override fun showUnreachable() { unreachable++ }
+            override fun onSignedIn(view: WebView) { signedIn++ }
+        })
+        signingIn.onPageFinished(CallbackPage("success"), callback)
+
+        assertEquals(1, signedIn)
+        assertEquals(emptyList<Long>(), retries)
     }
 }

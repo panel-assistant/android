@@ -161,6 +161,12 @@ internal class DashboardEntityGate(
     private val documentStartSupported: () -> Boolean = {
         webViewFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)
     },
+    /** Opens the panel's own settings at a path; JVM tests record the path instead. */
+    private val openSettings: (String) -> Unit = { path ->
+        activity.startActivity(Intent(activity, ConfigActivity::class.java).putExtra("path", path))
+    },
+    /** How the entity-filter question's waiting screen is painted, given its actions; JVM tests record them. */
+    questionPainter: ((List<Pair<Int, () -> Unit>>) -> Unit)? = null,
 ) {
     interface Host {
         val activityOwner: Long
@@ -173,6 +179,7 @@ internal class DashboardEntityGate(
     }
 
     private val painter = holdPainter ?: EntityHoldPainter(::paintHoldScreen)
+    private val paintQuestion = questionPainter ?: ::paintEntityFilterQuestion
 
     var entityFilterSignature = "disabled"
         private set
@@ -498,31 +505,41 @@ internal class DashboardEntityGate(
      * network, nothing to churn — it exists only so the first dashboard the user sees is the filtered one.
      */
     fun showWaitingForEntityFilterAnswer() {
-        statusScreens.cancelAdmissionAutoRetry()
         main.removeCallbacks(entityBootstrapCheck)
         main.removeCallbacks(entityFilterAnswerCheck)
         host.teardownWeb()
-        val config = readConfig()
-        val surface = statusScreens.statusSurface(config)
+        paintQuestion(
+            listOf(
+                // The way back to the questions. Signing in on the panel brings this screen over the panel's
+                // own setup wizard, and with only Skip on it the wizard was unreachable from the panel: the
+                // questions went unanswered, setup never finished, and Home Assistant would not add the
+                // panel. Only shown before setup first completes, so the wizard is the right destination.
+                R.string.set_up to { openSettings(SETUP_WIZARD_PATH) },
+                // Escape hatch. The hold exists to protect the first impression, not to trap anyone: someone
+                // at the panel who does not want to answer must be able to get a dashboard. Says what it
+                // costs, because skipping is the unfiltered load this screen exists to avoid.
+                R.string.skip_load_dashboard to { skipEntityFilterQuestion() },
+            ),
+        )
+        main.postDelayed(entityFilterAnswerCheck, ENTITY_FILTER_ANSWER_CHECK_MS)
+    }
+
+    private fun paintEntityFilterQuestion(actions: List<Pair<Int, () -> Unit>>) {
+        statusScreens.cancelAdmissionAutoRetry()
+        val surface = statusScreens.statusSurface(readConfig())
         val notice = surface.notice
         surface.setBody(
             activity.getString(R.string.notice_pill_setup),
             notice.hero(activity.getString(R.string.notice_hero_almost_there), word = true),
             notice.line(activity.getString(R.string.notice_line_setup_question)),
-            // Escape hatch. The hold exists to protect the first impression, not to trap anyone: someone at
-            // the panel with no browser to hand must be able to get a dashboard. Says what it costs, because
-            // skipping is the unfiltered load this screen exists to avoid.
-            notice.actions(notice.action(activity.getString(R.string.skip_load_dashboard)) { skipEntityFilterQuestion() }),
+            notice.actions(*actions.map { (label, run) -> notice.action(activity.getString(label)) { run() } }.toTypedArray()),
             notice.footer(activity.getString(R.string.skip_entity_filter_detail)),
         )
         statusScreens.showStatusSurface(surface) { showWaitingForEntityFilterAnswer() }
-        main.postDelayed(entityFilterAnswerCheck, ENTITY_FILTER_ANSWER_CHECK_MS)
     }
 
     private val entityHoldActions = object : EntityHoldActions {
-        override fun openSettings(path: String) {
-            activity.startActivity(Intent(activity, ConfigActivity::class.java).putExtra("path", path))
-        }
+        override fun openSettings(path: String) = this@DashboardEntityGate.openSettings(path)
         override fun ignoreFlagged() = EntityLearningRuntime.ignoreBlockingIssues()
         override fun disableFilter() = EntityLearningRuntime.disableAutomaticFilter()
         override fun retryFilter() = retryEntityFilter(readConfig())
@@ -828,5 +845,7 @@ internal class DashboardEntityGate(
         // Backstop only: answering normally relaunches the renderer from the server. This catches the case
         // where that relaunch is missed, so the panel still proceeds on its own. Local pref read, no network.
         const val ENTITY_FILTER_ANSWER_CHECK_MS = 1_500L
+        /** The panel's own setup wizard, as [MainActivity] opens it before setup first completes. */
+        const val SETUP_WIZARD_PATH = "/setup"
     }
 }
