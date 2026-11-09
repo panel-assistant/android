@@ -87,7 +87,7 @@ internal object BundledHelperInstaller {
                     }
                 } else null
             },
-            systemCustody = { systemCustodyMigrationOutcome(resumeOnly = false) },
+            systemCustody = ::systemCustodyMigrationOutcome,
         )?.let { return it }
         val stagedBuildId = BuildConfig.HELPER_BUILD_ID
             .takeIf(GuardDbMaintenanceProtocol::validSha256) ?: return Result.FAILED
@@ -208,19 +208,16 @@ internal object BundledHelperInstaller {
     }
 
     /**
-     * A layout F migration record outlives the app process and the reboot that proves it. Each start drives it
-     * forward through the same takeover shell (finishing any cut, or relaunching the bundled copy the app lease
-     * way once nothing registers a helper), then retires it once the bundled build has served across a reboot.
-     * Null when there is no record, or when it was retired or kept and the ordinary path should continue.
+     * A layout F migration record exists only while its transaction is unfinished: a start that goes to root
+     * and finds one drives the same takeover shell forward from wherever a kill or power cut left it (the shell
+     * relaunches the bundled copy and finishes or rolls back the removal), and nothing else runs meanwhile.
      */
-    private fun systemCustodyMigrationOutcome(resumeOnly: Boolean): Result? {
+    private fun systemCustodyMigrationOutcome(): Result? {
         val reply = Su.runOutputLong(systemCustodyMigrationRecordReadCommand(), INSTALL_TIMEOUT_MS) ?: return null
         val record = parseSystemCustodyMigrationRecord(reply) ?: return refused(Result.FAILED, "custody_record_malformed")
-        if (resumeOnly && !systemCustodyResumeOnlyAllowed(record, BuildConfig.HELPER_BUILD_ID)) return null
         if (record.stagedBuildId != BuildConfig.HELPER_BUILD_ID) {
             return refused(Result.REPROVISION_REQUIRED, "custody_record_other_build")
         }
-        if (!resumeOnly && !GuardDbProcessAdmission.ordinaryMutationsAllowed()) return Result.BLOCKED_ACTIVE
         val serving = when (val status = GuardDbMaintenance.client.statusProbe()) {
             is GuardDbMaintenanceClient.StatusProbe.Valid -> {
                 if (status.status.ownsMaintenance) return Result.BLOCKED_ACTIVE
@@ -230,26 +227,14 @@ internal object BundledHelperInstaller {
             else -> return refused(Result.FAILED, "custody_status_unusable")
         }
         if (serving != null && serving != record.candidateIdentity) return refused(Result.FAILED, "custody_foreign_helper")
-        val resumed = !(record.phase == SYSTEM_CUSTODY_PHASE_REMOVED && serving != null)
-        if (resumed) {
-            val driven = Su.runSingleAttempt(
-                bundledLegacyHelperTakeoverCommand(
-                    record.candidateSha256, record.stagedBuildId, record.incumbentBuildId,
-                    systemCustodyMigration = true,
-                ),
-                LEGACY_TAKEOVER_TIMEOUT_MS,
-            )
-            if (!driven) return refused(Result.FAILED, "custody_migration_incomplete")
-            // A record written before this run's removal settles only after the next reboot.
-            if (record.phase != SYSTEM_CUSTODY_PHASE_REMOVED) return Result.INSTALLED
-            if (GuardDbMaintenance.client.selfIdentity() != record.candidateIdentity) {
-                return refused(Result.FAILED, "custody_candidate_unproved")
-            }
-        }
-        val settlement = Su.runOutputLong(systemCustodyMigrationSettleCommand(record), INSTALL_TIMEOUT_MS)
-            ?: return refused(Result.FAILED, "custody_settle_refused")
-        settlement.lineSequence().filter { it.isNotBlank() }.forEach { Log.i(TAG, "system custody settle: $it") }
-        return if (resumed) Result.INSTALLED else null
+        val driven = Su.runSingleAttempt(
+            bundledLegacyHelperTakeoverCommand(
+                record.candidateSha256, record.stagedBuildId, record.incumbentBuildId,
+                systemCustodyMigration = true,
+            ),
+            LEGACY_TAKEOVER_TIMEOUT_MS,
+        )
+        return if (driven) Result.INSTALLED else refused(Result.FAILED, "custody_migration_incomplete")
     }
 
     private fun resumeRetainedCurrentOutcome(context: Context): Boolean? {
@@ -263,15 +248,6 @@ internal object BundledHelperInstaller {
                 ?.let(::parseBundledLegacyTakeoverRecord)
         } else {
             null
-        }
-        // Writer-free startup can run before ensureCurrent; after the reboot that follows a removal nothing
-        // registers a helper, so the exact recorded candidate is relaunched and the record settled here.
-        if (statusProbe == GuardDbMaintenanceClient.StatusProbe.Unreachable && retainedLegacy == null) {
-            when (systemCustodyMigrationOutcome(resumeOnly = true)) {
-                null -> Unit
-                Result.INSTALLED -> return true
-                else -> return false
-            }
         }
         return resumeBundledLegacyHelper(
             statusProbe, retainedLegacy, stagedBuildId,
@@ -884,10 +860,7 @@ internal fun bundledLegacyHelperTakeoverCommand(
             [ "${dollar}("${dollar}old_bin" --request BUILDID 2>/dev/null)" = "BUILDID $incumbentBuildId" ] || exit 1
         """.trimIndent()
     }
-    val acceptedStatus = if (migration) {
-        // The incumbent shared the Guard DB, so its counters may differ; only an EMPTY phase is accepted.
-        "custody_status_empty \"${dollar}status\""
-    } else if (retainedResumeOnly) {
+    val acceptedStatus = if (retainedResumeOnly) {
         "[ -n \"${dollar}status\" ]"
     } else {
         "[ \"${dollar}status\" = \"$expectedStatus\" ]"
@@ -1026,11 +999,7 @@ internal fun bundledLegacyHelperTakeoverCommand(
           printf 'CUSTODY_REASON %s\n' "${dollar}1"
           log -t ha-paneld/helper-migrate "system custody migration: ${dollar}1" >/dev/null 2>&1 || true
         }
-        custody_status_empty() {
-          set -- ${dollar}1
-          [ ${dollar}# -eq 15 ] && [ "${dollar}1" = OK ] && [ "${dollar}2" = GUARDSTATUS ] && [ "${dollar}4" = EMPTY ] || return 1
-          case "${dollar}3" in ''|*[!0-9]*) return 1 ;; esac
-        }
+        ${systemMountShell()}
         absent "${dollar}data_bin" && absent "${dollar}vendor_registration" && absent "${dollar}service_registration" &&
           absent "${dollar}legacy_bin" && absent "${dollar}legacy_registration" &&
           absent "${dollar}record" && absent "${dollar}record_tmp" || exit 1
@@ -1043,7 +1012,7 @@ internal fun bundledLegacyHelperTakeoverCommand(
           rm -f "${dollar}custody_tmp" && sync
         }
         write_custody() {
-          custody_line="OK CUSTODYMIGRATION 1 ${dollar}1 ${dollar}old_sha ${dollar}old_bytes ${dollar}registration_sha ${dollar}registration_bytes ${dollar}stale_sha ${dollar}stale_bytes $incumbentBuildId $stagedBuildId $expectedSha256 ${dollar}candidate_bytes ${dollar}2"
+          custody_line="OK CUSTODYMIGRATION 1 ${dollar}1 ${dollar}old_sha ${dollar}old_bytes ${dollar}registration_sha ${dollar}registration_bytes ${dollar}stale_sha ${dollar}stale_bytes $incumbentBuildId $stagedBuildId $expectedSha256 ${dollar}candidate_bytes"
           umask 077
           printf '%s\n' "${dollar}custody_line" > "${dollar}custody_tmp" || return 1
           chown 0:0 "${dollar}custody_tmp" && chmod 600 "${dollar}custody_tmp" && sync &&
@@ -1059,11 +1028,11 @@ internal fun bundledLegacyHelperTakeoverCommand(
           [ "${dollar}{custody_meta##*:}" -le 1024 ] || exit 1
           custody_line=${dollar}(cat "${dollar}custody_record") || exit 1
           set -- ${dollar}custody_line
-          [ ${dollar}# -eq 15 ] && [ "${dollar}1 ${dollar}2 ${dollar}3" = "OK CUSTODYMIGRATION 1" ] || exit 1
+          [ ${dollar}# -eq 14 ] && [ "${dollar}1 ${dollar}2 ${dollar}3" = "OK CUSTODYMIGRATION 1" ] || exit 1
           phase=${dollar}4; old_sha=${dollar}5; old_bytes=${dollar}6; registration_sha=${dollar}7; registration_bytes=${dollar}8
           stale_sha=${dollar}9; stale_bytes=${dollar}{10}; candidate_bytes=${dollar}{14}
           [ "${dollar}{11} ${dollar}{12} ${dollar}{13}" = "$incumbentBuildId $stagedBuildId $expectedSha256" ] || exit 1
-          case "${dollar}phase" in $SYSTEM_CUSTODY_PHASE_ARCHIVED|$SYSTEM_CUSTODY_PHASE_SWAPPED|$SYSTEM_CUSTODY_PHASE_REMOVED) ;; *) exit 1 ;; esac
+          case "${dollar}phase" in $SYSTEM_CUSTODY_PHASE_ARCHIVED|$SYSTEM_CUSTODY_PHASE_SWAPPED) ;; *) exit 1 ;; esac
           [ "${dollar}registration_sha" = "$SYSTEM_CUSTODY_REGISTRATION_SHA256" ] || exit 1
           for number in "${dollar}old_bytes" "${dollar}registration_bytes" "${dollar}stale_bytes" "${dollar}candidate_bytes"; do
             case "${dollar}number" in ''|*[!0-9]*) exit 1 ;; esac
@@ -1090,6 +1059,10 @@ internal fun bundledLegacyHelperTakeoverCommand(
             for entry in ${dollar}(ls -A "${dollar}guard"); do [ "${dollar}entry" = .owner.lock ] || exit 1; done
           fi
           stale_sha=NONE; stale_bytes=0; candidate_bytes=
+          # This exact /system helper was removed once and came back: the overlay did not keep the removal.
+          if ! absent "${dollar}archive/hapaneld-helper.removed.${dollar}old_sha"; then
+            custody_reason system_removal_not_persistent; exit 1
+          fi
         fi
 
         # Removal deletes the rc first, so any mix of present and absent files is a SWAPPED cut.
@@ -1099,11 +1072,12 @@ internal fun bundledLegacyHelperTakeoverCommand(
           exact_file "${dollar}registration" "${dollar}registration_sha" 644 "${dollar}registration_bytes" || exit 1; registration_present=1
         fi
         case "${dollar}phase:${dollar}bin_present${dollar}registration_present" in
-          NONE:11|$SYSTEM_CUSTODY_PHASE_ARCHIVED:11|$SYSTEM_CUSTODY_PHASE_SWAPPED:*|$SYSTEM_CUSTODY_PHASE_REMOVED:00) ;;
+          NONE:11|$SYSTEM_CUSTODY_PHASE_ARCHIVED:11|$SYSTEM_CUSTODY_PHASE_SWAPPED:*) ;;
           *) exit 1 ;;
         esac
         archived_bin=${dollar}archive/hapaneld-helper.system.${dollar}old_sha
         archived_registration=${dollar}archive/hapaneld-helper.rc.${dollar}registration_sha
+        removed_marker=${dollar}archive/hapaneld-helper.removed.${dollar}old_sha
         # A restored file must be exactly what init found: owner, mode and SELinux label are archived beside
         # each copy as `0:0:<mode> <label>`, and a restore that cannot apply all three fails closed.
         file_label() {
@@ -1166,6 +1140,7 @@ internal fun bundledLegacyHelperTakeoverCommand(
           restore_file "${dollar}archived_bin" "${dollar}old_bin" "${dollar}old_sha" "${dollar}old_bytes" 755 "${dollar}system_bin_tmp" &&
             restore_file "${dollar}archived_registration" "${dollar}registration" "${dollar}registration_sha" "${dollar}registration_bytes" 644 "${dollar}registration_tmp" || return 1
           "${dollar}root/system/bin/mount" -o ro,remount "${dollar}system_mount" >/dev/null 2>&1 || true
+          rm -f "${dollar}removed_marker" && sync || return 1
           removed_now=0
         }
 
@@ -1202,25 +1177,23 @@ internal fun bundledLegacyHelperTakeoverCommand(
 
         if [ "${dollar}phase" = NONE ]; then
           $initialReplacementProof
-          write_custody $SYSTEM_CUSTODY_PHASE_ARCHIVED NONE || exit 1
+          write_custody $SYSTEM_CUSTODY_PHASE_ARCHIVED || exit 1
         fi
         authority_written=1
-        if [ "${dollar}phase" != $SYSTEM_CUSTODY_PHASE_REMOVED ]; then
-          if absent "${dollar}archive"; then mkdir "${dollar}archive" || { rollback_candidate; exit 1; }; fi
-          [ -d "${dollar}archive" ] && [ ! -L "${dollar}archive" ] && chown 0:0 "${dollar}archive" && chmod 700 "${dollar}archive" ||
-            { rollback_candidate; exit 1; }
-          # The unrelated copy leaves first, so every later rollback finds /data/local as it restores it.
-          if [ "${dollar}stale_sha" != NONE ] && [ "${dollar}live_is_candidate" = 0 ] && [ -f "${dollar}live" ]; then
-            mv -f "${dollar}live" "${dollar}stale_archive" && sync || { rollback_candidate; exit 1; }
-          fi
-          if [ "${dollar}bin_present" = 1 ]; then
-            archive_copy "${dollar}old_bin" "${dollar}archived_bin" "${dollar}old_sha" "${dollar}old_bytes" &&
-              attr_capture "${dollar}old_bin" "${dollar}archived_bin.attr" 755 || { rollback_candidate; exit 1; }
-          fi
-          if [ "${dollar}registration_present" = 1 ]; then
-            archive_copy "${dollar}registration" "${dollar}archived_registration" "${dollar}registration_sha" "${dollar}registration_bytes" &&
-              attr_capture "${dollar}registration" "${dollar}archived_registration.attr" 644 || { rollback_candidate; exit 1; }
-          fi
+        if absent "${dollar}archive"; then mkdir "${dollar}archive" || { rollback_candidate; exit 1; }; fi
+        [ -d "${dollar}archive" ] && [ ! -L "${dollar}archive" ] && chown 0:0 "${dollar}archive" && chmod 700 "${dollar}archive" ||
+          { rollback_candidate; exit 1; }
+        # The unrelated copy leaves first, so every later rollback finds /data/local as it restores it.
+        if [ "${dollar}stale_sha" != NONE ] && [ "${dollar}live_is_candidate" = 0 ] && [ -f "${dollar}live" ]; then
+          mv -f "${dollar}live" "${dollar}stale_archive" && sync || { rollback_candidate; exit 1; }
+        fi
+        if [ "${dollar}bin_present" = 1 ]; then
+          archive_copy "${dollar}old_bin" "${dollar}archived_bin" "${dollar}old_sha" "${dollar}old_bytes" &&
+            attr_capture "${dollar}old_bin" "${dollar}archived_bin.attr" 755 || { rollback_candidate; exit 1; }
+        fi
+        if [ "${dollar}registration_present" = 1 ]; then
+          archive_copy "${dollar}registration" "${dollar}archived_registration" "${dollar}registration_sha" "${dollar}registration_bytes" &&
+            attr_capture "${dollar}registration" "${dollar}archived_registration.attr" 644 || { rollback_candidate; exit 1; }
         fi
         archive_exact || { rollback_candidate; exit 1; }
         if [ "${dollar}stale_sha" != NONE ]; then
@@ -1254,49 +1227,42 @@ internal fun bundledLegacyHelperTakeoverCommand(
             if [ -f "${dollar}stage" ]; then exact_file "${dollar}stage" "$expectedSha256" 700 "${dollar}candidate_bytes" || exit 1; rm -f "${dollar}stage" || exit 1; fi
             sync || exit 1
             if [ "${dollar}phase" = $SYSTEM_CUSTODY_PHASE_ARCHIVED ]; then
-              write_custody $SYSTEM_CUSTODY_PHASE_SWAPPED NONE || { rollback_candidate; exit 1; }
+              write_custody $SYSTEM_CUSTODY_PHASE_SWAPPED || { rollback_candidate; exit 1; }
             fi
-            if [ "${dollar}phase" = $SYSTEM_CUSTODY_PHASE_SWAPPED ]; then
-              if [ "${dollar}bin_present${dollar}registration_present" != 00 ]; then
-                # The archive is proved again at the last cut before anything leaves /system.
-                archive_exact || { rollback_candidate; exit 1; }
-                system_type=
-                while IFS= read -r mount_line; do
-                  set -- ${dollar}mount_line
-                  case "${dollar}5" in
-                    /system) system_mount=/system; system_type=${dollar}{mount_line#* - }; system_type=${dollar}{system_type%% *} ;;
-                    /) if [ "${dollar}system_mount" != /system ]; then
-                         system_mount=/; system_type=${dollar}{mount_line#* - }; system_type=${dollar}{system_type%% *}
-                       fi ;;
-                  esac
-                done < "${dollar}root/proc/1/mountinfo"
-                if [ -z "${dollar}system_mount" ]; then custody_reason system_mount_unknown; rollback_candidate; exit 1; fi
-                if [ "${dollar}system_type" != overlay ] && [ "${dollar}(getprop ro.boot.veritymode 2>/dev/null)" = enforcing ]; then
-                  custody_reason system_verity_enforcing; rollback_candidate; exit 1
-                fi
-                if ! "${dollar}root/system/bin/mount" -o rw,remount "${dollar}system_mount"; then
-                  custody_reason system_removal_refused; rollback_candidate; exit 1
-                fi
-                [ "${dollar}bin_present${dollar}registration_present" != 11 ] || removed_now=1
-                if ! { rm -f "${dollar}registration" && sync && rm -f "${dollar}old_bin" && sync; }; then
-                  custody_reason system_removal_refused; rollback_candidate; exit 1
-                fi
-                # The su shell may have its own mount namespace: only init's view proves the removal.
-                if ! { absent "${dollar}registration" && absent "${dollar}old_bin" &&
-                       absent "${dollar}init_root/system/etc/init/hapaneld-helper.rc" &&
-                       absent "${dollar}init_root/system/bin/hapaneld-helper"; }; then
-                  custody_reason system_removal_refused; rollback_candidate; exit 1
-                fi
-                "${dollar}root/system/bin/mount" -o ro,remount "${dollar}system_mount" >/dev/null 2>&1 ||
-                  custody_reason system_read_only_restore_failed
+            if [ "${dollar}bin_present${dollar}registration_present" != 00 ]; then
+              # The archive is proved again at the last cut before anything leaves /system.
+              archive_exact || { rollback_candidate; exit 1; }
+              if ! system_mount_find; then custody_reason system_mount_unknown; rollback_candidate; exit 1; fi
+              if system_upper_volatile; then custody_reason system_overlay_not_persistent; rollback_candidate; exit 1; fi
+              if [ "${dollar}system_type" != overlay ] && [ "${dollar}(getprop ro.boot.veritymode 2>/dev/null)" = enforcing ]; then
+                custody_reason system_verity_enforcing; rollback_candidate; exit 1
               fi
-              boot_id=${dollar}(cat "${dollar}root/proc/sys/kernel/random/boot_id" 2>/dev/null) || exit 1
-              case "${dollar}boot_id" in
-                [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]-*-*-*-*) ;;
-                *) exit 1 ;;
-              esac
-              write_custody $SYSTEM_CUSTODY_PHASE_REMOVED "${dollar}boot_id" || exit 1
+              if ! "${dollar}root/system/bin/mount" -o rw,remount "${dollar}system_mount"; then
+                custody_reason system_removal_refused; rollback_candidate; exit 1
+              fi
+              # From here a kill leaves a SWAPPED record over whichever file remains, and every later start
+              # removes the rest: only a removal this run made can still be undone.
+              [ "${dollar}bin_present${dollar}registration_present" != 11 ] || removed_now=1
+              if ! { rm -f "${dollar}registration" && sync && rm -f "${dollar}old_bin" && sync; }; then
+                custody_reason system_removal_refused; rollback_candidate; exit 1
+              fi
             fi
+            # The su shell may have its own mount namespace: only init's view proves the removal.
+            if ! { absent "${dollar}registration" && absent "${dollar}old_bin" &&
+                   absent "${dollar}init_root/system/etc/init/hapaneld-helper.rc" &&
+                   absent "${dollar}init_root/system/bin/hapaneld-helper"; }; then
+              custody_reason system_removal_refused; rollback_candidate; exit 1
+            fi
+            if [ -n "${dollar}system_mount" ]; then
+              "${dollar}root/system/bin/mount" -o ro,remount "${dollar}system_mount" >/dev/null 2>&1 ||
+                custody_reason system_read_only_restore_failed
+            fi
+            # Remember the removal, so a /system that brings these bytes back is refused rather than retried,
+            # then retire the record: the panel is now the plain app-lease layout.
+            umask 077
+            printf '%s\n' "${dollar}old_sha" > "${dollar}removed_marker.tmp" && chmod 600 "${dollar}removed_marker.tmp" && sync &&
+              mv -f "${dollar}removed_marker.tmp" "${dollar}removed_marker" && sync || exit 1
+            rm -f "${dollar}custody_record" "${dollar}custody_tmp" && sync || exit 1
             exit 0
 """.trimEnd()
     return """

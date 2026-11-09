@@ -163,6 +163,12 @@ internal fun bundledHelperSystemCustodyProbeCommand(filesystemRoot: String = "")
           refuse legacy_takeover_record
         absent "${d}local/.hapaneld-helper.custody-migration" && absent "${d}local/.hapaneld-helper.custody-migration.tmp" ||
           refuse custody_record_present
+        ${systemMountShell()}
+        if [ -f "${d}system_bin" ] &&
+           ! absent "${d}local/.hapaneld-custody-archive/hapaneld-helper.removed.${d}(digest "${d}system_bin")"; then
+          refuse system_removal_not_persistent
+        fi
+        if system_mount_find && system_upper_volatile; then refuse system_overlay_not_persistent; fi
         [ "${d}stale_inode" = 0 ] || refuse stale_live_inode
         [ -f "${d}system_bin" ] && [ -f "${d}registration" ] || refuse no_system_helper
         for rc in "${d}registration"?*; do absent "${d}rc" || refuse registration_sibling; done
