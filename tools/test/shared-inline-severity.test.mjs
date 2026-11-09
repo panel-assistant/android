@@ -64,14 +64,23 @@ async function statusRelation(page, input, note) {
   assert.equal(await page.locator(note).getAttribute('role'), 'status');
   assert.equal(await page.locator(note).getAttribute('aria-live'), 'polite');
 }
+// Reads the element the page shows now, waiting up to two seconds for it to settle: a live note can still be
+// on its first render before its fetch lands, or be replaced just after its text appears, and an element
+// replaced mid-read computes no color. A color that never settles on the token still fails.
 async function tokenColor(page, selector, property, token) {
-  const colors = await page.locator(selector).first().evaluate((el, { property, token }) => {
+  const read = () => page.evaluate(({ selector, property, token }) => {
+    const el = document.querySelector(selector);
     const probe = document.body.appendChild(document.createElement('span'));
     probe.style.color = `var(${token})`;
-    const actual = getComputedStyle(el)[property], expected = getComputedStyle(probe).color;
+    const actual = el && el.isConnected ? getComputedStyle(el)[property] : '', expected = getComputedStyle(probe).color;
     probe.remove();
     return { actual, expected };
-  }, { property, token });
+  }, { selector, property, token });
+  let colors = await read();
+  for (let i = 0; i < 20 && colors.actual !== colors.expected; i++) {
+    await page.waitForTimeout(100);
+    colors = await read();
+  }
   assert.equal(colors.actual, colors.expected, `${selector}: ${property} resolves ${token}`);
 }
 
