@@ -139,12 +139,15 @@ internal class SatelliteTurnRunner(
         val record = VoiceTurnRecord(
             heard = heard,
             reply = reply,
-            outcome = ended?.outcome ?: when {
+            // A failure after Home Assistant settled the intent (the reply's speech failing, say) still
+            // ends the turn in error: its end event carries the intent's outcome, not the turn's.
+            outcome = when {
                 failure != null -> VoiceTurnRecord.ERROR
+                ended?.outcome != null -> ended.outcome
                 !reply.isNullOrBlank() -> VoiceTurnRecord.REPLIED
                 else -> VoiceTurnRecord.NO_REPLY
             },
-            code = ended?.code ?: failure?.code,
+            code = if (failure != null && ended?.outcome != VoiceTurnRecord.ERROR) failure.code else ended?.code ?: failure?.code,
             listenMs = listenMs ?: if (attachment == null) null else (nanoTime() - listenStartNs) / 1_000_000L,
         )
         return AssistOutcome(continueConversation = continueConversation && failure == null, error = failure, turn = record)
