@@ -143,6 +143,8 @@ internal object BundledHelperShellFixtures {
 
     const val FIRST_BOOT_ID = "11111111-1111-4111-8111-111111111111"
     const val SECOND_BOOT_ID = "22222222-2222-4222-8222-222222222222"
+    const val SYSTEM_BIN_LABEL = "u:object_r:hapaneld_exec:s0"
+    const val REGISTRATION_LABEL = "u:object_r:system_file:s0"
 
     /**
      * Layout F: a Guard-era helper served from /system/bin under the pre-canonical /system rc, with an
@@ -178,6 +180,10 @@ internal object BundledHelperShellFixtures {
 
         /** Arms a stub: the named hook delivers [signal] to the calling shell. */
         fun signalOn(hook: String, signal: String) = File(root, hook).writeText(signal)
+
+        /** The SELinux label the `ls -Z` stub reports: by inode and change time, so a recreated file is unlabeled. */
+        fun labelOf(file: File): String = runCommand("'${File(root, "system/bin/ls").absolutePath}' -Zd '${file.absolutePath}'")
+            .output.trim().substringBefore(' ')
     }
 
     fun withCustodyFiles(
@@ -240,6 +246,32 @@ internal object BundledHelperShellFixtures {
                 [ "${dollar}1" = hapaneld_helper ] || exit 2
                 [ -f '${registration.absolutePath}' ] && [ -f '${systemBin.absolutePath}' ] || exit 0
                 '${systemBin.absolutePath}' >/dev/null 2>&1
+            """.trimIndent() + "\n", 755)
+            // SELinux stand-ins: labels live in a table keyed by inode and change time, so a file recreated
+            // by a restore reads unlabeled until chcon labels it.
+            val labels = File(root, "labels")
+            val labelKey = "${dollar}(stat -c '%i@%z' \"${dollar}path\" | tr ' ' _)"
+            labels.writeText(
+                "${runCommand("stat -c '%i@%z' '${systemBin.absolutePath}' | tr ' ' _").output.trim()} $SYSTEM_BIN_LABEL\n" +
+                    "${runCommand("stat -c '%i@%z' '${registration.absolutePath}' | tr ' ' _").output.trim()} $REGISTRATION_LABEL\n",
+            )
+            writeExecutable(File(root, "system/bin/ls"), """
+                #!/bin/sh
+                [ "${dollar}1" = -Zd ] || exit 2
+                [ ! -f '${File(root, "ls-fails").absolutePath}' ] || exit 1
+                path=${dollar}2
+                [ -e "${dollar}path" ] || exit 1
+                key=$labelKey
+                label=${dollar}(grep "^${dollar}key " '${labels.absolutePath}' | tail -n 1 | cut -d' ' -f2)
+                echo "${dollar}{label:-u:object_r:unlabeled:s0} ${dollar}path"
+            """.trimIndent() + "\n", 755)
+            writeExecutable(File(root, "system/bin/chcon"), """
+                #!/bin/sh
+                echo "chcon ${dollar}*" >> '${calls.absolutePath}'
+                [ ! -f '${File(root, "chcon-fails").absolutePath}' ] || exit 1
+                path=${dollar}2
+                key=$labelKey
+                echo "${dollar}key ${dollar}1" >> '${labels.absolutePath}'
             """.trimIndent() + "\n", 755)
             writeExecutable(File(root, "system/bin/mount"), """
                 #!/bin/sh

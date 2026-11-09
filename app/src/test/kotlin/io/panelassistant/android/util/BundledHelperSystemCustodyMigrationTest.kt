@@ -2,6 +2,8 @@ package io.panelassistant.android.util
 
 import io.panelassistant.android.util.BundledHelperShellFixtures.CustodyFixture
 import io.panelassistant.android.util.BundledHelperShellFixtures.FIRST_BOOT_ID
+import io.panelassistant.android.util.BundledHelperShellFixtures.REGISTRATION_LABEL
+import io.panelassistant.android.util.BundledHelperShellFixtures.SYSTEM_BIN_LABEL
 import io.panelassistant.android.util.BundledHelperShellFixtures.SECOND_BOOT_ID
 import io.panelassistant.android.util.BundledHelperShellFixtures.emptyStatus
 import io.panelassistant.android.util.BundledHelperShellFixtures.incumbentBuild
@@ -75,6 +77,11 @@ class BundledHelperSystemCustodyMigrationTest {
             assertEquals(result.output, 0, result.exitCode)
             assertMigrated(fixture, FIRST_BOOT_ID)
             assertTrue(fixture.callLog().toString(), "mount -o rw,remount /system" in fixture.callLog())
+            // Owner, mode and label are kept beside each copy so a rollback can put them back exactly.
+            assertEquals("0:0:755 $SYSTEM_BIN_LABEL\n",
+                File(fixture.archive, "hapaneld-helper.system.${fixture.oldSha}.attr").readText())
+            assertEquals("0:0:644 $REGISTRATION_LABEL\n",
+                File(fixture.archive, "hapaneld-helper.rc.${fixture.registrationSha}.attr").readText())
             assertTrue(fixture.callLog().toString(), "stop hapaneld_helper" in fixture.callLog())
         }
     }
@@ -135,6 +142,57 @@ class BundledHelperSystemCustodyMigrationTest {
             assertRolledBack(fixture)
             assertFalse(fixture.callLog().any { it.startsWith("mount") })
         }
+    }
+
+    @Test fun `a restore that cannot relabel the system files fails closed and keeps the archive`() {
+        withCustodyFiles { fixture ->
+            File(fixture.root, "chcon-fails").writeText("")
+            fixture.signalOn("signal-on-remount-ro", "TERM")
+            assertTrue(runCommand(migrate(fixture)).exitCode != 0)
+            assertTrue(fixture.callLog().toString(), fixture.callLog().any { it.startsWith("chcon ") })
+            assertTrue(fixture.record.isFile)
+            assertEquals(fixture.oldBytes, File(fixture.archive, "hapaneld-helper.system.${fixture.oldSha}").readText())
+            assertTrue(File(fixture.archive, "hapaneld-helper.system.${fixture.oldSha}.attr").isFile)
+            assertFalse(fixture.callLog().any { it.startsWith("start") })
+        }
+    }
+
+    @Test fun `a label that cannot be read refuses the migration before anything leaves system`() {
+        withCustodyFiles { fixture ->
+            File(fixture.root, "ls-fails").writeText("")
+            assertEquals(1, runCommand(migrate(fixture)).exitCode)
+            File(fixture.root, "ls-fails").delete()
+            assertRolledBack(fixture)
+            assertFalse(fixture.callLog().any { it.startsWith("mount") })
+        }
+    }
+
+    @Test fun `an already current start makes no root call beyond the released takeover check`() {
+        val calls = mutableListOf<String>()
+        val current = { calls += "legacy takeover record"; null }
+        val custody = { calls += "custody record"; null }
+        assertEquals(BundledHelperInstaller.Result.ALREADY_CURRENT,
+            bundledHelperStartGate(BundledHelperInstaller.Result.ALREADY_CURRENT, current, custody))
+        // The same single check the base build made on an already-current start, and nothing new.
+        assertEquals(listOf("legacy takeover record"), calls)
+        calls.clear()
+        listOf(BundledHelperInstaller.Result.SKIPPED, BundledHelperInstaller.Result.REPROVISION_REQUIRED).forEach {
+            assertEquals(it, bundledHelperStartGate(it, current, custody))
+        }
+        assertEquals(emptyList<String>(), calls)
+        assertNull(bundledHelperStartGate(null, current, custody))
+        assertEquals(listOf("custody record"), calls)
+    }
+
+    @Test fun `startup recovery only relaunches a record whose system files are already gone`() {
+        val line = "OK CUSTODYMIGRATION 1 SYSTEM_REMOVED ${"1".repeat(64)} 10 ${"2".repeat(64)} 119 NONE 0 " +
+            "$incumbentBuild $stagedBuild ${"3".repeat(64)} 20 $FIRST_BOOT_ID\n"
+        val removed = requireNotNull(parseSystemCustodyMigrationRecord(line))
+        assertTrue(systemCustodyResumeOnlyAllowed(removed, stagedBuild))
+        assertFalse(systemCustodyResumeOnlyAllowed(removed, "9".repeat(64)))
+        val swapped = requireNotNull(parseSystemCustodyMigrationRecord(
+            line.replace("SYSTEM_REMOVED", "SWAPPED").replace(" $FIRST_BOOT_ID\n", " NONE\n")))
+        assertFalse(systemCustodyResumeOnlyAllowed(swapped, stagedBuild))
     }
 
     @Test fun `a removal init still sees is restored and rolled back`() {
@@ -404,6 +462,8 @@ class BundledHelperSystemCustodyMigrationTest {
         assertFalse(label, fixture.record.exists())
         assertTrue(label + fixture.callLog(), "start hapaneld_helper" in fixture.callLog())
         assertTrue(label, fixture.incumbentReady.isFile)
+        assertEquals(label, SYSTEM_BIN_LABEL, fixture.labelOf(fixture.systemBin))
+        assertEquals(label, REGISTRATION_LABEL, fixture.labelOf(fixture.registration))
         assertFalse(label, File(fixture.root, "dev/.hapaneld-helper-transaction.lock").exists())
     }
 
