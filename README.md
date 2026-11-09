@@ -14,6 +14,12 @@
 
 It runs on ARM wall panels with Android 8.0 or newer and debugging access, from Sonoff (NSPanel Pro), Shelly, Tuya, Meta, Electron and Smatek, and on any other panel that meets those requirements. You do not install it yourself: the [Panel Assistant integration](https://github.com/panel-assistant/ha-integration) installs it from Home Assistant, over the network or over USB from your browser, and delivers every update.
 
+## Everything happens in Home Assistant
+
+- **Install, update and repair from Home Assistant.** You add a panel from **Settings**, update it from its update entity, and put problems right from the Repairs Home Assistant raises, which name the panel and say what to do.
+- **Nothing to install on your computer.** No Android developer tools and no command line. A USB install runs from Home Assistant in Chrome or Edge, and a network install needs only the panel's address. The one step on the panel itself is switching on debugging in its own Settings; the [hardware page](https://panel-assistant.io/hardware/) for your model says where that switch is.
+- **Repeatable results.** An interrupted install is safe to run again: it checks what already happened on the panel before it changes anything, and carries on from there. Every update arrives the same way, through Panel Assistant, which backs up the panel's settings first and confirms the panel came back healthy.
+
 **Get started:** add Panel Assistant to Home Assistant through [HACS](https://github.com/panel-assistant/ha-integration#install-the-integration), then follow [Getting started](https://panel-assistant.io/start/getting-started/). [Choose a panel](https://panel-assistant.io/install/supported-panels/) says what to expect from each model, and [Updates and recovery](https://panel-assistant.io/manage/updates-and-recovery/) covers what happens if an installation stops.
 
 ## Development
