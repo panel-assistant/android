@@ -47,7 +47,8 @@ internal fun managementStatusJson(
     databaseObservationNonce: String?,
     permissions: () -> Map<PanelPermissionRepair.Grant, PanelPermissionRepair.State>,
     homeProof: (() -> String)? = null,
-    /** The `proximity` component, or null to omit it on a panel with no proximity source. */
+    /** The `proximity` component, or null to omit it on a panel with no proximity source. Sent only while Wake on
+     *  wave is on. */
     proximity: () -> String? = { null },
     /** The native transport's phase and refusal; null when no transport owner runs. */
     panelAssistantTransport: PanelAssistantTransportFacts? = null,
@@ -144,7 +145,11 @@ internal fun managementStatusJson(
         "\"database_observation_nonce\":${jsonStr(it)},"
     }.orEmpty()
     val homeProofJson = homeProof?.let { "\"home_ui\":${it()}," }.orEmpty()
-    val proximityJson = runCatching(proximity).getOrNull()?.let { "\"proximity\":$it," }.orEmpty()
+    // Panel Assistant raises its proximity setup Repair from this component. Proximity is optional and only Wake on
+    // wave needs a calibration (the panel's own setup banner has the same gate), so a panel that does not wake on a
+    // wave sends none, and Panel Assistant clears a Repair it raised before.
+    val proximityJson = if (!config.wakeOnWave) "" else
+        runCatching(proximity).getOrNull()?.let { "\"proximity\":$it," }.orEmpty()
     val presentationOverlay = installWarningPresentationsJson(warns, warningPresentations)
         ?.let { "\"warning_presentations\":$it," }
         .orEmpty()

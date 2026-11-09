@@ -57,7 +57,7 @@
     var available = d.present !== false && phase !== "source_unavailable";
     var phases = {
       ready: ["ready", "Proximity is ready"],
-      calibration_required: ["required", "Proximity setup is available on the panel"],
+      calibration_required: ["required", "Proximity is not set up. It is optional; touch always wakes the panel."],
       learning: ["learning", "Learning from everyday touches; setup is optional"],
       calibrating: ["calibrating", "Setup is running on the panel"],
       source_unavailable: ["unavailable", "Proximity source is unavailable"]
