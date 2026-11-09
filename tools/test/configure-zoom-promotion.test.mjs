@@ -160,6 +160,25 @@ const until = async (what, predicate, ms = 2000) => {
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
 };
+// Counts the page's saves whose answer it has not handled yet. The page handles an answer in a callback it
+// adds to the promise returned here, so that callback has run before the task queued below decrements.
+const countSaves = (p) => p.evaluate(() => {
+  const request = window.PaneldTransport.request;
+  window.unhandledSaves = 0;
+  window.PaneldTransport.request = function (op) {
+    const answer = request.apply(this, arguments);
+    if (op !== 'settings') return answer;
+    window.unhandledSaves++;
+    const handled = () => setTimeout(() => window.unhandledSaves--, 0);
+    const returned = answer.then((reply) => reply);
+    returned.then(handled, handled);
+    return returned;
+  };
+});
+// Every save sent so far has been answered and the page has taken the answer, which re-renders the form. A
+// gesture begun before that can be split by the re-render: Chromium does not keep a number field's
+// selection across it, so the typed text lands before the old value ("02"), 2026-11-08.
+const answersTaken = (p) => until('the page to take every save answer', () => p.evaluate(() => window.unhandledSaves === 0), 10_000);
 // A value the page refuses, or the panel refuses, leaves the row showing the panel's value and the reason.
 async function refused(p, key, message, panelValue) {
   await until(`the refusal on ${key}`, async () => (await rowMessage(p, key).count()) === 1);
@@ -216,18 +235,22 @@ for (const engine of engines) {
     const p = await browser.newPage({ viewport: { width: 1024, height: 800 } });
     await p.goto(h.url);
     await card(p);
+    await countSaves(p);
     await commit(p, 'dashboard_zoom', 96.5);
     await until('the rounded value sent', () => h.posts.length === 1);
     assert.deepEqual(h.posts, [{ dashboard_zoom: '97' }]);
+    await answersTaken(p);
     assert.equal(await rowMessage(p, 'dashboard_zoom').count(), 0);
     for (const [input, expected] of [[2.4, '2'], [2.5, '3'], [2.6, '3']]) {
       // Reset to force a save even when successive inputs round to the same value.
       await commit(p, 'dashboard_idle_return_min', 0);
-      await until('idle return reset', async () => (await p.locator('#cfg-dashboard_idle_return_min input').inputValue()) === '0');
+      await answersTaken(p);
+      assert.equal(await p.locator('#cfg-dashboard_idle_return_min input').inputValue(), '0');
       const before = h.posts.length;
       await commit(p, 'dashboard_idle_return_min', input);
       await until('rounded idle return sent', () => h.posts.length > before);
       assert.deepEqual(h.posts.at(-1), { dashboard_idle_return_min: expected });
+      await answersTaken(p);
       assert.equal(await p.locator('#cfg-dashboard_idle_return_min input').inputValue(), expected);
       assert.equal(await rowMessage(p, 'dashboard_idle_return_min').count(), 0);
     }

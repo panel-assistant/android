@@ -1,6 +1,8 @@
 package io.panelassistant.android.control
 
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.graphics.PixelFormat
+import android.graphics.Rect
 import android.os.Build
 import android.os.SystemClock
 import android.view.InputDevice
@@ -15,6 +17,7 @@ import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -23,6 +26,12 @@ import org.junit.runner.RunWith
 class OverlayWakeTapInstrumentedTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context = instrumentation.targetContext
+    // Set by withDashboard: the point every test taps, the renderer fixture's window there, and every window
+    // listed once it was, so a wake window is one listed later.
+    private var touchX = 0f
+    private var touchY = 0f
+    private var dashboardWindow = -1
+    private var listedBeforeWake = emptySet<Int>()
 
     @Test
     fun wakingGestureNeverReachesDashboardAndTheNextTapDoes() {
@@ -65,11 +74,13 @@ class OverlayWakeTapInstrumentedTest {
                 val obsoleteWakes = AtomicInteger()
                 val replacementWoken = CountDownLatch(1)
                 assertTrue(wakeTap.arm { obsoleteWakes.incrementAndGet() })
+                // Replace a generation whose window is up, as a screen that has been off is re-armed.
+                val obsoleteWindow = awaitWakeOverlay()
                 assertTrue(wakeTap.arm {
                     wakeTap.disarm()
                     replacementWoken.countDown()
                 })
-                awaitWakeOverlay()
+                awaitWakeOverlay(replacing = obsoleteWindow)
 
                 tap(x, y)
                 assertTrue("replacement must retain a usable wake target", replacementWoken.await(2, TimeUnit.SECONDS))
@@ -77,6 +88,7 @@ class OverlayWakeTapInstrumentedTest {
 
                 assertEquals("the replaced generation must be disposed", 0, obsoleteWakes.get())
                 assertEquals("the replacement still consumes the waking gesture", 0, dashboardEvents.get())
+                awaitTouchTarget("the renderer fixture to take touches again") { it == dashboardWindow }
                 tap(x, y)
                 instrumentation.waitForIdleSync()
                 assertEquals("generation disposal must leave ordinary input usable", 2, dashboardEvents.get())
@@ -137,6 +149,9 @@ class OverlayWakeTapInstrumentedTest {
         val wm = context.getSystemService(WindowManager::class.java)
         val events = AtomicInteger()
         val target = View(context)
+        enableWindowList()
+        // The previous test's windows can still be listed while Android removes them.
+        val listedBefore = windowIds()
         try {
             instrumentation.runOnMainSync {
                 target.setOnTouchListener { _, _ -> events.incrementAndGet(); true }
@@ -164,6 +179,10 @@ class OverlayWakeTapInstrumentedTest {
                 x = position[0] + target.width / 2f
                 y = position[1] + target.height / 2f
             }
+            touchX = x
+            touchY = y
+            dashboardWindow = awaitTouchTarget("the renderer fixture to take touches") { it !in listedBefore }
+            listedBeforeWake = windowIds()
             block(events, x, y)
         } finally {
             instrumentation.runOnMainSync { if (target.isAttachedToWindow) wm.removeViewImmediate(target) }
@@ -178,15 +197,58 @@ class OverlayWakeTapInstrumentedTest {
     }
 
     /** arm() returns once the overlay is added, but Android routes touches to a window only after its first
-     *  frame is composed; a tap sent sooner fell through to the window below on API 35 (2026-11-06/07). The
-     *  window change is reported to accessibility once the window shows, so wait for those events to go quiet.
+     *  frame is composed; a tap sent sooner fell through to the window below on API 35 (2026-11-06/07). A wait
+     *  for accessibility events to go quiet for 500 ms alone still ended before the window showed on a loaded
+     *  emulator, whose first frames took over a second (2026-11-08). So first wait until accessibility lists the
+     *  wake window as the one at the tap point, above the renderer fixture and the generation it replaces, then
+     *  for the events to go quiet: on a one-CPU emulator input dispatch once lagged that listing (2026-11-09).
      *  A panel's sleeping screen is tapped seconds after arming, so this is fixture timing, not a product race. */
-    private fun awaitWakeOverlay() {
+    private fun awaitWakeOverlay(replacing: Int? = null): Int {
         instrumentation.waitForIdleSync()
+        val window = awaitTouchTarget("the wake overlay to take touches") { it !in listedBeforeWake && it != replacing }
         try {
             instrumentation.uiAutomation.waitForIdle(500, 5_000)
         } catch (_: TimeoutException) {
-            // Unrelated system events never went quiet; the wake latch below still decides the test.
+            // Unrelated system events never went quiet; the wake latch still decides the test.
+        }
+        return window
+    }
+
+    private fun enableWindowList() {
+        val automation = instrumentation.uiAutomation
+        val info = automation.serviceInfo
+        if (info.flags and AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS != 0) return
+        info.flags = info.flags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+        automation.serviceInfo = info
+    }
+
+    private fun windowIds(): Set<Int> = instrumentation.uiAutomation.windows.map { it.id }.toSet()
+
+    /** The window a touch at (x, y) reaches: the highest one accessibility reports there. Accessibility lists a
+     *  window once it shows and is touchable (on API 34+ from the same window list input dispatch uses), and
+     *  leaves out what a full-screen window above hides. */
+    private fun touchTargetAt(x: Float, y: Float): Int? {
+        val bounds = Rect()
+        return instrumentation.uiAutomation.windows
+            .filter { it.getBoundsInScreen(bounds); bounds.contains(x.toInt(), y.toInt()) }
+            .maxByOrNull { it.layer }?.id
+    }
+
+    private fun describeWindows(): String {
+        val bounds = Rect()
+        return instrumentation.uiAutomation.windows.joinToString { w ->
+            w.getBoundsInScreen(bounds)
+            "${w.id}/layer ${w.layer}/type ${w.type}/${bounds.toShortString()}/${w.title}"
+        } + " (fixture $dashboardWindow)"
+    }
+
+    /** Waits for the touch target at the tap point to satisfy [accepted]; the deadline only bounds a hang. */
+    private fun awaitTouchTarget(what: String, accepted: (Int) -> Boolean): Int {
+        val deadline = SystemClock.uptimeMillis() + 15_000
+        while (true) {
+            touchTargetAt(touchX, touchY)?.let { if (accepted(it)) return it }
+            if (SystemClock.uptimeMillis() > deadline) fail("$what within 15 s; windows ${describeWindows()}")
+            SystemClock.sleep(20)
         }
     }
 
