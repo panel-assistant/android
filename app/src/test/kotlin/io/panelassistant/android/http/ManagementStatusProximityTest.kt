@@ -11,7 +11,10 @@ import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 
-/** The status endpoint's `proximity` component: present with a proximity source, omitted without one. */
+/**
+ * The status endpoint's `proximity` component, which Panel Assistant reads to raise its proximity setup Repair:
+ * present only while Wake on wave is on and the panel has a proximity source.
+ */
 class ManagementStatusProximityTest {
     private fun status(fixture: PaneldServerHttpFixture, proximity: () -> String?): JSONObject {
         val snapshot = ManagementSnapshot(
@@ -44,6 +47,7 @@ class ManagementStatusProximityTest {
     @Test fun proximityIsATopLevelComponentOnlyWhereThePanelHasASource() {
         PaneldServerHttpFixture().use { fixture ->
             fixture.useManagementStatus {}
+            fixture.config.setWakeOnWave(true)
             val present = status(fixture) { """{"state":"calibration_required","wake_ready":false}""" }
             val proximity = present.getJSONObject("proximity")
             assertEquals("calibration_required", proximity.getString("state"))
@@ -57,6 +61,23 @@ class ManagementStatusProximityTest {
             assertFalse(status(fixture) { null }.has("proximity"))
             // A failing read omits the component rather than failing the whole status.
             assertFalse(status(fixture) { error("sensor gone") }.has("proximity"))
+        }
+    }
+
+    /** Proximity is optional: with Wake on wave off, an uncalibrated sensor never asks Panel Assistant for setup. */
+    @Test fun aPanelThatDoesNotWakeOnAWaveSendsNoProximitySetupState() {
+        PaneldServerHttpFixture().use { fixture ->
+            fixture.useManagementStatus {}
+            val uncalibrated = """{"state":"calibration_required","wake_ready":false}"""
+            assertFalse("Wake on wave is off by default", fixture.config.wakeOnWave)
+            assertFalse(status(fixture) { uncalibrated }.has("proximity"))
+
+            fixture.config.setWakeOnWave(true)
+            assertEquals("calibration_required", status(fixture) { uncalibrated }.getJSONObject("proximity").getString("state"))
+
+            // Turning Wake on wave off again withdraws the request, so Panel Assistant clears its Repair.
+            fixture.config.setWakeOnWave(false)
+            assertFalse(status(fixture) { uncalibrated }.has("proximity"))
         }
     }
 }

@@ -1744,9 +1744,9 @@
       "text": "El panel no aceptó esa acción."
     },
     "configure.proximity.setup.required": {
-      "sourceHash": "d7c9ca89745052a561f68460ddc4944cd627e8b215ae21b39679952552fc1118",
-      "state": "machine-cross-checked",
-      "text": "La configuración de proximidad está disponible en el panel"
+      "sourceHash": "971684a549196212c949dbd0bfff1671dcd4cac05c51f873413aae1ecc0450e6",
+      "state": "english-fallback",
+      "text": "Proximity is not set up. It is optional; touch always wakes the panel."
     },
     "configure.proximity.setup.reset": {
       "sourceHash": "8ce491fb3c0b3e323b74408d14bc079e230a7b02841006762c14803f7114f38b",

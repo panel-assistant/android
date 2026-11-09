@@ -1734,9 +1734,9 @@
       "state": "machine-cross-checked"
     },
     "configure.proximity.setup.required": {
-      "text": "A configuração de proximidade está disponível no painel",
-      "sourceHash": "d7c9ca89745052a561f68460ddc4944cd627e8b215ae21b39679952552fc1118",
-      "state": "machine-cross-checked"
+      "text": "Proximity is not set up. It is optional; touch always wakes the panel.",
+      "sourceHash": "971684a549196212c949dbd0bfff1671dcd4cac05c51f873413aae1ecc0450e6",
+      "state": "english-fallback"
     },
     "configure.proximity.setup.reset": {
       "text": "Restaurar padrões do perfil",

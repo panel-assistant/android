@@ -408,7 +408,7 @@ internal class ProximityCalibrationRuntime(
         closed || !sourceProven || !view.available -> "Proximity source unavailable"
         view.active -> "Follow proximity setup on the panel"
         view.calibration == null && readFailed -> STORAGE_UNREADABLE_MESSAGE
-        view.calibration == null -> "Proximity setup is available on the panel"
+        view.calibration == null -> "Proximity is not set up. It is optional; touch always wakes the panel."
         else -> "Calibrated proximity · ${view.mode?.name?.lowercase(Locale.ROOT)}"
     }
 

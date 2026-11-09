@@ -4870,8 +4870,8 @@
       "hardMaxChars": 111
     },
     "configure.proximity.setup.required": {
-      "text": "Proximity setup is available on the panel",
-      "sourceHash": "d7c9ca89745052a561f68460ddc4944cd627e8b215ae21b39679952552fc1118",
+      "text": "Proximity is not set up. It is optional; touch always wakes the panel.",
+      "sourceHash": "971684a549196212c949dbd0bfff1671dcd4cac05c51f873413aae1ecc0450e6",
       "surface": "configure",
       "context": "Proximity setup launched from the browser; physical instructions and Save appear on the panel. Preserve safety meaning and named placeholders; render as text, not HTML.",
       "risk": "ordinary",
