@@ -243,6 +243,8 @@ internal object BundledHelperShellFixtures {
                 rm -f '${incumbentReady.absolutePath}'
                 tamper='${File(root, "tamper-on-stop").absolutePath}'
                 if [ -f "${dollar}tamper" ]; then echo tampered >> "${dollar}(cat "${dollar}tamper")"; rm -f "${dollar}tamper"; fi
+                doomed='${File(root, "delete-on-stop").absolutePath}'
+                if [ -f "${dollar}doomed" ]; then rm -f "${dollar}(cat "${dollar}doomed")"; rm -f "${dollar}doomed"; fi
                 ${hook("signal-on-stop")}
                 exit 0
             """.trimIndent() + "\n", 755)
@@ -275,6 +277,8 @@ internal object BundledHelperShellFixtures {
                 #!/bin/sh
                 echo "chcon ${dollar}*" >> '${calls.absolutePath}'
                 [ ! -f '${File(root, "chcon-fails").absolutePath}' ] || exit 1
+                # A chcon that reports success but leaves the label unchanged.
+                [ ! -f '${File(root, "chcon-noop").absolutePath}' ] || exit 0
                 path=${dollar}2
                 key=$labelKey
                 echo "${dollar}key ${dollar}1" >> '${labels.absolutePath}'

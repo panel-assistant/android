@@ -158,6 +158,35 @@ class BundledHelperSystemCustodyMigrationTest {
         }
     }
 
+    @Test fun `a chcon that reports success without relabelling fails the restore closed`() {
+        withCustodyFiles { fixture ->
+            File(fixture.root, "chcon-noop").writeText("")
+            fixture.signalOn("signal-on-remount-ro", "TERM")
+            assertTrue(runCommand(migrate(fixture)).exitCode != 0)
+            assertTrue(fixture.callLog().toString(), fixture.callLog().any { it.startsWith("chcon ") })
+            assertTrue(fixture.record.isFile)
+            assertEquals(fixture.oldBytes, File(fixture.archive, "hapaneld-helper.system.${fixture.oldSha}").readText())
+            assertTrue(File(fixture.archive, "hapaneld-helper.system.${fixture.oldSha}.attr").isFile)
+            assertFalse(fixture.callLog().any { it.startsWith("start") })
+        }
+    }
+
+    @Test fun `an archived attribute record that changed or vanished after archiving stops the removal`() {
+        listOf("tamper-on-stop", "delete-on-stop").forEach { hook ->
+            listOf("system.%s.attr", "rc.%r.attr").forEach { name ->
+                withCustodyFiles { fixture ->
+                    val attr = File(fixture.archive, "hapaneld-helper." +
+                        name.replace("%s", fixture.oldSha).replace("%r", fixture.registrationSha))
+                    File(fixture.root, hook).writeText(attr.absolutePath)
+                    val label = "$hook $name"
+                    assertEquals(label, 1, runCommand(migrate(fixture)).exitCode)
+                    assertRolledBack(fixture, label)
+                    assertFalse(label, fixture.callLog().any { it.startsWith("mount") })
+                }
+            }
+        }
+    }
+
     @Test fun `a label that cannot be read refuses the migration before anything leaves system`() {
         withCustodyFiles { fixture ->
             File(fixture.root, "ls-fails").writeText("")
@@ -474,6 +503,8 @@ class BundledHelperSystemCustodyMigrationTest {
 
     /** The incumbent serves again from its untouched /system files; only the stale copy stays archived. */
     private fun assertRolledBack(fixture: CustodyFixture, label: String = "") {
+        assertTrue("$label: /system binary missing", fixture.systemBin.isFile)
+        assertTrue("$label: /system rc missing", fixture.registration.isFile)
         assertEquals(label, fixture.oldBytes, fixture.systemBin.readText())
         assertTrue(label, fixture.systemBin.canExecute())
         assertEquals(label, fixture.registrationBytes, fixture.registration.readText())
