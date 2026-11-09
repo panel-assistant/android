@@ -8,6 +8,10 @@ import io.panelassistant.android.device.LedMechanism
 import io.panelassistant.android.device.LocalWake
 import io.panelassistant.android.device.ScreenOff
 import io.panelassistant.android.device.SuForm
+import io.panelassistant.android.audio.CaptureDownmix
+import io.panelassistant.android.audio.CaptureRoute
+import io.panelassistant.android.audio.PlatformAecMode
+import io.panelassistant.android.audio.PreferredMicDevice
 import io.panelassistant.android.hardware.LedTransfer
 import io.panelassistant.android.hardware.TransferCurve
 import java.net.URI
@@ -235,6 +239,19 @@ internal object ProfileValidator {
             } else if (backlight.route == null && curve != null && curve != TransferCurve.Identity) {
                 reject("hardware.backlight.route", "A backlight curve must name its route: setting or node.")
             }
+        }
+        document.hardware.microphoneCapture?.let { capture ->
+            val path = "hardware.microphone_capture"
+            if (document.hardware.microphoneDeclared == false) {
+                reject(path, "A capture route needs a microphone; this profile declares microphone: false.")
+            }
+            capture.source?.let { if (it !in MICROPHONE_CAPTURE_SOURCES) reject("$path.source", "Unknown audio source '$it'; expected one of ${MICROPHONE_CAPTURE_SOURCES.joinToString()}.") }
+            capture.sampleRateHz?.let { if (it !in CaptureRoute.SUPPORTED_RATES_HZ) reject("$path.sample_rate_hz", "Unsupported capture rate $it; expected one of ${CaptureRoute.SUPPORTED_RATES_HZ.sorted().joinToString()}.") }
+            capture.channels?.let { if (it !in CaptureRoute.SUPPORTED_CHANNELS) reject("$path.channels", "Expected 1 or 2 channels, the count Android's recorder is asked for.") }
+            capture.downmix?.let { if (CaptureDownmix.ofWire(it) == null) reject("$path.downmix", "Unknown downmix '$it'; expected one of ${CaptureDownmix.entries.joinToString { mode -> mode.wireValue }}.") }
+            capture.preferredDevice?.let { if (PreferredMicDevice.ofWire(it) == null) reject("$path.preferred_device", "Unknown preferred device '$it'; expected auto, builtin or usb.") }
+            capture.warmupReads?.let { if (it !in 0..CaptureRoute.MAX_WARMUP_READS) reject("$path.warmup_reads", "Warm-up reads must be 0 through ${CaptureRoute.MAX_WARMUP_READS}.") }
+            capture.platformAec?.let { if (PlatformAecMode.ofWire(it) == null) reject("$path.platform_aec", "Unknown platform_aec '$it'; expected auto, on or off.") }
         }
         document.hardware.buttonBacklight?.let { curve ->
             if (!document.hardware.hasButtonBacklight) {
@@ -584,3 +601,6 @@ internal object ProfileValidator {
 }
 
 internal val BACKLIGHT_ROUTES = setOf("setting", "node")
+
+/** The audio sources a profile's capture route may name: the `voice_audio_source` setting's own options. */
+internal val MICROPHONE_CAPTURE_SOURCES = listOf("voice_recognition", "mic", "voice_communication")

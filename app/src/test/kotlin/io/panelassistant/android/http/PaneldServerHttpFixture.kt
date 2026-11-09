@@ -172,6 +172,7 @@ internal class PaneldServerHttpFixture(
         field("onWakeWordsChanged", {})
         field("assistPipelines", NO_PIPELINES)
         field("voiceTest", NO_VOICE_TEST)
+        field("voiceDiagnostics", io.panelassistant.android.assist.VoiceDiagnosticsControl.NONE)
         field("playAudio", { _: String -> error("Unexpected playback") })
         field("onInstallComponent", installComponent)
         field("haOAuth", HaOAuthRuntime(

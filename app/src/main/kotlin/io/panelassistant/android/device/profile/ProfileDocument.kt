@@ -170,6 +170,12 @@ data class ProfileHardware(
      * checked by the panel's own capture: present hardware is offered and the panel proves it.
      */
     val microphoneDeclared: Boolean? = null,
+    /**
+     * How the microphone is opened (`hardware.microphone_capture`): source, rate, channels, downmix,
+     * preferred input device, warm-up discard and platform echo canceller. Null (the block absent) opens
+     * the default route exactly as before routes existed.
+     */
+    val microphoneCapture: io.panelassistant.android.audio.MicrophoneCaptureDeclaration? = null,
     // Whether the panel has a loudspeaker. True unless a profile says otherwise: present hardware is offered.
     val hasSpeaker: Boolean = true,
     /**

@@ -90,8 +90,12 @@ internal sealed interface VoiceTurnEvent {
      */
     data class Reply(val text: String, val final: Boolean) : VoiceTurnEvent
 
-    /** The turn is over; nothing follows. */
-    data object End : VoiceTurnEvent
+    /**
+     * The turn is over; nothing follows. Newer Panel Assistant releases say how it ended: [outcome] is the
+     * intent's response type (`action_done`, `query_answer`, `error`) and [code] its error code, such as
+     * `no_intent_match`. Older releases send neither, and the panel derives the result from what it heard.
+     */
+    data class End(val outcome: String? = null, val code: String? = null) : VoiceTurnEvent
 }
 
 /**
@@ -251,7 +255,7 @@ internal class PanelAssistantVoice(
             if (type == "event") {
                 val turn = turns[id] ?: return false
                 val parsed = turnEvent(event)
-                if (parsed == VoiceTurnEvent.End) turns.remove(id)
+                if (parsed is VoiceTurnEvent.End) turns.remove(id)
                 parsed?.let(turn::deliver)
                 return true
             }
@@ -302,6 +306,9 @@ internal class PanelAssistantVoice(
         )
     }
 
+    /** A short machine token as Panel Assistant sends one, or null for anything else. */
+    private fun token(value: Any?): String? = (value as? String)?.takeIf(TOKEN::matches)
+
     private fun colors(map: JSONObject?): Map<String, Int> {
         map ?: return emptyMap()
         return map.keys().asSequence().mapNotNull { id ->
@@ -322,7 +329,7 @@ internal class PanelAssistantVoice(
         // Only Panel Assistant releases that show the conversation send these; earlier ones never do.
         "transcript" -> (event.opt("text") as? String)?.let { VoiceTurnEvent.Transcript(it) }
         "reply" -> (event.opt("text") as? String)?.let { VoiceTurnEvent.Reply(it, event.opt("final") == true) }
-        "end" -> VoiceTurnEvent.End
+        "end" -> VoiceTurnEvent.End(token(event.opt("outcome")), token(event.opt("code")))
         else -> null
     }
 
@@ -334,6 +341,7 @@ internal class PanelAssistantVoice(
         const val EVENT_VOICE_ANNOUNCE = "voice_announce"
         const val EVENT_VOICE_COLORS = "voice_colors"
         private val COLOR = Regex("^#[0-9A-Fa-f]{6}$")
+        private val TOKEN = Regex("^[A-Za-z0-9_.-]{1,64}$")
         const val CODE_SESSION_CLOSED = "session_closed"
         private val ANNOUNCE_ID = Regex("^[A-Za-z0-9_-]{1,64}$")
 
@@ -430,7 +438,7 @@ internal class VoiceTurn(
     suspend fun awaitStart() = handler.join()
 
     internal fun deliver(event: VoiceTurnEvent) {
-        if (event == VoiceTurnEvent.End) finished = true
+        if (event is VoiceTurnEvent.End) finished = true
         events.trySend(event)
     }
 
@@ -441,7 +449,7 @@ internal class VoiceTurn(
         sender.cancel()
         handler.cancel()
         events.trySend(VoiceTurnEvent.Failed(code))
-        events.trySend(VoiceTurnEvent.End)
+        events.trySend(VoiceTurnEvent.End())
     }
 
     private companion object {

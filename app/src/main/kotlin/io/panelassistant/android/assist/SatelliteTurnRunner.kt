@@ -47,13 +47,24 @@ internal class SatelliteTurnRunner(
         onReply: (String) -> Unit,
     ): AssistOutcome {
         val turn = voice.begin(request.wakeWordId, request.continued)
-            ?: return AssistOutcome(error = AssistError(CODE_UNAVAILABLE, "Panel Assistant is not connected"))
+            ?: return AssistOutcome(
+                error = AssistError(CODE_UNAVAILABLE, "Panel Assistant is not connected"),
+                turn = VoiceTurnRecord(null, null, VoiceTurnRecord.ERROR, CODE_UNAVAILABLE, null),
+            )
+        val listenStartNs = nanoTime()
+        var listenMs: Long? = null
         var attachment: AutoCloseable? = attachAudio(measured(withoutChime(turn), request.heardAtNs))
         fun stopListening() {
+            if (attachment != null && listenMs == null) listenMs = (nanoTime() - listenStartNs) / 1_000_000L
             attachment?.close()
             attachment = null
             turn.endAudio()
         }
+        // What the owner's last-command view shows: what was heard, the reply, and how Home Assistant ended it.
+        var heard: String? = null
+        var reply: String? = null
+        var replyFinal = false
+        var ended: VoiceTurnEvent.End? = null
         var continueConversation = false
         var error: AssistError? = null
         // Whether Home Assistant has heard that the panel is done speaking for this turn.
@@ -99,9 +110,17 @@ internal class SatelliteTurnRunner(
                             }
                         }
                         is VoiceTurnEvent.Failed -> error = error ?: AssistError(event.code, "The pipeline failed")
-                        is VoiceTurnEvent.Reply -> onReply(event.text)
-                        is VoiceTurnEvent.Transcript -> Unit
-                        VoiceTurnEvent.End -> break
+                        is VoiceTurnEvent.Reply -> {
+                            // Each reply is the text so far; the final one is the agent's finished answer.
+                            if (!replyFinal) reply = event.text
+                            replyFinal = replyFinal || event.final
+                            onReply(event.text)
+                        }
+                        is VoiceTurnEvent.Transcript -> heard = event.text
+                        is VoiceTurnEvent.End -> {
+                            ended = event
+                            break
+                        }
                     }
                 }
             }
@@ -116,7 +135,22 @@ internal class SatelliteTurnRunner(
             attachment?.close()
             turn.close()
         }
-        return AssistOutcome(continueConversation = continueConversation && error == null, error = error)
+        val failure = error
+        val record = VoiceTurnRecord(
+            heard = heard,
+            reply = reply,
+            // A failure after Home Assistant settled the intent (the reply's speech failing, say) still
+            // ends the turn in error: its end event carries the intent's outcome, not the turn's.
+            outcome = when {
+                failure != null -> VoiceTurnRecord.ERROR
+                ended?.outcome != null -> ended.outcome
+                !reply.isNullOrBlank() -> VoiceTurnRecord.REPLIED
+                else -> VoiceTurnRecord.NO_REPLY
+            },
+            code = if (failure != null && ended?.outcome != VoiceTurnRecord.ERROR) failure.code else ended?.code ?: failure?.code,
+            listenMs = listenMs ?: if (attachment == null) null else (nanoTime() - listenStartNs) / 1_000_000L,
+        )
+        return AssistOutcome(continueConversation = continueConversation && failure == null, error = failure, turn = record)
     }
 
     /** False when Home Assistant has not started [turn] within [maxStartMs]; a turn it refused counts as started. */

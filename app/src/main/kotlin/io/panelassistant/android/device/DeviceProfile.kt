@@ -142,6 +142,9 @@ interface DeviceProfile {
      *  [io.panelassistant.android.audio.MicrophonePresence]. */
     val microphoneDeclared: Boolean? get() = null
 
+    /** The profile's `hardware.microphone_capture` block; null opens the default capture route. */
+    val microphoneCapture: io.panelassistant.android.audio.MicrophoneCaptureDeclaration? get() = null
+
     /** Board carries a loudspeaker, offered to Home Assistant as a media player. Default true: present
      *  hardware is offered, so only a profile declaring `speaker: false` hides the player. */
     val hasSpeaker: Boolean get() = true

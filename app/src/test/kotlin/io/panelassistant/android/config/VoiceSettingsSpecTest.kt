@@ -16,9 +16,12 @@ class VoiceSettingsSpecTest {
 
     private val micGain = requireNotNull(SettingsRegistry.spec("voice_mic_gain_db"))
     private val stopWord = requireNotNull(SettingsRegistry.spec("voice_stop_word"))
+    private val captureRate = requireNotNull(SettingsRegistry.spec("voice_capture_rate"))
+    private val captureChannels = requireNotNull(SettingsRegistry.spec("voice_capture_channels"))
+    private val captureDownmix = requireNotNull(SettingsRegistry.spec("voice_capture_downmix"))
 
     private val everyMicrophoneGatedVoiceSpec =
-        listOf(voiceEnabled, wakeWords, pipelines, audioSource, sensitivity, micGain, stopWord)
+        listOf(voiceEnabled, wakeWords, pipelines, audioSource, sensitivity, micGain, stopWord, captureRate, captureChannels, captureDownmix)
 
     @Test fun `every voice setting is offered wherever a microphone is present, proven or not, and lives in the Voice group`() {
         val expected = mapOf(
@@ -170,5 +173,18 @@ class VoiceSettingsSpecTest {
 
     @Test fun `the voice phase is the satellite's state in Home Assistant, not a panel setting`() {
         assertNull(SettingsRegistry.spec("voice_state"))
+    }
+
+    @Test fun `the capture route settings follow the profile until the owner picks a value`() {
+        mapOf(
+            captureRate to listOf("auto", "16000", "44100", "48000"),
+            captureChannels to listOf("auto", "1", "2"),
+            captureDownmix to listOf("auto", "dominance", "average", "left", "right"),
+        ).forEach { (spec, options) ->
+            assertEquals(spec.key, SettingType.ENUM, spec.type)
+            assertEquals(spec.key, "auto", spec.default)
+            assertEquals(spec.key, options, spec.options)
+            assertEquals(spec.key, Scope.DEVICE, spec.scope)
+        }
     }
 }

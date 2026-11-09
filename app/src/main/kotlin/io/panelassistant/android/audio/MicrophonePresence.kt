@@ -120,6 +120,12 @@ data class MicrophoneStatus(
     val detail: String? = null,
     /** Android reports the microphone muted; never true for an [MicrophonePresence.ABSENT] one. */
     val muted: Boolean = false,
+    /**
+     * The capture route, from [CaptureRouteReporting.captureRoute] on the shared source: requested and active
+     * source, rate, channels and downmix, the routed device, the echo canceller read now, the warm-up and
+     * the rebuild count. Null where the builder of this status has no source to ask.
+     */
+    val route: CaptureRouteReport? = null,
 ) {
     /** Voice may listen now: a proven microphone, or an unproven one whose check passed. */
     val usable: Boolean

@@ -26,6 +26,7 @@ $proximityMount</div>
 <script src="assets/configure-auto-sleep.js"></script>
 <script src="assets/configure-cards.js"></script>
 <script src="assets/configure-render.js"></script>
+<script src="assets/configure-voice-tuning.js"></script>
 <script src="assets/configure.js"></script>
 $proximityScript"""
 }

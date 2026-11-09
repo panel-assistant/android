@@ -1,6 +1,9 @@
 package io.panelassistant.android.device.profile
 
 import io.panelassistant.android.device.LedMechanism
+import io.panelassistant.android.audio.CaptureDownmix
+import io.panelassistant.android.audio.PlatformAecMode
+import io.panelassistant.android.audio.PreferredMicDevice
 import io.panelassistant.android.hardware.LedTransfer
 import io.panelassistant.android.device.SuForm
 import io.panelassistant.android.device.LocalWake
@@ -127,6 +130,13 @@ object ProfileMetadata {
             field("hardware.local_wake", "string[]", false, "How a fully dark panel wakes locally: touch, proximity (a wave once calibrated), button. Omit when unknown; an empty list means only Home Assistant wakes it.", LocalWake.entries.map { it.yamlName }),
             field("hardware.camera", "boolean", false, "Board carries a usable camera."),
             field("hardware.microphone", "boolean", false, "Board carries a usable microphone; independent of hardware.camera."),
+            field("hardware.microphone_capture.source", "enum", false, "Android audio source the microphone opens through; the owner's audio source setting overrides it.", MICROPHONE_CAPTURE_SOURCES),
+            field("hardware.microphone_capture.sample_rate_hz", "integer", false, "Rate the recorder is asked for: 16000, 44100 or 48000; resampled to 16 kHz before any consumer."),
+            field("hardware.microphone_capture.channels", "integer", false, "Channel count the recorder is asked for, 1 or 2 (Android channels, never raw ALSA slots)."),
+            field("hardware.microphone_capture.downmix", "enum", false, "How two channels become one: dominance takes a channel four times louder than the other over each 10 ms, else averages.", CaptureDownmix.entries.map { it.wireValue }),
+            field("hardware.microphone_capture.preferred_device", "enum", false, "Input device the recorder prefers once built; auto keeps Android's routing.", PreferredMicDevice.entries.map { it.wireValue }),
+            field("hardware.microphone_capture.warmup_reads", "integer", false, "Reads discarded after every open, 0 through 200; defaults to 16."),
+            field("hardware.microphone_capture.platform_aec", "enum", false, "Platform echo canceller: auto attaches it when available, kept only when it reads back enabled.", PlatformAecMode.entries.map { it.wireValue }),
             field("hardware.speaker", "boolean", false, "Board carries a loudspeaker, offered as a media player; defaults to true, so only a board without one declares false."),
             field("hardware.camera_lens_offset_px", "integer", false, "Screen pixels from the top of the active area up to the camera lens centre; centres the camera-in-use light on the lens."),
             field("hardware.zigbee_gateway_dir", "path", false, "Supported Sonoff gateway directory."),

@@ -3,7 +3,13 @@ package io.panelassistant.android.http
 import io.panelassistant.android.assist.AssistPipelineDirectory
 import io.panelassistant.android.assist.VoiceTestTrigger
 import io.panelassistant.android.assist.wakeword.WakeWordCatalog
+import io.panelassistant.android.audio.ActiveCapture
+import io.panelassistant.android.audio.AecState
+import io.panelassistant.android.audio.CaptureDownmix
+import io.panelassistant.android.audio.CaptureRoute
+import io.panelassistant.android.audio.CaptureRouteReport
 import io.panelassistant.android.audio.MicrophoneCheck
+import io.panelassistant.android.audio.PlatformAecMode
 import io.panelassistant.android.audio.MicrophonePresence
 import io.panelassistant.android.audio.MicrophoneStatus
 import io.ktor.client.request.get
@@ -70,17 +76,38 @@ class VoiceProductionHttpTest {
         mount()
         val cases = listOf(
             MicrophoneStatus(MicrophonePresence.PROVEN) to
-                """{"presence":"proven","check":"not_run","detail":null,"muted":false}""",
+                """{"presence":"proven","check":"not_run","detail":null,"muted":false,"route":null,"aec":null}""",
             MicrophoneStatus(MicrophonePresence.UNPROVEN, MicrophoneCheck.PASSED) to
-                """{"presence":"unproven","check":"passed","detail":null,"muted":false}""",
+                """{"presence":"unproven","check":"passed","detail":null,"muted":false,"route":null,"aec":null}""",
             MicrophoneStatus(MicrophonePresence.UNPROVEN, MicrophoneCheck.SILENT) to
-                """{"presence":"unproven","check":"silent","detail":null,"muted":false}""",
+                """{"presence":"unproven","check":"silent","detail":null,"muted":false,"route":null,"aec":null}""",
             MicrophoneStatus(MicrophonePresence.UNPROVEN, MicrophoneCheck.NO_AUDIO, "AudioRecord init failed") to
-                """{"presence":"unproven","check":"no_audio","detail":"AudioRecord init failed","muted":false}""",
+                """{"presence":"unproven","check":"no_audio","detail":"AudioRecord init failed","muted":false,"route":null,"aec":null}""",
             MicrophoneStatus(MicrophonePresence.ABSENT) to
-                """{"presence":"absent","check":"not_run","detail":null,"muted":false}""",
+                """{"presence":"absent","check":"not_run","detail":null,"muted":false,"route":null,"aec":null}""",
             MicrophoneStatus(MicrophonePresence.UNPROVEN, muted = true) to
-                """{"presence":"unproven","check":"not_run","detail":null,"muted":true}""",
+                """{"presence":"unproven","check":"not_run","detail":null,"muted":true,"route":null,"aec":null}""",
+            MicrophoneStatus(
+                MicrophonePresence.PROVEN,
+                route = CaptureRouteReport(
+                    CaptureRoute(sampleRateHz = 48_000, channels = 2, warmupReads = 16, platformAec = PlatformAecMode.AUTO),
+                    ActiveCapture(
+                        source = android.media.MediaRecorder.AudioSource.VOICE_RECOGNITION, sampleRateHz = 48_000,
+                        channels = 2, downmix = CaptureDownmix.DOMINANCE, routedDevice = "15:Built-In Mic",
+                        aec = AecState.READBACK_FALSE, warmupReads = 16,
+                    ),
+                    rebuilds = 1,
+                ),
+            ) to
+                """{"presence":"proven","check":"not_run","detail":null,"muted":false,"route":{"requested":""" +
+                """{"source":"voice_recognition","rate_hz":48000,"channels":2,"downmix":"dominance","preferred_device":"auto",""" +
+                """"warmup_reads":16,"platform_aec":"auto"},"active":{"source":"voice_recognition","rate_hz":48000,""" +
+                """"channels":2,"downmix":"dominance","routed_device":"15:Built-In Mic","aec":"readback-false",""" +
+                """"warmup_reads":16},"rebuilds":1},"aec":"readback-false"}""",
+            MicrophoneStatus(MicrophonePresence.PROVEN, route = CaptureRouteReport(CaptureRoute(), null, rebuilds = 0)) to
+                """{"presence":"proven","check":"not_run","detail":null,"muted":false,"route":{"requested":""" +
+                """{"source":"voice_recognition","rate_hz":16000,"channels":1,"downmix":"dominance","preferred_device":"auto",""" +
+                """"warmup_reads":0,"platform_aec":"off"},"active":null,"rebuilds":0},"aec":null}""",
         )
         cases.forEach { (status, body) ->
             microphoneStatus = status

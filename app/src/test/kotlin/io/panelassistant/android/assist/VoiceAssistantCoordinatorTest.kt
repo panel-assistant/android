@@ -48,7 +48,10 @@ class VoiceAssistantCoordinatorTest {
     private class FakeEngine(val onActivation: (WakeWordActivation) -> Unit) : WakeWordEngine {
         var closed = false
         val heard = CopyOnWriteArrayList<List<Short>>()
+        /** Who reads the live scores, as the owner's wake-word test does. */
+        @Volatile var scores: io.panelassistant.android.assist.wakeword.WakeWordScoreListener? = null
         override fun onFrame(frame: PcmFrame) { heard += frame.samples.toList() }
+        override fun listenToScores(listener: io.panelassistant.android.assist.wakeword.WakeWordScoreListener?) { scores = listener }
         override fun close() { closed = true }
     }
 
@@ -144,6 +147,8 @@ class VoiceAssistantCoordinatorTest {
         on: CoroutineScope = scope,
         runner: () -> AssistRunner = { ScriptedRunner().also(runners::add) },
         from: () -> MicrophoneSource = { sourceRequests += 1; source },
+        levelLeaseMs: Long = VoiceAssistantCoordinator.DEFAULT_LEVEL_LEASE_MS,
+        wakeTestMs: Long = VoiceAssistantCoordinator.DEFAULT_WAKE_TEST_MS,
     ) = VoiceAssistantCoordinator(
         scope = on,
         settings = { settings },
@@ -160,6 +165,9 @@ class VoiceAssistantCoordinatorTest {
         onMicrophoneStatus = { statusChanges += 1 },
         checkTimeoutMs = checkTimeoutMs,
         muted = { muteReader?.muted ?: muted },
+        levelLeaseMs = levelLeaseMs,
+        wakeTestMs = wakeTestMs,
+        clock = { 1_700_000_000_000L },
     )
 
     @Test
@@ -192,6 +200,36 @@ class VoiceAssistantCoordinatorTest {
         camera.close()
         settleUntil { built.size == 2 && built[1].second.activeLeases.isNotEmpty() }
         assertEquals("the chosen audio source is built", 2, built.size)
+        assertEquals(ConfiguredMicrophoneSource.audioSourceFor("mic"), built[1].first)
+        assertEquals(listOf(MicPurpose.WAKE_WORD), built[1].second.activeLeases.map { it.purpose })
+        assertTrue("nothing still listens through the old source", first.activeLeases.isEmpty())
+    }
+
+    @Test
+    fun `an audio source chosen while the level meter is on is applied once the meter ends`() {
+        var setting = "voice_recognition"
+        val built = CopyOnWriteArrayList<Pair<Int, FakeMicrophoneSource>>()
+        lateinit var c: VoiceAssistantCoordinator
+        val shared = ConfiguredMicrophoneSource(
+            audioSource = { setting },
+            build = { kind -> FakeMicrophoneSource().also { built += kind to it } },
+            scope = scope,
+            onFree = { c.start() },
+        )
+        c = coordinator(from = shared::get)
+        c.start()
+        assertNull(c.diagnosticsAction("level", "tab-1"))
+        val first = built.single().second
+        assertEquals(listOf(MicPurpose.WAKE_WORD, MicPurpose.CALIBRATION), first.activeLeases.map { it.purpose })
+
+        // The owner tries another audio source on the same card; the voice_* listener re-arms the assistant.
+        setting = "mic"
+        c.start()
+        assertEquals("the meter keeps its capture while it is on", 1, built.size)
+
+        assertNull(c.diagnosticsAction("stop", "tab-1"))
+        settleUntil { built.size == 2 && built[1].second.activeLeases.isNotEmpty() }
+        assertEquals("the chosen audio source is built once the meter lets go", 2, built.size)
         assertEquals(ConfiguredMicrophoneSource.audioSourceFor("mic"), built[1].first)
         assertEquals(listOf(MicPurpose.WAKE_WORD), built[1].second.activeLeases.map { it.purpose })
         assertTrue("nothing still listens through the old source", first.activeLeases.isEmpty())
@@ -705,6 +743,149 @@ class VoiceAssistantCoordinatorTest {
     private fun shownCoordinator(side: PanelAssistantSide): VoiceAssistantCoordinator {
         state.setChangeListener { conversation.state(state.current()) }
         return coordinator(runner = { satelliteTurnRunner(side.voice, {}, conversation) }).also { it.start() }
+    }
+
+    /**
+     * The owner asks "did it hear me, and what did Assist make of it?": the last command keeps the score the
+     * wake word fired at, what speech-to-text heard, the reply and how Home Assistant ended the turn, in memory
+     * only, and turning voice off forgets it.
+     */
+    @Test
+    fun `a fired wake word carries its score into the last command, which turning voice off forgets`() {
+        val side = PanelAssistantSide()
+        val c = shownCoordinator(side)
+        engines.single().onActivation(WakeWordActivation("okay_nabu", "okay nabu", probability = 0.93f, cutoff = 0.97f))
+        val id = side.turn()
+        side.event(id, "listen_end")
+        side.event(id, "transcript", "text" to "turn on the kitchen light")
+        side.event(id, "reply", "text" to "Turned on", "final" to false)
+        side.event(id, "reply", "text" to "Turned on the kitchen light", "final" to true)
+        side.event(id, "end", "outcome" to "action_done")
+        settleUntil { c.diagnostics().lastCommand != null }
+
+        val last = c.diagnostics().lastCommand
+        assertEquals("okay_nabu", last?.wakeWord)
+        assertEquals(0.93f, last?.wakeScore ?: -1f, 0.0001f)
+        assertEquals("turn on the kitchen light", last?.heard)
+        assertEquals("Turned on the kitchen light", last?.reply)
+        assertEquals("action_done", last?.outcome)
+        assertNull(last?.code)
+        assertEquals(1_700_000_000_000L, last?.at)
+        assertTrue("the panel streamed the command for a measured time", (last?.listenMs ?: -1L) >= 0L)
+
+        settings = settings.copy(enabled = false)
+        c.start()
+        assertNull("voice off forgets what was heard", c.diagnostics().lastCommand)
+    }
+
+    @Test
+    fun `an older Panel Assistant's end leaves the result to what the panel heard`() {
+        val side = PanelAssistantSide()
+        val c = shownCoordinator(side)
+        engines.single().onActivation(WakeWordActivation("okay_nabu", "okay nabu", probability = 0.99f))
+        val id = side.turn()
+        side.event(id, "listen_end")
+        side.event(id, "error", "code" to "stt-no-text-recognized")
+        side.event(id, "end")
+        settleUntil { c.diagnostics().lastCommand != null }
+
+        val last = c.diagnostics().lastCommand
+        assertEquals("error", last?.outcome)
+        assertEquals("stt-no-text-recognized", last?.code)
+        assertNull(last?.heard)
+    }
+
+    /**
+     * The wake-word test reads the armed listener's own scores, because a PX30 cannot run a second scorer,
+     * and a wake word said during it is counted, not answered.
+     */
+    @Test
+    fun `a wake-word test reads the live listener's scores and swallows what it hears`() {
+        val c = coordinator()
+        c.start()
+        val engine = engines.single()
+        assertNull(c.diagnosticsAction("wake_test", "tab-1"))
+        val scores = requireNotNull(engine.scores) { "the test listens to the live listener" }
+        scores.onScore("okay_nabu", 0.62f, 0.97f)
+        scores.onScore("okay_nabu", 0.41f, 0.97f)
+        engine.onActivation(WakeWordActivation("okay_nabu", "okay nabu", probability = 0.98f))
+
+        val running = c.diagnostics().wakeTest
+        assertEquals("running", running.state)
+        assertEquals("okay_nabu", running.model)
+        assertEquals(0.62f, running.peak ?: -1f, 0.0001f)
+        assertEquals(0.97f, running.cutoff ?: -1f, 0.0001f)
+        assertEquals(1, running.fired)
+        assertTrue(running.remainingMs in 1..VoiceAssistantCoordinator.DEFAULT_WAKE_TEST_MS)
+        assertFalse("the wake word said during the test starts no run", c.running)
+        assertTrue(runners.isEmpty())
+        assertEquals("another browser is tuning this panel's microphone", c.diagnosticsAction("wake_test", "tab-2"))
+
+        assertNull(c.diagnosticsAction("stop", "tab-1"))
+        assertNull("the listener's scores are let go", engine.scores)
+        val done = c.diagnostics().wakeTest
+        assertEquals("done", done.state)
+        assertEquals(1, done.fired)
+        engine.onActivation(WakeWordActivation("okay_nabu", "okay nabu"))
+        awaitRunner(0)
+    }
+
+    @Test
+    fun `a wake-word test ends by itself`() {
+        val c = coordinator(wakeTestMs = 100L)
+        c.start()
+        assertNull(c.diagnosticsAction("wake_test", "tab-1"))
+        settleUntil { c.diagnostics().wakeTest.state == "done" }
+        assertEquals("done", c.diagnostics().wakeTest.state)
+        assertNull(engines.single().scores)
+        engines.single().onActivation(WakeWordActivation("okay_nabu", "okay nabu"))
+        awaitRunner(0)
+    }
+
+    @Test
+    fun `a voice setting changed while the owner tunes moves the wake-word test to the new listener and keeps the meter's claim`() {
+        val c = coordinator()
+        c.start()
+        assertNull(c.diagnosticsAction("level", "tab-1"))
+        assertNull(c.diagnosticsAction("wake_test", "tab-1"))
+        // The owner changes a voice setting on the same card; the voice_* listener re-arms the assistant.
+        c.start()
+        assertEquals("the listener was replaced", 2, engines.size)
+        val scores = requireNotNull(engines[1].scores) { "the test follows the listener that replaced it" }
+        scores.onScore("okay_nabu", 0.7f, 0.97f)
+        assertEquals("running", c.diagnostics().wakeTest.state)
+        assertEquals(0.7f, c.diagnostics().wakeTest.peak ?: -1f, 0.0001f)
+        assertEquals("the meter keeps the microphone claim across the re-arm", listOf(true), foregroundCalls.toList())
+        assertNull(c.diagnosticsAction("stop", "tab-1"))
+    }
+
+    @Test
+    fun `the level meter listens beside the wake word until the browser stops its heartbeat`() {
+        val c = coordinator(levelLeaseMs = 400L)
+        c.start()
+        assertNull(c.diagnosticsAction("level", "tab-1"))
+        val meter = mic.leases.last()
+        assertEquals(MicPurpose.CALIBRATION, meter.purpose)
+        assertFalse("the wake word keeps listening", mic.leases[0].paused)
+        // A tenth of full scale: -20 dBFS.
+        repeat(60) { mic.pushFrame(ShortArray(MicrophoneSource.SAMPLES_PER_FRAME) { 3_277 }) }
+        val level = requireNotNull(c.diagnostics().level)
+        assertEquals(-20f, level.rmsDbfs, 0.1f)
+        assertEquals(-20f, level.peakDbfs, 0.1f)
+        assertEquals(0, level.clipped)
+        assertEquals("tab-1", c.diagnostics().session)
+
+        repeat(4) {
+            Thread.sleep(150)
+            assertNull(c.diagnosticsAction("heartbeat", "tab-1"))
+        }
+        assertFalse("heartbeats keep the meter", meter.closed)
+        settleUntil { meter.closed }
+        assertTrue("silence from the browser lets the microphone go", meter.closed)
+        assertNull(c.diagnostics().level)
+        assertNull(c.diagnostics().session)
+        assertEquals("this tuning session has ended", c.diagnosticsAction("heartbeat", "tab-1"))
+        assertEquals("the wake word's claim was never dropped", listOf(true), foregroundCalls.toList())
     }
 
     @Test

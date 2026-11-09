@@ -3,7 +3,6 @@ package io.panelassistant.android.audio
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -149,33 +148,5 @@ class AudioRecordCaptureDeviceTest {
             0,
             device.read(ShortArray(160), 0, 160),
         )
-    }
-}
-
-/** A recorder a test can watch: every transition it makes is counted. */
-private class FakeRecorder : PcmRecorder {
-    val started = AtomicInteger()
-    val stopped = AtomicInteger()
-    val released = AtomicInteger()
-
-    @Volatile var recording = false
-    @Volatile var startSucceeds = true
-    @Volatile var nextRead = 0
-
-    override fun startRecording(): Boolean {
-        started.incrementAndGet()
-        recording = startSucceeds
-        return startSucceeds
-    }
-
-    override fun read(into: ShortArray, offsetSamples: Int, maxSamples: Int): Int = nextRead
-
-    override fun stop() {
-        stopped.incrementAndGet()
-        recording = false
-    }
-
-    override fun release() {
-        released.incrementAndGet()
     }
 }

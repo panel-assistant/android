@@ -31,6 +31,8 @@ internal data class AssistOutcome(
     val continueConversation: Boolean = false,
     val ttsUrl: String? = null,
     val error: AssistError? = null,
+    /** What the turn heard and answered, for the owner's last-command view; null where the runner keeps none. */
+    val turn: VoiceTurnRecord? = null,
 ) {
     val failed: Boolean get() = error != null
 }

@@ -354,6 +354,24 @@ class SatelliteTurnRunnerTest {
         second.await()
     }
 
+    @Test fun `a turn that fails after Home Assistant settled the intent is recorded as an error`() = runTest {
+        val link = link()
+        val turn = async {
+            SatelliteTurnRunner(link.voice).run(VoiceTurnRequest("okay_nabu"), { AutoCloseable {} }, {}, {})
+        }
+        runCurrent()
+        val runId = link.request(PanelAssistantVoice.COMMAND_VOICE_RUN).getLong("id")
+        link.answer(runId, JSONObject().put("handler_id", 5))
+        link.event(runId, "listen_end")
+        link.event(runId, "error", "code" to "tts_failed")
+        link.event(runId, "end", "outcome" to "action_done")
+        runCurrent()
+
+        val record = turn.await().turn
+        assertEquals("the intent's outcome does not hide the failure after it", VoiceTurnRecord.ERROR, record?.outcome)
+        assertEquals("tts_failed", record?.code)
+    }
+
     @Test fun `a failed turn proves no further step, and an exchange that ended with nothing heard leaves at once`() = runTest {
         val link = link()
         val conversation = VoiceConversation { 0L }

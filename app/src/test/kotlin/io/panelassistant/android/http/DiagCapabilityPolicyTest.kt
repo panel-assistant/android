@@ -430,6 +430,28 @@ class DiagCapabilityPolicyTest {
         )
         assertTrue(line, line.startsWith("[voice] enabled=true microphone=unproven check=no_audio muted=false "))
         assertTrue(line, line.contains("detail=\"read returned 0\" wake_words=[\"okay_nabu\"] pipelines=- "))
-        assertTrue(line, line.endsWith("source=voice_recognition sensitivity=default gain_db=6 stop_word=false"))
+        assertTrue(line, line.endsWith("source=voice_recognition sensitivity=default gain_db=6 stop_word=false route=- aec=- rebuilds=-"))
+    }
+
+    @Test fun theVoiceLineSaysWhichRouteThePanelCapturesThrough() {
+        val requested = io.panelassistant.android.audio.CaptureRoute(sampleRateHz = 48_000, channels = 2)
+        fun line(active: io.panelassistant.android.audio.ActiveCapture?) = voiceDiagnosticLine(
+            enabled = true,
+            microphone = io.panelassistant.android.audio.MicrophoneStatus(
+                io.panelassistant.android.audio.MicrophonePresence.PROVEN,
+                route = io.panelassistant.android.audio.CaptureRouteReport(requested, active, rebuilds = 2),
+            ),
+            wakeWords = "", pipelines = "", audioSource = "", sensitivity = "", micGainDb = 0, stopWord = false,
+        )
+        val open = line(
+            io.panelassistant.android.audio.ActiveCapture(
+                source = android.media.MediaRecorder.AudioSource.MIC, sampleRateHz = 16_000, channels = 2,
+                downmix = io.panelassistant.android.audio.CaptureDownmix.DOMINANCE, routedDevice = "15:Built-In Mic",
+                aec = io.panelassistant.android.audio.AecState.UNAVAILABLE, warmupReads = 16,
+            ),
+        )
+        assertTrue(open, open.endsWith(" route=mic/16000/2/dominance aec=unavailable rebuilds=2"))
+        val closed = line(null)
+        assertTrue(closed, closed.endsWith(" route=voice_recognition/48000/2/dominance(closed) aec=- rebuilds=2"))
     }
 }
