@@ -128,4 +128,42 @@ class PaneldServerWebViewApprovalTest {
             broker.clear()
         }
     }
+
+    @Test fun nativeProviderRefusalsAnswerWithTransportContractCodesAndKeepTheReason() = runTest {
+        PaneldServerHttpFixture().use { fixture ->
+            fixture.config.setSecurityMode(Config.SecurityMode.RELAXED)
+            val receipt = JSONObject().put("schema", 1).put("request_id", "held").put("artifact_sha256", "a".repeat(64))
+                .put("state", "installed").put("reason", JSONObject.NULL).put("process_id", "process")
+            val io = object : WebViewUpdateIo {
+                override val directory = fixture.directory
+                override fun observe() = WebViewObservation("generic", 27, emptySet(), "process", 1, 0,
+                    null, null, null, emptySet(), null, null, null, "none")
+                override fun readReceipt(): JSONObject? = receipt
+                override fun writeReceipt(receipt: JSONObject): Unit = error("A refused request wrote a receipt")
+                override fun inspect(file: File): WebViewApk? = error("A refused request inspected an APK")
+                override fun download(spec: io.panelassistant.android.device.WebViewSpec, destination: File): Boolean =
+                    error("A refused request downloaded an APK")
+                override fun installedMatches(spec: io.panelassistant.android.device.WebViewSpec): Boolean = false
+                override suspend fun install(file: File, beforeSubmit: () -> InstallOutcome.Failure?): InstallOutcome =
+                    error("A refused request submitted a package")
+            }
+            PaneldServer::class.java.getDeclaredField("webViewUpdate\$delegate").apply {
+                isAccessible = true
+                set(fixture.server, lazyOf(WebViewUpdate(this@runTest, { null }, io)))
+            }
+            val auth = HaApiSessionProvider { error("Provider install does not fetch session blobs") }
+            // Panel Assistant's schema accepts only contract outcome codes; anything else is dropped and times out.
+            val invalid = fixture.server.managementRequest("webview.install", JSONObject(), {}, auth)!!
+            assertEquals(PanelAssistantTransportProtocol.OUTCOME_REFUSED, invalid.outcome)
+            assertEquals("invalid_value", invalid.code)
+            assertEquals("invalid_request", (invalid.result as JSONObject).getString("reason"))
+
+            val conflict = fixture.server.managementRequest(
+                "webview.install", JSONObject().put("request_id", "held").put("artifact_sha256", "b".repeat(64)), {}, auth,
+            )!!
+            assertEquals(PanelAssistantTransportProtocol.OUTCOME_REFUSED, conflict.outcome)
+            assertEquals("not_commandable", conflict.code)
+            assertEquals("request_conflict", (conflict.result as JSONObject).getString("reason"))
+        }
+    }
 }

@@ -896,10 +896,9 @@ class PaneldServer internal constructor(
             )
             if (refusal != null) return PanelAssistantManageReply(PanelAssistantTransportProtocol.OUTCOME_REFUSED, refusal, null)
             val answer = withContext(Dispatchers.IO) { webViewUpdate.install(requestId, hash) }
-            return PanelAssistantManageReply(
-                if (answer.status < 400) PanelAssistantTransportProtocol.OUTCOME_APPLIED else PanelAssistantTransportProtocol.OUTCOME_REFUSED,
-                if (answer.status < 400) null else answer.body.optString("reason"), answer.body,
-            )
+            // The owner's own reason stays in the body; the reply code comes from the one status table.
+            val mapped = manageReplyFor(answer.status, answer.body, ContentType.Application.Json.toString(), emptyList())
+            return PanelAssistantManageReply(mapped.outcome, mapped.code, answer.body)
         }
         if (op == MANAGE_STATUS) {
             val body = withContext(Dispatchers.IO) { statusJson(storageHealth(), homeProofRequested = args.optBoolean("home_proof")) }

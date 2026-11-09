@@ -93,6 +93,24 @@ class PanelAssistantTransportProtocolTest {
         )
     }
 
+    @Test fun `a webview install manage event takes Panel Assistant 1_0_0's top-level request fields as its arguments`() {
+        fun manage(body: JSONObject) = PanelAssistantTransportProtocol.sessionEvent(
+            JSONObject().put("id", 1).put("type", "event").put("event", body.put("kind", "manage").put("command_id", "c")), 1L,
+        ) as PanelAssistantSessionEvent.Manage
+        val sha = "a".repeat(64)
+        val legacy = manage(JSONObject().put("op", "webview.install").put("request_id", "r-1").put("artifact_sha256", sha))
+        assertEquals("r-1", legacy.args?.opt("request_id"))
+        assertEquals(sha, legacy.args?.opt("artifact_sha256"))
+
+        val fromArgs = manage(JSONObject().put("op", "webview.install").put("request_id", "top").put("artifact_sha256", "b".repeat(64))
+            .put("args", JSONObject().put("request_id", "inner").put("artifact_sha256", sha)))
+        assertEquals("inner", fromArgs.args?.opt("request_id"))
+        assertEquals(sha, fromArgs.args?.opt("artifact_sha256"))
+
+        val otherOp = manage(JSONObject().put("op", "status").put("request_id", "r-1").put("artifact_sha256", sha))
+        assertNull(otherOp.args)
+    }
+
     @Test fun `a command event carries its id, session, channel, typed value and deadline`() {
         fun event(body: JSONObject) = JSONObject().put("id", 1).put("type", "event").put("event", body.put("kind", "command"))
         val full = JSONObject().put("command_id", "Ab_-9").put("session", "s").put("channel", "screen")

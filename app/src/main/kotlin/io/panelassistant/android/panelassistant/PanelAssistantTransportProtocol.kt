@@ -567,15 +567,24 @@ internal object PanelAssistantTransportProtocol {
         val settings = event.optJSONObject("settings")?.let { json ->
             json.keys().asSequence().associateWith { key -> json.opt(key) as? String ?: return@let null }
         }
+        val op = (event.opt("op") as? String)?.takeIf(OP::matches).orEmpty()
         return PanelAssistantSessionEvent.Manage(
             commandId = commandId,
             session = event.opt("session") as? String,
-            op = (event.opt("op") as? String)?.takeIf(OP::matches).orEmpty(),
+            op = op,
             settings = settings,
             deadlineMs = deadline(event),
-            args = event.optJSONObject("args"),
+            args = if (op == "webview.install") webViewInstallArgs(event) else event.optJSONObject("args"),
             origin = relayOrigin(event),
         )
+    }
+
+    /** Panel Assistant 1.0.0 sent `webview.install`'s request fields at the event's top level, not in `args`. */
+    private fun webViewInstallArgs(event: JSONObject): JSONObject? {
+        val args = event.optJSONObject("args")
+        val lifted = listOf("request_id", "artifact_sha256").filter { args?.has(it) != true && event.opt(it) is String }
+        if (lifted.isEmpty()) return args
+        return JSONObject(args?.toString() ?: "{}").also { copy -> lifted.forEach { copy.put(it, event.getString(it)) } }
     }
 }
 
