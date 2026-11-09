@@ -64,4 +64,6 @@ class GainStage(private val downstream: PcmConsumer, gainDb: Int) : PcmConsumer 
     }
 
     override fun onDropped(count: Int) = downstream.onDropped(count)
+
+    override fun onReset() = downstream.onReset()
 }

@@ -4,9 +4,12 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
+import android.media.AudioDeviceInfo
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.media.audiofx.AcousticEchoCanceler
 import android.util.Log
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.flow.StateFlow
@@ -21,21 +24,25 @@ private const val TAG = "ha-paneld/mic"
  * fan-out and state lives in the platform-free core, which is why the behaviour that matters is
  * unit-testable without an emulator.
  *
- * [audioSource] is injectable so a setting can move the panel between `VOICE_RECOGNITION` (the
- * default: no AEC/AGC processing the wake-word detector would rather not have), `MIC` (raw) and
- * `VOICE_COMMUNICATION` (echo-cancelled, for a panel that plays TTS through its own speaker while
- * listening). Nothing else about the format is configurable — the contract's 16 kHz mono 16-bit
- * stream is what every consumer is written against.
+ * [route] chooses how the recorder is opened: the Android audio source (`VOICE_RECOGNITION` by default:
+ * no AEC/AGC processing the wake-word detector would rather not have; `MIC`, raw; `VOICE_COMMUNICATION`,
+ * echo-cancelled), the rate and channel count, the downmix, the preferred input device, the warm-up
+ * discard and the platform echo canceller. Whatever it chooses, every consumer receives the contract's
+ * 16 kHz mono 16-bit stream: a route other than that is converted by [ConvertingCaptureDevice] before
+ * the fan-out, and the default route is handed over unconverted, exactly as before routes existed.
  */
 class AndroidMicrophoneSource(
     context: Context,
     private val route: CaptureRoute = CaptureRoute(),
-) : MicrophoneSource, MicrophoneSourceLifecycle {
+) : MicrophoneSource, MicrophoneSourceLifecycle, CaptureRouteReporting {
 
     private val applicationContext = context.applicationContext
 
     private val fanOut = MicrophoneFanOut(
-        deviceFactory = { AudioRecordCaptureDevice(androidRecorderFactory(applicationContext, route.source)) },
+        deviceFactory = {
+            val device = AudioRecordCaptureDevice(androidRecorderFactory(applicationContext, route))
+            if (route.passthrough) device else ConvertingCaptureDevice(device, route.downmix, route.warmupReads)
+        },
         logger = { message, error -> if (error != null) Log.w(TAG, message, error) else Log.i(TAG, message) },
     )
 
@@ -47,6 +54,8 @@ class AndroidMicrophoneSource(
         consumer: PcmConsumer,
         queueFrames: Int,
     ): MicLease = fanOut.lease(purpose, priority, consumer, queueFrames)
+
+    override fun captureRoute(): CaptureRouteReport = fanOut.routeReport(route)
 
     override fun shutdown(timeoutMs: Long): Boolean = fanOut.shutdown(timeoutMs)
 
@@ -69,6 +78,16 @@ internal interface PcmRecorder {
     fun stop()
 
     fun release()
+
+    /** The source, rate and channel count this recorder was built with. */
+    val format: RecorderFormat
+        get() = RecorderFormat(MediaRecorder.AudioSource.VOICE_RECOGNITION, MicrophoneSource.SAMPLE_RATE_HZ, 1)
+
+    /** The input device Android routes this recorder to, read now; null when unknown. */
+    fun routedDevice(): String? = null
+
+    /** The platform echo canceller's state, read from the platform now. */
+    fun aecState(): AecState = AecState.REQUESTED_OFF
 }
 
 /**
@@ -98,7 +117,7 @@ internal class AudioRecordCaptureDevice(
      * test; in production it does nothing.
      */
     private val afterConstruction: () -> Unit = {},
-) : PcmCaptureDevice {
+) : FormattedCaptureDevice {
 
     private val lock = Any()
 
@@ -142,6 +161,21 @@ internal class AudioRecordCaptureDevice(
         return read
     }
 
+    override val format: RecorderFormat? get() = recorder?.format
+
+    override fun describe(): ActiveCapture? = recorder?.let {
+        val format = it.format
+        ActiveCapture(
+            source = format.source,
+            sampleRateHz = format.sampleRateHz,
+            channels = format.channels,
+            downmix = null,
+            routedDevice = it.routedDevice(),
+            aec = it.aecState(),
+            warmupReads = 0,
+        )
+    }
+
     override fun stop() {
         synchronized(lock) {
             revoked = true
@@ -167,57 +201,207 @@ internal class AudioRecordCaptureDevice(
 }
 
 /**
- * Builds one `AudioRecord` in the canonical format, or nothing.
+ * Builds the recorder one route asks for: the open ladder over the platform's `AudioRecord`, then the
+ * preferred input device and the platform echo canceller.
  *
  * Everything that can refuse before the microphone is touched — a missing permission, a format the
  * platform rejects, a recorder that will not initialise — resolves to a null recorder here, so the
  * device's lifecycle never has to distinguish "could not build" from "was revoked".
  */
 @SuppressLint("MissingPermission") // checked below; a refusal is reported as a recorder that cannot be built
-internal fun androidRecorderFactory(context: Context, audioSource: Int): () -> PcmRecorder? = factory@{
+internal fun androidRecorderFactory(context: Context, route: CaptureRoute): () -> PcmRecorder? = factory@{
     if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
         != PackageManager.PERMISSION_GRANTED
     ) {
         Log.w(TAG, "RECORD_AUDIO is not granted; microphone capture cannot start")
         return@factory null
     }
-    val minBytes = AudioRecord.getMinBufferSize(
-        MicrophoneSource.SAMPLE_RATE_HZ,
-        AudioFormat.CHANNEL_IN_MONO,
-        AudioFormat.ENCODING_PCM_16BIT,
+    val record = openRecorderLadder(route, ::buildAudioRecord, log = { Log.w(TAG, it) }) ?: return@factory null
+    val device = preferInputDevice(context, record.record, route.preferredDevice)
+    val aec = armPlatformAec(route.platformAec, record.record.audioSessionId, appSideCanceller = false, AndroidEchoCanceller)
+    val recorder = AudioRecordRecorder(record.record, record.format, aec)
+    Log.i(
+        TAG,
+        "route=${CaptureRoute.sourceName(record.format.source)}/${record.format.sampleRateHz}/${record.format.channels}/" +
+            "${if (record.format.channels == 2) route.downmix.wireValue else "none"} device=$device aec=${recorder.aecState().wireValue}",
     )
+    recorder
+}
+
+/** One `AudioRecord` the ladder accepted, with the format it was built in. */
+internal class BuiltRecord<R>(val record: R, val format: RecorderFormat)
+
+/**
+ * Tries the route's source, then `VOICE_RECOGNITION`, then `MIC`, each first in the route's rate and
+ * channel count and then in 16 kHz mono, and keeps the first recorder the platform initialises. A
+ * [SecurityException] ends the ladder at once: it means the permission is gone, and no other source will
+ * be granted it. Any other refusal moves to the next rung, so a route the hardware will not open falls
+ * back to the canonical format rather than leaving the panel deaf.
+ */
+internal fun <R> openRecorderLadder(
+    route: CaptureRoute,
+    build: (source: Int, sampleRateHz: Int, channels: Int) -> R?,
+    log: (String) -> Unit,
+): BuiltRecord<R>? {
+    val sources = listOf(route.source, MediaRecorder.AudioSource.VOICE_RECOGNITION, MediaRecorder.AudioSource.MIC).distinct()
+    val formats = listOf(
+        route.sampleRateHz to route.channels,
+        MicrophoneSource.SAMPLE_RATE_HZ to MicrophoneSource.CHANNELS,
+    ).distinct()
+    for (source in sources) {
+        for ((rate, channels) in formats) {
+            val built = try {
+                build(source, rate, channels)
+            } catch (denied: SecurityException) {
+                log("microphone permission refused while opening ${CaptureRoute.sourceName(source)}: ${denied.message}")
+                return null
+            } catch (t: Throwable) {
+                log("AudioRecord ${CaptureRoute.sourceName(source)}/$rate/$channels could not be constructed: ${t.javaClass.simpleName}")
+                null
+            }
+            if (built != null) return BuiltRecord(built, RecorderFormat(source, rate, channels))
+        }
+    }
+    log("no capture route opened (tried ${sources.joinToString { CaptureRoute.sourceName(it) }})")
+    return null
+}
+
+/** One initialised `AudioRecord`, or null when the platform refuses the format. Throws what the platform throws. */
+@SuppressLint("MissingPermission") // the factory checked it; a revocation since surfaces as SecurityException
+private fun buildAudioRecord(source: Int, sampleRateHz: Int, channels: Int): AudioRecord? {
+    val mask = if (channels == 2) AudioFormat.CHANNEL_IN_STEREO else AudioFormat.CHANNEL_IN_MONO
+    val minBytes = AudioRecord.getMinBufferSize(sampleRateHz, mask, AudioFormat.ENCODING_PCM_16BIT)
     if (minBytes <= 0) {
-        Log.w(TAG, "AudioRecord rejected the canonical 16 kHz mono format (getMinBufferSize=$minBytes)")
-        return@factory null
+        Log.w(TAG, "AudioRecord rejected $sampleRateHz Hz x$channels (getMinBufferSize=$minBytes)")
+        return null
     }
     // At least twice the driver minimum, and never less than 80 ms, so a capture thread that is
     // briefly descheduled does not overrun the ring and lose audio the consumers never hear about.
-    val bufferBytes = maxOf(minBytes * 2, MicrophoneSource.SAMPLES_PER_FRAME * BYTES_PER_SAMPLE * 8)
-    val record = try {
-        AudioRecord(
-            audioSource,
-            MicrophoneSource.SAMPLE_RATE_HZ,
-            AudioFormat.CHANNEL_IN_MONO,
-            AudioFormat.ENCODING_PCM_16BIT,
-            bufferBytes,
-        )
-    } catch (t: Throwable) {
-        Log.w(TAG, "AudioRecord could not be constructed", t)
-        return@factory null
-    }
+    val framesPer80Ms = sampleRateHz / 1000 * MicrophoneSource.FRAME_MS * 8
+    val bufferBytes = maxOf(minBytes * 2, framesPer80Ms * channels * BYTES_PER_SAMPLE)
+    val record = AudioRecord(source, sampleRateHz, mask, AudioFormat.ENCODING_PCM_16BIT, bufferBytes)
     if (record.state != AudioRecord.STATE_INITIALIZED) {
-        Log.w(TAG, "AudioRecord did not initialise (state=${record.state})")
+        Log.w(TAG, "AudioRecord did not initialise (source=$source rate=$sampleRateHz channels=$channels state=${record.state})")
         runCatching { record.release() }
-        return@factory null
+        return null
     }
-    Log.i(TAG, "microphone recorder built: source=$audioSource buffer=${bufferBytes}B")
-    AudioRecordRecorder(record)
+    Log.i(TAG, "microphone recorder built: source=$source rate=$sampleRateHz channels=$channels buffer=${bufferBytes}B")
+    return record
 }
+
+/**
+ * Asks the recorder to prefer the input [preferred] names, from one snapshot of the input devices taken
+ * now. Returns what the log line reports: `default` when nothing was asked or nothing matched, else the
+ * chosen device as `type:name`. A refusal keeps the platform's own routing.
+ */
+private fun preferInputDevice(context: Context, record: AudioRecord, preferred: PreferredMicDevice): String {
+    if (preferred == PreferredMicDevice.AUTO) return "default"
+    val audio = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return "default"
+    val inputs = runCatching { audio.getDevices(AudioManager.GET_DEVICES_INPUTS).toList() }.getOrDefault(emptyList())
+    val order = when (preferred) {
+        PreferredMicDevice.BUILTIN -> listOf(AudioDeviceInfo.TYPE_BUILTIN_MIC)
+        PreferredMicDevice.USB -> listOf(AudioDeviceInfo.TYPE_USB_HEADSET, AudioDeviceInfo.TYPE_USB_DEVICE, AudioDeviceInfo.TYPE_USB_ACCESSORY)
+        PreferredMicDevice.AUTO -> emptyList()
+    }
+    val chosen = order.firstNotNullOfOrNull { type -> inputs.firstOrNull { it.type == type } } ?: return "default"
+    val accepted = runCatching { record.setPreferredDevice(chosen) }.getOrDefault(false)
+    return if (accepted) describeDevice(chosen) else "default"
+}
+
+private fun describeDevice(device: AudioDeviceInfo): String = "${device.type}:${device.productName}"
 
 private const val BYTES_PER_SAMPLE = 2
 
+/**
+ * The platform echo canceller, reduced to what arming it needs, so availability and read-back can be
+ * scripted on a plain JVM.
+ */
+internal interface EchoCancellerPlatform {
+    fun isAvailable(): Boolean
+
+    /** Attach a canceller to the capture session; null when the platform refuses. */
+    fun create(sessionId: Int): EchoCancellerEffect?
+}
+
+/** One attached canceller. */
+internal interface EchoCancellerEffect {
+    fun setEnabled(enabled: Boolean)
+
+    /** Read from the platform every time; never a remembered value. */
+    fun enabled(): Boolean
+
+    fun release()
+}
+
+/** The arming result a recorder holds: the effect it kept, if any, and why not otherwise. */
+internal class ArmedEchoCanceller(private val effect: EchoCancellerEffect?, private val refused: AecState) {
+    /** [AecState.ARMED] only while the platform reads the kept effect back as enabled. */
+    fun state(): AecState {
+        val kept = effect ?: return refused
+        return if (runCatching { kept.enabled() }.getOrDefault(false)) AecState.ARMED else AecState.READBACK_FALSE
+    }
+
+    fun release() {
+        val kept = effect ?: return
+        runCatching { kept.release() }
+    }
+
+    companion object {
+        val OFF = ArmedEchoCanceller(null, AecState.REQUESTED_OFF)
+    }
+}
+
+/**
+ * Attach the platform echo canceller when the route asks for it, or asks for automatic and the platform
+ * has one, and keep it only when it reads back as enabled. Never while [appSideCanceller] is on: two
+ * cancellers in series fight each other, and an app-side one is the better-informed of the two.
+ */
+internal fun armPlatformAec(
+    mode: PlatformAecMode,
+    sessionId: Int,
+    appSideCanceller: Boolean,
+    platform: EchoCancellerPlatform,
+): ArmedEchoCanceller {
+    if (mode == PlatformAecMode.OFF || appSideCanceller) return ArmedEchoCanceller.OFF
+    if (sessionId <= 0 || !runCatching { platform.isAvailable() }.getOrDefault(false)) {
+        return ArmedEchoCanceller(null, AecState.UNAVAILABLE)
+    }
+    val effect = runCatching { platform.create(sessionId) }.getOrNull() ?: return ArmedEchoCanceller(null, AecState.UNAVAILABLE)
+    val enabled = runCatching {
+        effect.setEnabled(true)
+        effect.enabled()
+    }.getOrDefault(false)
+    if (!enabled) {
+        runCatching { effect.release() }
+        return ArmedEchoCanceller(null, AecState.READBACK_FALSE)
+    }
+    return ArmedEchoCanceller(effect, AecState.ARMED)
+}
+
+/** [EchoCancellerPlatform] over `android.media.audiofx.AcousticEchoCanceler`. */
+private object AndroidEchoCanceller : EchoCancellerPlatform {
+    override fun isAvailable(): Boolean = AcousticEchoCanceler.isAvailable()
+
+    override fun create(sessionId: Int): EchoCancellerEffect? {
+        val canceller = AcousticEchoCanceler.create(sessionId) ?: return null
+        return object : EchoCancellerEffect {
+            override fun setEnabled(enabled: Boolean) {
+                canceller.enabled = enabled
+            }
+
+            override fun enabled(): Boolean = canceller.enabled
+
+            override fun release() = canceller.release()
+        }
+    }
+}
+
 /** The thin binding from [PcmRecorder] onto `AudioRecord`. Holds no lifecycle state of its own. */
-private class AudioRecordRecorder(private val record: AudioRecord) : PcmRecorder {
+private class AudioRecordRecorder(
+    private val record: AudioRecord,
+    override val format: RecorderFormat,
+    private val aec: ArmedEchoCanceller,
+) : PcmRecorder {
 
     override fun startRecording(): Boolean {
         try {
@@ -236,11 +420,16 @@ private class AudioRecordRecorder(private val record: AudioRecord) : PcmRecorder
         -1
     }
 
+    override fun routedDevice(): String? = runCatching { record.routedDevice?.let(::describeDevice) }.getOrNull()
+
+    override fun aecState(): AecState = aec.state()
+
     override fun stop() {
         runCatching { record.stop() }.onFailure { Log.w(TAG, "AudioRecord could not be stopped", it) }
     }
 
     override fun release() {
+        aec.release()
         runCatching { record.release() }.onFailure { Log.w(TAG, "AudioRecord could not be released", it) }
         Log.i(TAG, "microphone released")
     }

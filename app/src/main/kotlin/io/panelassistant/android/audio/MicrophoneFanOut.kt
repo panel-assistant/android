@@ -34,6 +34,12 @@ interface PcmCaptureDevice {
 
     /** Release the hardware. Called by the capture thread as it exits. Idempotent. */
     fun close()
+
+    /**
+     * What the open capture is doing, for route reports: called from any thread, and read fresh from the
+     * platform on every call. Null when the device cannot say, or is not open.
+     */
+    fun describe(): ActiveCapture? = null
 }
 
 /**
@@ -55,7 +61,10 @@ interface MicrophoneSourceLifecycle : AutoCloseable {
     override fun close()
 }
 
-/** Retry delay after [consecutiveFailures] consecutive failed opens: 200 ms doubling to a 5 s ceiling. */
+/**
+ * Retry delay after [consecutiveFailures] consecutive capture failures (failed opens, or failed reads that
+ * ended a generation): 250 ms doubling to a 5 s ceiling, back to 250 ms once a generation reads audio.
+ */
 internal fun micOpenBackoffMs(consecutiveFailures: Int): Long {
     if (consecutiveFailures <= 0) return 0L
     val shift = (consecutiveFailures - 1).coerceAtMost(MIC_OPEN_BACKOFF_MAX_SHIFT)
@@ -66,9 +75,21 @@ internal fun micOpenBackoffMs(consecutiveFailures: Int): Long {
 /** A caller-driven retry is admitted only once the backoff window has elapsed. */
 internal fun micOpenRetryAllowed(nowMs: Long, nextAllowedAtMs: Long): Boolean = nowMs >= nextAllowedAtMs
 
-internal const val MIC_OPEN_BACKOFF_BASE_MS = 200L
+internal const val MIC_OPEN_BACKOFF_BASE_MS = 250L
 internal const val MIC_OPEN_BACKOFF_CEILING_MS = 5_000L
 private const val MIC_OPEN_BACKOFF_MAX_SHIFT = 20
+
+/** `AudioRecord.ERROR_DEAD_OBJECT`: the audio server lost the recorder, which never recovers by itself. */
+internal const val MIC_READ_DEAD_OBJECT = -6
+
+/**
+ * Consecutive failed reads of any other kind that a generation tolerates before it is ended and rebuilt.
+ * A transient refusal (`ERROR`, `ERROR_INVALID_OPERATION`) is logged and the read retried; twenty-five
+ * in a row with no audio between them is a recorder that has stopped working, and is treated exactly
+ * like a dead object. Twenty-five returns at once on a refusing recorder, so this bounds a spin, not
+ * a wait.
+ */
+internal const val MIC_MAX_CONSECUTIVE_READ_ERRORS = 25
 
 /**
  * The platform-free half of the shared microphone: lease table, per-lease queues, fan-out and the
@@ -94,10 +115,18 @@ private const val MIC_OPEN_BACKOFF_MAX_SHIFT = 20
  * run under either, and the only work done under `lock` is bookkeeping plus a non-blocking
  * `StateFlow` assignment.
  *
- * **Recovery.** A failed open or a failed read latches [MicState.Error] and keeps the holders. There
- * is no retry timer: recovery happens when a caller next leases or resumes, and only once the
- * backoff window from [micOpenBackoffMs] has elapsed, so a consumer that reacts to `Error` by
- * resuming cannot spin the hardware.
+ * **Recovery.** A failed open or a failed read latches [MicState.Error] and keeps the holders. A
+ * caller that next leases or resumes retries once the backoff window from [micOpenBackoffMs] has
+ * elapsed, so a consumer that reacts to `Error` by resuming cannot spin the hardware. A read that
+ * reports a dead object ([MIC_READ_DEAD_OBJECT]), or [MIC_MAX_CONSECUTIVE_READ_ERRORS] other failed
+ * reads in a row, also ends the generation, and while any lease is held the source rebuilds the device
+ * by itself on a timer, through the same backoff, until a generation reads audio again: an audio server
+ * restart must never leave a held wake-word lease deaf. Any other failed read is logged and retried.
+ *
+ * **Generations.** Every successful open starts a new generation. A lease that took frames from an
+ * earlier one is given [PcmConsumer.onReset] before its first frame from the new one, and any frames it
+ * still had queued from the old one are discarded: the gap invalidates every piece of state that spans
+ * frames. A lease that has not yet taken a frame starts clean and is not reset.
  */
 class MicrophoneFanOut(
     /**
@@ -114,7 +143,14 @@ class MicrophoneFanOut(
     /** Seam for tests that need to hold a thread between being admitted and running its body. */
     private val threadFactory: (Runnable, String) -> Thread = { body, name -> Thread(body, name) },
     private val logger: (String, Throwable?) -> Unit = { _, _ -> },
+    /**
+     * Runs a rebuild after a delay and returns a handle that cancels it. Null schedules on a thread from
+     * [threadFactory], which [shutdown] cancels and joins like any other thread this source started.
+     */
+    rebuildScheduler: ((delayMs: Long, task: () -> Unit) -> AutoCloseable)? = null,
 ) : MicrophoneSource, MicrophoneSourceLifecycle {
+
+    private val scheduler: (Long, () -> Unit) -> AutoCloseable = rebuildScheduler ?: ::scheduleOnThread
 
     private val lock = Any()
     private val stateFlow = MutableStateFlow<MicState>(MicState.Closed)
@@ -144,6 +180,17 @@ class MicrophoneFanOut(
 
     private var errorReason: String? = null
     private var consecutiveFailures = 0
+
+    /** Set when a generation failed in a way only a rebuild cures; cleared once a generation reads audio. */
+    private var rebuildWanted = false
+    private var pendingRebuild: AutoCloseable? = null
+    @Volatile private var rebuildCount = 0
+
+    /** Counts successful opens; frames carry it so each lease can tell a new generation from the old. */
+    private var generation = 0L
+
+    /** Threads started by the default [scheduler]; each removes itself as it exits. */
+    private val timerThreads = CopyOnWriteArrayList<Thread>()
     private var nextOpenAllowedAtMs = 0L
     private var shuttingDown = false
 
@@ -185,6 +232,7 @@ class MicrophoneFanOut(
         val device: PcmCaptureDevice?
         synchronized(lock) {
             shuttingDown = true
+            cancelRebuildLocked()
             retiring = ArrayList(leases)
             leases.clear()
             refreshTargetsLocked()
@@ -200,6 +248,9 @@ class MicrophoneFanOut(
         for (worker in deliveryThreads) {
             if (!joinBounded(worker, deadline)) complete = false
         }
+        for (timer in timerThreads) {
+            if (!joinBounded(timer, deadline)) complete = false
+        }
         // Nothing is released from here. Every device is created with the thread that owns it and
         // closed by that thread on its way out, including a generation that was refused the hardware,
         // so there is no device left for a teardown to release and none that could be released twice.
@@ -210,6 +261,15 @@ class MicrophoneFanOut(
     override fun close() {
         shutdown(DEFAULT_SHUTDOWN_TIMEOUT_MS)
     }
+
+    /** The route [requested] as it stands now: what is open, read fresh from the device, and the rebuild count. */
+    fun routeReport(requested: CaptureRoute): CaptureRouteReport {
+        val device = if (deviceOpen) captureDevice else null
+        return CaptureRouteReport(requested, runCatching { device?.describe() }.getOrNull(), rebuildCount)
+    }
+
+    /** How many times capture has been rebuilt by itself after a dead or failing recorder. */
+    val rebuilds: Int get() = rebuildCount
 
     // ---- capture -------------------------------------------------------------------------------
 
@@ -272,11 +332,14 @@ class MicrophoneFanOut(
             finishCapture()
             return
         }
-        synchronized(lock) {
+        val thisGeneration = synchronized(lock) {
             deviceOpen = true
-            consecutiveFailures = 0
+            generation += 1
             publishLocked()
+            generation
         }
+        var readAudio = false
+        var failedReads = 0
         try {
             while (capturing) {
                 // One allocation per 10 ms period: the array handed over to the fan-out. Delivery
@@ -288,19 +351,33 @@ class MicrophoneFanOut(
                 while (filled < MicrophoneSource.SAMPLES_PER_FRAME) {
                     val read = device.read(samples, filled, MicrophoneSource.SAMPLES_PER_FRAME - filled)
                     if (read < 0) {
-                        failCapture("microphone read failed ($read)")
-                        return
+                        failedReads += 1
+                        if (read == MIC_READ_DEAD_OBJECT || failedReads >= MIC_MAX_CONSECUTIVE_READ_ERRORS) {
+                            failCapture("microphone read failed ($read)", rebuild = true)
+                            return
+                        }
+                        if (failedReads == 1) logger("microphone read failed ($read); retrying", null)
+                        continue
                     }
                     if (read == 0) {
                         ended = true
                         break
                     }
+                    failedReads = 0
                     filled += read
                 }
                 if (ended) break
+                if (!readAudio) {
+                    readAudio = true
+                    // This generation works: the next failure starts the backoff from the beginning.
+                    synchronized(lock) {
+                        consecutiveFailures = 0
+                        rebuildWanted = false
+                    }
+                }
                 val snapshot = targets
                 for (target in snapshot) {
-                    target.enqueue(PcmFrame(samples, MicrophoneSource.SAMPLE_RATE_HZ, timestampNs))
+                    target.enqueue(PcmFrame(samples, MicrophoneSource.SAMPLE_RATE_HZ, timestampNs), thisGeneration)
                 }
             }
         } finally {
@@ -309,16 +386,65 @@ class MicrophoneFanOut(
         }
     }
 
-    private fun failCapture(reason: String) {
+    private fun failCapture(reason: String, rebuild: Boolean = false) {
+        val delayMs: Long?
         synchronized(lock) {
             deviceOpen = false
             capturing = false
             errorReason = reason
             consecutiveFailures += 1
-            nextOpenAllowedAtMs = backoffClockMs() + micOpenBackoffMs(consecutiveFailures)
+            val backoff = micOpenBackoffMs(consecutiveFailures)
+            nextOpenAllowedAtMs = backoffClockMs() + backoff
+            if (rebuild) rebuildWanted = true
+            delayMs = if (rebuildWanted && !shuttingDown && leases.isNotEmpty() && pendingRebuild == null) backoff else null
+            if (delayMs != null) {
+                // Started under the lock for the same reason the capture thread is: a shutdown that has
+                // taken the lock after this point sees the handle and cancels it.
+                pendingRebuild = scheduler(delayMs, ::rebuild)
+            }
             publishLocked()
         }
-        logger(reason, null)
+        logger(if (delayMs != null) "$reason; rebuilding in ${delayMs}ms" else reason, null)
+    }
+
+    /** The rebuild timer's task: start a fresh generation if anything still wants the microphone. */
+    private fun rebuild() {
+        synchronized(lock) {
+            pendingRebuild = null
+            // A lease or resume may already have started a generation inside the backoff window.
+            if (shuttingDown || leases.isEmpty() || !rebuildWanted || capturing) return
+            rebuildCount += 1
+            // The timer is the backoff; its own firing is what admits the retry.
+            nextOpenAllowedAtMs = 0L
+            ensureCaptureStartedLocked()
+            publishLocked()
+        }
+    }
+
+    /** Caller must hold [lock]. */
+    private fun cancelRebuildLocked() {
+        val pending = pendingRebuild ?: return
+        pendingRebuild = null
+        runCatching { pending.close() }
+    }
+
+    /** The default [scheduler]: one thread that sleeps, then runs the task unless it was interrupted. */
+    private fun scheduleOnThread(delayMs: Long, task: () -> Unit): AutoCloseable {
+        lateinit var thread: Thread
+        thread = threadFactory({
+            try {
+                Thread.sleep(delayMs)
+                task()
+            } catch (cancelled: InterruptedException) {
+                // Cancelled: the lease that wanted the rebuild was released, or the source shut down.
+            } finally {
+                timerThreads.remove(thread)
+            }
+        }, "$threadNamePrefix-rebuild")
+        thread.isDaemon = true
+        timerThreads.add(thread)
+        thread.start()
+        return AutoCloseable { thread.interrupt() }
     }
 
     /**
@@ -394,6 +520,10 @@ class MicrophoneFanOut(
         private val queue = ArrayDeque<PcmFrame>(capacity)
         private var pendingDrops = 0
 
+        /** Generation of the last frame queued; 0 until this lease has taken one. */
+        private var queuedGeneration = 0L
+        private var pendingReset = false
+
         @Volatile private var paused = false
         @Volatile private var closed = false
         @Volatile private var running = true
@@ -411,9 +541,16 @@ class MicrophoneFanOut(
             thread.start()
         }
 
-        fun enqueue(frame: PcmFrame) {
+        fun enqueue(frame: PcmFrame, generation: Long) {
             synchronized(queueLock) {
                 if (!deliverable) return
+                if (queuedGeneration != 0L && generation != queuedGeneration) {
+                    // Frames from before the gap are stale; the consumer starts again from a reset.
+                    queue.clear()
+                    pendingDrops = 0
+                    pendingReset = true
+                }
+                queuedGeneration = generation
                 while (queue.size >= capacity) evictOldestLocked()
                 queue.addLast(frame)
                 queueLock.notifyAll()
@@ -432,6 +569,7 @@ class MicrophoneFanOut(
                 while (true) {
                     var frame: PcmFrame? = null
                     var drops = 0
+                    var reset = false
                     synchronized(queueLock) {
                         while (running && queue.isEmpty()) {
                             try {
@@ -445,9 +583,12 @@ class MicrophoneFanOut(
                             frame = queue.removeFirst()
                             drops = pendingDrops
                             pendingDrops = 0
+                            reset = pendingReset
+                            pendingReset = false
                         }
                     }
                     val next = frame ?: return
+                    if (reset) report("onReset") { consumer.onReset() }
                     if (drops > 0) report("onDropped") { consumer.onDropped(drops) }
                     // Copy on this thread, so the consumer may keep the array it is handed.
                     val owned = PcmFrame(next.samples.copyOf(), next.sampleRate, next.timestampNs)
@@ -494,6 +635,8 @@ class MicrophoneFanOut(
                 if (leases.isEmpty()) {
                     capturing = false
                     errorReason = null
+                    rebuildWanted = false
+                    cancelRebuildLocked()
                     consecutiveFailures = 0
                     nextOpenAllowedAtMs = 0L
                     capture = captureThread

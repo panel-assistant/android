@@ -56,6 +56,14 @@ interface PcmConsumer {
 
     /** Called once per gap with the number of frames this consumer lost since its last frame. */
     fun onDropped(count: Int) {}
+
+    /**
+     * Called before the first frame of a new capture generation — the microphone was rebuilt after a
+     * failure, or reopened — when this consumer took frames from an earlier one. Everything that spans
+     * frames is stale across that gap. Defaults to [onDropped], which every consumer with streaming
+     * state already treats as "start again".
+     */
+    fun onReset() = onDropped(1)
 }
 
 /** Why a holder wants the microphone; drives default priority and status reporting. */

@@ -247,7 +247,7 @@ class MicrophoneFanOutTest {
     }
 
     @Test
-    fun midCaptureReadFailureLatchesErrorAndReleasesTheDevice() {
+    fun aDeadRecorderMidCaptureLatchesErrorAndReleasesTheDevice() {
         val device = FakeCaptureDevice()
         val fan = fanOut(device)
         val consumer = RecordingConsumer()
@@ -256,7 +256,7 @@ class MicrophoneFanOutTest {
         device.offerFrames(1)
         awaitTrue("capture is running") { consumer.frames.get() == 1 }
 
-        device.failNextRead = true
+        device.failNextReadWith = MIC_READ_DEAD_OBJECT
         device.offerFrames(1, from = 1) // unblock a read that is already parked, so the next one fails
 
         awaitTrue("a failed read latches an error") { fan.state.value is MicState.Error }
@@ -403,11 +403,11 @@ class MicrophoneFanOutTest {
     fun openBackoffDoublesToACeiling() {
         assertEquals("no failures means no wait", 0L, micOpenBackoffMs(0))
         assertEquals("a negative count means no wait", 0L, micOpenBackoffMs(-1))
-        assertEquals(200L, micOpenBackoffMs(1))
-        assertEquals(400L, micOpenBackoffMs(2))
-        assertEquals(800L, micOpenBackoffMs(3))
-        assertEquals(1_600L, micOpenBackoffMs(4))
-        assertEquals(3_200L, micOpenBackoffMs(5))
+        assertEquals(250L, micOpenBackoffMs(1))
+        assertEquals(500L, micOpenBackoffMs(2))
+        assertEquals(1_000L, micOpenBackoffMs(3))
+        assertEquals(2_000L, micOpenBackoffMs(4))
+        assertEquals(4_000L, micOpenBackoffMs(5))
         assertEquals("the sixth doubling is capped", 5_000L, micOpenBackoffMs(6))
         assertEquals("the cap holds however long the fault lasts", 5_000L, micOpenBackoffMs(50))
     }
@@ -433,6 +433,8 @@ class MicrophoneFanOutTest {
             backoffClockMs = { clock.get() },
             nanoTime = { clock.get() * 1_000_000L },
             threadNamePrefix = "test-mic",
+            // Rebuilds are proven in MicrophoneFanOutRecoveryTest; here a timer would only add timing.
+            rebuildScheduler = { _, _ -> AutoCloseable {} },
         )
         sources.add(fan)
         return fan
@@ -470,7 +472,8 @@ private class FakeCaptureDevice(
 ) : PcmCaptureDevice {
 
     @Volatile var openResult = true
-    @Volatile var failNextRead = false
+    /** The code the next read returns instead of audio; null reads normally. */
+    @Volatile var failNextReadWith: Int? = null
     @Volatile var closeDelayMs = 0L
 
     /** Runs inside `close`, i.e. while the capture thread is between stopping and finishing. */
@@ -506,9 +509,9 @@ private class FakeCaptureDevice(
     }
 
     override fun read(into: ShortArray, offsetSamples: Int, maxSamples: Int): Int {
-        if (failNextRead) {
-            failNextRead = false
-            return -1
+        failNextReadWith?.let { code ->
+            failNextReadWith = null
+            return code
         }
         var chunk = current
         if (chunk == null || consumed >= chunk.size) {
