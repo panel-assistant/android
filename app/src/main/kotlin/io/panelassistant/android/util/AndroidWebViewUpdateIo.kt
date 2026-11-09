@@ -5,6 +5,7 @@ import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Process
+import android.os.StatFs
 import android.util.AtomicFile
 import android.webkit.WebView
 import io.panelassistant.android.control.Su
@@ -31,12 +32,14 @@ internal class AndroidWebViewUpdateIo(private val context: Context, private val 
             if (Build.VERSION.SDK_INT >= 30) context.packageManager.getInstallSourceInfo(info.packageName).installingPackageName
             else context.packageManager.getInstallerPackageName(info.packageName)
         } }
+        val data = runCatching { StatFs(context.filesDir.path) }.getOrNull()
         return WebViewObservation(
             profile.id, Build.VERSION.SDK_INT, Build.SUPPORTED_ABIS.toSet(), PROCESS_ID, Process.myPid(), Process.getStartElapsedRealtime(),
             installed?.packageName, installed?.versionName, installed?.let(::versionCode), installed?.let(::signers).orEmpty(),
             installer?.getOrNull(), installer?.takeIf { it.isSuccess }?.let { it.getOrNull() == "com.android.vending" },
             engine, when { Su.observedUsable() -> "su"; HelperClient.available() -> "helper"; else -> "none" },
             bound?.packageName, bound?.versionName, bound?.let(::versionCode),
+            data?.availableBytes, data?.totalBytes,
         )
     }
 

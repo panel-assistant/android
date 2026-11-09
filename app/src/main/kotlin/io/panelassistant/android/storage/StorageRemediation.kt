@@ -647,6 +647,16 @@ internal fun storageMaintenancePlan(snapshot: StorageHealthSnapshot): StorageMai
         else -> StorageMaintenancePlan.NONE
     }
 
+/**
+ * Daily maintenance on a healthy panel: orphaned app-owned files first, unless another owner holds the data
+ * directory (a self-update ends this process before it deletes its upload, so they pile up without pressure),
+ * then the existing retention limits.
+ */
+internal fun runHealthyStorageMaintenance(operations: StorageRemediationOperations): RetentionResult {
+    if (operations.lifecycleOwned()) operations.sweepDisposableFiles()
+    return operations.enforceRetention()
+}
+
 /** The side effects the remediation ladder may use. Each reports what it did. */
 internal interface StorageRemediationOperations {
     fun sweepDisposableFiles(): List<DisposableSweepResult>

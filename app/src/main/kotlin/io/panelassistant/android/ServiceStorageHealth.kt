@@ -16,6 +16,7 @@ import io.panelassistant.android.storage.StorageHealthSnapshot
 import io.panelassistant.android.storage.StorageMaintenancePlan
 import io.panelassistant.android.storage.StorageQuickCheck
 import io.panelassistant.android.storage.StorageRemediationLadder
+import io.panelassistant.android.storage.runHealthyStorageMaintenance
 import io.panelassistant.android.storage.StorageRemediationOperations
 import io.panelassistant.android.storage.VacuumOutcome
 import io.panelassistant.android.storage.VacuumResult
@@ -145,8 +146,10 @@ internal class ServiceStorageHealth(
             val snapshot = StorageHealthRuntime.snapshot()
             when (storageMaintenancePlan(snapshot)) {
                 StorageMaintenancePlan.NONE -> Unit
-                StorageMaintenancePlan.RETENTION -> runCatching { database.enforceHistoryRetention() }
-                    .onFailure { Log.w(TAG, "history retention failed (${it.javaClass.simpleName})") }
+                StorageMaintenancePlan.RETENTION ->
+                    if (runHealthyStorageMaintenance(storageRemediationOperations(signal)) == RetentionResult.FAILED) {
+                        Log.w(TAG, "history retention failed")
+                    }
                 StorageMaintenancePlan.REMEDIATE ->
                     StorageRemediationLadder(storageRemediationOperations(signal)).run(snapshot)?.let { summary ->
                         StorageHealthRuntime.recordRemediation(summary)

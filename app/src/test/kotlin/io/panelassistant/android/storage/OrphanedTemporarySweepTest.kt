@@ -368,6 +368,35 @@ class OrphanedTemporarySweepTest {
         )
     }
 
+    // ---- healthy maintenance ----
+
+    @Test fun healthyMaintenanceRemovesASelfUpdateUploadOrphanBeforeRetentionOnlyWhileTheLifecycleIsOwned() {
+        for (owned in listOf(true, false)) {
+            val orphan = file(cacheDir, "apk-upload-1234.apk", bytes = 15_000)
+            val live = file(cacheDir, "apk-upload-5678.apk", modified = processStart + 1_000L)
+            val calls = mutableListOf<String>()
+            val sweeper = sweeper()
+            val result = runHealthyStorageMaintenance(object : StorageRemediationOperations {
+                override fun sweepDisposableFiles(): List<DisposableSweepResult> {
+                    calls += "sweep"
+                    return appOwnedDisposableFileRules(cacheDir, filesDir) { true }.map(sweeper::sweep)
+                }
+                override fun enforceRetention(): RetentionResult { calls += "retention"; return RetentionResult.PRUNED }
+                override fun checkpointWal(): WalCheckpointOutcome = error("Healthy maintenance never checkpoints")
+                override fun writeVerifiedBackup(): Boolean = error("Healthy maintenance never writes a backup")
+                override fun vacuum(): VacuumOutcome = error("Healthy maintenance never vacuums")
+                override fun lifecycleOwned() = owned
+                override suspend fun observe(): StorageHealthSnapshot? = error("Healthy maintenance never re-observes")
+            })
+            assertEquals(RetentionResult.PRUNED, result)
+            assertEquals(if (owned) listOf("sweep", "retention") else listOf("retention"), calls)
+            assertEquals("owned=$owned", !owned, orphan.exists())
+            assertTrue("A file written by this process is never an orphan", live.exists())
+            orphan.delete()
+            live.delete()
+        }
+    }
+
     // ---- reporting ----
 
     private val pressured = StorageHealthSnapshot.UNCHECKED.copy(

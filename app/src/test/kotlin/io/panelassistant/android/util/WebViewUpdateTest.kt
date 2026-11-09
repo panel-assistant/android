@@ -104,6 +104,34 @@ class WebViewUpdateTest {
         }
     }
 
+    @Test fun `too little free storage for the stage session copy and installed provider refuses before download`() = runBlocking {
+        // A 4-byte pin on a 1000-byte filesystem: reserve 100, stage 4, session copy plus installed APK and libraries 12.
+        fun reason(available: Long?, total: Long? = 1000L, stage: Int? = null, change: (WebViewObservation) -> WebViewObservation = { it }): Any? {
+            val fixture = Fixture()
+            fixture.observed = change(fixture.observed.copy(dataAvailableBytes = available, dataTotalBytes = total))
+            stage?.let { File(fixture.directory, fixture.spec.apkSha256 + ".apk").writeBytes(ByteArray(it)) }
+            val owner = fixture.owner(this)
+            val answer = owner.install("owner", "b".repeat(64)).body
+            assertEquals(0, fixture.downloads)
+            // Observation reports the same admission; an admitted panel only fails the mismatched hash here.
+            val admitted = answer.get("reason") == "candidate_changed"
+            assertEquals(if (admitted) JSONObject.NULL else answer.get("reason"), owner.observe().get("reason"))
+            return answer.get("reason")
+        }
+        assertEquals("insufficient_storage", reason(115))
+        assertEquals("candidate_changed", reason(116))
+        assertEquals("insufficient_storage", reason(111, stage = 4))
+        assertEquals("candidate_changed", reason(112, stage = 4))
+        assertEquals("A stage of another size still has to be written", "insufficient_storage", reason(112, stage = 3))
+        val cap = 500L * 1024 * 1024
+        assertEquals("insufficient_storage", reason(cap + 15, total = 100L * cap))
+        assertEquals("candidate_changed", reason(cap + 16, total = 100L * cap))
+        assertEquals("candidate_changed", reason(null))
+        assertEquals("candidate_changed", reason(0L, total = null))
+        assertEquals("current", reason(0L) { it.copy(versionCode = 900000000) })
+        assertEquals("no_install_route", reason(116) { it.copy(route = "none") })
+    }
+
     @Test fun `actual staged APK package signer SDK ABI and version must match the pin`() = runBlocking {
         val changes: List<(WebViewApk) -> WebViewApk> = listOf(
             { it.copy(pkg = "other.package") }, { it.copy(signers = setOf("b".repeat(64))) },

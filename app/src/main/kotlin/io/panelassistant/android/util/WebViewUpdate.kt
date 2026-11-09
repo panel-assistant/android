@@ -28,6 +28,9 @@ internal data class WebViewObservation(
     val boundPackage: String? = null,
     val boundVersionName: String? = null,
     val boundVersionCode: Long? = null,
+    /** The app data filesystem's free and total bytes; null when unreadable. */
+    val dataAvailableBytes: Long? = null,
+    val dataTotalBytes: Long? = null,
 )
 
 internal data class WebViewApk(
@@ -245,8 +248,22 @@ internal class WebViewUpdate(
         compareEngine(observed.engineVersion, spec.version) == null -> "version_unknown"
         compareEngine(observed.engineVersion, spec.version)!! > 0 -> "current"
         observed.versionCode == spec.versionCode && compareEngine(observed.engineVersion, spec.version) == 0 -> "current"
+        !storageAdmits(observed, spec) -> "insufficient_storage"
         observed.route == "none" -> "no_install_route"
         else -> null
+    }
+
+    /**
+     * PackageManager needs the stage, its own session copy, and the installed APK plus its stored native
+     * libraries (about one more APK size) to coexist above Android's low-storage reserve (10% of /data, at
+     * most 500 MiB); Android 8.1 refused a 245 MB provider at 1 GB free. An unreadable filesystem never refuses.
+     */
+    private fun storageAdmits(observed: WebViewObservation, spec: WebViewSpec): Boolean {
+        val available = observed.dataAvailableBytes ?: return true
+        val total = observed.dataTotalBytes ?: return true
+        val staged = stage(spec).let { it.isFile && it.length() == spec.size }
+        val required = minOf(total / 10, LOW_STORAGE_RESERVE_MAX) + (if (staged) 0L else spec.size) + 3 * spec.size
+        return available >= required
     }
 
     private fun answer(status: Int, observed: WebViewObservation, accepted: Boolean, reason: String? = null) =
@@ -294,6 +311,7 @@ internal class WebViewUpdate(
     companion object {
         private val REQUEST_ID = Regex("^[A-Za-z0-9_-]{1,80}$")
         private val SHA256 = Regex("^[0-9a-f]{64}$")
+        private const val LOW_STORAGE_RESERVE_MAX = 500L * 1024 * 1024
         private val STATES = setOf("downloading", "verified", "submitted_unknown", "installed", "deferred", "rejected")
         internal fun compareEngine(left: String, right: String): Int? {
             fun parts(raw: String): List<Long>? = raw.split('.').takeIf { it.size == 4 }?.map { it.toLongOrNull() ?: return null }
