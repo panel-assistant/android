@@ -59,6 +59,11 @@ UNIT_NAME = $(notdir $@)
 UNIT_TMP = -DHAPANELD_TEST_TMP='"$(UNITS_TMP)/$(UNIT_NAME)"'
 fresh_root = rm -rf -- '$(UNITS_TMP)/$(1)' && install -d -m 0755 '$(UNITS_TMP)' && mkdir -m 1777 '$(UNITS_TMP)/$(1)'
 
+# Test binaries compile through test/shared_cc.sh: each distinct translation unit once, shared by every
+# test binary whose preprocessed source and code-generation flags match (most differ in a few defines only).
+# They build at -O1, as the replacement shards' objects do; the daemon and the CI compile check keep -O2.
+SHARED_CC = bash test/shared_cc.sh $(BUILD)/shared-obj $(CC)
+TEST_CFLAGS ?= $(patsubst -O2,-O1,$(CFLAGS))
 TEST_BINS := $(BUILD)/actuator-exec $(BUILD)/adb-recovery $(BUILD)/uninstall-supervisor $(BUILD)/unit $(BUILD)/hapaneld-helper $(BUILD)/companion-boundary $(BUILD)/guard-maintenance-boundary $(BUILD)/guard-maintenance-gates $(BUILD)/replacement-lease-old $(BUILD)/replacement-lease-new $(BUILD)/sysexec-fd-boundary $(BUILD)/sysexec-platform-wrapper $(BUILD)/peer-auth $(BUILD)/request-timeout $(BUILD)/bounded-exec $(BUILD)/lifecycle-reap $(BUILD)/hapaneld-helper-old $(BUILD)/hapaneld-helper-new $(BUILD)/cdprelay-resource-test $(BUILD)/cdprelay-test $(BUILD)/logcat-fixture $(BUILD)/logcat-boundary
 
 # Recovery replacement driver shards, <leg>:<case>+<case>...:<variant>+<variant>... Each is one invocation of
@@ -166,7 +171,7 @@ replacement-shard-check:
 # --wrap=open/ioctl lets tests provide a fake evdev node and capture requested exclusive grabs while
 # preserving the existing ledjni ioctl assertions; --wrap=write forces deterministic stream edge cases.
 $(BUILD)/unit: $(CORE_SRCS) $(STUB) test/unit.c | $(BUILD)
-	$(CC) $(CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -I$(SRC_DIR) $(CORE_SRCS) $(STUB) test/unit.c $(LDLIBS) -Wl,--wrap=open -Wl,--wrap=ioctl -Wl,--wrap=write -Wl,--wrap=read -Wl,--wrap=__read_chk -o $@
+	$(SHARED_CC) $(TEST_CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -I$(SRC_DIR) $(CORE_SRCS) $(STUB) test/unit.c $(LDLIBS) -Wl,--wrap=open -Wl,--wrap=ioctl -Wl,--wrap=write -Wl,--wrap=read -Wl,--wrap=__read_chk -o $@
 
 # The typed-command allowlist as JSON, compared with test/pa-typed-allowlist.json by value.
 pa-allowlist-test: $(BUILD)/pa-allowlist-json
@@ -175,32 +180,32 @@ $(BUILD)/pa-allowlist-json: $(SRC_DIR)/pa_allowlist.h test/pa_allowlist_json.c |
 	$(CC) $(CFLAGS) -I$(SRC_DIR) test/pa_allowlist_json.c -o $@
 
 $(BUILD)/companion-boundary: $(CORE_SRCS) $(STUB) test/companion_boundary.c | $(BUILD)
-	$(CC) $(CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) \
+	$(SHARED_CC) $(TEST_CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) \
 		test/companion_boundary.c $(LDLIBS) -Wl,--wrap=renameat -o $@
 
 $(BUILD)/guard-maintenance-boundary: $(CORE_SRCS) $(STUB) test/guard_boundary_harness.h test/guard_maintenance_boundary.c | $(BUILD)
-	$(CC) $(CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -DHAPANELD_TEST_SKIP_SELF_BINDING -DHAPANELD_BUILD_ID='"$(TEST_BUILD_ID)"' -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) \
+	$(SHARED_CC) $(TEST_CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -DHAPANELD_TEST_SKIP_SELF_BINDING -DHAPANELD_BUILD_ID='"$(TEST_BUILD_ID)"' -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) \
 		test/guard_maintenance_boundary.c $(LDLIBS) -o $@
 
 $(BUILD)/stale-replacement-boundary: $(CORE_SRCS) $(STUB) test/guard_boundary_harness.h test/guard_maintenance_boundary.c | $(BUILD)
-	$(CC) $(CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -DHAPANELD_TEST_SKIP_SELF_BINDING -DHAPANELD_TEST_STALE_ONLY -DHAPANELD_BUILD_ID='"$(TEST_BUILD_ID)"' -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) \
+	$(SHARED_CC) $(TEST_CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -DHAPANELD_TEST_SKIP_SELF_BINDING -DHAPANELD_TEST_STALE_ONLY -DHAPANELD_BUILD_ID='"$(TEST_BUILD_ID)"' -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) \
 		test/guard_maintenance_boundary.c $(LDLIBS) -o $@
 
 $(BUILD)/stale-replacement-cli: $(CORE_SRCS) $(STUB) $(SRC_DIR)/main.c test/guard_boundary_harness.h test/stale_replacement_cli.c | $(BUILD)
-	$(CC) $(CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -DHAPANELD_BUILD_ID='"$(TEST_BUILD_ID)"' -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) \
+	$(SHARED_CC) $(TEST_CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -DHAPANELD_BUILD_ID='"$(TEST_BUILD_ID)"' -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) \
 		test/stale_replacement_cli.c $(LDLIBS) -o $@
 
 $(BUILD)/guard-maintenance-gates: $(CORE_SRCS) $(STUB) test/guard_boundary_harness.h test/guard_maintenance_gates.c | $(BUILD)
-	$(CC) $(CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -DHAPANELD_TEST_SKIP_SELF_BINDING -DHAPANELD_BUILD_ID='"$(TEST_BUILD_ID)"' -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) \
+	$(SHARED_CC) $(TEST_CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -DHAPANELD_TEST_SKIP_SELF_BINDING -DHAPANELD_BUILD_ID='"$(TEST_BUILD_ID)"' -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) \
 		test/guard_maintenance_gates.c $(LDLIBS) -o $@
 
 $(BUILD)/replacement-lease-old $(BUILD)/replacement-lease-new: UNIT_NAME = replacement-lease
 $(BUILD)/replacement-lease-old: $(BUILD)/replacement-lease-new $(CORE_SRCS) $(STUB) test/replacement_lease_process.c | $(BUILD)
-	$(CC) $(CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -DHAPANELD_BUILD_ID='"$(REPLACEMENT_OLD_BUILD_ID)"' \
+	$(SHARED_CC) $(TEST_CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -DHAPANELD_BUILD_ID='"$(REPLACEMENT_OLD_BUILD_ID)"' \
 		-I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/replacement_lease_process.c $(LDLIBS) -o $@
 
 $(BUILD)/replacement-lease-new: $(CORE_SRCS) $(STUB) test/replacement_lease_process.c | $(BUILD)
-	$(CC) $(CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -DHAPANELD_BUILD_ID='"$(REPLACEMENT_NEW_BUILD_ID)"' \
+	$(SHARED_CC) $(TEST_CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -DHAPANELD_BUILD_ID='"$(REPLACEMENT_NEW_BUILD_ID)"' \
 		-I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/replacement_lease_process.c $(LDLIBS) -o $@
 
 $(BUILD)/sysexec-fd-boundary: $(SRC_DIR)/sysexec.c test/sysexec_fd_boundary.c | $(BUILD)
@@ -225,12 +230,12 @@ $(BUILD)/bounded-exec: test/bounded_exec.c $(SRC_DIR)/sysexec.c | $(BUILD)
 # Real dispatcher + real bounded exec; only Android executable paths are remapped in the fixture.
 actuator-exec-test: run-actuator-exec
 $(BUILD)/actuator-exec: $(CORE_SRCS) $(SRC_DIR)/sysexec.c test/actuator_exec.c | $(BUILD)
-	$(CC) $(CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -DHAPANELD_FRAMEWORK_TIMEOUT_MS=200U -DHAPANELD_INSTALL_TIMEOUT_MS=900U -I$(SRC_DIR) -Itest $(CORE_SRCS) $(SRC_DIR)/sysexec.c test/actuator_exec.c $(LDLIBS) -Wl,--wrap=execve -o $@
+	$(SHARED_CC) $(TEST_CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -DHAPANELD_FRAMEWORK_TIMEOUT_MS=200U -DHAPANELD_INSTALL_TIMEOUT_MS=900U -I$(SRC_DIR) -Itest $(CORE_SRCS) $(SRC_DIR)/sysexec.c test/actuator_exec.c $(LDLIBS) -Wl,--wrap=execve -o $@
 
 $(BUILD)/logcat-fixture: test/logcat_fixture.c | $(BUILD)
 	$(CC) $(CFLAGS) test/logcat_fixture.c -o $@
 $(BUILD)/logcat-boundary: $(CORE_SRCS) $(SRC_DIR)/sysexec.c test/logcat_boundary.c $(BUILD)/logcat-fixture | $(BUILD)
-	$(CC) $(CFLAGS) -DHAPANELD_LOGCAT_PATH='"$(abspath $(BUILD)/logcat-fixture)"' -DLOGCAT_DUMP_DEADLINE_MS=500u -I$(SRC_DIR) $(CORE_SRCS) $(SRC_DIR)/sysexec.c test/logcat_boundary.c $(LDLIBS) -o $@
+	$(SHARED_CC) $(TEST_CFLAGS) -DHAPANELD_LOGCAT_PATH='"$(abspath $(BUILD)/logcat-fixture)"' -DLOGCAT_DUMP_DEADLINE_MS=500u -I$(SRC_DIR) $(CORE_SRCS) $(SRC_DIR)/sysexec.c test/logcat_boundary.c $(LDLIBS) -o $@
 $(BUILD)/request-timeout: test/request_timeout.c $(SRC_DIR)/main.c $(SRC_DIR)/adb_recovery.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c $(SRC_DIR)/identity.c | $(BUILD)
 	$(CC) $(CFLAGS) -I$(SRC_DIR) test/request_timeout.c $(SRC_DIR)/adb_recovery.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c $(SRC_DIR)/identity.c $(LDLIBS) -o $@
 
@@ -244,9 +249,9 @@ REPLACEMENT_FLAGS := -DSOCK_NAME=\"$(REPLACEMENT_SOCKET)\" -DAPP_DATA=\"/proc/se
 	-DHAPANELD_TEST_ALLOW_STALE_OWNER_RETIREMENT=1
 replacement-identity-test: run-replacement-identity
 $(BUILD)/hapaneld-helper-old: $(DAEMON_SRCS) | $(BUILD)
-	$(CC) $(CFLAGS) -I$(SRC_DIR) $(REPLACEMENT_FLAGS) -DHAPANELD_BUILD_ID=\"$(OLD_BUILD_ID)\" $(DAEMON_SRCS) $(LDLIBS) -o $@
+	$(SHARED_CC) $(TEST_CFLAGS) -I$(SRC_DIR) $(REPLACEMENT_FLAGS) -DHAPANELD_BUILD_ID=\"$(OLD_BUILD_ID)\" $(DAEMON_SRCS) $(LDLIBS) -o $@
 $(BUILD)/hapaneld-helper-new: $(DAEMON_SRCS) | $(BUILD)
-	$(CC) $(CFLAGS) -I$(SRC_DIR) $(REPLACEMENT_FLAGS) -DHAPANELD_BUILD_ID=\"$(NEW_BUILD_ID)\" $(DAEMON_SRCS) $(LDLIBS) -o $@
+	$(SHARED_CC) $(TEST_CFLAGS) -I$(SRC_DIR) $(REPLACEMENT_FLAGS) -DHAPANELD_BUILD_ID=\"$(NEW_BUILD_ID)\" $(DAEMON_SRCS) $(LDLIBS) -o $@
 
 # CDP relay resource regression. Tight test-only deadlines keep saturation/reaping/idle coverage fast;
 # production uses the conservative defaults compiled into cdprelay.c by Gradle.
@@ -307,12 +312,12 @@ clean:
 	rm -rf $(BUILD) fuzz/build
 
 $(BUILD)/uninstall-supervisor: $(CORE_SRCS) $(SRC_DIR)/main.c $(SRC_DIR)/sysexec.c test/uninstall_supervisor.c | $(BUILD)
-	$(CC) $(CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -DSOCK_NAME='"hapaneld-helper-uninstall-test"' \
+	$(SHARED_CC) $(TEST_CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -DSOCK_NAME='"hapaneld-helper-uninstall-test"' \
 		-DAPP_DATA='"$(UNITS_TMP)/$(UNIT_NAME)/.hapaneld-uninstall-data-test"' -DAPP_USER_DATA='"$(UNITS_TMP)/$(UNIT_NAME)/.hapaneld-uninstall-user-test"' \
 		-I$(SRC_DIR) $(CORE_SRCS) $(SRC_DIR)/sysexec.c test/uninstall_supervisor.c $(LDLIBS) -Wl,--wrap=unlinkat -Wl,--wrap=lstat -o $@
 
 $(BUILD)/adb-recovery: test/adb_recovery.c test/adb_recovery_paths.h test/android/log.h $(CORE_SRCS) $(SRC_DIR)/main.c $(STUB) | $(BUILD)
-	$(CC) $(CFLAGS) -DHAPANELD_TEST -include test/adb_recovery_paths.h -DRECOVERY_RETRY_FIRST_MS=150LL -DRECOVERY_RETRY_CAP_MS=600LL -DHAPANELD_BUILD_ID='"$(TEST_BUILD_ID)"' -I$(SRC_DIR) -Itest test/adb_recovery.c $(filter-out $(SRC_DIR)/adb_recovery.c,$(CORE_SRCS)) $(STUB) $(LDLIBS) -o $@
+	$(SHARED_CC) $(TEST_CFLAGS) -DHAPANELD_TEST -include test/adb_recovery_paths.h -DRECOVERY_RETRY_FIRST_MS=150LL -DRECOVERY_RETRY_CAP_MS=600LL -DHAPANELD_BUILD_ID='"$(TEST_BUILD_ID)"' -I$(SRC_DIR) -Itest test/adb_recovery.c $(filter-out $(SRC_DIR)/adb_recovery.c,$(CORE_SRCS)) $(STUB) $(LDLIBS) -o $@
 adb-recovery-test: run-adb-recovery
 
 # Retained independent recovery-engine filesystem retirement under the fixed recovery invocation.
@@ -347,46 +352,46 @@ $(BUILD)/adb-ensure-%: $(BUILD)/adb-recovery-replacement Makefile
 
 # Real dispatch fixture; path substitution is compile-time and absent from shipped builds.
 $(BUILD)/zigbee-boundary: $(CORE_SRCS) $(STUB) test/zigbee_boundary.c test/zigbee_paths.h | $(BUILD)
-	$(CC) $(CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -DZIGBEE_TEST_ROOT='"$(abspath $(BUILD)/zigbee-fixture)"' -include test/zigbee_paths.h -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/zigbee_boundary.c $(LDLIBS) -o $@
+	$(SHARED_CC) $(TEST_CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -DZIGBEE_TEST_ROOT='"$(abspath $(BUILD)/zigbee-fixture)"' -include test/zigbee_paths.h -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/zigbee_boundary.c $(LDLIBS) -o $@
 
 $(BUILD)/zigbee-role-exec: $(SRC_DIR)/sysexec.c test/zigbee_role_exec.c | $(BUILD)
 	$(CC) $(CFLAGS) -I$(SRC_DIR) test/zigbee_role_exec.c $(SRC_DIR)/sysexec.c $(LDLIBS) -Wl,--wrap=execve -o $@
 
 $(BUILD)/wifi-boundary: $(CORE_SRCS) $(STUB) test/wifi_boundary.c | $(BUILD)
-	$(CC) $(CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/wifi_boundary.c $(LDLIBS) -Wl,--wrap=sysexec_capture_wifi_status -o $@
+	$(SHARED_CC) $(TEST_CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/wifi_boundary.c $(LDLIBS) -Wl,--wrap=sysexec_capture_wifi_status -o $@
 
 $(BUILD)/wifi-exec: $(SRC_DIR)/sysexec.c test/wifi_exec.c | $(BUILD)
 	$(CC) $(CFLAGS) -I$(SRC_DIR) test/wifi_exec.c $(SRC_DIR)/sysexec.c $(LDLIBS) -Wl,--wrap=execve -o $@
 
 $(BUILD)/adb-state-boundary: $(CORE_SRCS) $(STUB) test/adb_state_boundary.c | $(BUILD)
-	$(CC) $(CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/adb_state_boundary.c $(LDLIBS) -Wl,--wrap=sysexec_capture_adb_properties -Wl,--wrap=open -Wl,--wrap=read -Wl,--wrap=__read_chk -o $@
+	$(SHARED_CC) $(TEST_CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/adb_state_boundary.c $(LDLIBS) -Wl,--wrap=sysexec_capture_adb_properties -Wl,--wrap=open -Wl,--wrap=read -Wl,--wrap=__read_chk -o $@
 
 $(BUILD)/adb-exec: $(SRC_DIR)/sysexec.c test/adb_exec.c | $(BUILD)
 	$(CC) $(CFLAGS) -I$(SRC_DIR) test/adb_exec.c $(SRC_DIR)/sysexec.c $(LDLIBS) -Wl,--wrap=execve -o $@
 
 # Fixed sysfs paths are substituted only for dispatch fixtures; production remains /sys/class.
 $(BUILD)/sysfs-read-boundary: $(CORE_SRCS) $(STUB) test/sysfs_read_boundary.c | $(BUILD)
-	$(CC) $(CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -DSYSFS_READ_CLASS_ROOT='"$(abspath $(BUILD)/sysfs-read-fixture)"' -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/sysfs_read_boundary.c $(LDLIBS) -Wl,--wrap=readdir -Wl,--wrap=read -Wl,--wrap=__read_chk -Wl,--wrap=faccessat -Wl,--wrap=openat -Wl,--wrap=open -o $@
+	$(SHARED_CC) $(TEST_CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -DSYSFS_READ_CLASS_ROOT='"$(abspath $(BUILD)/sysfs-read-fixture)"' -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/sysfs_read_boundary.c $(LDLIBS) -Wl,--wrap=readdir -Wl,--wrap=read -Wl,--wrap=__read_chk -Wl,--wrap=faccessat -Wl,--wrap=openat -Wl,--wrap=open -o $@
 
 $(BUILD)/cdp-state-boundary: $(CORE_SRCS) $(STUB) test/cdp_state_boundary.c | $(BUILD)
-	$(CC) $(CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -DCDP_PROC_ROOT='"$(abspath $(BUILD)/cdp-state-fixture)"' -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/cdp_state_boundary.c $(LDLIBS) -Wl,--wrap=open -Wl,--wrap=openat -Wl,--wrap=read -Wl,--wrap=__read_chk -Wl,--wrap=readdir -Wl,--wrap=fstatat -o $@
+	$(SHARED_CC) $(TEST_CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -DCDP_PROC_ROOT='"$(abspath $(BUILD)/cdp-state-fixture)"' -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/cdp_state_boundary.c $(LDLIBS) -Wl,--wrap=open -Wl,--wrap=openat -Wl,--wrap=read -Wl,--wrap=__read_chk -Wl,--wrap=readdir -Wl,--wrap=fstatat -o $@
 
 # GFXINFO dispatch uses a counted capture seam; execution tests retain the real supervised child.
 $(BUILD)/gfxinfo-boundary: $(CORE_SRCS) $(STUB) test/gfxinfo_boundary.c | $(BUILD)
-	$(CC) $(CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/gfxinfo_boundary.c $(LDLIBS) -Wl,--wrap=sysexec_capture_gfxinfo -o $@
+	$(SHARED_CC) $(TEST_CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/gfxinfo_boundary.c $(LDLIBS) -Wl,--wrap=sysexec_capture_gfxinfo -o $@
 
 $(BUILD)/gfxinfo-exec: $(SRC_DIR)/sysexec.c test/gfxinfo_exec.c | $(BUILD)
 	$(CC) $(CFLAGS) -I$(SRC_DIR) test/gfxinfo_exec.c $(SRC_DIR)/sysexec.c $(LDLIBS) -Wl,--wrap=execve -o $@
 
 # Ordinary fixed ENSURE wire/argument boundary; the real driver qualifies publication/custody.
 $(BUILD)/adb-ensure-boundary: $(CORE_SRCS) test/adb_ensure_boundary.c | $(BUILD)
-	$(CC) $(CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/adb_ensure_boundary.c $(LDLIBS) -Wl,--wrap=adb_recovery_ensure -o $@
+	$(SHARED_CC) $(TEST_CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/adb_ensure_boundary.c $(LDLIBS) -Wl,--wrap=adb_recovery_ensure -o $@
 
 # Real stream reader + dispatcher; only recovery execution/handoff is replaced with byte echo.
 .PHONY: socket-framing-test
 socket-framing-test: run-socket-framing
 $(BUILD)/socket-framing: $(CORE_SRCS) $(STUB) test/socket_framing.c $(SRC_DIR)/commands.def | $(BUILD)
-	$(CC) $(CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/socket_framing.c $(LDLIBS) -Wl,--wrap=cmd_adb_recovery -Wl,--wrap=read -o $@
+	$(SHARED_CC) $(TEST_CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -I$(SRC_DIR) -Itest $(CORE_SRCS) $(STUB) test/socket_framing.c $(LDLIBS) -Wl,--wrap=cmd_adb_recovery -Wl,--wrap=read -o $@
 
 # Lifecycle-parent child custody stays thread-free; the forked worker keeps ordinary reaping.
 .PHONY: lifecycle-reap-test
