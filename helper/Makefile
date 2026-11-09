@@ -99,7 +99,7 @@ UNIT_RUNS := $(foreach s,$(REPLACEMENT_LONG_SHARDS),run-$(call shard_name,$(s)))
 	run-replacement-lease run-request-timeout run-replacement-identity run-companion-boundary run-version \
 	run-sysfs-read-boundary run-stale-replacement-cli run-cdp-state-boundary run-peer-auth \
 	run-sysexec-fd-boundary run-wifi-boundary run-gfxinfo-boundary run-adb-ensure-boundary run-adb-state-boundary \
-	run-pa-allowlist
+	run-pa-allowlist run-shared-cc
 
 .PHONY: replacement-shard-check $(UNIT_RUNS) peer-auth-test request-timeout-test bounded-exec-test actuator-exec-test replacement-identity-test cdprelay-resource-test adb-recovery-test adb-recovery-retirement-test socket-framing-test lifecycle-reap-test
 test:
@@ -118,7 +118,7 @@ test-binaries: $(if $(FUZZ_RUNS),fuzz-binaries)
 test-units: $(FUZZ_RUNS) replacement-shard-check $(UNIT_RUNS)
 
 # A binary test: a fresh fixture root, then the binary.
-UNIT_BINARY_RUNS := $(filter-out $(REPLACEMENT_RUNS) run-pa-allowlist run-adb-recovery run-adb-recovery-retirement run-replacement-lease run-replacement-identity run-version run-cdprelay-resource-test,$(UNIT_RUNS))
+UNIT_BINARY_RUNS := $(filter-out $(REPLACEMENT_RUNS) run-pa-allowlist run-shared-cc run-adb-recovery run-adb-recovery-retirement run-replacement-lease run-replacement-identity run-version run-cdprelay-resource-test,$(UNIT_RUNS))
 $(UNIT_BINARY_RUNS): run-%: $(BUILD)/%
 	@$(call fresh_root,$*)
 	$(BUILD)/$*
@@ -129,6 +129,8 @@ run-version: $(BUILD)/hapaneld-helper
 	test "$$($(BUILD)/hapaneld-helper --version)" = "HELPER version=1.17.0 proto=1.17"
 run-replacement-identity: $(BUILD)/hapaneld-helper-old $(BUILD)/hapaneld-helper-new
 	bash ./test/replacement_identity_test.sh $(BUILD)/hapaneld-helper-old $(BUILD)/hapaneld-helper-new
+run-shared-cc:
+	bash ./test/shared_cc_test.sh $(CC)
 run-pa-allowlist: $(BUILD)/pa-allowlist-json
 	bash ./test/pa_allowlist_check.sh $(BUILD)/pa-allowlist-json
 run-cdprelay-resource-test: $(BUILD)/cdprelay-resource-test $(BUILD)/cdprelay-test

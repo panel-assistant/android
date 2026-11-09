@@ -24,10 +24,17 @@ done
 [ -n "$out" ] && ((${#sources[@]})) || { echo "shared_cc.sh: need sources and -o" >&2; exit 2; }
 mkdir -p "$dir"
 
-# object <source>: prints the shared object path for this source under this command line.
+# object <source>: prints the shared object path for this source under this command line. Fails, with
+# the preprocessor's own error, when the preprocessed text cannot be produced: a #error still prints
+# most of the text, which could hash to an earlier good object.
 object() {
-	local key
-	key=$({ printf '%s\0' "$cc" "${codegen[@]}"; "$cc" "${codegen[@]}" "${pre[@]}" -E "$1"; } | sha256sum | cut -c1-32)
+	local text key
+	text=$(mktemp) || return 1
+	if ! "$cc" "${codegen[@]}" "${pre[@]}" -E "$1" > "$text"; then rm -f -- "$text"; return 1; fi
+	key=$({ printf '%s\0' "$cc" "${codegen[@]}"; cat -- "$text"; } | sha256sum) || { rm -f -- "$text"; return 1; }
+	rm -f -- "$text"
+	key=${key:0:32}
+	[[ $key =~ ^[0-9a-f]{32}$ ]] || return 1
 	printf '%s/%s.%s.o' "$dir" "$(basename "$1" .c)" "$key"
 }
 # build <source> <object> <flock option>: compiles the object unless present; returns 1 if the lock is busy.
@@ -43,7 +50,7 @@ build() {
 
 objects=() deferred=()
 for i in "${!sources[@]}"; do
-	objects[i]=$(object "${sources[i]}")
+	objects[i]=$(object "${sources[i]}") || exit 1
 	# Another binary compiling the same object now: take the other sources first, then wait for it.
 	build "${sources[i]}" "${objects[i]}" -n || { [ $? -eq 75 ] && deferred+=("$i") || exit 1; }
 done
