@@ -66,3 +66,166 @@ internal fun bundledHelperLegacyProbeCommand(
         done
     """.trimIndent()
 }
+
+/** What the read-only layout F probe found: the one /system custody layout the 1.0.1 migration repairs. */
+internal sealed interface SystemCustodyLayout {
+    val inventory: List<String>
+    data class LayoutF(override val inventory: List<String>) : SystemCustodyLayout
+    data class Refused(val reason: String, override val inventory: List<String>) : SystemCustodyLayout
+}
+
+/** The only /system rc the migration accepts: the pre-canonical `service hapaneld_helper /system/bin/hapaneld-helper`. */
+internal const val SYSTEM_CUSTODY_REGISTRATION_SHA256 =
+    "9b430712c493df177a19e5e893df445f6c2e951fc30ea140dcdbcdb7987de659"
+
+/** The read-only probe's root budget. Each process scan is one call, so even a slow panel finishes far inside it. */
+internal const val SYSTEM_CUSTODY_PROBE_TIMEOUT_MS = 60_000L
+
+/**
+ * The probe always exits 0 with a verdict, so no reply means root ran out of time (`probe_timeout`) or never
+ * ran it (`probe_failed`); the elapsed time tells the two apart and goes to the log.
+ */
+internal fun probeSystemCustodyLayout(
+    filesystemRoot: String = "",
+    execute: (String, Long) -> String? = Su::runOutputLong,
+    monotonicMs: () -> Long = { android.os.SystemClock.elapsedRealtime() },
+): SystemCustodyLayout {
+    val startedAt = monotonicMs()
+    val raw = execute(bundledHelperSystemCustodyProbeCommand(filesystemRoot), SYSTEM_CUSTODY_PROBE_TIMEOUT_MS)
+    if (raw != null) return parseSystemCustodyProbe(raw)
+    val elapsed = monotonicMs() - startedAt
+    val reason = if (elapsed >= SYSTEM_CUSTODY_PROBE_TIMEOUT_MS - 1_000L) "probe_timeout" else "probe_failed"
+    android.util.Log.w("ha-paneld/helper-migrate", "system custody probe gave no reply: $reason after ${elapsed}ms")
+    return SystemCustodyLayout.Refused(reason, emptyList())
+}
+
+/**
+ * Read-only, before anything is staged: prints the inventory the hardware acceptance compares, then one
+ * verdict. Layout F is a Guard-capable helper answering `HOLD self` with its binary at /system/bin and
+ * the exact pre-canonical /system rc, nothing else that could register or run a helper, a Guard DB holding only
+ * its owner lock, and any /data/local copy stopped. Every other layout gets its own refusal reason. The
+ * serving process's executable is printed, not judged: the migration itself proves the incumbent by asking
+ * the /system binary for the build the socket reported.
+ */
+internal fun bundledHelperSystemCustodyProbeCommand(filesystemRoot: String = ""): String {
+    require(filesystemRoot.isEmpty() || (SAFE_ABSOLUTE_PATH.matches(filesystemRoot) &&
+        !filesystemRoot.endsWith('/') && filesystemRoot.split('/').none { it == ".." }))
+    val d = '$'
+    val journals = (GUARD_REPLACEMENT_JOURNALS + DELETED_INSTALLER_JOURNALS).underRoot()
+    return """
+        root=$filesystemRoot
+        local=${d}root/data/local
+        live=${d}local/hapaneld-helper
+        system_bin=${d}root/system/bin/hapaneld-helper
+        registration=${d}root/system/etc/init/hapaneld-helper.rc
+        vendor_registration=${d}root/vendor/etc/init/hapaneld-helper.rc
+        data_bin=${d}root/data/adb/hapaneld/hapaneld-helper
+        service_registration=${d}root/data/adb/service.d/hapaneld-helper.sh
+        guard=${d}local/.hapaneld-guard-db
+        absent() { [ ! -e "${d}1" ] && [ ! -L "${d}1" ]; }
+        meta() { stat -c '%u:%g:%a:%h:%s' "${d}1" 2>/dev/null || toybox stat -c '%u:%g:%a:%h:%s' "${d}1" 2>/dev/null; }
+        digest() { hash=${d}(sha256sum "${d}1" 2>/dev/null || toybox sha256sum "${d}1" 2>/dev/null) && printf '%s
+' "${d}{hash%% *}"; }
+        inode() { stat -Lc '%d:%i' "${d}1" 2>/dev/null || toybox stat -L -c '%d:%i' "${d}1" 2>/dev/null; }
+        describe() { if absent "${d}2"; then echo "INV ${d}1 absent"; else echo "INV ${d}1 ${d}(meta "${d}2") ${d}(digest "${d}2")${d}3"; fi; }
+        verdict=
+        refuse() { [ -n "${d}verdict" ] || verdict=${d}1; }
+        ${procExecutablesShell()}
+        scan=${d}(proc_exe_inodes)
+        live_running=0
+        if [ -f "${d}live" ] && [ ! -L "${d}live" ]; then
+          live_inode=${d}(inode "${d}live")
+          for word in ${d}scan; do [ "${d}word" != "${d}live_inode" ] || live_running=1; done
+        fi
+        scanned_inode() {
+          next=
+          for word in ${d}scan; do
+            if [ -n "${d}next" ]; then printf '%s\n' "${d}word"; return 0; fi
+            [ "${d}word" != "/proc/${d}1/exe" ] || next=1
+          done
+          return 1
+        }
+        describe registration "${d}registration"
+        if [ -f "${d}registration" ]; then echo "INV registration_text ${d}(head -c 1024 "${d}registration" | tr '
+' '|')"; fi
+        describe system_bin "${d}system_bin"
+        describe live "${d}live" " running=${d}live_running"
+        echo "INV data_adb_hapaneld ${d}(ls -A "${d}root/data/adb/hapaneld" 2>/dev/null | tr '
+' ' ')"
+        echo "INV guard_db ${d}(ls -A "${d}guard" 2>/dev/null | tr '
+' ' ' | sed 's/ ${d}//')"
+        while IFS= read -r mount_line; do
+          set -- ${d}mount_line
+          case "${d}5" in /|/system) echo "INV mount ${d}mount_line" ;; esac
+        done < "${d}root/proc/1/mountinfo"
+        echo "INV selinux ${d}(getenforce 2>/dev/null)"
+        echo "INV boot_id ${d}(cat "${d}root/proc/sys/kernel/random/boot_id" 2>/dev/null)"
+        echo "INV mnt_ns self=${d}(readlink /proc/self/ns/mnt 2>/dev/null) init=${d}(readlink "${d}root/proc/1/ns/mnt" 2>/dev/null)"
+        # One ls lists every executable link; only helper paths, and their deleted forms, are reported.
+        helper_report=${d}(ls -l /proc/[0-9]*/exe 2>/dev/null | while IFS= read -r link; do
+          case "${d}link" in *" -> "*) ;; *) continue ;; esac
+          pid=${d}{link#*/proc/}; pid=${d}{pid%%/exe*}; target=${d}{link#* -> }
+          case "${d}target" in
+            "${d}system_bin"|"${d}system_bin (deleted)"|"${d}live"|"${d}live (deleted)")
+              echo "INV helper_process ${d}pid ${d}target"
+              if [ "${d}target" = "${d}live (deleted)" ] ||
+                 { [ "${d}target" = "${d}live" ] && [ "${d}(scanned_inode "${d}pid")" != "${d}(inode "${d}live")" ]; }; then
+                echo "INV helper_stale_inode ${d}pid"
+              fi ;;
+          esac
+        done)
+        [ -z "${d}helper_report" ] || printf '%s\n' "${d}helper_report"
+        stale_inode=0
+        case "${d}helper_report" in *"INV helper_stale_inode "*) stale_inode=1 ;; esac
+
+        for path in "${d}live" "${d}system_bin" "${d}registration" "${d}guard" "${d}local" "${d}root/system/etc/init" "${d}root/system/bin"; do
+          [ ! -L "${d}path" ] || refuse symlink
+        done
+        for rc in "${d}vendor_registration" "${d}vendor_registration"?*; do absent "${d}rc" || refuse vendor_registration; done
+        absent "${d}local/tmp/hapaneld-helper" || refuse legacy_tmp_layout
+        absent "${d}data_bin" || refuse systemless_guard_custody
+        absent "${d}service_registration" || refuse registration_unknown
+        absent "${d}root/system/bin/hapaneld-ledd" && absent "${d}root/system/etc/init/hapaneld-ledd.rc" || refuse ledd_present
+        for journal in $journals; do absent "${d}journal" || refuse journal_present; done
+        absent "${d}local/.hapaneld-helper.previous" && absent "${d}local/.hapaneld-helper.previous.tmp" || refuse previous_present
+        absent "${d}local/.hapaneld-helper.legacy-takeover" && absent "${d}local/.hapaneld-helper.legacy-takeover.tmp" ||
+          refuse legacy_takeover_record
+        absent "${d}local/.hapaneld-helper.custody-migration" && absent "${d}local/.hapaneld-helper.custody-migration.tmp" ||
+          refuse custody_record_present
+        ${systemMountShell()}
+        if [ -f "${d}system_bin" ] &&
+           ! absent "${d}local/.hapaneld-custody-archive/hapaneld-helper.removed.${d}(digest "${d}system_bin")"; then
+          refuse system_removal_not_persistent
+        fi
+        if system_mount_find && system_upper_volatile; then refuse system_overlay_not_persistent; fi
+        [ "${d}stale_inode" = 0 ] || refuse stale_live_inode
+        [ -f "${d}system_bin" ] && [ -f "${d}registration" ] || refuse no_system_helper
+        for rc in "${d}registration"?*; do absent "${d}rc" || refuse registration_sibling; done
+        case "${d}(meta "${d}registration")" in 0:0:644:1:*) ;; *) refuse registration_unknown ;; esac
+        [ "${d}(digest "${d}registration")" = "$SYSTEM_CUSTODY_REGISTRATION_SHA256" ] || refuse registration_unknown
+        case "${d}(meta "${d}system_bin")" in 0:0:755:1:*) ;; *) refuse system_binary_unexpected ;; esac
+        if ! absent "${d}live"; then
+          [ -f "${d}live" ] || refuse live_unexpected
+          case "${d}(meta "${d}live")" in 0:0:*:1:*) ;; *) refuse live_unexpected ;; esac
+          [ "${d}live_running" = 0 ] || refuse stale_live_running
+        fi
+        if ! absent "${d}guard"; then
+          [ -d "${d}guard" ] || refuse guard_db_not_empty
+          for entry in ${d}(ls -A "${d}guard" 2>/dev/null); do [ "${d}entry" = .owner.lock ] || refuse guard_db_not_empty; done
+        fi
+        if [ -n "${d}verdict" ]; then echo "REFUSED ${d}verdict"; else echo LAYOUT_F; fi
+    """.trimIndent()
+}
+
+internal fun parseSystemCustodyProbe(raw: String?): SystemCustodyLayout {
+    val lines = raw?.lines()?.filter { it.isNotBlank() }
+        ?: return SystemCustodyLayout.Refused("probe_unavailable", emptyList())
+    val inventory = lines.filter { it.startsWith("INV ") }
+    val verdict = lines.lastOrNull()
+    return when {
+        verdict == "LAYOUT_F" -> SystemCustodyLayout.LayoutF(inventory)
+        verdict != null && verdict.matches(Regex("REFUSED [a-z_]{1,40}")) ->
+            SystemCustodyLayout.Refused(verdict.removePrefix("REFUSED "), inventory)
+        else -> SystemCustodyLayout.Refused("probe_malformed", inventory)
+    }
+}

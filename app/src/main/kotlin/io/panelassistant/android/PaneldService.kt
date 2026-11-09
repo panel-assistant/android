@@ -599,14 +599,19 @@ class PaneldService : Service() {
         if (teardownBoundary.isStopping) return
         when (BundledHelperInstaller.ensureCurrent(this@PaneldService)) {
             BundledHelperInstaller.Result.INSTALLED -> Log.i(TAG, "migrated bundled root helper for this release")
-            BundledHelperInstaller.Result.FAILED ->
-                Log.w(TAG, "root helper migration failed; versioned helper features remain unavailable")
+            BundledHelperInstaller.Result.FAILED -> Log.w(
+                TAG,
+                "root helper migration failed (${BundledHelperInstaller.lastReason ?: "no reason recorded"}); " +
+                    "versioned helper features remain unavailable",
+            )
             BundledHelperInstaller.Result.BLOCKED_ACTIVE ->
                 Log.i(TAG, "retaining current root helper while Guard DB maintenance owns recovery")
             BundledHelperInstaller.Result.REPROVISION_REQUIRED ->
-                Log.w(TAG, "root helper matches this release but is not canonical; reprovision required")
+                Log.w(TAG, "root helper reprovision required: ${BundledHelperInstaller.lastReason ?: "no reason recorded"}")
             BundledHelperInstaller.Result.ALREADY_CURRENT,
-            BundledHelperInstaller.Result.SKIPPED -> Unit
+            BundledHelperInstaller.Result.SKIPPED -> Log.i(
+                TAG, "root helper check: ${BundledHelperInstaller.diagnostics.summary()}",
+            )
         }
         if (GuardDbProcessAdmission.ordinaryMutationsAllowed() && !teardownBoundary.isStopping) {
             PanelPermissionRepair.repair(

@@ -250,10 +250,10 @@ class BundledHelperFreshInstallTest {
                 repeat(50) { if (pidFile.length() == 0L) Thread.sleep(100) }
                 val pid = pidFile.readText().trim()
                 val fakeBin = File(fixture.root, "fake-bin").apply { mkdirs() }
+                // One stat call covers every process; this one's executable is left out as unreadable.
                 writeExecutable(File(fakeBin, "stat"), """
                     #!/bin/bash
-                    [ "${'$'}1" = -Lc ] && [ "${'$'}3" = /proc/$pid/exe ] && exit 1
-                    exec /usr/bin/stat "${'$'}@"
+                    /usr/bin/stat "${'$'}@" | grep -v "^/proc/$pid/exe "
                 """.trimIndent() + "\n", 755)
                 try {
                     assertEquals(name, expected, runTakeoverCommand(
