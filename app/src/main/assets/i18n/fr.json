@@ -12587,6 +12587,111 @@
       "text": "{verdict} ; {evidence}",
       "sourceHash": "df42587b95447408d7bf60f413e8cb0921c3523565e128b86c4c07893776ae37",
       "state": "machine-cross-checked"
+    },
+    "configure.enum.voice_capture_channels.1": {
+      "text": "One (mono)",
+      "sourceHash": "6bbb429f6d77d7924b1095de57536157ddfaacd1db2f74049bd5d966b0a5bc3b",
+      "state": "english-fallback"
+    },
+    "configure.enum.voice_capture_channels.2": {
+      "text": "Two (stereo)",
+      "sourceHash": "3a838f23cef16365a4793327d296a42b3e1f1b64a01d7a524c419cee46d3da1e",
+      "state": "english-fallback"
+    },
+    "configure.enum.voice_capture_channels.auto": {
+      "text": "Automatic",
+      "sourceHash": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
+      "state": "english-fallback"
+    },
+    "configure.enum.voice_capture_downmix.auto": {
+      "text": "Automatic",
+      "sourceHash": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
+      "state": "english-fallback"
+    },
+    "configure.enum.voice_capture_downmix.average": {
+      "text": "Average",
+      "sourceHash": "b38ae2c5b84529e8027b43a69c8ce9426a3cb081dae97b77bdcd2fdc5a9df742",
+      "state": "english-fallback"
+    },
+    "configure.enum.voice_capture_downmix.dominance": {
+      "text": "Dominance",
+      "sourceHash": "2f13fcedc4b21aec5214e6185409c4f2bb2fa72fbd0dafbe81bf45f1daa1eb95",
+      "state": "english-fallback"
+    },
+    "configure.enum.voice_capture_downmix.left": {
+      "text": "Left",
+      "sourceHash": "58eb9032e3bb83f0e39d644ebc87ca254117b95bf458483bec7379bea0b419d0",
+      "state": "english-fallback"
+    },
+    "configure.enum.voice_capture_downmix.right": {
+      "text": "Right",
+      "sourceHash": "883361d5d682a1574410961ce51450b6e036a779c9f098dec71e28aec832bfa6",
+      "state": "english-fallback"
+    },
+    "configure.enum.voice_capture_rate.16000": {
+      "text": "16 kHz",
+      "sourceHash": "bcdf763f5f68bb67a6c229d8862c59fc10145831035203c3d422cc924c736c54",
+      "state": "english-fallback"
+    },
+    "configure.enum.voice_capture_rate.44100": {
+      "text": "44.1 kHz",
+      "sourceHash": "21b2f3f1b4bb28c1938ffedf1abb080ac0df6d1ea2172521984cf8b12e369362",
+      "state": "english-fallback"
+    },
+    "configure.enum.voice_capture_rate.48000": {
+      "text": "48 kHz",
+      "sourceHash": "0f1a7608b8d0399d74119634986f13a1533bba8ea185c8f1bca840300a94f2f5",
+      "state": "english-fallback"
+    },
+    "configure.enum.voice_capture_rate.auto": {
+      "text": "Automatic",
+      "sourceHash": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
+      "state": "english-fallback"
+    },
+    "settings.voice_capture_channels.help": {
+      "text": "How many channels the panel asks Android to record. Two channels are mixed down to one as the downmix setting says.\n\n**Automatic** uses the profile's channel count, or one.",
+      "sourceHash": "d01331c3100fe0609b1f95f704798a1db54ab37e64085f29c2473c42c204fa26",
+      "state": "english-fallback"
+    },
+    "settings.voice_capture_channels.label": {
+      "text": "Capture channels",
+      "sourceHash": "9f47091894ecf486c884e98231b26c2df2c14217585d0f763997156591ac6dea",
+      "state": "english-fallback"
+    },
+    "settings.voice_capture_channels.summary": {
+      "text": "Record one channel or two.",
+      "sourceHash": "762bab95033676e35d71ea502ae15f478271595190c27e8a53aad8ac37bab2a3",
+      "state": "english-fallback"
+    },
+    "settings.voice_capture_downmix.help": {
+      "text": "Applies only when two channels are recorded.\n\n- **Dominance** takes a channel on its own when it is at least four times louder than the other, and averages them otherwise, so a dead channel does not halve the signal.\n- **Average** always mixes the two equally.\n- **Left** or **Right** keeps one channel.\n\n**Automatic** uses the profile's choice, or dominance.",
+      "sourceHash": "a23d53ca4275f78b65d919c92e7fc99448d43348eaba227790611e73cf0aef15",
+      "state": "english-fallback"
+    },
+    "settings.voice_capture_downmix.label": {
+      "text": "Channel mix",
+      "sourceHash": "a41238fdd1ee783c882408a745a347db670e8583faea64745b60fc88a346f43f",
+      "state": "english-fallback"
+    },
+    "settings.voice_capture_downmix.summary": {
+      "text": "How two recorded channels become one.",
+      "sourceHash": "acd2f6e971931ac891ade90cc1d6a66838779b6adaa50f69d55d45cf567cc322",
+      "state": "english-fallback"
+    },
+    "settings.voice_capture_rate.help": {
+      "text": "The rate the panel asks Android to record at. Audio is converted to 16 kHz before the wake word and Assist hear it.\n\n**Automatic** uses the rate the panel's profile declares, or 16 kHz. If Android refuses a rate, the panel falls back to 16 kHz mono rather than going deaf.",
+      "sourceHash": "7cc50a1993f880176e6e0821e3e5686ef047c65ce1b3ee5000c7108c5b9afe03",
+      "state": "english-fallback"
+    },
+    "settings.voice_capture_rate.label": {
+      "text": "Capture rate",
+      "sourceHash": "e73b8dec7d8808a3236570e2f91d1886de40faff74dd2d7623a2655d1e3d94c0",
+      "state": "english-fallback"
+    },
+    "settings.voice_capture_rate.summary": {
+      "text": "Sample rate the microphone is opened at.",
+      "sourceHash": "ddeaab442a03d6c16a7808ed57f5f1fdf5490efc0fec43acaa57fcdf2271c369",
+      "state": "english-fallback"
     }
   }
 }
