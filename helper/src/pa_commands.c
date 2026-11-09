@@ -1190,6 +1190,34 @@ static void pa_overlay_set(pa_run *r, const char *package, const char *mode) {
     (void)pa_exec(r, set);
 }
 
+static int pa_mode_in(const char *mode, const char *const modes[]) { return pa_in_list(mode, modes); }
+
+// A recorded screensaver value: empty, null, or `,`-separated strict components (one when single).
+static int pa_valid_components(const char *value, int single) {
+    if (!value[0] || strcmp(value, "null") == 0) return 1;
+    char copy[PA_RECORD_MAX + 1];
+    if (snprintf(copy, sizeof copy, "%s", value) >= (int)sizeof copy) return 0;
+    if (copy[strlen(copy) - 1] == ',') return 0;
+    int n = 0;
+    for (char *save = NULL, *c = strtok_r(copy, ",", &save); c; c = strtok_r(NULL, ",", &save), n++)
+        if (!valid_component_strict(c)) return 0;
+    return n >= 1 && !strstr(value, ",,") && value[0] != ',' && (!single || n == 1);
+}
+
+static const char *const PA_META_RESTORED[] = { "absent", "allow", "ignore", "default", "foreground", NULL };
+
+// The one restore grammar. The record directory is shell-writable, so setup actuates only on a
+// record PA_RESTORE would put back, and restore writes nothing from a record that fails it.
+static int pa_meta_record_valid(const pa_record *rec) {
+    return pa_valid_components(rec->value[0], 0) && pa_valid_components(rec->value[1], 1) &&
+           pa_mode_in(rec->value[2], PA_META_RESTORED);
+}
+static int pa_verifier_record_valid(const pa_record *rec) {
+    const char *v = rec->value[0];
+    return !strcmp(v, "1") || !strcmp(v, "0") || !strcmp(v, "null");
+}
+static int pa_shelly_record_valid(const pa_record *rec) { return pa_mode_in(rec->value[0], PA_OVERLAY_MODES); }
+
 // --- PA_VENDOR setup -------------------------------------------------------------------------------
 
 static void pa_vendor_meta(pa_run *r) {
@@ -1212,7 +1240,14 @@ static void pa_vendor_meta(pa_run *r) {
         if (n > 0 && (size_t)n < sizeof content) (void)pa_record_write_once(PA_RECORD_META, content);
     }
     pa_record rec;
-    int have = pa_record_load(PA_RECORD_META, PA_RECORD_META_KEYS, &rec) == 1;
+    int loaded = pa_record_load(PA_RECORD_META, PA_RECORD_META_KEYS, &rec);
+    int have = loaded == 1 && pa_meta_record_valid(&rec);
+    if (loaded != 0 && !have) {
+        // A record restore would refuse: blanking now would lose the vendor's values for good.
+        pa_kv(r, "record", "invalid");
+        pa_kv(r, "converged", "0");
+        return;
+    }
     if (have) {
         pa_kv(r, "record.screensaver_components", rec.value[0]);
         pa_kv(r, "record.screensaver_default_component", rec.value[1]);
@@ -1235,7 +1270,7 @@ static void pa_vendor_meta(pa_run *r) {
     }
     pa_record vrec;
     int have_verifier = pa_record_load(PA_RECORD_META_VERIFIER, PA_RECORD_VERIFIER_KEYS, &vrec) == 1 &&
-                        (!strcmp(vrec.value[0], "1") || !strcmp(vrec.value[0], "0") || !strcmp(vrec.value[0], "null"));
+                        pa_verifier_record_valid(&vrec);
     if (have_verifier) {
         pa_kv(r, "verifier_record", vrec.value[0]);
         if (!pa_setting_is(r, "global", PA_SETTING_VERIFIER, "0")) pa_settings_put(r, "global", PA_SETTING_VERIFIER, "0");
@@ -1269,7 +1304,13 @@ static void pa_vendor_shelly(pa_run *r) {
         }
     }
     pa_record rec;
-    int have = pa_record_load(PA_RECORD_SHELLY, PA_RECORD_SHELLY_KEYS, &rec) == 1;
+    int loaded = pa_record_load(PA_RECORD_SHELLY, PA_RECORD_SHELLY_KEYS, &rec);
+    int have = loaded == 1 && pa_shelly_record_valid(&rec);
+    if (loaded != 0 && !have) {
+        pa_kv(r, "record", "invalid");
+        pa_kv(r, "converged", "0");
+        return;
+    }
     if (have) {
         pa_kv(r, "record.stargate_overlay", rec.value[0]);
         const char *o = pa_overlay(r, PA_SHELLY_PACKAGE);
@@ -1297,19 +1338,6 @@ void cmd_pa_vendor(conn_ctx *ctx, const char *args) {
 
 // --- PA_RESTORE vendor|display ---------------------------------------------------------------------
 
-static int pa_mode_in(const char *mode, const char *const modes[]) { return pa_in_list(mode, modes); }
-
-// A recorded screensaver value: empty, null, or `,`-separated strict components (one when single).
-static int pa_valid_components(const char *value, int single) {
-    if (!value[0] || strcmp(value, "null") == 0) return 1;
-    char copy[PA_RECORD_MAX + 1];
-    if (snprintf(copy, sizeof copy, "%s", value) >= (int)sizeof copy) return 0;
-    if (copy[strlen(copy) - 1] == ',') return 0;
-    int n = 0;
-    for (char *save = NULL, *c = strtok_r(copy, ",", &save); c; c = strtok_r(NULL, ",", &save), n++)
-        if (!valid_component_strict(c)) return 0;
-    return n >= 1 && !strstr(value, ",,") && value[0] != ',' && (!single || n == 1);
-}
 
 static const char *pa_restore_vendor(pa_run *r) {
     pa_record meta, verifier, shelly;
@@ -1318,12 +1346,10 @@ static const char *pa_restore_vendor(pa_run *r) {
     if (have_meta < 0 || have_verifier < 0) return NULL;
     if (have_meta == 2 || have_verifier == 2) return "unrestored";
     static const char *const META_ALLOW[] = { "allow", "ignore", "default", "foreground", NULL };
-    static const char *const META_RESTORED[] = { "absent", "allow", "ignore", "default", "foreground", NULL };
     if (have_meta || have_verifier) {
         const char *result = "restored";
         const char *c = meta.value[0], *d = meta.value[1], *o = meta.value[2];
-        // The record directory is shell-writable: a value of the wrong shape is never written.
-        if (have_meta && (!pa_valid_components(c, 0) || !pa_valid_components(d, 1))) {
+        if (have_meta && !pa_meta_record_valid(&meta)) {
             result = "unrestored";
         } else if (have_meta) {
             pa_settings_restore(r, "secure", PA_SETTING_SCREENSAVER_COMPONENTS, c);
@@ -1334,7 +1360,7 @@ static const char *pa_restore_vendor(pa_run *r) {
             const char *now = pa_overlay(r, PA_META_CONTROL_CENTER);
             if (pa_setting_is(r, "secure", PA_SETTING_SCREENSAVER_COMPONENTS, c) &&
                 pa_setting_is(r, "secure", PA_SETTING_SCREENSAVER_DEFAULT, d) &&
-                pa_mode_in(o, META_RESTORED) && strcmp(now, o) == 0) {
+                strcmp(now, o) == 0) {
                 if (pa_record_forget(PA_RECORD_META) != 0) result = "unrestored";
             } else {
                 result = "unrestored";
@@ -1342,7 +1368,7 @@ static const char *pa_restore_vendor(pa_run *r) {
         }
         if (have_verifier) {
             const char *v = verifier.value[0];
-            if (strcmp(v, "0") && strcmp(v, "1") && strcmp(v, "null")) {
+            if (!pa_verifier_record_valid(&verifier)) {
                 result = "unrestored";
             } else {
                 pa_settings_restore(r, "global", PA_SETTING_VERIFIER, v);
@@ -1356,8 +1382,9 @@ static const char *pa_restore_vendor(pa_run *r) {
     if (have_shelly < 0) return NULL;
     if (!have_shelly) return "none";
     if (have_shelly == 2) return "unrestored";
+    if (!pa_shelly_record_valid(&shelly)) return "unrestored";
     const char *o = shelly.value[0];
-    if (pa_mode_in(o, PA_OVERLAY_MODES) && pa_package_present(r, PA_SHELLY_PACKAGE)) pa_overlay_set(r, PA_SHELLY_PACKAGE, o);
+    if (pa_package_present(r, PA_SHELLY_PACKAGE)) pa_overlay_set(r, PA_SHELLY_PACKAGE, o);
     const char *now = pa_overlay(r, PA_SHELLY_PACKAGE);
     if ((strcmp(now, "absent") == 0 || strcmp(now, o) == 0) && pa_record_forget(PA_RECORD_SHELLY) == 0) return "restored";
     return "unrestored";

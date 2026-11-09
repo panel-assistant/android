@@ -3038,6 +3038,8 @@ static void test_pa_home_lock(void) {
     CHECK(sysexec_stub_count_stdin_fd_calls() >= 3, "HOME actuators run with the lock as stdin\n");
 }
 
+static int pa_ran(const char *a, const char *b);
+
 static void test_pa_records(void) {
     char out[8192];
     const char *const deny_shelly[] = { "appops", "set", "cloud.shelly.stargate", "SYSTEM_ALERT_WINDOW", "allow", NULL };
@@ -3138,6 +3140,56 @@ static void test_pa_records(void) {
     CHECK(ran_argv("/system/bin/appops", shelly_deny) == 1, "Shelly setup denies the launcher overlay\n");
     CHECK(pa_field_is(out, "device", "shelly") && pa_field_is(out, "converged", "1"),
           "Shelly setup reports convergence (got '%s')\n", out);
+
+    // A Meta record PA_RESTORE would refuse is no baseline: setup keeps it and changes nothing.
+    const char *bad_meta = "screensaver_components=not-a-component\nscreensaver_default_component=null\n"
+                           "controlcenter_overlay=allow\n";
+    pa_reset_records();
+    pa_write_fixture(PA_META_RECORD, bad_meta, 0644);
+    sysexec_stub_reset();
+    pa_stub_identity("29\n");
+    sysexec_stub_add_popen("getprop ro.product.device", "omni\n", 0);
+    sysexec_stub_add_popen("settings get secure screensaver_components", "com.meta/.Dream\n", 0);
+    sysexec_stub_add_popen("settings get secure screensaver_default_component", "com.meta/.Dream\n", 0);
+    sysexec_stub_add_popen("pm path com.facebook.alohaapps.controlcenter", "package:/system/app/cc.apk\n", 0);
+    sysexec_stub_add_popen("appops get com.facebook.alohaapps.controlcenter SYSTEM_ALERT_WINDOW", "SYSTEM_ALERT_WINDOW: allow\n", 0);
+    sysexec_stub_add_popen("settings get global package_verifier_enable", "1\n", 0);
+    dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "PA_VENDOR setup", out, sizeof out);
+    CHECK(pa_file_is(PA_META_RECORD, bad_meta), "setup keeps a Meta record it cannot restore\n");
+    CHECK(pa_ran("settings", "put") == 0 && pa_ran("appops", "set") == 0,
+          "setup with an unrestorable Meta record writes no setting or app-op\n");
+    CHECK(pa_field_is(out, "device", "meta") && pa_field_is(out, "converged", "0") &&
+          pa_field_is(out, "record", "invalid"),
+          "setup reports the unrestorable Meta record (got '%s')\n", out);
+
+    // The same for a Shelly record PA_RESTORE would refuse.
+    pa_reset_records();
+    pa_write_fixture(PA_SHELLY_RECORD, "stargate_overlay=bogus\n", 0644);
+    sysexec_stub_reset();
+    pa_stub_identity("29\n");
+    sysexec_stub_add_popen("getprop ro.product.device", "wall_display\n", 0);
+    sysexec_stub_add_popen("pm path cloud.shelly.stargate", "package:/system/app/stargate.apk\n", 0);
+    sysexec_stub_add_popen("appops get cloud.shelly.stargate SYSTEM_ALERT_WINDOW", "SYSTEM_ALERT_WINDOW: allow\n", 0);
+    dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "PA_VENDOR setup", out, sizeof out);
+    CHECK(pa_file_is(PA_SHELLY_RECORD, "stargate_overlay=bogus\n"), "setup keeps a Shelly record it cannot restore\n");
+    CHECK(pa_ran("appops", "set") == 0, "setup with an unrestorable Shelly record sets no app-op\n");
+    CHECK(pa_field_is(out, "converged", "0") && pa_field_is(out, "record", "invalid"),
+          "setup reports the unrestorable Shelly record (got '%s')\n", out);
+
+    // A valid existing record still actuates.
+    char rv[64];
+    pa_reset_records();
+    pa_write_fixture(PA_SHELLY_RECORD, "stargate_overlay=allow\n", 0644);
+    sysexec_stub_reset();
+    pa_stub_identity("29\n");
+    sysexec_stub_add_popen("getprop ro.product.device", "wall_display\n", 0);
+    sysexec_stub_add_popen("pm path cloud.shelly.stargate", "package:/system/app/stargate.apk\n", 0);
+    sysexec_stub_add_popen_times("appops get cloud.shelly.stargate SYSTEM_ALERT_WINDOW", "SYSTEM_ALERT_WINDOW: allow\n", 0, 1);
+    sysexec_stub_add_popen("appops get cloud.shelly.stargate SYSTEM_ALERT_WINDOW", "SYSTEM_ALERT_WINDOW: deny\n", 0);
+    dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "PA_VENDOR setup", out, sizeof out);
+    CHECK(ran_argv("/system/bin/appops", shelly_deny) == 1 && pa_field_is(out, "converged", "1") &&
+          !pa_field(out, "record", rv, sizeof rv),
+          "setup with a valid existing Shelly record still denies the overlay (got '%s')\n", out);
     pa_reset_records();
 }
 
