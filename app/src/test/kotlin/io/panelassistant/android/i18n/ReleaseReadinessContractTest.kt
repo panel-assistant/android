@@ -15,9 +15,13 @@ internal fun releaseReady(locale: String, key: String, translated: TargetString)
     TranslationState.MACHINE_CROSS_CHECKED, TranslationState.COMMUNITY_CORRECTED -> true
     TranslationState.MACHINE_DRAFT -> locale in AppLocale.EARLY_ACCESS_LOCALES
     TranslationState.ENGLISH_FALLBACK ->
-        (locale to key) in APPROVED_PROFILES_ENGLISH_FALLBACKS ||
+        (locale to key) in APPROVED_PROFILES_ENGLISH_FALLBACKS || key.startsWith(DEFERRED_VOICE_TUNING_PREFIX) ||
             EarlyAccessReviewHold.holds(locale, key, translated)
 }
+
+// The Voice card's microphone tuning ships in English until its separate translation pass; remove this once the
+// translations land.
+internal const val DEFERRED_VOICE_TUNING_PREFIX = "configure.voice.tuning."
 
 class ReleaseReadinessContractTest {
     // Source-text reason: loads the shipped i18n catalogues as input data.
