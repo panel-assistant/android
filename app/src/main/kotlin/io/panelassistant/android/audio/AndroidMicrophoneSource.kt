@@ -285,7 +285,6 @@ private fun buildAudioRecord(source: Int, sampleRateHz: Int, channels: Int): Aud
         runCatching { record.release() }
         return null
     }
-    Log.i(TAG, "microphone recorder built: source=$source rate=$sampleRateHz channels=$channels buffer=${bufferBytes}B")
     return record
 }
 
