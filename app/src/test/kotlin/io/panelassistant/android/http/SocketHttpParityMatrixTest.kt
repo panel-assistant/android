@@ -197,7 +197,10 @@ class SocketHttpParityMatrixTest {
         val RAW_BODY = setOf("restore", "config.import", "install.apk", "profiles.probe", "profiles.import")
 
         /** Fixed request headers the page transport adds (transport.js `H`). */
-        val FIXED_HEADERS = mapOf("proximity.calibration" to mapOf("X-Proximity-UI" to "1"))
+        val FIXED_HEADERS = mapOf(
+            "proximity.calibration" to mapOf("X-Proximity-UI" to "1"),
+            "voice.diagnostics.set" to mapOf("X-Voice-UI" to "1"),
+        )
 
         /** Operations this fixture cannot drive on either door, and why. */
         val UNDRIVEN: Map<String, String> = mapOf(

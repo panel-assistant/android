@@ -118,6 +118,8 @@
     "voice.microphone": "GET voice/microphone", "voice.pipelines": "GET voice/pipelines",
     "voice.wake_words": "GET voice/wake-words", "voice.wake_words.set": ["POST voice/wake-words", { b: "json" }],
     "voice.test": "POST voice/test",
+    "voice.diagnostics": "GET voice/diagnostics",
+    "voice.diagnostics.set": ["POST voice/diagnostics", { H: { "X-Voice-UI": "1" } }],
   };
   // Channel commands the HTTP implementation can carry: action channels post to /action; every other
   // channel is a setting key and posts to /config.
@@ -136,6 +138,7 @@
     entities: { floor: 5000, reads: ["dashboard.entities", "dashboard.entities.sync", "dashboard.entities.issues"] },
     proximity: { floor: 1000, reads: ["proximity"] },
     microphone: { floor: 2000, reads: ["voice.microphone"] },
+    voice: { floor: 500, reads: ["voice.diagnostics"] },
     radio: { floor: 5000, reads: ["radio"] },
     install: { floor: 2000, reads: ["install.status", "install.apk.pending"] },
     setup: { floor: 2000, reads: ["setup", "ha.oauth.status"] },

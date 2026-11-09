@@ -212,6 +212,7 @@ internal object ManageFamilies {
         ManageFamily("entities", 5_000, listOf("dashboard.entities", "dashboard.entities.sync", "dashboard.entities.issues")),
         ManageFamily("proximity", 1_000, listOf("proximity")),
         ManageFamily("microphone", 2_000, listOf("voice.microphone")),
+        ManageFamily("voice", 500, listOf("voice.diagnostics")),
         ManageFamily("radio", 5_000, listOf("radio")),
         ManageFamily("install", 2_000, listOf("install.status", "install.apk.pending")),
         ManageFamily("setup", 2_000, listOf("setup", "ha.oauth.status")),

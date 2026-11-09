@@ -24,10 +24,53 @@ internal fun voicePipelinesResponse(
 /** `GET /api/v1/voice/microphone`: `{presence, check, detail, muted}`, detail null unless the capture gave one. */
 internal fun voiceMicrophoneJson(status: io.panelassistant.android.audio.MicrophoneStatus): String =
     "{\"presence\":${Json.str(status.presence.wireValue)},\"check\":${Json.str(status.check.wireValue)}," +
-        "\"detail\":${status.detail?.let(Json::str) ?: "null"},\"muted\":${status.muted}}"
+        "\"detail\":${status.detail?.let(Json::str) ?: "null"},\"muted\":${status.muted}" +
+        // ROUTE: the capture route and its echo-canceller read-back join here as `"route":{...}` once
+        // MicrophoneStatus carries them; [voiceRouteJson] is the one place that renders it.
+        "}"
+
+/**
+ * ROUTE: the capture route the panel opened (source, rate, channels, downmix, echo canceller) as a JSON
+ * object, or `null` until [io.panelassistant.android.audio.MicrophoneStatus] carries it. Shared by
+ * `voice/microphone` and `voice/diagnostics`.
+ */
+@Suppress("UNUSED_PARAMETER")
+internal fun voiceRouteJson(status: io.panelassistant.android.audio.MicrophoneStatus): String = "null"
+
+private fun decimal(value: Float?, places: Int): String =
+    value?.takeIf { it.isFinite() }?.let { String.format(java.util.Locale.ROOT, "%.${places}f", it) } ?: "null"
+
+/**
+ * `GET /api/v1/voice/diagnostics`: the owner's live view. `level` while a tuning session meters the
+ * microphone, the wake-word test against its cutoff, the last command (in memory only; never in `/diag`),
+ * and the capture route.
+ */
+internal fun voiceDiagnosticsJson(
+    snapshot: io.panelassistant.android.assist.VoiceDiagnosticsSnapshot,
+    microphone: io.panelassistant.android.audio.MicrophoneStatus,
+): String {
+    val level = snapshot.level?.let {
+        "{\"rms_dbfs\":${decimal(it.rmsDbfs, 1)},\"peak_dbfs\":${decimal(it.peakDbfs, 1)}," +
+            "\"floor_dbfs\":${decimal(it.floorDbfs, 1)},\"clipped\":${it.clipped}}"
+    } ?: "null"
+    val test = snapshot.wakeTest.let {
+        "{\"state\":${Json.str(it.state)},\"model\":${it.model?.let(Json::str) ?: "null"}," +
+            "\"peak\":${decimal(it.peak, 2)},\"cutoff\":${decimal(it.cutoff, 2)}," +
+            "\"fired\":${it.fired},\"remaining_ms\":${it.remainingMs}}"
+    }
+    val last = snapshot.lastCommand?.let {
+        "{\"at\":${it.at},\"wake_word\":${it.wakeWord?.let(Json::str) ?: "null"}," +
+            "\"wake_score\":${decimal(it.wakeScore, 2)},\"heard\":${it.heard?.let(Json::str) ?: "null"}," +
+            "\"reply\":${it.reply?.let(Json::str) ?: "null"},\"outcome\":${Json.str(it.outcome)}," +
+            "\"code\":${it.code?.let(Json::str) ?: "null"},\"listen_ms\":${it.listenMs ?: "null"}}"
+    } ?: "null"
+    return "{\"session\":${snapshot.session?.let(Json::str) ?: "null"},\"level\":$level,\"wake_test\":$test," +
+        "\"last_command\":$last,\"route\":${voiceRouteJson(microphone)}}"
+}
 
 /** The `/diag` voice line: what a report needs to say why a panel does not hear or answer. Settings and
- *  the microphone check only; no audio or transcript is ever kept to put here. */
+ *  the microphone check only. No audio is ever kept; the last command the panel heard is held in memory for
+ *  the owner's Voice card alone and is never put here. */
 internal fun voiceDiagnosticLine(
     enabled: Boolean,
     microphone: io.panelassistant.android.audio.MicrophoneStatus,

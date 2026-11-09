@@ -204,6 +204,9 @@ class PaneldServer internal constructor(
     private val assistPipelines: io.panelassistant.android.assist.AssistPipelineDirectory,
     // One-shot voice-assistant test trigger for POST /api/v1/voice/test.
     private val voiceTest: io.panelassistant.android.assist.VoiceTestTrigger,
+    // The owner's voice diagnostics (level meter, wake-word test, last command) for the Voice card.
+    private val voiceDiagnostics: io.panelassistant.android.assist.VoiceDiagnosticsControl =
+        io.panelassistant.android.assist.VoiceDiagnosticsControl.NONE,
     // The microphone and its capture check as the voice coordinator holds them; null reports the
     // capability alone, with no check run.
     private val voiceMicrophone: () -> io.panelassistant.android.audio.MicrophoneStatus? = { null },
@@ -582,6 +585,7 @@ class PaneldServer internal constructor(
                         wakeWords = wakeWords,
                         onWakeWordsChanged = onWakeWordsChanged,
                         authorize = ::authorizeSensitive,
+                        voiceDiagnostics = voiceDiagnostics,
                     )
                     // LAN ha-paneld panels for the header panel switcher — a cheap, non-blocking snapshot of
                     // the live mDNS roster (a background listener keeps it converged + fresh; see browsePeers).

@@ -3,14 +3,21 @@ package io.panelassistant.android.assist.wakeword
 import io.panelassistant.android.audio.PcmConsumer
 import io.panelassistant.android.audio.PcmFrame
 
-/** One wake word heard: which model, its phrase, the window-mean probability (0..1) and when. */
+/** One wake word heard: which model, its phrase, the window-mean probability (0..1), the cutoff it met and when. */
 data class WakeWordHit(
     val modelId: String,
     val phrase: String,
     val probability: Float,
     /** Capture timestamp of the frame that completed the detection, `System.nanoTime()` base. */
     val timestampNs: Long,
+    /** The cutoff the mean met, the sensitivity offset applied. */
+    val cutoff: Float = 0f,
 )
+
+/** Hears every scored window mean once a model has warmed up, with the cutoff it is judged against. */
+fun interface WakeWordScoreListener {
+    fun onScore(modelId: String, mean: Float, cutoff: Float)
+}
 
 /** A model ready to score: its manifest plus a scorer bound to it. */
 class LoadedWakeWordModel(val config: MicroWakeWordModelConfig, val scorer: WakeWordScorer) : AutoCloseable {
@@ -78,6 +85,13 @@ class WakeWordDetector(
 
     val modelIds: List<String> get() = slots.map { it.model.config.id }
 
+    /**
+     * The owner's wake-word test reads the live scores here rather than running a second scorer, which a
+     * PX30 could not afford. Set from another thread; null when nothing is listening to the scores.
+     */
+    @Volatile
+    var scoreListener: WakeWordScoreListener? = null
+
     override fun onFrame(frame: PcmFrame) {
         for (slot in slots) {
             // Scoring continues through the cooldown so the window is live again when it ends;
@@ -93,6 +107,7 @@ class WakeWordDetector(
             if (coolingDown) continue
             val mean = slot.window.sum().toFloat() / (slot.window.size * WakeWordScorer.MAX_PROBABILITY)
             val cutoff = (slot.model.config.probabilityCutoff + cutoffOffset).coerceIn(MIN_CUTOFF, MAX_CUTOFF)
+            scoreListener?.onScore(slot.model.config.id, mean, cutoff)
             if (mean >= NEAR_MISS_FLOOR && mean < cutoff) {
                 slot.approachPeak = maxOf(slot.approachPeak, mean)
             } else if (mean < NEAR_MISS_FLOOR && slot.approachPeak > 0f) {
@@ -103,7 +118,7 @@ class WakeWordDetector(
                 slot.approachPeak = 0f
                 slot.clearWindow()
                 slot.cooldownRemaining = cooldownChunks
-                listener(WakeWordHit(slot.model.config.id, slot.model.config.wakeWord, mean, frame.timestampNs))
+                listener(WakeWordHit(slot.model.config.id, slot.model.config.wakeWord, mean, frame.timestampNs, cutoff))
             }
         }
     }
