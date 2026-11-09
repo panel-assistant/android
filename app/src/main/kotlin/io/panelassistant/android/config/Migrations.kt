@@ -116,6 +116,10 @@ object Migrations {
             legacyPresenceMode(values.remove(SettingsRegistry.LEGACY_AUTO_SLEEP_SOURCE_KEY))
                 ?.let { values.putIfAbsent(SettingsRegistry.PRESENCE_MODE_KEY, it) }
         },
+        // Schema 19 adds the voice capture route settings. An older bundle carries none of them, and an
+        // omitted key leaves the target's own choice alone; their default, `auto`, is the only route an
+        // older panel had.
+        Migration { },
     )
 
     /** The presence mode an explicit legacy auto-sleep source decides by itself; null for the panel sensor. */

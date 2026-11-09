@@ -676,6 +676,11 @@ class Config private constructor(
 
     val voiceAudioSource: String get() = stringPref("voice_audio_source")
 
+    /** Capture route settings; `auto` follows the profile's `hardware.microphone_capture` block. */
+    val voiceCaptureRate: String get() = stringPref("voice_capture_rate")
+    val voiceCaptureChannels: String get() = stringPref("voice_capture_channels")
+    val voiceCaptureDownmix: String get() = stringPref("voice_capture_downmix")
+
     val voiceSensitivity: String get() = stringPref("voice_sensitivity")
 
     val voiceMicGainDb: Int get() = intPrefInRange("voice_mic_gain_db")
@@ -1257,6 +1262,9 @@ class Config private constructor(
             "network_adb" -> if (hardenedSecurityEnabled) "false" else declared ?: spec.default
             // A panel whose profile declares a microphone is a voice satellite out of the box.
             "voice_enabled" -> declared ?: if (profile?.microphoneDeclared == true) "true" else spec.default
+            // A profile's capture route names its source; an owner's stored choice still wins.
+            "voice_audio_source" -> declared
+                ?: profile?.microphoneCapture?.source?.takeIf { it in spec.options } ?: spec.default
             "auto_brightness_minimum_percent", "auto_brightness_maximum_percent" ->
                 profileBrightnessDefault(spec, declared)
             else -> declared ?: spec.default

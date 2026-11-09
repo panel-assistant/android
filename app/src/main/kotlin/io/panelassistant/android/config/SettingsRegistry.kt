@@ -76,7 +76,7 @@ object SettingsRegistry {
     }
 
     /** Bump whenever the persisted shape changes; drives bundle migration. */
-    const val SCHEMA = 18
+    const val SCHEMA = 19
     const val MAX_PANEL_ID_CHARS = 63
     const val DEFAULT_SILENCE_BOOT_CHIME = true
     const val DEFAULT_ADDRESS_FAMILY = "Automatic"
@@ -879,6 +879,36 @@ object SettingsRegistry {
             label = "Audio source", default = "voice_recognition",
             options = listOf("voice_recognition", "mic", "voice_communication"),
             scope = Scope.DEVICE,
+            availableWhen = { it.microphone.offered },
+        ),
+        // The capture route: Automatic follows the panel's profile, and the built-in 16 kHz mono route
+        // where it declares none. Each value can be tried on a panel through the config API without a new
+        // build; whatever is chosen, the listener still receives 16 kHz mono.
+        SettingSpec(
+            key = "voice_capture_rate", type = SettingType.ENUM, group = "Voice",
+            tier = Tier.ADVANCED, summary = "Sample rate the microphone is opened at.",
+            label = "Capture rate", default = "auto",
+            options = listOf("auto", "16000", "44100", "48000"),
+            scope = Scope.DEVICE,
+            help = "The rate the panel asks Android to record at. Audio is converted to 16 kHz before the wake word and Assist hear it.\n\n**Automatic** uses the rate the panel's profile declares, or 16 kHz. If Android refuses a rate, the panel falls back to 16 kHz mono rather than going deaf.",
+            availableWhen = { it.microphone.offered },
+        ),
+        SettingSpec(
+            key = "voice_capture_channels", type = SettingType.ENUM, group = "Voice",
+            tier = Tier.ADVANCED, summary = "Record one channel or two.",
+            label = "Capture channels", default = "auto",
+            options = listOf("auto", "1", "2"),
+            scope = Scope.DEVICE,
+            help = "How many channels the panel asks Android to record. Two channels are mixed down to one as the downmix setting says.\n\n**Automatic** uses the profile's channel count, or one.",
+            availableWhen = { it.microphone.offered },
+        ),
+        SettingSpec(
+            key = "voice_capture_downmix", type = SettingType.ENUM, group = "Voice",
+            tier = Tier.ADVANCED, summary = "How two recorded channels become one.",
+            label = "Channel mix", default = "auto",
+            options = listOf("auto", "dominance", "average", "left", "right"),
+            scope = Scope.DEVICE,
+            help = "Applies only when two channels are recorded.\n\n- **Dominance** takes a channel on its own when it is at least four times louder than the other, and averages them otherwise, so a dead channel does not halve the signal.\n- **Average** always mixes the two equally.\n- **Left** or **Right** keeps one channel.\n\n**Automatic** uses the profile's choice, or dominance.",
             availableWhen = { it.microphone.offered },
         ),
         SettingSpec(

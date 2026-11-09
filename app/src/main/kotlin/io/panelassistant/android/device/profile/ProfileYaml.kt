@@ -197,7 +197,7 @@ private class SchemaReader(private val issues: MutableList<ProfileIssue>) {
         val hardware = map(root["hardware"], "hardware", setOf(
             "led", "screen_off", "has_button_backlight", "local_wake", "zigbee_gateway_dir", "relay_base",
             "relay_base_fallbacks", "button_led_gpio_base", "touch_click_gain", "camera", "microphone", "speaker",
-            "camera_lens_offset_px", "backlight", "button_backlight",
+            "camera_lens_offset_px", "backlight", "button_backlight", "microphone_capture",
         ), required = true).orEmpty()
         val led = map(hardware["led"], "hardware.led", setOf("mechanism", "transfer", "gamma", "points", "floor"), required = true).orEmpty()
         val sensors = map(
@@ -328,6 +328,7 @@ private class SchemaReader(private val issues: MutableList<ProfileIssue>) {
                 touchClickGain = float(hardware, "touch_click_gain", "hardware"),
                 cameraDeclared = boolean(hardware, "camera", "hardware"),
                 microphoneDeclared = boolean(hardware, "microphone", "hardware"),
+                microphoneCapture = microphoneCapture(hardware["microphone_capture"]),
                 hasSpeaker = boolean(hardware, "speaker", "hardware") ?: true,
                 cameraLensOffsetPx = integer(hardware, "camera_lens_offset_px", "hardware"),
                 backlight = backlight(hardware["backlight"]),
@@ -604,6 +605,20 @@ private class SchemaReader(private val issues: MutableList<ProfileIssue>) {
         }
     }
 
+    private fun microphoneCapture(value: Any?): io.panelassistant.android.audio.MicrophoneCaptureDeclaration? {
+        val path = "hardware.microphone_capture"
+        val fields = map(value, path, MICROPHONE_CAPTURE_KEYS) ?: return null
+        return io.panelassistant.android.audio.MicrophoneCaptureDeclaration(
+            source = string(fields, "source", path),
+            sampleRateHz = integer(fields, "sample_rate_hz", path),
+            channels = integer(fields, "channels", path),
+            downmix = string(fields, "downmix", path),
+            preferredDevice = string(fields, "preferred_device", path),
+            warmupReads = integer(fields, "warmup_reads", path),
+            platformAec = string(fields, "platform_aec", path),
+        )
+    }
+
     private fun backlight(value: Any?): ProfileBacklight? {
         val path = "hardware.backlight"
         val fields = map(value, path, CURVE_KEYS + "route") ?: return null
@@ -808,6 +823,17 @@ internal fun ProfileDocument.toYamlMap(): Map<String, Any?> = linkedMapOf(
         "touch_click_gain" to hardware.touchClickGain,
         "camera" to hardware.cameraDeclared,
         "microphone" to hardware.microphoneDeclared,
+        "microphone_capture" to hardware.microphoneCapture?.let {
+            linkedMapOf<String, Any?>(
+                "source" to it.source,
+                "sample_rate_hz" to it.sampleRateHz,
+                "channels" to it.channels,
+                "downmix" to it.downmix,
+                "preferred_device" to it.preferredDevice,
+                "warmup_reads" to it.warmupReads,
+                "platform_aec" to it.platformAec,
+            ).withoutNullValues()
+        },
         // Written only when false, so profiles that never declared it keep their canonical form.
         "speaker" to hardware.hasSpeaker.takeUnless { it },
         "camera_lens_offset_px" to hardware.cameraLensOffsetPx,
@@ -931,4 +957,9 @@ private fun ProfileLightCurve.toYamlFields(): LinkedHashMap<String, Any?> = link
     "gamma" to gamma,
     "points" to points?.map { (request, level) -> listOf(request, level) },
     "floor" to floor,
+)
+
+/** `hardware.microphone_capture`: the capture route a profile declares for its microphone. */
+private val MICROPHONE_CAPTURE_KEYS = setOf(
+    "source", "sample_rate_hz", "channels", "downmix", "preferred_device", "warmup_reads", "platform_aec",
 )

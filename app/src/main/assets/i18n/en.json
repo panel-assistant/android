@@ -3152,6 +3152,206 @@
       "softMaxChars": 44,
       "hardMaxChars": 72
     },
+    "configure.enum.voice_capture_channels.1": {
+      "text": "One (mono)",
+      "sourceHash": "6bbb429f6d77d7924b1095de57536157ddfaacd1db2f74049bd5d966b0a5bc3b",
+      "surface": "configure",
+      "context": "Visible label for the exact voice_capture_channels setting wire option; translate display text only and preserve the submitted/stored wire value.",
+      "risk": "ordinary",
+      "siblings": [
+        "configure.enum.voice_capture_channels.auto",
+        "configure.enum.voice_capture_channels.2"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 44,
+      "hardMaxChars": 72
+    },
+    "configure.enum.voice_capture_channels.2": {
+      "text": "Two (stereo)",
+      "sourceHash": "3a838f23cef16365a4793327d296a42b3e1f1b64a01d7a524c419cee46d3da1e",
+      "surface": "configure",
+      "context": "Visible label for the exact voice_capture_channels setting wire option; translate display text only and preserve the submitted/stored wire value.",
+      "risk": "ordinary",
+      "siblings": [
+        "configure.enum.voice_capture_channels.auto",
+        "configure.enum.voice_capture_channels.1"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 44,
+      "hardMaxChars": 72
+    },
+    "configure.enum.voice_capture_channels.auto": {
+      "text": "Automatic",
+      "sourceHash": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
+      "surface": "configure",
+      "context": "Visible label for the exact voice_capture_channels setting wire option; translate display text only and preserve the submitted/stored wire value.",
+      "risk": "ordinary",
+      "siblings": [
+        "configure.enum.voice_capture_channels.1",
+        "configure.enum.voice_capture_channels.2"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 44,
+      "hardMaxChars": 72
+    },
+    "configure.enum.voice_capture_downmix.auto": {
+      "text": "Automatic",
+      "sourceHash": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
+      "surface": "configure",
+      "context": "Visible label for the exact voice_capture_downmix setting wire option; translate display text only and preserve the submitted/stored wire value.",
+      "risk": "ordinary",
+      "siblings": [
+        "configure.enum.voice_capture_downmix.dominance",
+        "configure.enum.voice_capture_downmix.average",
+        "configure.enum.voice_capture_downmix.left",
+        "configure.enum.voice_capture_downmix.right"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 44,
+      "hardMaxChars": 72
+    },
+    "configure.enum.voice_capture_downmix.average": {
+      "text": "Average",
+      "sourceHash": "b38ae2c5b84529e8027b43a69c8ce9426a3cb081dae97b77bdcd2fdc5a9df742",
+      "surface": "configure",
+      "context": "Visible label for the exact voice_capture_downmix setting wire option; translate display text only and preserve the submitted/stored wire value.",
+      "risk": "ordinary",
+      "siblings": [
+        "configure.enum.voice_capture_downmix.auto",
+        "configure.enum.voice_capture_downmix.dominance",
+        "configure.enum.voice_capture_downmix.left",
+        "configure.enum.voice_capture_downmix.right"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 44,
+      "hardMaxChars": 72
+    },
+    "configure.enum.voice_capture_downmix.dominance": {
+      "text": "Dominance",
+      "sourceHash": "2f13fcedc4b21aec5214e6185409c4f2bb2fa72fbd0dafbe81bf45f1daa1eb95",
+      "surface": "configure",
+      "context": "Visible label for the exact voice_capture_downmix setting wire option; translate display text only and preserve the submitted/stored wire value.",
+      "risk": "ordinary",
+      "siblings": [
+        "configure.enum.voice_capture_downmix.auto",
+        "configure.enum.voice_capture_downmix.average",
+        "configure.enum.voice_capture_downmix.left",
+        "configure.enum.voice_capture_downmix.right"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 44,
+      "hardMaxChars": 72
+    },
+    "configure.enum.voice_capture_downmix.left": {
+      "text": "Left",
+      "sourceHash": "58eb9032e3bb83f0e39d644ebc87ca254117b95bf458483bec7379bea0b419d0",
+      "surface": "configure",
+      "context": "Visible label for the exact voice_capture_downmix setting wire option; translate display text only and preserve the submitted/stored wire value.",
+      "risk": "ordinary",
+      "siblings": [
+        "configure.enum.voice_capture_downmix.auto",
+        "configure.enum.voice_capture_downmix.dominance",
+        "configure.enum.voice_capture_downmix.average",
+        "configure.enum.voice_capture_downmix.right"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 44,
+      "hardMaxChars": 72
+    },
+    "configure.enum.voice_capture_downmix.right": {
+      "text": "Right",
+      "sourceHash": "883361d5d682a1574410961ce51450b6e036a779c9f098dec71e28aec832bfa6",
+      "surface": "configure",
+      "context": "Visible label for the exact voice_capture_downmix setting wire option; translate display text only and preserve the submitted/stored wire value.",
+      "risk": "ordinary",
+      "siblings": [
+        "configure.enum.voice_capture_downmix.auto",
+        "configure.enum.voice_capture_downmix.dominance",
+        "configure.enum.voice_capture_downmix.average",
+        "configure.enum.voice_capture_downmix.left"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 44,
+      "hardMaxChars": 72
+    },
+    "configure.enum.voice_capture_rate.16000": {
+      "text": "16 kHz",
+      "sourceHash": "bcdf763f5f68bb67a6c229d8862c59fc10145831035203c3d422cc924c736c54",
+      "surface": "configure",
+      "context": "Visible label for the exact voice_capture_rate setting wire option; translate display text only and preserve the submitted/stored wire value.",
+      "risk": "ordinary",
+      "siblings": [
+        "configure.enum.voice_capture_rate.auto",
+        "configure.enum.voice_capture_rate.44100",
+        "configure.enum.voice_capture_rate.48000"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "kHz"
+      ],
+      "softMaxChars": 44,
+      "hardMaxChars": 72
+    },
+    "configure.enum.voice_capture_rate.44100": {
+      "text": "44.1 kHz",
+      "sourceHash": "21b2f3f1b4bb28c1938ffedf1abb080ac0df6d1ea2172521984cf8b12e369362",
+      "surface": "configure",
+      "context": "Visible label for the exact voice_capture_rate setting wire option; translate display text only and preserve the submitted/stored wire value.",
+      "risk": "ordinary",
+      "siblings": [
+        "configure.enum.voice_capture_rate.auto",
+        "configure.enum.voice_capture_rate.16000",
+        "configure.enum.voice_capture_rate.48000"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "kHz"
+      ],
+      "softMaxChars": 44,
+      "hardMaxChars": 72
+    },
+    "configure.enum.voice_capture_rate.48000": {
+      "text": "48 kHz",
+      "sourceHash": "0f1a7608b8d0399d74119634986f13a1533bba8ea185c8f1bca840300a94f2f5",
+      "surface": "configure",
+      "context": "Visible label for the exact voice_capture_rate setting wire option; translate display text only and preserve the submitted/stored wire value.",
+      "risk": "ordinary",
+      "siblings": [
+        "configure.enum.voice_capture_rate.auto",
+        "configure.enum.voice_capture_rate.16000",
+        "configure.enum.voice_capture_rate.44100"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "kHz"
+      ],
+      "softMaxChars": 44,
+      "hardMaxChars": 72
+    },
+    "configure.enum.voice_capture_rate.auto": {
+      "text": "Automatic",
+      "sourceHash": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
+      "surface": "configure",
+      "context": "Visible label for the exact voice_capture_rate setting wire option; translate display text only and preserve the submitted/stored wire value.",
+      "risk": "ordinary",
+      "siblings": [
+        "configure.enum.voice_capture_rate.16000",
+        "configure.enum.voice_capture_rate.44100",
+        "configure.enum.voice_capture_rate.48000"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 44,
+      "hardMaxChars": 72
+    },
     "configure.enum.voice_sensitivity.high": {
       "text": "High",
       "sourceHash": "c4ebc6d4a5832cd9415f906ad03661110c705a72381c8b8b145761d02e2dd23a",
@@ -33269,6 +33469,141 @@
       "risk": "ordinary",
       "siblings": [
         "settings.voice_audio_source.label"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
+    "settings.voice_capture_channels.help": {
+      "text": "How many channels the panel asks Android to record. Two channels are mixed down to one as the downmix setting says.\n\n**Automatic** uses the profile's channel count, or one.",
+      "sourceHash": "d01331c3100fe0609b1f95f704798a1db54ab37e64085f29c2473c42c204fa26",
+      "surface": "settings",
+      "context": "Configure > Voice > Capture channels: supporting help for the voice_capture_channels setting. Markdown: keep the bold option names and list markers.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.voice_capture_channels.label"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "Android"
+      ],
+      "softMaxChars": 229,
+      "hardMaxChars": 305
+    },
+    "settings.voice_capture_channels.label": {
+      "text": "Capture channels",
+      "sourceHash": "9f47091894ecf486c884e98231b26c2df2c14217585d0f763997156591ac6dea",
+      "surface": "settings",
+      "context": "Configure > Voice: label for the voice_capture_channels setting.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.voice_capture_channels.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 32,
+      "hardMaxChars": 32
+    },
+    "settings.voice_capture_channels.summary": {
+      "text": "Record one channel or two.",
+      "sourceHash": "762bab95033676e35d71ea502ae15f478271595190c27e8a53aad8ac37bab2a3",
+      "surface": "settings",
+      "context": "Configure > Voice: one-line summary shown under the voice_capture_channels setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.voice_capture_channels.label",
+        "settings.voice_capture_channels.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
+    "settings.voice_capture_downmix.help": {
+      "text": "Applies only when two channels are recorded.\n\n- **Dominance** takes a channel on its own when it is at least four times louder than the other, and averages them otherwise, so a dead channel does not halve the signal.\n- **Average** always mixes the two equally.\n- **Left** or **Right** keeps one channel.\n\n**Automatic** uses the profile's choice, or dominance.",
+      "sourceHash": "a23d53ca4275f78b65d919c92e7fc99448d43348eaba227790611e73cf0aef15",
+      "surface": "settings",
+      "context": "Configure > Voice > Channel mix: supporting help for the voice_capture_downmix setting. Markdown: keep the bold option names and list markers.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.voice_capture_downmix.label"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 478,
+      "hardMaxChars": 636
+    },
+    "settings.voice_capture_downmix.label": {
+      "text": "Channel mix",
+      "sourceHash": "a41238fdd1ee783c882408a745a347db670e8583faea64745b60fc88a346f43f",
+      "surface": "settings",
+      "context": "Configure > Voice: label for the voice_capture_downmix setting.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.voice_capture_downmix.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 32,
+      "hardMaxChars": 32
+    },
+    "settings.voice_capture_downmix.summary": {
+      "text": "How two recorded channels become one.",
+      "sourceHash": "acd2f6e971931ac891ade90cc1d6a66838779b6adaa50f69d55d45cf567cc322",
+      "surface": "settings",
+      "context": "Configure > Voice: one-line summary shown under the voice_capture_downmix setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.voice_capture_downmix.label",
+        "settings.voice_capture_downmix.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
+    "settings.voice_capture_rate.help": {
+      "text": "The rate the panel asks Android to record at. Audio is converted to 16 kHz before the wake word and Assist hear it.\n\n**Automatic** uses the rate the panel's profile declares, or 16 kHz. If Android refuses a rate, the panel falls back to 16 kHz mono rather than going deaf.",
+      "sourceHash": "7cc50a1993f880176e6e0821e3e5686ef047c65ce1b3ee5000c7108c5b9afe03",
+      "surface": "settings",
+      "context": "Configure > Voice > Capture rate: supporting help for the voice_capture_rate setting. Markdown: keep the bold option names and list markers.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.voice_capture_rate.label"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "Android",
+        "Assist",
+        "kHz"
+      ],
+      "softMaxChars": 362,
+      "hardMaxChars": 482
+    },
+    "settings.voice_capture_rate.label": {
+      "text": "Capture rate",
+      "sourceHash": "e73b8dec7d8808a3236570e2f91d1886de40faff74dd2d7623a2655d1e3d94c0",
+      "surface": "settings",
+      "context": "Configure > Voice: label for the voice_capture_rate setting.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.voice_capture_rate.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 32,
+      "hardMaxChars": 32
+    },
+    "settings.voice_capture_rate.summary": {
+      "text": "Sample rate the microphone is opened at.",
+      "sourceHash": "ddeaab442a03d6c16a7808ed57f5f1fdf5490efc0fec43acaa57fcdf2271c369",
+      "surface": "settings",
+      "context": "Configure > Voice: one-line summary shown under the voice_capture_rate setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.voice_capture_rate.label",
+        "settings.voice_capture_rate.help"
       ],
       "placeholders": [],
       "frozen": [],

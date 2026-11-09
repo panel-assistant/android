@@ -63,6 +63,7 @@ class DataDeviceProfile internal constructor(
     override val localWake = document.hardware.localWake?.mapNotNullTo(mutableSetOf()) { LocalWake.ofYaml(it) }
     override val cameraDeclared = document.hardware.cameraDeclared
     override val microphoneDeclared = document.hardware.microphoneDeclared
+    override val microphoneCapture = document.hardware.microphoneCapture
     override val hasSpeaker = document.hardware.hasSpeaker
     override val cameraLensOffsetPx = document.hardware.cameraLensOffsetPx
     override val touchClickGain = document.hardware.touchClickGain ?: 0.2f

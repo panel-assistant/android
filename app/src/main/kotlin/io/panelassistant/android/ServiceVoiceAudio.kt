@@ -135,9 +135,11 @@ internal class ServiceVoiceAudio(
     /** The one microphone source voice and the camera stream share. */
     fun buildSharedMicrophone() {
         sharedMicrophone = io.panelassistant.android.assist.ConfiguredMicrophoneSource(
-            audioSource = { config().voiceAudioSource },
-            build = { kind ->
-                io.panelassistant.android.audio.AndroidMicrophoneSource(service.applicationContext, kind)
+            route = {
+                io.panelassistant.android.assist.ConfiguredMicrophoneSource.routeFor(config(), profile().microphoneCapture)
+            },
+            buildRoute = { route ->
+                io.panelassistant.android.audio.AndroidMicrophoneSource(service.applicationContext, route)
                     .also(io.panelassistant.android.audio.MicrophoneAdmission::observe)
             },
             scope = scope,

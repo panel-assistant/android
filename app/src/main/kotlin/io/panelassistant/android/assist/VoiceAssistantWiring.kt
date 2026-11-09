@@ -1,9 +1,12 @@
 package io.panelassistant.android.assist
 
 import android.content.Context
-import android.media.MediaRecorder
 import io.panelassistant.android.Config
+import io.panelassistant.android.audio.CaptureRoute
+import io.panelassistant.android.audio.CaptureRouteReport
+import io.panelassistant.android.audio.CaptureRouteReporting
 import io.panelassistant.android.audio.MicPurpose
+import io.panelassistant.android.audio.MicrophoneCaptureDeclaration
 import io.panelassistant.android.audio.MicState
 import io.panelassistant.android.audio.MicrophoneSource
 import io.panelassistant.android.audio.MicrophoneSourceLifecycle
@@ -125,30 +128,30 @@ internal class AnnouncementLanePlayback(
 
 /**
  * Builds the panel's one microphone source on first use and rebuilds it only when the configured
- * audio source changes while nothing holds a lease, so a setting change never takes capture away
+ * capture route changes while nothing holds a lease, so a setting change never takes capture away
  * from a live consumer.
  */
 internal class ConfiguredMicrophoneSource(
-    private val audioSource: () -> String?,
-    private val build: (Int) -> MicrophoneSource,
+    private val route: () -> CaptureRoute,
+    private val buildRoute: (CaptureRoute) -> MicrophoneSource,
     private val scope: CoroutineScope,
     /** Re-applies the setting; called once a stale source is no longer held by the camera stream. */
     private val onFree: () -> Unit,
-) {
+) : CaptureRouteReporting {
     private var current: MicrophoneSource? = null
-    private var currentSource: Int = -1
+    private var currentRoute: CaptureRoute? = null
     private var closed = false
     private var waiting: Job? = null
 
     @Synchronized
     fun get(): MicrophoneSource {
         check(!closed) { "microphone source is shut down" }
-        val wanted = audioSourceFor(audioSource())
+        val wanted = route()
         val existing = current
-        if (existing != null && (currentSource == wanted || existing.state.value !is MicState.Closed)) {
+        if (existing != null && (currentRoute == wanted || existing.state.value !is MicState.Closed)) {
             // A stale source kept for the camera stream: re-apply the setting once the stream lets go.
             // Voice holders re-apply through the coordinator's own start(), so only a stream holder waits.
-            if (currentSource != wanted && waiting?.isActive != true && existing.state.value.streaming()) {
+            if (currentRoute != wanted && waiting?.isActive != true && existing.state.value.streaming()) {
                 waiting = scope.launch {
                     existing.state.first { !it.streaming() }
                     onFree()
@@ -157,11 +160,15 @@ internal class ConfiguredMicrophoneSource(
             return existing
         }
         (existing as? MicrophoneSourceLifecycle)?.close()
-        val built = build(wanted)
+        val built = buildRoute(wanted)
         current = built
-        currentSource = wanted
+        currentRoute = wanted
         return built
     }
+
+    /** The current source's route report, or null before the first source is built. */
+    @Synchronized
+    override fun captureRoute(): CaptureRouteReport? = (current as? CaptureRouteReporting)?.captureRoute()
 
     @Synchronized
     fun shutdown(timeoutMs: Long): Boolean {
@@ -177,11 +184,29 @@ internal class ConfiguredMicrophoneSource(
     }
 
     companion object {
-        fun audioSourceFor(setting: String?): Int = when (setting?.trim()?.lowercase()) {
-            "mic" -> MediaRecorder.AudioSource.MIC
-            "voice_communication" -> MediaRecorder.AudioSource.VOICE_COMMUNICATION
-            else -> MediaRecorder.AudioSource.VOICE_RECOGNITION
-        }
+        fun audioSourceFor(setting: String?): Int = CaptureRoute.audioSourceFor(setting)
+
+        /** A source keyed on the audio source setting alone, every other part of the route at its default. */
+        operator fun invoke(
+            audioSource: () -> String?,
+            build: (Int) -> MicrophoneSource,
+            scope: CoroutineScope,
+            onFree: () -> Unit,
+        ): ConfiguredMicrophoneSource = ConfiguredMicrophoneSource(
+            route = { CaptureRoute(source = audioSourceFor(audioSource())) },
+            buildRoute = { build(it.source) },
+            scope = scope,
+            onFree = onFree,
+        )
+
+        /** The route the owner's settings and the profile's declaration choose. */
+        fun routeFor(config: Config, declared: MicrophoneCaptureDeclaration?): CaptureRoute = CaptureRoute.resolve(
+            sourceSetting = config.voiceAudioSource,
+            rateSetting = config.voiceCaptureRate,
+            channelsSetting = config.voiceCaptureChannels,
+            downmixSetting = config.voiceCaptureDownmix,
+            declared = declared,
+        )
     }
 }
 

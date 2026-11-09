@@ -29,13 +29,13 @@ private const val TAG = "ha-paneld/mic"
  */
 class AndroidMicrophoneSource(
     context: Context,
-    audioSource: Int = MediaRecorder.AudioSource.VOICE_RECOGNITION,
+    private val route: CaptureRoute = CaptureRoute(),
 ) : MicrophoneSource, MicrophoneSourceLifecycle {
 
     private val applicationContext = context.applicationContext
 
     private val fanOut = MicrophoneFanOut(
-        deviceFactory = { AudioRecordCaptureDevice(androidRecorderFactory(applicationContext, audioSource)) },
+        deviceFactory = { AudioRecordCaptureDevice(androidRecorderFactory(applicationContext, route.source)) },
         logger = { message, error -> if (error != null) Log.w(TAG, message, error) else Log.i(TAG, message) },
     )
 
