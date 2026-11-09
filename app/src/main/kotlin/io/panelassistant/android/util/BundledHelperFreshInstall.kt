@@ -72,7 +72,7 @@ internal fun installerJournalsRetiredShell(appInstalledAtEpochSeconds: Long): St
 
 /**
  * The only helper is the one this app publishes: no boot binary, boot registration, provisioner
- * custody, recovery journal, takeover record or Guard DB state beyond its owner lock may exist, or a second root authority would appear
+ * custody, recovery journal, takeover or custody-migration record or Guard DB state beyond its owner lock may exist, or a second root authority would appear
  * beside one that a reboot or a running transaction brings back. Under the shared helper lock the
  * staged candidate replaces any earlier `/data/local` copy that is not running (a reboot keeps the file
  * and loses the process), then supervises itself and must prove its exact bytes and Guard capabilities.
@@ -191,6 +191,8 @@ internal fun bundledFreshHelperInstallCommand(
             $otherHelpers \
             "${dollar}data_local/.hapaneld-helper.legacy-takeover" \
             "${dollar}data_local/.hapaneld-helper.legacy-takeover.tmp" \
+            "${dollar}data_local/.hapaneld-helper.custody-migration" \
+            "${dollar}data_local/.hapaneld-helper.custody-migration.tmp" \
             "${dollar}data_local/.hapaneld-helper.previous" \
             "${dollar}data_local/.hapaneld-helper.previous.tmp"; do
             absent "${dollar}authority" || return 1

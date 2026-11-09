@@ -53,7 +53,7 @@ internal class ManagementObservations(
             BundledHelperInstaller.Result.INSTALLED,
         )
         if (result == BundledHelperInstaller.Result.REPROVISION_REQUIRED) {
-            Log.w(TAG, "root helper matches this release but is not canonical; reprovision required")
+            Log.w(TAG, "root helper reprovision required: ${BundledHelperInstaller.lastReason ?: "no reason recorded"}")
         }
         if (ready) companionHelperCache.invalidate()
         return ready
