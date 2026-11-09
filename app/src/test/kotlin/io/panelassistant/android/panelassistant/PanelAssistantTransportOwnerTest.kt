@@ -1164,6 +1164,12 @@ class PanelAssistantTransportOwnerTest {
         assertTrue("root offer stays cheap", "local_adb" in offeredWith(false, false, bypassed))
         assertTrue("existing endpoint stays cheap", "local_adb" in offeredWith(true, true, bypassed))
         assertTrue(bypassed.commands.isEmpty())
+        // Typed commands ride the local ADB route, so they are offered exactly when it is.
+        listOf(true to false, false to false, true to true).forEach { (noRoot, answers) ->
+            val offered = offeredWith(noRoot, answers)
+            assertEquals(offered.toString(), "local_adb" in offered, "local_adb_commands_v1" in offered)
+        }
+        assertTrue("local_adb_commands_v1" in offeredWith(rootKnownUnusable = false, endpointAnswers = false))
     }
 
     @Test fun aRelayedCommandRunsAsItsUserThroughTheSidebarDoorAndNeverThroughPanelAssistantsOwnCommands() = runTest {

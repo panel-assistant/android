@@ -67,7 +67,10 @@ static int line_reply(void) {
     static const char *const streams[] = {
         "SCREENCAP", "LOGCAT", "LOGCATDUMP", "PERFDUMP", "COMPANIONBACKUP",
         "COMPANIONRESTORE", "INSTALLSTREAM", "INSTALLSTREAMUPGRADE", "GUARDSTREAM",
-        "ARM", "BEAT", "RECOVER", "STATUS", "SHELL"
+        "ARM", "BEAT", "RECOVER", "STATUS", "SHELL",
+        // Typed Panel Assistant commands frame a key=value body behind "OK <bytes>".
+        "PA_IDENTITY", "PA_REPAIR", "PA_HOME", "PA_ADMIN", "PA_VENDOR", "PA_RESTORE", "PA_OBSERVE",
+        "PA_HANDBACK"
     };
     for (size_t i = 0; i < sizeof streams / sizeof streams[0]; i++)
         if (!strcmp(verb, streams[i])) return 0;

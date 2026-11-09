@@ -350,6 +350,7 @@ internal class PanelAssistantTransportOwner(
                         connection = opened
                         publish(run, PanelAssistantTransportStatus(PanelAssistantTransportPhase.HANDSHAKING, attempt))
                         val streamClientId = voiceStream?.clientId()
+                        val localAdbOffered by lazy { management?.localAdb?.offered() == true }
                         val offered = PanelAssistantTransportProtocol.CAPABILITIES.filter { capability ->
                             when (capability) {
                                 PanelAssistantTransportProtocol.CAPABILITY_STATE -> reporter != null
@@ -359,7 +360,9 @@ internal class PanelAssistantTransportOwner(
                                 PanelAssistantTransportProtocol.CAPABILITY_UNKNOWN_STATE,
                                 -> reporter != null
                                 PanelAssistantTransportProtocol.CAPABILITY_VOICE_STREAM_SESSION -> streamClientId != null
-                                PanelAssistantTransportProtocol.CAPABILITY_LOCAL_ADB -> management?.localAdb?.offered() == true
+                                PanelAssistantTransportProtocol.CAPABILITY_LOCAL_ADB,
+                                PanelAssistantTransportProtocol.CAPABILITY_LOCAL_ADB_COMMANDS,
+                                -> localAdbOffered
                                 // The sidebar relay, its subscriptions and the bundle ride the management requests.
                                 PanelAssistantTransportProtocol.CAPABILITY_MANAGEMENT,
                                 PanelAssistantTransportProtocol.CAPABILITY_UI_SUBSCRIBE,

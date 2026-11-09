@@ -120,7 +120,7 @@ class HelperSocketCompositionTest {
             ).redirectErrorStream(true).start()
             assertEquals("READY", second.inputStream.bufferedReader().readLine())
             assertTrue(Files.isDirectory(root.resolve(".hapaneld-guard-db-test")))
-            assertEquals("HELPER version=1.16.0 proto=1.16", SocketDaemon(socket).send("VERSION"))
+            assertEquals("HELPER version=1.17.0 proto=1.17", SocketDaemon(socket).send("VERSION"))
         } finally {
             second?.let {
                 it.destroy()
@@ -136,7 +136,7 @@ class HelperSocketCompositionTest {
         val daemon = SocketDaemon(socketPath)
 
         assertTrue(daemon.available())
-        assertEquals("HELPER version=1.16.0 proto=1.16", daemon.send("VERSION"))
+        assertEquals("HELPER version=1.17.0 proto=1.17", daemon.send("VERSION"))
         assertEquals("ERR", daemon.send("PINGEXTRA"))
         assertEquals("OK", daemon.sendLong("RELOAD io.example.dashboard", 5_000).replyValue())
     }
@@ -152,7 +152,7 @@ class HelperSocketCompositionTest {
         val daemon = SocketDaemon(socketPath)
         // The host fixture redirects fixed governor reads and refuses governor writes.
         listOf(
-            WireTranscript("VERSION", "HELPER version=1.16.0 proto=1.16"),
+            WireTranscript("VERSION", "HELPER version=1.17.0 proto=1.17"),
             WireTranscript("PING", "OK"),
             WireTranscript("BUILDID", "BUILDID ${FIXTURE_BUILD_ID}"),
             WireTranscript("COMPANIONCAPS", "COMPANIONCAPS 1 BACKUP RESTORE STATUS JOURNAL"),

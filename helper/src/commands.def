@@ -82,6 +82,16 @@ COMMAND(GFXINFO, cmd_gfxinfo)
 // Fixed no-argument legacy recovery readiness probe (protocol 1.15).
 COMMAND(ADBRECOVERYENSURE, cmd_adbrecoveryensure)
 
+// Typed Panel Assistant commands: app-only, fixed argv, allowlisted arguments (protocol 1.17).
+COMMAND(PA_IDENTITY, cmd_pa_identity)
+COMMAND(PA_REPAIR, cmd_pa_repair)
+COMMAND(PA_HOME, cmd_pa_home)
+COMMAND(PA_ADMIN, cmd_pa_admin)
+COMMAND(PA_VENDOR, cmd_pa_vendor)
+COMMAND(PA_RESTORE, cmd_pa_restore)
+COMMAND(PA_OBSERVE, cmd_pa_observe)
+COMMAND(PA_HANDBACK, cmd_pa_handback)
+
 // Terminal recovery operations share the lifecycle owner's lease (protocol 1.16). SHELL is the
 // authenticated administrative exception to the ordinary fixed-command surface.
 COMMAND(ARM, cmd_adb_recovery)

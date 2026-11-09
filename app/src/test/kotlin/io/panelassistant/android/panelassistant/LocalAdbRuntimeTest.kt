@@ -44,6 +44,11 @@ class LocalAdbRuntimeTest {
             if (!submit { effects += "shell ${String(command)} $timeoutMs" }) return null
             return JSONObject().put("stdout_b64", "b2s=").put("exit_code", 7).put("timed_out", false).put("truncated", false)
         }
+        var commandReply: LocalAdbCommandReply = LocalAdbCommandReply.Fields(mapOf("model" to "NSPanel", "accessibility" to "1"))
+        override fun command(verb: String, args: List<String>, submit: (() -> Unit) -> Boolean): LocalAdbCommandReply? {
+            if (!submit { effects += (listOf("cmd", verb) + args).joinToString(" ") }) return null
+            return commandReply
+        }
     }
 
     @Test fun automaticMainOperationsAdmitOutsideTheTransitionAndRecheckAuthorityAtSubmission() = runTest {
@@ -657,5 +662,199 @@ class LocalAdbRuntimeTest {
         assertEquals("refused", JSONObject(requireNotNull(ungranted.next(4))).getString("outcome"))
         assertEquals(listOf("adb.shell"), calls)
         ungranted.close()
+    }
+
+    private fun commandArgs(verb: String, vararg args: String) =
+        JSONObject().put("verb", verb).put("args", org.json.JSONArray(args.toList()))
+
+    private fun sha256(text: String) = java.security.MessageDigest.getInstance("SHA-256")
+        .digest(text.toByteArray()).joinToString("") { "%02x".format(it) }
+
+    @Test fun aTypedCommandRefusesAnythingOutsideItsGrammarWithoutReachingTheHelper() = runTest {
+        val endpoint = Endpoint()
+        var approvals = 0
+        val runtime = LocalAdbRuntime(backgroundScope, endpoint, { true }, { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), { it() },
+            authorize = { _, _, _ -> approvals++; io.panelassistant.android.http.DeferredSessionApproval(consume = { true }) })
+        runtime.session("pa", true); runCurrent(); endpoint.effects.clear()
+        val invalid = listOf(
+            JSONObject(),
+            JSONObject().put("verb", "PA_REPAIR"),
+            JSONObject().put("args", org.json.JSONArray()),
+            commandArgs("SHELL"),
+            commandArgs("PA_REMOVE"),
+            commandArgs("pa_identity"),
+            JSONObject().put("verb", 7).put("args", org.json.JSONArray()),
+            commandArgs("PA_REPAIR", "1", "0").put("timeout_ms", 1000),
+            JSONObject().put("verb", "PA_REPAIR").put("args", "1 0"),
+            JSONObject().put("verb", "PA_REPAIR").put("args", org.json.JSONArray().put(1).put("0")),
+            commandArgs("PA_REPAIR", "1", "0", "x", "y"),
+            commandArgs("PA_HANDBACK", "component", "a b/c"),
+            commandArgs("PA_HANDBACK", "component", ""),
+            commandArgs("PA_HANDBACK", "component", "a\nb"),
+            commandArgs("PA_HANDBACK", "component", "café/x"),
+            commandArgs("PA_HANDBACK", "component", "a".repeat(160)),
+            commandArgs("PA_HANDBACK", "a".repeat(80), "b".repeat(80)),
+        )
+        invalid.forEach { args ->
+            val reply = runtime.request("adb.cmd", args, { true })
+            assertEquals(args.toString(), "refused", reply.outcome)
+            assertEquals(args.toString(), "invalid_value", reply.code)
+        }
+        assertEquals(0, approvals)
+        assertTrue(endpoint.effects.isEmpty())
+        val longest = runtime.request("adb.cmd", commandArgs("PA_HANDBACK", "component", "a".repeat(159 - "PA_HANDBACK component ".length)), { true })
+        assertEquals("applied", longest.outcome)
+    }
+
+    @Test fun anUnhardenedPanelRunsATypedCommandWithoutApprovalAndReturnsItsFields() = runTest {
+        val endpoint = Endpoint()
+        var approvals = 0
+        val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), { it() },
+            authorize = { _, _, _ -> approvals++; io.panelassistant.android.http.DeferredSessionApproval("approval_denied") })
+        runtime.session("pa", true); runCurrent(); endpoint.effects.clear()
+        val reply = runtime.request("adb.cmd", commandArgs("PA_REPAIR", "1", "0"), { true })
+        assertEquals("applied", reply.outcome)
+        val result = reply.result as JSONObject
+        assertTrue(result.getBoolean("ok"))
+        assertEquals("NSPanel", result.getJSONObject("fields").getString("model"))
+        assertEquals("1", result.getJSONObject("fields").getString("accessibility"))
+        assertEquals(0, approvals)
+        assertEquals(listOf("cmd PA_REPAIR 1 0"), endpoint.effects)
+    }
+
+    @Test fun aHelperRefusalCarriesItsCodeAndBusyIsARetryableFailure() = runTest {
+        val endpoint = Endpoint()
+        val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), { it() })
+        runtime.session("pa", true); runCurrent()
+        endpoint.commandReply = LocalAdbCommandReply.Refused("home-unsafe")
+        val refused = runtime.request("adb.cmd", commandArgs("PA_HANDBACK", "vendor"), { true })
+        assertEquals("refused", refused.outcome)
+        assertEquals("failed", refused.code)
+        assertEquals("home-unsafe", (refused.result as JSONObject).getString("code"))
+        listOf(LocalAdbCommandReply.Busy, LocalAdbCommandReply.Refused("busy")).forEach {
+            endpoint.commandReply = it
+            val busy = runtime.request("adb.cmd", commandArgs("PA_HOME", "1", "repair"), { true })
+            assertEquals("failed", busy.outcome)
+            assertEquals("failed", busy.code)
+            assertEquals("busy", (busy.result as JSONObject).getString("code"))
+        }
+    }
+
+    @Test fun everyTypedVerbOnAHardenedPanelNeedsAOneUseApprovalBoundToItsVerbAndArguments() = runTest {
+        val broker = io.panelassistant.android.security.ApprovalBroker(monotonicMs = { testScheduler.currentTime })
+        val ids = mutableListOf<String>()
+        broker.onRequested = { ids += it.id }
+        val payloads = mutableListOf<String>()
+        val endpoint = Endpoint()
+        val runtime = LocalAdbRuntime(backgroundScope, endpoint, { true }, { JSONObject() }, { false },
+            StandardTestDispatcher(testScheduler), { it() }, authorize = { payload, pending, admitted ->
+                payloads += payload
+                io.panelassistant.android.http.awaitSessionApproval(
+                    io.panelassistant.android.security.SensitiveOperation.LOCAL_ADB_MAINTENANCE,
+                    payload, "Panel maintenance", broker, pending, pollMs = 1, admitted = admitted)
+            })
+        runtime.session("pa", true); runCurrent(); endpoint.effects.clear()
+        val first = async { runtime.request("adb.cmd", commandArgs("PA_REPAIR", "1", "0"), { true }) }
+        runCurrent()
+        assertTrue("nothing runs before approval", endpoint.effects.isEmpty())
+        val nonce = payloads.single().split(':')[1]
+        assertEquals("adb.cmd:$nonce:PA_REPAIR:${sha256("1\n0")}", payloads.single())
+        assertTrue(broker.approve(ids.single()))
+        advanceTimeBy(2); runCurrent()
+        assertEquals("applied", first.await().outcome)
+        assertEquals(listOf("cmd PA_REPAIR 1 0"), endpoint.effects)
+
+        // The identical request again: the spent approval is gone, so it waits for a fresh one.
+        val same = async { runtime.request("adb.cmd", commandArgs("PA_REPAIR", "1", "0"), { true }) }
+        runCurrent(); advanceTimeBy(5); runCurrent()
+        assertEquals(2, payloads.size)
+        assertEquals(payloads[0], payloads[1])
+        assertEquals(2, ids.size)
+        assertEquals(listOf("cmd PA_REPAIR 1 0"), endpoint.effects)
+        assertTrue(broker.approve(ids[1]))
+        advanceTimeBy(2); runCurrent()
+        assertEquals("applied", same.await().outcome)
+        assertEquals(listOf("cmd PA_REPAIR 1 0", "cmd PA_REPAIR 1 0"), endpoint.effects)
+        endpoint.effects.clear(); endpoint.effects += "cmd PA_REPAIR 1 0"
+
+        // An approval nobody answers expires; the command never runs.
+        val unanswered = async { runtime.request("adb.cmd", commandArgs("PA_REPAIR", "1", "0"), { true }) }
+        runCurrent()
+        assertEquals(3, payloads.size)
+        advanceTimeBy(io.panelassistant.android.security.ApprovalBroker.DEFAULT_TTL_MS + 5); runCurrent()
+        assertEquals("approval_denied", unanswered.await().code)
+        // Session heartbeats run during the long wait; only commands matter here.
+        assertEquals(listOf("cmd PA_REPAIR 1 0"), endpoint.effects.filter { it.startsWith("cmd ") })
+        endpoint.effects.clear(); endpoint.effects += "cmd PA_REPAIR 1 0"
+
+        // A replay with other arguments needs its own approval; the spent one cannot carry it.
+        val replay = async { runtime.request("adb.cmd", commandArgs("PA_REPAIR", "0", "1"), { true }) }
+        runCurrent(); advanceTimeBy(5); runCurrent()
+        assertEquals(4, payloads.size)
+        assertEquals("adb.cmd:$nonce:PA_REPAIR:${sha256("0\n1")}", payloads[3])
+        assertEquals(listOf("cmd PA_REPAIR 1 0"), endpoint.effects)
+        assertTrue(broker.deny(ids[3]))
+        advanceTimeBy(2); runCurrent()
+        assertEquals("approval_denied", replay.await().code)
+        assertEquals(listOf("cmd PA_REPAIR 1 0"), endpoint.effects)
+
+        // Read-only verbs are approved exactly like the rest.
+        val identity = async { runtime.request("adb.cmd", commandArgs("PA_IDENTITY"), { true }) }
+        runCurrent()
+        assertEquals("adb.cmd:$nonce:PA_IDENTITY:${sha256("")}", payloads[4])
+        assertEquals(listOf("cmd PA_REPAIR 1 0"), endpoint.effects)
+        assertTrue(broker.approve(ids[4]))
+        advanceTimeBy(2); runCurrent()
+        assertEquals("applied", identity.await().outcome)
+        assertEquals(listOf("cmd PA_REPAIR 1 0", "cmd PA_IDENTITY"), endpoint.effects)
+    }
+
+    @Test fun shellValidationIsUnchangedByTypedCommands() = runTest {
+        val endpoint = Endpoint()
+        val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), { it() })
+        runtime.session("pa", true); runCurrent(); endpoint.effects.clear()
+        listOf(
+            JSONObject().put("timeout_ms", 100),
+            JSONObject().put("command", "").put("timeout_ms", 100),
+            JSONObject().put("command", "id"),
+            JSONObject().put("command", "id").put("timeout_ms", 0),
+            JSONObject().put("command", "id").put("timeout_ms", 180_001),
+            JSONObject().put("command", "a".repeat(65_537)).put("timeout_ms", 100),
+            JSONObject().put("command", "a\u0000b").put("timeout_ms", 100),
+            commandArgs("PA_IDENTITY"),
+        ).forEach { assertEquals(it.toString().take(80), "invalid_value", runtime.request("adb.shell", it, { true }).code) }
+        assertTrue(endpoint.effects.isEmpty())
+        assertEquals("applied", runtime.request("adb.shell", JSONObject().put("command", "id").put("timeout_ms", 180_000).put("verb", "PA_IDENTITY"), { true }).outcome)
+        assertEquals(listOf("shell id 180000"), endpoint.effects)
+    }
+
+    @Test fun theRootEndpointSendsTheTypedHeaderWithNoPayloadAndParsesTheBody() {
+        val sent = mutableListOf<Triple<String, Int, Int>>()
+        var reply = "OK 19\nmodel=X\nsu=present\n".toByteArray()
+        val daemon = object : io.panelassistant.android.platform.Daemon {
+            override fun available() = true
+            override fun send(cmd: String): String? = null
+            override fun sendLong(cmd: String, timeoutMs: Long) = io.panelassistant.android.platform.DaemonLongResult.NotSubmitted
+            override fun sendBytes(cmd: String): ByteArray? = null
+            override fun adbRecoveryExchange(header: String, payload: ByteArray, timeoutMs: Int, submit: (() -> Unit) -> Boolean): ByteArray? {
+                if (!submit { sent += Triple(header, payload.size, timeoutMs) }) return null
+                return reply
+            }
+        }
+        val endpoint = RootLocalAdbEndpoint(daemon)
+        assertEquals(LocalAdbCommandReply.Fields(mapOf("model" to "X", "su" to "present")), endpoint.command("PA_HOME", listOf("1", "repair")) { it(); true })
+        assertEquals("PA_HOME 1 repair", sent.single().first)
+        assertEquals(0, sent.single().second)
+        assertEquals(65_000, sent.single().third)
+        reply = "ERR home-unsafe\n".toByteArray()
+        assertEquals(LocalAdbCommandReply.Refused("home-unsafe"), endpoint.command("PA_IDENTITY", emptyList()) { it(); true })
+        assertEquals("PA_IDENTITY", sent.last().first)
+        reply = "BUSY\n".toByteArray()
+        assertEquals(LocalAdbCommandReply.Busy, endpoint.command("PA_ADMIN", emptyList()) { it(); true })
+        assertNull(endpoint.command("PA_ADMIN", emptyList()) { false })
+        listOf("OK 6\nmodel\n", "OK 16\nmodel=X\nmodel=Y\n", "OK 3\na=b", "OK 6\na=b=c\n", "OK 5\n=b\nc\n", "RESULT 0 0 0 0\n", "ERR Bad\n").forEach { bad ->
+            reply = bad.toByteArray()
+            assertThrows(bad, IllegalStateException::class.java) { endpoint.command("PA_ADMIN", emptyList()) { it(); true } }
+        }
     }
 }

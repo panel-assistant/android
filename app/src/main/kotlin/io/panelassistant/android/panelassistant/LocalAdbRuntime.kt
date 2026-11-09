@@ -40,6 +40,16 @@ internal interface LocalAdbEndpoint {
     }
     fun recover(nonce: String, submit: (() -> Unit) -> Boolean = { it(); true }): Boolean?
     fun shell(command: ByteArray, timeoutMs: Int, submit: (() -> Unit) -> Boolean): JSONObject?
+    /** One typed helper command; null when [submit] declined to send it. */
+    fun command(verb: String, args: List<String>, submit: (() -> Unit) -> Boolean): LocalAdbCommandReply? =
+        error("typed commands unsupported")
+}
+
+/** The helper's answer to a typed command: its fields, a refusal code, or a held lock. */
+internal sealed interface LocalAdbCommandReply {
+    data class Fields(val fields: Map<String, String>) : LocalAdbCommandReply
+    data class Refused(val code: String) : LocalAdbCommandReply
+    data object Busy : LocalAdbCommandReply
 }
 
 /** Session authority stays here; the root daemon only trusts this app's UID, never a remote token. */
@@ -170,19 +180,25 @@ internal class LocalAdbRuntime(
 
     override suspend fun request(op: String, args: JSONObject, admit: () -> Boolean, onPending: () -> Unit): PanelAssistantManageReply {
         fun refused(code: String = "invalid_value") = PanelAssistantManageReply("refused", code, null)
+        // A held helper lock clears by itself, so Panel Assistant may send the same command again.
+        // The wire code must be one the transport contract lists; the helper reason rides in the result.
+        fun busy() = PanelAssistantManageReply("failed", "failed", JSONObject().put("code", "busy"))
         val (current, requestNonce) = RemoteDebugSecurityTransitionGate.withLock { generation.get() to nonce }
         val command = if (op == "adb.shell") (args.opt("command") as? String)?.toByteArray(Charsets.UTF_8) else null
         val rawTimeout = args.opt("timeout_ms")
         val timeout = if (rawTimeout is Int || rawTimeout is Long) (rawTimeout as Number).toLong() else null
         if (op == "adb.shell" && (command == null || command.isEmpty() || command.size > 65_536 || command.contains(0) || timeout == null || timeout !in 1..180_000)) return refused()
+        val typed = if (op == "adb.cmd") typedCommand(args) ?: return refused() else null
         fun currentRequest() = granted && generation.get() == current && nonce == requestNonce && admit()
         if (!currentRequest()) return refused("expired")
-        if (op != "adb.shell" && args.length() != 0 &&
+        if (op != "adb.shell" && op != "adb.cmd" && args.length() != 0 &&
             !(op == "adb.ready" && args.length() == 1 && args.opt("include_build_id") is Boolean)) return refused()
         return withContext(dispatcher) {
-            if (op == "adb.shell" || op == "adb.recover") {
-                val digest = MessageDigest.getInstance("SHA-256").digest(command ?: ByteArray(0)).joinToString("") { "%02x".format(it) }
-                val payload = "$op:$requestNonce:$timeout:$digest"
+            if (op == "adb.shell" || op == "adb.recover" || typed != null) {
+                fun sha256(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+                // A typed approval binds the verb and its exact arguments, never only the op.
+                val payload = if (typed != null) "$op:$requestNonce:${typed.first}:${sha256(typed.second.joinToString("\n").toByteArray(Charsets.US_ASCII))}"
+                    else "$op:$requestNonce:$timeout:${sha256(command ?: ByteArray(0))}"
                 var approval: io.panelassistant.android.http.DeferredSessionApproval? = null
                 var approvalEpoch = 0L
                 try {
@@ -191,7 +207,7 @@ internal class LocalAdbRuntime(
                         var refusal = "expired"
                         // Shell execution has its own serial queue. Approval waits and long shell
                         // replies must not hold healthy-app heartbeat or recovery behind this gate.
-                        val reply = (if (op == "adb.shell") shells else effects).withLock {
+                        val reply = (if (op == "adb.recover") effects else shells).withLock {
                             if (!currentRequest()) return@withLock refused("expired")
                             val submit: (() -> Unit) -> Boolean = { write ->
                                 RemoteDebugSecurityTransitionGate.withLock {
@@ -212,7 +228,17 @@ internal class LocalAdbRuntime(
                                 }
                             }
                             try {
-                                if (op == "adb.shell") {
+                                if (typed != null) {
+                                    when (val answer = endpoint.command(typed.first, typed.second, submit)) {
+                                        is LocalAdbCommandReply.Fields -> PanelAssistantManageReply("applied", null,
+                                            JSONObject().put("ok", true).put("fields", JSONObject(answer.fields as Map<*, *>)))
+                                        LocalAdbCommandReply.Busy -> busy()
+                                        is LocalAdbCommandReply.Refused ->
+                                            if (answer.code == "busy") busy()
+                                            else PanelAssistantManageReply("refused", "failed", JSONObject().put("code", answer.code))
+                                        null -> if (needsApproval) null else refused(refusal)
+                                    }
+                                } else if (op == "adb.shell") {
                                     val result = endpoint.shell(requireNotNull(command), requireNotNull(timeout).toInt(), submit)
                                     if (result != null) PanelAssistantManageReply("applied", null, result)
                                     else if (needsApproval) null else refused(refusal)
@@ -257,7 +283,51 @@ internal class LocalAdbRuntime(
         }
     }
 
+    /** The grammar only: allowlist membership of each argument is the helper's single definition. */
+    private fun typedCommand(args: JSONObject): Pair<String, List<String>>? {
+        if (args.length() != 2) return null
+        val verb = args.opt("verb") as? String ?: return null
+        val array = args.opt("args") as? org.json.JSONArray ?: return null
+        if (verb !in TYPED_COMMAND_TIMEOUT_MS || array.length() > 3) return null
+        val values = (0 until array.length()).map { array.opt(it) as? String ?: return null }
+        if (values.any { value -> value.isEmpty() || value.length > 159 || value.any { it.code !in 0x21..0x7e } }) return null
+        // The helper reads one header line of at most 159 bytes.
+        if ((listOf(verb) + values).joinToString(" ").length > 159) return null
+        return verb to values
+    }
+
     companion object {
+        /** Fixed per-verb helper budgets; Panel Assistant never chooses them. HOME waits on the chooser. */
+        val TYPED_COMMAND_TIMEOUT_MS: Map<String, Int> = mapOf(
+            "PA_IDENTITY" to 15_000,
+            "PA_REPAIR" to 30_000,
+            "PA_HOME" to 60_000,
+            "PA_ADMIN" to 20_000,
+            "PA_VENDOR" to 30_000,
+            "PA_RESTORE" to 30_000,
+            "PA_OBSERVE" to 20_000,
+            "PA_HANDBACK" to 20_000,
+        )
+
+        /** What the on-panel approval prompt says each typed command will do. */
+        val TYPED_COMMAND_SUMMARY: Map<String, String> = mapOf(
+            "PA_IDENTITY" to "Read the panel's identity for Panel Assistant",
+            "PA_REPAIR" to "Repair the panel app's permissions",
+            "PA_HOME" to "Make the panel app the home screen",
+            "PA_ADMIN" to "Make the panel app a device administrator",
+            "PA_VENDOR" to "Apply the panel maker's settings for the panel app",
+            "PA_RESTORE" to "Restore the panel's saved settings",
+            "PA_OBSERVE" to "Read the panel's app and home screen state",
+            "PA_HANDBACK" to "Give the home screen back before removal",
+        )
+
+        /** The verb of a typed command's approval payload, or null for any other payload. */
+        fun approvalSummary(payload: String): String {
+            val fields = payload.split(':')
+            return fields.takeIf { it.size == 4 && it[0] == "adb.cmd" }?.let { TYPED_COMMAND_SUMMARY[it[2]] }
+                ?: "Run Panel Assistant maintenance"
+        }
+
         fun create(context: Context, scope: CoroutineScope, config: Config, daemon: Daemon = HelperClient, dispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.IO): LocalAdbRuntime {
             val staging = LocalAdbAsset(context)
             val main = android.os.Handler(android.os.Looper.getMainLooper())
@@ -268,7 +338,7 @@ internal class LocalAdbRuntime(
             }, dispatcher = dispatcher, authorize = { payload, pending, admitted ->
                 io.panelassistant.android.http.awaitSessionApproval(
                     io.panelassistant.android.security.SensitiveOperation.LOCAL_ADB_MAINTENANCE,
-                    payload, "Run Panel Assistant maintenance", io.panelassistant.android.security.LocalApprovalBroker.instance, pending, admitted = admitted,
+                    payload, approvalSummary(payload), io.panelassistant.android.security.LocalApprovalBroker.instance, pending, admitted = admitted,
                 )
             }, onClosed = { io.panelassistant.android.control.AdbController(context, config).resealManagedHardened() }, healthy = {
                 kotlinx.coroutines.withTimeoutOrNull(1_000L) {
@@ -338,6 +408,25 @@ internal class RootLocalAdbEndpoint(private val daemon: Daemon = HelperClient) :
     override fun arm(nonce: String, submit: (() -> Unit) -> Boolean): Boolean = command("ARM $nonce", submit) == true
     override fun beat(nonce: String, submit: (() -> Unit) -> Boolean): Boolean = command("BEAT $nonce", submit) == true
     override fun recover(nonce: String, submit: (() -> Unit) -> Boolean): Boolean? = command("RECOVER $nonce", submit)
+    override fun command(verb: String, args: List<String>, submit: (() -> Unit) -> Boolean): LocalAdbCommandReply? {
+        val budget = requireNotNull(LocalAdbRuntime.TYPED_COMMAND_TIMEOUT_MS[verb])
+        val reply = daemon.adbRecoveryExchange((listOf(verb) + args).joinToString(" "), byteArrayOf(), budget + 5_000, submit) ?: return null
+        val end = reply.indexOf(10)
+        check(end > 0)
+        val head = String(reply, 0, end, Charsets.US_ASCII)
+        if (head == "BUSY" && reply.size == end + 1) return LocalAdbCommandReply.Busy
+        Regex("ERR ([a-z][a-z-]{0,31})").matchEntire(head)?.let { check(reply.size == end + 1); return LocalAdbCommandReply.Refused(it.groupValues[1]) }
+        val count = Regex("OK (0|[1-9][0-9]{0,3})").matchEntire(head)?.groupValues?.get(1)?.toInt()
+        check(count != null && count <= 4096 && reply.size == end + 1 + count) { "invalid typed command reply" }
+        val body = String(reply, end + 1, count, Charsets.US_ASCII)
+        check(body.isEmpty() || body.endsWith("\n"))
+        val fields = LinkedHashMap<String, String>()
+        body.split('\n').dropLast(1).forEach { entry ->
+            val match = Regex("([A-Za-z][A-Za-z0-9_.]{0,63})=([\\x20-\\x3c\\x3e-\\x7e]{0,255})").matchEntire(entry)
+            check(match != null && fields.put(match.groupValues[1], match.groupValues[2]) == null) { "invalid typed command field" }
+        }
+        return LocalAdbCommandReply.Fields(fields)
+    }
     override fun shell(command: ByteArray, timeoutMs: Int, submit: (() -> Unit) -> Boolean): JSONObject? = exchange("SHELL $timeoutMs ${command.size}", command, timeoutMs + 5_000, submit)?.let { input ->
         val fields = line(input).split(' ')
         check(fields.size == 5 && fields[0] == "RESULT")

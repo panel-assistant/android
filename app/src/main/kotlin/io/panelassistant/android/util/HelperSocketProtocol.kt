@@ -67,11 +67,20 @@ internal object HelperSocketProtocol {
         }
         val text = line.toString("US-ASCII")
         line.write(10)
-        if (header.startsWith("SHELL ")) {
+        val count = if (header.startsWith("SHELL ")) {
             val match = Regex("RESULT (-1|[0-9]{1,3}) [01] [01] (0|[1-9][0-9]{0,4})").matchEntire(text)
             check(match != null && match.groupValues[1].toInt() in -1..255)
-            val count = match.groupValues[2].toInt()
-            check(count in 0..32_768)
+            match.groupValues[2].toInt().also { check(it in 0..32_768) }
+        } else if (header.startsWith("PA_")) {
+            // A typed command answers with a bounded field body, a refusal code or BUSY, and nothing else.
+            if (text == "BUSY" || Regex("ERR [a-z][a-z-]{0,31}").matches(text)) 0
+            else {
+                val match = Regex("OK (0|[1-9][0-9]{0,3})").matchEntire(text)
+                check(match != null) { "invalid typed command reply" }
+                match.groupValues[1].toInt().also { check(it <= MAX_TYPED_BODY_BYTES) }
+            }
+        } else 0
+        if (count > 0) {
             val bytes = ByteArray(count)
             var used = 0
             while (used < count) {
@@ -102,4 +111,5 @@ internal object HelperSocketProtocol {
     )
 
     private const val MAX_LINE_BYTES = 512
+    const val MAX_TYPED_BODY_BYTES = 4096
 }

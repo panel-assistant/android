@@ -42,8 +42,10 @@ args = {
     'GOVREAD': 'CURRENT', 'RELAYREAD': 'RELAY COUNT',
     'GPIOREAD': '0', 'GFXINFO': 'SELF',
     'ARM': h, 'BEAT': h, 'RECOVER': h, 'SHELL': '100 3',
+    'PA_REPAIR': '1 0', 'PA_HOME': '1 repair', 'PA_VENDOR': 'setup', 'PA_RESTORE': 'vendor',
+    'PA_OBSERVE': 'move', 'PA_HANDBACK': 'component com.example.home/.Home',
 }
-noargs = set('COMPANIONSTATUS ZIGBEECONTAIN OFF LEDPROBE BLPOWER BLREAD SCREENCAP LOGCATCAPS LOGCAT COMPANIONCAPS BUILDID GUARDCAPS GUARDSELF GUARDSTATUS INPUTV2 INPUTV3 WATCHRESET SUBSCRIBE GPIOV1 GPIORESET GPIOSUBSCRIBE REBOOT ZIGBEESTATE ZIGBEEHEALTH ZIGBEEROLE WIFISTATUS ADBSTATE PERFDUMP CHT8305 VI530X VERSION PING CDPSTATE ADBRECOVERYENSURE STATUS'.split())
+noargs = set('COMPANIONSTATUS ZIGBEECONTAIN OFF LEDPROBE BLPOWER BLREAD SCREENCAP LOGCATCAPS LOGCAT COMPANIONCAPS BUILDID GUARDCAPS GUARDSELF GUARDSTATUS INPUTV2 INPUTV3 WATCHRESET SUBSCRIBE GPIOV1 GPIORESET GPIOSUBSCRIBE REBOOT ZIGBEESTATE ZIGBEEHEALTH ZIGBEEROLE WIFISTATUS ADBSTATE PERFDUMP CHT8305 VI530X VERSION PING CDPSTATE ADBRECOVERYENSURE STATUS PA_IDENTITY PA_ADMIN'.split())
 assert set(verbs) == set(args) | noargs, 'Add a reviewed argument seed/no-argument declaration for new verbs'
 
 def put(name, value):
@@ -59,6 +61,16 @@ variants = {
     'GUARDRETIRE': [f'TERMINAL {h} 1 {h}'],
     'GUARDACTION': [f'{h} 1 ' + action for action in
                     ('WITHHOLD_PREMIGRATE', 'RESTORE_PREMIGRATE', 'FINALIZE')],
+    # Typed Panel Assistant commands: every table value, then an over-long component, two slashes,
+    # an extra token and a value outside the table.
+    'PA_REPAIR': ['0 0', '0 1', '1 1', '1 0 extra', '2 0', '1 yes'],
+    'PA_HOME': ['0 repair', '1 deferred', '1 repair extra', '2 repair', '1 restore'],
+    'PA_VENDOR': ['setup extra', 'restore'],
+    'PA_RESTORE': ['display', 'vendor extra', 'shelly'],
+    'PA_OBSERVE': ['recovery', 'move extra', 'logs'],
+    'PA_HANDBACK': ['vendor', 'component com.example.' + 'a' * 140 + '/.Home', 'component com.example/a/b',
+                    'component com.example.home/.Home extra', 'component android/.Resolver',
+                    'component com.android.systemui/.Home', 'other com.example.home/.Home'],
 }
 summary = ['verb\tseed_count\tclasses']
 for verb in verbs:

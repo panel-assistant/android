@@ -131,6 +131,7 @@
           "voice_stream_session",
           "management",
           "local_adb",
+          "local_adb_commands_v1",
           "ui_subscribe",
           "ui_bundle",
           "rest_retired",
@@ -165,7 +166,7 @@
           "family": "relay",
           "force_update": false
         }],
-        "contract_digest": "5249411f85bec0c5e36d549851cea2ee4a6bc02e684e05f9f03fb5d7ef9154a6",
+        "contract_digest": "649abf9c68267a97f7a0df42be31511f6233304b1dbe57c9184e6b0b19c7a08b",
         "id": 1,
         "type": "panel_assistant/hello",
         "did": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",

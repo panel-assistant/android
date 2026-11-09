@@ -38,4 +38,18 @@ int  valid_gbl_path(const char *s);   // absolute path, no '..', no "'", ends wi
 int  valid_apk_path(const char *s);   // .apk under either known package's data dir, no '..', no "'"
 int  valid_hex_dataset(const char *s); // even-length hex string, max 508 chars (254 dataset bytes)
 
+// Longest component the typed Panel Assistant commands accept, so a request header stays short.
+#define VALID_COMPONENT_MAX 127
+// One Android component: exactly one '/', a package [A-Za-z][A-Za-z0-9_.]* and a class
+// [A-Za-z.][A-Za-z0-9_.$]*, at most VALID_COMPONENT_MAX bytes.
+int  valid_component_strict(const char *s);
+// The same shape without the request cap (at most 4096 bytes), for components read from the panel,
+// such as another app's entry in the shared accessibility list.
+int  valid_component_shape(const char *s);
+// The one HOME target check, shared by PA_HOME restore and PA_HANDBACK: a strict component that is
+// not a critical package, not either app id, not android/* or com.android.settings/* (the chooser
+// and FallbackHome), and whose package [package_present] confirms installed. The callback keeps the
+// package manager query out of this exec-free file.
+int  valid_home_target(const char *component, int (*package_present)(const char *package));
+
 #endif
