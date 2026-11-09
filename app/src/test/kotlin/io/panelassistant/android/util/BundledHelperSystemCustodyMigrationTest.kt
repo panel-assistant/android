@@ -163,7 +163,7 @@ class BundledHelperSystemCustodyMigrationTest {
             assertEquals(1, runCommand(migrate(fixture)).exitCode)
             File(fixture.root, "ls-fails").delete()
             assertRolledBack(fixture)
-            assertFalse(fixture.callLog().any { it.startsWith("mount") })
+            assertFalse(fixture.callLog().any { it.startsWith("mount") || it.startsWith("stop") })
         }
     }
 
