@@ -103,6 +103,15 @@ hardware:
   # An ES7202 PDM microphone, the codec the WF1589T uses. Android opens it as a 16 kHz stereo
   # stream and hands the app the mono capture it asks for.
   microphone: true
+  # Provisional, to be set from the oracle after-run: the HAL refuses mono and opens 16 kHz
+  # stereo, so the panel asks for both channels and mixes them itself, keeping a dead or quiet
+  # channel from halving the signal. The platform echo canceller stays off until it is measured.
+  microphone_capture:
+    source: voice_recognition
+    sample_rate_hz: 16000
+    channels: 2
+    downmix: dominance
+    platform_aec: off
   has_button_backlight: false
 sensors:
   proximity_technology: Infrared

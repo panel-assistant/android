@@ -68,8 +68,17 @@ hardware:
     route: setting
   camera: true
   camera_lens_offset_px: 63
-  # Speech proven through the standard Android VOICE_RECOGNITION / 16 kHz mono route.
+  # Speech was proven through the standard Android VOICE_RECOGNITION / 16 kHz mono route.
   microphone: true
+  # Provisional, to be set from the oracle after-run: the HAL stream is stereo, so the panel asks
+  # for both channels and mixes them itself instead of taking Android's average. Android channel
+  # indices, not raw ALSA slots. The platform echo canceller stays off until it is measured.
+  microphone_capture:
+    source: voice_recognition
+    sample_rate_hz: 16000
+    channels: 2
+    downmix: dominance
+    platform_aec: off
   has_button_backlight: true
   touch_click_gain: 0.12
 sensors:
