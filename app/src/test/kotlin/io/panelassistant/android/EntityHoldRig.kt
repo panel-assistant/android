@@ -45,6 +45,10 @@ internal class EntityHoldRig(
     val admitted = mutableListOf<String>()
     var reconciles = 0
 
+    /** The setup-question screen's actions as last painted, by label; and every settings path opened. */
+    var question: List<Pair<Int, () -> Unit>>? = null
+    val opened = mutableListOf<String>()
+
     var now = startAt
         private set
     private val pending = mutableListOf<Pair<Long, Runnable>>()
@@ -81,6 +85,8 @@ internal class EntityHoldRig(
         },
         holdPainter = { kind, _, _ -> shown += kind; null },
         documentStartSupported = { documentStartSupported },
+        openSettings = { opened += it },
+        questionPainter = { question = it },
     )
 
     /**
@@ -89,6 +95,19 @@ internal class EntityHoldRig(
      * cannot be installed there paints the hold again.
      */
     private fun build(config: Config) {
+        if (entityFilterQuestionPending(
+                builtinRenderer = true,
+                haUrl = config.haEffectiveUrl.trim().trimEnd('/'),
+                haToken = config.haToken,
+                haRefreshToken = config.haRefreshToken,
+                entityFilterAnswered = config.setupEntityFilterAnswered,
+                setupEverCompleted = config.setupEverCompleted,
+                entityFilterEnabled = config.dashboardEntityLearningEnabled,
+            )
+        ) {
+            gate.showWaitingForEntityFilterAnswer()
+            return
+        }
         if (gate.holdsRenderer(config)) {
             gate.showWaitingForEntityBootstrap()
             return
