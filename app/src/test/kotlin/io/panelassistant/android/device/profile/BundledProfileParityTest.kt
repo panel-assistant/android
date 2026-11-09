@@ -1088,7 +1088,7 @@ class BundledProfileParityTest {
             "shelly-wall-display-x2i.yaml" to "58e710e95a795f8e967d5450c3afbb4cf0cdf779b19ee38eaa3c516ac39d09b5",
             "shelly-wall-display.yaml" to "67a9ba15bbed9156e564a7dd543f92102499d156d34cea7edd018dfe6979a62b",
             "smt1019.yaml" to "ccf23e819f3e5eea79a5f7efab3bfd38331cedfd40b6185f3ced915b4ac845a1",
-            "tpa10.yaml" to "603a8fe74dd729ad732ed776737be15d94d2045a595c98ba1dcfdae76ace00da",
+            "tpa10.yaml" to "0d7fabc9fff76e7949c4575aec7b75a6e73facf44ac98af928c2ff06280c4d75",
             "wf1589t.yaml" to "d899f9fce75bcd5dc55f10a546896a0164642ba3e4b93aec0300bbb217bfd0a2",
             "zx-smt156.yaml" to "8c5fe65c26eaefb964899dfaf596adf6df485285a94ce0eeecd65b2d833a389e",
         )

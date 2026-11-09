@@ -94,12 +94,13 @@ class MicrophoneCaptureProfileTest {
 
     /**
      * Only panels with capture evidence declare a route, and each is provisional until the oracle run sets it:
-     * the X2i and the TPA10 HALs open stereo, so the panel mixes the two channels itself. Resolved through
-     * the bundled catalogue the APK ships, as the service resolves it.
+     * the X2i HAL opens stereo, so the panel mixes the two channels itself. The TPA10 keeps the measured
+     * VOICE_RECOGNITION 16 kHz mono route. Resolved through the bundled catalogue the APK ships, as the
+     * service resolves it.
      */
     @Test fun theBundledRoutesAreDeclaredOnlyWhereCaptureWasMeasured() {
         val declaring = BundledProfileFixtures.bundled.filter { it.document.hardware.microphoneCapture != null }.map { it.document.id }.toSet()
-        assertEquals(setOf("shelly-wall-display-x2i", "tpa10"), declaring)
+        assertEquals(setOf("shelly-wall-display-x2i"), declaring)
         for (id in declaring) {
             val route = io.panelassistant.android.audio.CaptureRoute.resolve(
                 sourceSetting = null, rateSetting = "auto", channelsSetting = "auto", downmixSetting = "auto",
@@ -118,5 +119,6 @@ class MicrophoneCaptureProfileTest {
             )
         }
         assertNull("the NSPanel Pro keeps Android's enhanced mono route", BundledProfileFixtures.profile("nspanel-pro").microphoneCapture)
+        assertNull("the TPA10 keeps its measured mono route", BundledProfileFixtures.profile("tpa10").microphoneCapture)
     }
 }
