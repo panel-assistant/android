@@ -1360,15 +1360,8 @@ internal fun bundledLegacyHelperTakeoverCommand(
         absent "${dollar}data_local/.hapaneld-helper.previous" &&
           absent "${dollar}data_local/.hapaneld-helper.previous.tmp" || exit 75
 
-        path_processes() {
-          target_inode=${dollar}(stat -c '%d:%i' "${dollar}1" 2>/dev/null || toybox stat -c '%d:%i' "${dollar}1" 2>/dev/null) || return 1
-          found=
-          for executable in /proc/[0-9]*/exe; do
-            inode=${dollar}(stat -Lc '%d:%i' "${dollar}executable" 2>/dev/null || toybox stat -L -c '%d:%i' "${dollar}executable" 2>/dev/null) || continue
-            [ "${dollar}inode" != "${dollar}target_inode" ] || found="${dollar}found ${dollar}{executable#/proc/}"
-          done
-          printf '%s\n' "${dollar}found"
-        }
+        ${procExecutablesShell()}
+        path_processes() { executable_processes "${dollar}1"; }
         stop_path_processes() {
           candidates=${dollar}(path_processes "${dollar}1") || return 1
           for candidate in ${dollar}candidates; do candidate=${dollar}{candidate%/exe}; kill "${dollar}candidate" 2>/dev/null || true; done

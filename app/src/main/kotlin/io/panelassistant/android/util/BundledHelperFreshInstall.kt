@@ -41,6 +41,32 @@ internal val DELETED_INSTALLER_JOURNALS = listOf(
 internal fun List<String>.underRoot(): String = joinToString(" ") { "\"\$root$it\"" }
 
 /**
+ * Defines `proc_exe_inodes`, printing `/proc/<pid>/exe <dev>:<inode>` for every process whose executable
+ * resolves, and `executable_processes FILE`, the ` <pid>/exe` entries running FILE's inode. One stat call
+ * covers every process: a fork per process took longer than the probe's whole budget on a panel with
+ * hundreds of them. Kernel threads and executables that cannot be read are simply absent from the scan.
+ */
+internal fun procExecutablesShell(): String {
+    val dollar = '$'
+    return """
+        proc_exe_inodes() {
+          if command -v stat >/dev/null 2>&1; then stat -L -c '%n %d:%i' /proc/[0-9]*/exe 2>/dev/null
+          else toybox stat -L -c '%n %d:%i' /proc/[0-9]*/exe 2>/dev/null; fi
+          return 0
+        }
+        executable_processes() {
+          target_inode=${dollar}(stat -c '%d:%i' "${dollar}1" 2>/dev/null || toybox stat -c '%d:%i' "${dollar}1" 2>/dev/null) || return 1
+          found=; previous=
+          for word in ${dollar}(proc_exe_inodes); do
+            [ "${dollar}word" != "${dollar}target_inode" ] || found="${dollar}found ${dollar}{previous#/proc/}"
+            previous=${dollar}word
+          done
+          printf '%s\n' "${dollar}found"
+        }
+    """.trimIndent().replace("\n", "\n        ") // keeps the enclosing script's common indent
+}
+
+/**
  * Defines `installer_journals_retired`: true when every journal the deleted installers left is retired in
  * place, never honoured and never touched. Each must be a root file, not a link, written before this boot,
  * so no installer step that wrote it is still running (the caller also holds the lock each such step took,
@@ -150,17 +176,18 @@ internal fun bundledFreshHelperInstallCommand(
           for entry in ${dollar}entries; do [ "${dollar}entry" = .owner.lock ] || return 1; done
         }
         $installerJournalsRetired
+        ${procExecutablesShell()}
         # True when a process runs from this file, or when one named like the helper cannot be resolved.
         runs() {
           target=${dollar}(stat -c '%d:%i' "${dollar}1" 2>/dev/null || toybox stat -c '%d:%i' "${dollar}1" 2>/dev/null) || return 0
+          scan=${dollar}(proc_exe_inodes)
+          for word in ${dollar}scan; do [ "${dollar}word" != "${dollar}target" ] || return 0; done
           for process in /proc/[0-9]*; do
-            if inode=${dollar}(stat -Lc '%d:%i' "${dollar}process/exe" 2>/dev/null || toybox stat -L -c '%d:%i' "${dollar}process/exe" 2>/dev/null); then
-              [ "${dollar}inode" != "${dollar}target" ] || return 0
-            else
-              # Kernel threads have no executable; an unreadable one named hapaneld-helper might be this copy.
-              name=${dollar}(tr '\0' '\n' < "${dollar}process/cmdline" 2>/dev/null | head -n 1) || continue
-              [ "${dollar}{name##*/}" != hapaneld-helper ] || return 0
-            fi
+            case "${dollar}scan" in *"${dollar}process/exe "*) continue ;; esac
+            # Kernel threads have no executable; an unreadable one named hapaneld-helper might be this copy.
+            name=
+            read -r name 2>/dev/null < "${dollar}process/comm" || continue
+            [ "${dollar}name" != hapaneld-helper ] || return 0
           done
           return 1
         }
@@ -211,13 +238,7 @@ internal fun bundledFreshHelperInstallCommand(
 
         live_processes() {
           absent "${dollar}live" && return 0
-          target_inode=${dollar}(stat -c '%d:%i' "${dollar}live" 2>/dev/null || toybox stat -c '%d:%i' "${dollar}live" 2>/dev/null) || return 1
-          found=
-          for executable in /proc/[0-9]*/exe; do
-            inode=${dollar}(stat -Lc '%d:%i' "${dollar}executable" 2>/dev/null || toybox stat -L -c '%d:%i' "${dollar}executable" 2>/dev/null) || continue
-            [ "${dollar}inode" != "${dollar}target_inode" ] || found="${dollar}found ${dollar}{executable#/proc/}"
-          done
-          printf '%s\n' "${dollar}found"
+          executable_processes "${dollar}live"
         }
         stop_live() {
           candidates=${dollar}(live_processes) || return 1

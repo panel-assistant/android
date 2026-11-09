@@ -78,10 +78,26 @@ internal sealed interface SystemCustodyLayout {
 internal const val SYSTEM_CUSTODY_REGISTRATION_SHA256 =
     "9b430712c493df177a19e5e893df445f6c2e951fc30ea140dcdbcdb7987de659"
 
+/** The read-only probe's root budget. Each process scan is one call, so even a slow panel finishes far inside it. */
+internal const val SYSTEM_CUSTODY_PROBE_TIMEOUT_MS = 60_000L
+
+/**
+ * The probe always exits 0 with a verdict, so no reply means root ran out of time (`probe_timeout`) or never
+ * ran it (`probe_failed`); the elapsed time tells the two apart and goes to the log.
+ */
 internal fun probeSystemCustodyLayout(
     filesystemRoot: String = "",
     execute: (String, Long) -> String? = Su::runOutputLong,
-): SystemCustodyLayout = parseSystemCustodyProbe(execute(bundledHelperSystemCustodyProbeCommand(filesystemRoot), 15_000L))
+    monotonicMs: () -> Long = { android.os.SystemClock.elapsedRealtime() },
+): SystemCustodyLayout {
+    val startedAt = monotonicMs()
+    val raw = execute(bundledHelperSystemCustodyProbeCommand(filesystemRoot), SYSTEM_CUSTODY_PROBE_TIMEOUT_MS)
+    if (raw != null) return parseSystemCustodyProbe(raw)
+    val elapsed = monotonicMs() - startedAt
+    val reason = if (elapsed >= SYSTEM_CUSTODY_PROBE_TIMEOUT_MS - 1_000L) "probe_timeout" else "probe_failed"
+    android.util.Log.w("ha-paneld/helper-migrate", "system custody probe gave no reply: $reason after ${elapsed}ms")
+    return SystemCustodyLayout.Refused(reason, emptyList())
+}
 
 /**
  * Read-only, before anything is staged: prints the inventory the hardware acceptance compares, then one
@@ -114,13 +130,21 @@ internal fun bundledHelperSystemCustodyProbeCommand(filesystemRoot: String = "")
         describe() { if absent "${d}2"; then echo "INV ${d}1 absent"; else echo "INV ${d}1 ${d}(meta "${d}2") ${d}(digest "${d}2")${d}3"; fi; }
         verdict=
         refuse() { [ -n "${d}verdict" ] || verdict=${d}1; }
+        ${procExecutablesShell()}
+        scan=${d}(proc_exe_inodes)
         live_running=0
         if [ -f "${d}live" ] && [ ! -L "${d}live" ]; then
           live_inode=${d}(inode "${d}live")
-          for exe in /proc/[0-9]*/exe; do
-            [ "${d}(inode "${d}exe")" != "${d}live_inode" ] || live_running=1
-          done
+          for word in ${d}scan; do [ "${d}word" != "${d}live_inode" ] || live_running=1; done
         fi
+        scanned_inode() {
+          next=
+          for word in ${d}scan; do
+            if [ -n "${d}next" ]; then printf '%s\n' "${d}word"; return 0; fi
+            [ "${d}word" != "/proc/${d}1/exe" ] || next=1
+          done
+          return 1
+        }
         describe registration "${d}registration"
         if [ -f "${d}registration" ]; then echo "INV registration_text ${d}(head -c 1024 "${d}registration" | tr '
 ' '|')"; fi
@@ -137,17 +161,22 @@ internal fun bundledHelperSystemCustodyProbeCommand(filesystemRoot: String = "")
         echo "INV selinux ${d}(getenforce 2>/dev/null)"
         echo "INV boot_id ${d}(cat "${d}root/proc/sys/kernel/random/boot_id" 2>/dev/null)"
         echo "INV mnt_ns self=${d}(readlink /proc/self/ns/mnt 2>/dev/null) init=${d}(readlink "${d}root/proc/1/ns/mnt" 2>/dev/null)"
-        stale_inode=0
-        for exe in /proc/[0-9]*/exe; do
-          target=${d}(readlink "${d}exe" 2>/dev/null) || continue
+        # One ls lists every executable link; only helper paths, and their deleted forms, are reported.
+        helper_report=${d}(ls -l /proc/[0-9]*/exe 2>/dev/null | while IFS= read -r link; do
+          case "${d}link" in *" -> "*) ;; *) continue ;; esac
+          pid=${d}{link#*/proc/}; pid=${d}{pid%%/exe*}; target=${d}{link#* -> }
           case "${d}target" in
             "${d}system_bin"|"${d}system_bin (deleted)"|"${d}live"|"${d}live (deleted)")
-              pid=${d}{exe#/proc/}; pid=${d}{pid%/exe}
               echo "INV helper_process ${d}pid ${d}target"
               if [ "${d}target" = "${d}live (deleted)" ] ||
-                 { [ "${d}target" = "${d}live" ] && [ "${d}(inode "${d}exe")" != "${d}(inode "${d}live")" ]; }; then stale_inode=1; fi ;;
+                 { [ "${d}target" = "${d}live" ] && [ "${d}(scanned_inode "${d}pid")" != "${d}(inode "${d}live")" ]; }; then
+                echo "INV helper_stale_inode ${d}pid"
+              fi ;;
           esac
-        done
+        done)
+        [ -z "${d}helper_report" ] || printf '%s\n' "${d}helper_report"
+        stale_inode=0
+        case "${d}helper_report" in *"INV helper_stale_inode "*) stale_inode=1 ;; esac
 
         for path in "${d}live" "${d}system_bin" "${d}registration" "${d}guard" "${d}local" "${d}root/system/etc/init" "${d}root/system/bin"; do
           [ ! -L "${d}path" ] || refuse symlink
