@@ -40,14 +40,14 @@
     step_wake: "Step 3 of 4: the wake word",
     step_wake_text: "Go to the far side of the room and say {wake_word} three times, pausing between each.",
     step_wake_progress: "Heard {fired} of 3. Best score {peak}, needs {cutoff}.",
-    step_source: "Step 4 of 4: audio source (optional)",
-    step_source_text: "Try another audio source and say the wake word three times again. The panel reopens its microphone for each.",
-    source_try: "Try this source",
+    step_source: "Step 4 of 4: compare settings (optional)",
+    step_source_text: "Try an audio source or capture setting, then say the wake word three times again. The others go back as they were.",
+    source_try: "Try this setting",
     source_result: "{source}: heard {fired} of 3, best score {peak}",
     review: "Suggested settings",
     review_gain: "Microphone gain: {value} dB",
     review_sensitivity: "Wake word sensitivity: {value}",
-    review_source: "Audio source: {value}",
+    review_source: "Heard best with {value}",
     review_quiet_gain: "Your voice reached {peak} dBFS; the gain lifts the command towards -20 dBFS.",
     review_loud_gain: "Your voice clipped or came close; the gain is lowered.",
     review_good_gain: "Your voice reached {peak} dBFS, which needs no change.",
@@ -66,6 +66,9 @@
   };
   function L(key, values) { return cfg.i18nText("configure.voice.tuning." + key, S[key], values); }
 
+  // The settings the optional comparison step can try, one value at a time against where the wizard started:
+  // the audio source and, where the panel offers them, the capture route's rate, channels and channel mix.
+  var COMPARED = ["voice_audio_source", "voice_capture_rate", "voice_capture_channels", "voice_capture_downmix"];
   var QUIET_MS = 3000, SPEAK_MS = 5000, HEARTBEAT_MS = 5000, SOURCE_SETTLE_MS = 1500;
   var session = "tab-" + Math.random().toString(36).slice(2, 12) + Date.now().toString(36);
   var latest = null, watch = null, heartbeat = null;
@@ -239,9 +242,9 @@
       step: "quiet", samples: [], start: {
         voice_mic_gain_db: setting("voice_mic_gain_db") || "0",
         voice_sensitivity: setting("voice_sensitivity") || "normal",
-        voice_audio_source: setting("voice_audio_source")
       }, sources: [], falseWakes: 0
     };
+    COMPARED.forEach(function (key) { if (field(key)) wizard.start[key] = setting(key); });
     status.textContent = "";
     wizardBox.hidden = false;
     if (!(await act("level"))) { await abandon(); return; }
@@ -318,16 +321,32 @@
     }
   }
 
-  // The one-of-several choice is the shared menu, as every other setting's is.
+  // The one-of-several choice is the shared menu, as every other setting's is. Each option is one setting at one
+  // value ("key=value"), grouped under its setting; trying one puts every other compared setting back as it was.
+  function candidate(value) {
+    var at = value.indexOf("=");
+    return { key: value.slice(0, at), value: value.slice(at + 1) };
+  }
+  function candidateLabel(value) {
+    var c = candidate(value), f = field(c.key);
+    var option = optionLabel(c.key, c.value);
+    return f && f.label ? f.label + ": " + option : option;
+  }
+
   function fillSources() {
-    var f = field("voice_audio_source");
     sourcePick.textContent = "";
-    if (!f || !f.options || !f.options.length) { sourceRow.hidden = true; return; }
-    f.options.forEach(function (value, index) {
-      var option = el("option", { value: value, text: cfg.localizedEnumOption(f, value, index) });
-      if (value === setting("voice_audio_source")) option.selected = true;
-      sourcePick.appendChild(option);
+    COMPARED.forEach(function (key) {
+      var f = field(key);
+      if (!f || !f.options || !f.options.length) return;
+      var group = el("optgroup", { label: f.label || key });
+      f.options.forEach(function (value, index) {
+        var option = el("option", { value: key + "=" + value, text: cfg.localizedEnumOption(f, value, index) });
+        if (key === "voice_audio_source" && value === setting(key)) option.selected = true;
+        group.appendChild(option);
+      });
+      sourcePick.appendChild(group);
     });
+    if (!sourcePick.options.length) sourceRow.hidden = true;
   }
 
   function recordSource() {
@@ -337,19 +356,34 @@
     wizard.sources.push({ source: wizard.trying, fired: test.fired, peak: test.peak });
     sourceResults.textContent = "";
     wizard.sources.forEach(function (s) {
-      sourceResults.appendChild(el("p", { class: "note", text: L("source_result", { source: optionLabel("voice_audio_source", s.source), fired: s.fired, peak: fixed(s.peak, 2) }) }));
+      sourceResults.appendChild(el("p", { class: "note", text: L("source_result", { source: candidateLabel(s.source), fired: s.fired, peak: fixed(s.peak, 2) }) }));
     });
   }
 
+  // The compared settings as the wizard started, with one candidate applied over them.
+  function routeWith(value) {
+    var values = {};
+    COMPARED.forEach(function (key) { if (key in wizard.start) values[key] = wizard.start[key]; });
+    if (value) { var c = candidate(value); values[c.key] = c.value; }
+    return values;
+  }
+
   async function trySource(value) {
-    if (!wizard) return;
+    if (!wizard || !value) return;
     recordSource();
     sourceTry.disabled = true;
-    // The panel reopens its microphone on another source only once nothing holds the old one.
+    // The panel reopens its microphone on another route only once nothing holds the old one.
     await stopAll();
-    var reply = await window.PaneldTransport.command("voice_audio_source", value);
-    if (reply && reply.outcome && reply.outcome !== "applied") status.textContent = L("refused", { reason: reply.code || reply.outcome });
-    cfg.values.voice_audio_source = value;
+    var values = routeWith(value), tried = candidate(value).key;
+    // Put the others back first, so the microphone never opens on two changes at once.
+    var order = Object.keys(values).filter(function (k) { return k !== tried; }).concat([tried]);
+    for (var i = 0; i < order.length; i++) {
+      var key = order[i];
+      if (values[key] === "" || setting(key) === values[key]) continue;
+      var reply = await window.PaneldTransport.command(key, values[key]);
+      if (reply && reply.outcome && reply.outcome !== "applied") status.textContent = L("refused", { reason: reply.code || reply.outcome });
+      cfg.values[key] = values[key];
+    }
     await new Promise(function (done) { setTimeout(done, SOURCE_SETTLE_MS); });
     wizard.trying = value;
     sourceTry.disabled = false;
@@ -383,7 +417,7 @@
     wizard.sources.forEach(function (s) {
       if (!best || s.fired > best.fired || (s.fired === best.fired && s.peak > best.peak)) best = s;
     });
-    return best ? best.source : setting("voice_audio_source");
+    return best ? best.source : null;
   }
 
   async function review() {
@@ -392,12 +426,13 @@
     await stopAll();
     var gain = suggestGain(parseInt(wizard.start.voice_mic_gain_db, 10) || 0);
     var sensitivity = suggestSensitivity(wizard.start.voice_sensitivity);
-    wizard.suggested = { voice_mic_gain_db: String(gain.value), voice_sensitivity: sensitivity.value, voice_audio_source: bestSource() };
+    var best = bestSource();
+    wizard.suggested = Object.assign(routeWith(best), { voice_mic_gain_db: String(gain.value), voice_sensitivity: sensitivity.value });
     enter("review");
     stepProgress.textContent = "";
     [L("review_gain", { value: (gain.value > 0 ? "+" : "") + gain.value }), gain.why,
       L("review_sensitivity", { value: optionLabel("voice_sensitivity", sensitivity.value) }), sensitivity.why,
-      wizard.sources.length ? L("review_source", { value: optionLabel("voice_audio_source", wizard.suggested.voice_audio_source) }) : null
+      best ? L("review_source", { value: candidateLabel(best) }) : null
     ].forEach(function (line) { if (line) stepProgress.appendChild(el("span", { class: "voice-tuning-suggestion", text: line + " " })); });
   }
 

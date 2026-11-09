@@ -28,6 +28,8 @@ const SCHEMA = [
   { key: 'voice_enabled', type: 'BOOL', group: 'Voice', tier: 'BASIC', available: true, label: 'Voice assistant' },
   { key: 'voice_audio_source', type: 'ENUM', group: 'Voice', tier: 'ADVANCED', available: true, label: 'Audio source', options: ['voice_recognition', 'mic'], optionLabels: ['Voice recognition', 'Microphone'] },
   { key: 'voice_sensitivity', type: 'ENUM', group: 'Voice', tier: 'BASIC', available: true, label: 'Wake word sensitivity', options: ['low', 'normal', 'high'], optionLabels: ['Low', 'Normal', 'High'] },
+  { key: 'voice_capture_rate', type: 'ENUM', group: 'Voice', tier: 'ADVANCED', available: true, label: 'Capture rate', options: ['auto', '16000', '48000'], optionLabels: ['Automatic', '16 kHz', '48 kHz'] },
+  { key: 'voice_capture_channels', type: 'ENUM', group: 'Voice', tier: 'ADVANCED', available: true, label: 'Capture channels', options: ['auto', '1', '2'], optionLabels: ['Automatic', 'One', 'Two'] },
   { key: 'voice_mic_gain_db', type: 'INT', group: 'Voice', tier: 'ADVANCED', available: true, label: 'Microphone gain', min: -24, max: 24 },
 ];
 
@@ -36,7 +38,7 @@ const SCHEMA = [
  * the test drives what the microphone "hears" through [voice].
  */
 async function panel() {
-  const settings = { voice_enabled: 'true', voice_audio_source: 'voice_recognition', voice_sensitivity: 'normal', voice_mic_gain_db: '0', dashboard_package: 'builtin' };
+  const settings = { voice_enabled: 'true', voice_audio_source: 'voice_recognition', voice_sensitivity: 'normal', voice_mic_gain_db: '0', voice_capture_rate: 'auto', voice_capture_channels: 'auto', dashboard_package: 'builtin' };
   const voice = {
     session: null, level: false, test: null, lastTest: { state: 'idle', model: null, peak: null, cutoff: null, fired: 0, remaining_ms: 0 },
     hearing: { rms_dbfs: -60, peak_dbfs: -52, floor_dbfs: -63, clipped: 0 },
@@ -172,7 +174,7 @@ for (const engine of engines) {
     h.voice.test = null; h.voice.session = h.voice.level ? h.voice.session : null;
     await eventually('the test ran out, so the owner may go on', async () => !(await p.locator('#voice-tuning-next').isDisabled()));
     await p.click('#voice-tuning-next');
-    await eventually('the optional source step', async () => (await text(p, 'voice-tuning-step')) === 'Step 4 of 4: audio source (optional)' || await text(p, 'voice-tuning-step'));
+    await eventually('the optional source step', async () => (await text(p, 'voice-tuning-step')) === 'Step 4 of 4: compare settings (optional)' || await text(p, 'voice-tuning-step'));
     assert.equal(await p.locator('#voice-tuning-source').evaluate((s) => s.tagName), 'SELECT', 'the source is chosen from the shared menu');
     await p.click('#voice-tuning-skip');
 
@@ -195,8 +197,8 @@ for (const engine of engines) {
     h.voice.test.peak = 0.99; h.voice.test.cutoff = 0.97; h.voice.test.fired = 3;
     await eventually('heard three times', async () => !(await p.locator('#voice-tuning-next').isDisabled()));
     await p.click('#voice-tuning-next');
-    await eventually('the source step', async () => (await text(p, 'voice-tuning-step')) === 'Step 4 of 4: audio source (optional)' || await text(p, 'voice-tuning-step'));
-    await p.selectOption('#voice-tuning-source', 'mic');
+    await eventually('the source step', async () => (await text(p, 'voice-tuning-step')) === 'Step 4 of 4: compare settings (optional)' || await text(p, 'voice-tuning-step'));
+    await p.selectOption('#voice-tuning-source', 'voice_audio_source=mic');
     await p.click('#voice-tuning-try');
     await eventually('the other source is tried', async () => h.writes.includes('voice_audio_source=mic') && h.voice.test !== null || JSON.stringify([h.writes, h.voice.actions]), 6000);
     await p.click('#voice-tuning-cancel');
@@ -205,5 +207,46 @@ for (const engine of engines) {
     assert.equal(h.settings.voice_audio_source, 'voice_recognition');
     assert.equal(h.voice.session, null);
     assert.equal(await p.locator('#voice-tuning-wizard').isHidden(), true);
+  });
+
+  test(`${engine.name}: the comparison tries capture routes one at a time and saves the one that heard best`, async (t) => {
+    const { p, h } = await open(t);
+    await p.click('#voice-tuning-start');
+    await eventually('the wake word step', async () => (await text(p, 'voice-tuning-step')) === 'Step 3 of 4: the wake word' || await text(p, 'voice-tuning-step'), 12000);
+    h.voice.test.peak = 0.6; h.voice.test.cutoff = 0.97; h.voice.test.fired = 0;
+    h.voice.lastTest = { ...h.voice.test, state: 'done', remaining_ms: 0 };
+    h.voice.test = null;
+    await eventually('the test ran out', async () => !(await p.locator('#voice-tuning-next').isDisabled()));
+    await p.click('#voice-tuning-next');
+    await eventually('the source step', async () => (await text(p, 'voice-tuning-step')) === 'Step 4 of 4: compare settings (optional)' || await text(p, 'voice-tuning-step'));
+    const groups = await p.locator('#voice-tuning-source optgroup').evaluateAll((g) => g.map((x) => x.label));
+    assert.deepEqual(groups, ['Audio source', 'Capture rate', 'Capture channels'], 'the capture route settings are offered beside the source');
+
+    // Two channels first: it hears the wake word twice.
+    await p.selectOption('#voice-tuning-source', 'voice_capture_channels=2');
+    await p.click('#voice-tuning-try');
+    await eventually('two channels are tried', async () => h.writes.includes('voice_capture_channels=2') && h.voice.test !== null || JSON.stringify(h.writes), 6000);
+    h.voice.test.peak = 0.98; h.voice.test.cutoff = 0.97; h.voice.test.fired = 2;
+    await eventually('the score is read', async () => (await text(p, 'voice-tuning-progress')) === 'Heard 2 of 3. Best score 0.98, needs 0.97.' || await text(p, 'voice-tuning-progress'));
+
+    // Then 48 kHz on its own: channels go back to where the wizard started, and it hears nothing.
+    await p.selectOption('#voice-tuning-source', 'voice_capture_rate=48000');
+    await p.click('#voice-tuning-try');
+    await eventually('48 kHz is tried alone', async () => h.writes.includes('voice_capture_rate=48000') && h.voice.test !== null || JSON.stringify(h.writes), 6000);
+    assert.deepEqual(h.writes, ['voice_capture_channels=2', 'voice_capture_channels=auto', 'voice_capture_rate=48000']);
+    assert.match(await text(p, 'voice-tuning-source-results'), /^Capture channels: Two: heard 2 of 3, best score 0\.98$/);
+    h.voice.test.peak = 0.4; h.voice.test.cutoff = 0.97; h.voice.test.fired = 0;
+    await eventually('the second score is read', async () => (await text(p, 'voice-tuning-progress')) === 'Heard 0 of 3. Best score 0.40, needs 0.97.' || await text(p, 'voice-tuning-progress'));
+
+    await p.click('#voice-tuning-skip');
+    await eventually('the suggestions', async () => (await text(p, 'voice-tuning-step')) === 'Suggested settings' || await text(p, 'voice-tuning-step'));
+    assert.match(await text(p, 'voice-tuning-progress'), /Heard best with Capture channels: Two/);
+    h.writes.length = 0;
+    await p.click('#voice-tuning-save');
+    await eventually('the best route is saved', async () => (await text(p, 'voice-tuning-status')) === 'Saved.' || await text(p, 'voice-tuning-status'));
+    assert.deepEqual(h.writes.filter((w) => w.startsWith('voice_capture') || w.startsWith('voice_audio')), ['voice_capture_rate=auto', 'voice_capture_channels=2']);
+    assert.equal(h.settings.voice_capture_rate, 'auto');
+    assert.equal(h.settings.voice_capture_channels, '2');
+    assert.equal(h.settings.voice_audio_source, 'voice_recognition');
   });
 }

@@ -6406,10 +6406,10 @@
       "hardMaxChars": 57
     },
     "configure.voice.tuning.review_source": {
-      "text": "Audio source: {value}",
-      "sourceHash": "ff5ab594c0c4a4adc78a6af5940615ee5b7de27ce4d7a3bff0f27996bc97bf16",
+      "text": "Heard best with {value}",
+      "sourceHash": "72603789df53fc08c6f8a8abb442a37e4c2ba07b63a5913a5e6ea2a5e1d27ec1",
       "surface": "configure",
-      "context": "Configure page, Voice card, microphone tuning (shown while voice is on). Render as text, not HTML. Suggested audio source; {value} is the source option's own label.",
+      "context": "Configure page, Voice card, microphone tuning (shown while voice is on). Render as text, not HTML. The compared setting that heard the wake word best; {value} is the setting's name and value (for example “Audio source: Microphone”).",
       "risk": "ordinary",
       "siblings": [],
       "placeholders": [
@@ -6459,7 +6459,7 @@
       "text": "{source}: heard {fired} of 3, best score {peak}",
       "sourceHash": "569c0264430d3554d376791682dfb0f4f372bae7eb4913b90909f52ddf98bff7",
       "surface": "configure",
-      "context": "Configure page, Voice card, microphone tuning (shown while voice is on). Render as text, not HTML. One audio source's result; {source} is the source's name, {fired} a count, {peak} a score between 0 and 1.",
+      "context": "Configure page, Voice card, microphone tuning (shown while voice is on). Render as text, not HTML. One compared setting's result; {source} is the setting's name and value (for example “Capture rate: 48 kHz”), {fired} a count, {peak} a score between 0 and 1.",
       "risk": "ordinary",
       "siblings": [],
       "placeholders": [
@@ -6472,10 +6472,10 @@
       "hardMaxChars": 90
     },
     "configure.voice.tuning.source_try": {
-      "text": "Try this source",
-      "sourceHash": "c28945df27f538edd17e0aa4a47eb2269df09b7693b414f34c0993f72fe6895c",
+      "text": "Try this setting",
+      "sourceHash": "a099f3c83467f5fcaeca9e4e8077866997e9e9bd8645cdca43a180b01f397c64",
       "surface": "configure",
-      "context": "Configure page, Voice card, microphone tuning (shown while voice is on). Render as text, not HTML. Button that switches to the audio source chosen in the menu and repeats the wake-word test.",
+      "context": "Configure page, Voice card, microphone tuning (shown while voice is on). Render as text, not HTML. Button that switches to the audio source or capture setting chosen in the menu and repeats the wake-word test.",
       "risk": "ordinary",
       "siblings": [],
       "placeholders": [],
@@ -6520,10 +6520,10 @@
       "hardMaxChars": 114
     },
     "configure.voice.tuning.step_source": {
-      "text": "Step 4 of 4: audio source (optional)",
-      "sourceHash": "d90c21c6ac3034d5b44dd1e5f36ccf8ff724701df5218ef0e8b17a54943b6f38",
+      "text": "Step 4 of 4: compare settings (optional)",
+      "sourceHash": "e831930b358329581dd0083a2d7a707c5e4e657c007c7ec8334575ee84006f82",
       "surface": "configure",
-      "context": "Configure page, Voice card, microphone tuning (shown while voice is on). Render as text, not HTML. Wizard step title for the optional audio source comparison.",
+      "context": "Configure page, Voice card, microphone tuning (shown while voice is on). Render as text, not HTML. Wizard step title for the optional comparison of the audio source and the capture settings.",
       "risk": "ordinary",
       "siblings": [],
       "placeholders": [],
@@ -6532,10 +6532,10 @@
       "hardMaxChars": 69
     },
     "configure.voice.tuning.step_source_text": {
-      "text": "Try another audio source and say the wake word three times again. The panel reopens its microphone for each.",
-      "sourceHash": "65b7db2d8d208924e342565c64eac4bae6d6e718bcb50c2a98b9c62f7b59cd4c",
+      "text": "Try an audio source or capture setting, then say the wake word three times again. The others go back as they were.",
+      "sourceHash": "8e2b230e1717a14fa9d59677d299f5a2699955896ccbcf52b3ed436f45e47d6d",
       "surface": "configure",
-      "context": "Configure page, Voice card, microphone tuning (shown while voice is on). Render as text, not HTML. Wizard instruction for the optional audio source comparison.",
+      "context": "Configure page, Voice card, microphone tuning (shown while voice is on). Render as text, not HTML. Wizard instruction for the optional comparison of the audio source and the capture settings (rate, channels, channel mix).",
       "risk": "ordinary",
       "siblings": [],
       "placeholders": [],

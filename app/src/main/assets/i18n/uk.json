@@ -1954,8 +1954,8 @@
    "state": "english-fallback"
   },
   "configure.voice.tuning.review_source": {
-   "text": "Audio source: {value}",
-   "sourceHash": "ff5ab594c0c4a4adc78a6af5940615ee5b7de27ce4d7a3bff0f27996bc97bf16",
+   "text": "Heard best with {value}",
+   "sourceHash": "72603789df53fc08c6f8a8abb442a37e4c2ba07b63a5913a5e6ea2a5e1d27ec1",
    "state": "english-fallback"
   },
   "configure.voice.tuning.save": {
@@ -1979,8 +1979,8 @@
    "state": "english-fallback"
   },
   "configure.voice.tuning.source_try": {
-   "text": "Try this source",
-   "sourceHash": "c28945df27f538edd17e0aa4a47eb2269df09b7693b414f34c0993f72fe6895c",
+   "text": "Try this setting",
+   "sourceHash": "a099f3c83467f5fcaeca9e4e8077866997e9e9bd8645cdca43a180b01f397c64",
    "state": "english-fallback"
   },
   "configure.voice.tuning.start": {
@@ -1999,13 +1999,13 @@
    "state": "english-fallback"
   },
   "configure.voice.tuning.step_source": {
-   "text": "Step 4 of 4: audio source (optional)",
-   "sourceHash": "d90c21c6ac3034d5b44dd1e5f36ccf8ff724701df5218ef0e8b17a54943b6f38",
+   "text": "Step 4 of 4: compare settings (optional)",
+   "sourceHash": "e831930b358329581dd0083a2d7a707c5e4e657c007c7ec8334575ee84006f82",
    "state": "english-fallback"
   },
   "configure.voice.tuning.step_source_text": {
-   "text": "Try another audio source and say the wake word three times again. The panel reopens its microphone for each.",
-   "sourceHash": "65b7db2d8d208924e342565c64eac4bae6d6e718bcb50c2a98b9c62f7b59cd4c",
+   "text": "Try an audio source or capture setting, then say the wake word three times again. The others go back as they were.",
+   "sourceHash": "8e2b230e1717a14fa9d59677d299f5a2699955896ccbcf52b3ed436f45e47d6d",
    "state": "english-fallback"
   },
   "configure.voice.tuning.step_speak": {
