@@ -67,10 +67,17 @@ data class VoiceSettings(
 }
 
 /**
- * A wake-word activation as the coordinator sees it: which model fired, the phrase it is trained on, and
- * the capture time of the frame that completed it, which measures how soon the command audio attaches.
+ * A wake-word activation as the coordinator sees it: which model fired, the phrase it is trained on, the
+ * capture time of the frame that completed it, which measures how soon the command audio attaches, and the
+ * window mean that fired it against its cutoff, null where the engine reports none.
  */
-data class WakeWordActivation(val modelId: String, val phrase: String, val heardAtNs: Long = 0L)
+data class WakeWordActivation(
+    val modelId: String,
+    val phrase: String,
+    val heardAtNs: Long = 0L,
+    val probability: Float? = null,
+    val cutoff: Float? = null,
+)
 
 /** Arms the microWakeWord engine on the bundled or imported models [load] can acquire. */
 internal class MicroWakeWordEngineFactory(
@@ -84,20 +91,46 @@ internal class MicroWakeWordEngineFactory(
         try {
             modelIds.mapNotNullTo(models, load)
             if (models.isEmpty()) return null
+            // What the listener received over the last 1.5 s, carried on each line below so a wake that fires
+            // or falls short can be told apart from a microphone that hears the room too quietly or clipped.
+            val received = VoiceLevelMeter(RECEIVED_LEVEL_FRAMES)
+            fun level() = received.reading()?.describe() ?: "level unknown"
             val detector = io.panelassistant.android.assist.wakeword.WakeWordDetector(
                 models,
-                { hit -> onActivation(WakeWordActivation(hit.modelId, hit.phrase, hit.timestampNs)) },
+                { hit ->
+                    log("wake word ${hit.modelId} fired at ${score(hit.probability)} (cutoff ${score(hit.cutoff)}), ${level()}")
+                    onActivation(WakeWordActivation(hit.modelId, hit.phrase, hit.timestampNs, hit.probability, hit.cutoff))
+                },
                 maxActive = models.size,
-                nearMiss = { id, mean -> log("wake word $id heard at ${"%.2f".format(mean)}, short of its cutoff") },
+                nearMiss = { id, mean -> log("wake word $id heard at ${score(mean)}, short of its cutoff, ${level()}") },
                 cutoffOffset = io.panelassistant.android.assist.wakeword.WakeWordDetector.cutoffOffset(sensitivity()),
             )
-            return object : WakeWordEngine, PcmConsumer by detector {
+            return object : WakeWordEngine {
+                override fun onFrame(frame: io.panelassistant.android.audio.PcmFrame) {
+                    received.onFrame(frame)
+                    detector.onFrame(frame)
+                }
+
+                override fun onDropped(count: Int) = detector.onDropped(count)
+
+                override fun listenToScores(listener: io.panelassistant.android.assist.wakeword.WakeWordScoreListener?) {
+                    detector.scoreListener = listener
+                }
+
                 override fun close() = detector.close()
             }
         } catch (failure: Throwable) {
             models.forEach { runCatching { it.close() } }
             throw failure
         }
+    }
+
+    private companion object {
+        /** 1.5 s of 10 ms frames. */
+        const val RECEIVED_LEVEL_FRAMES = 150
+
+        /** Two decimals whatever the panel's language, for the log lines a scorer reads back. */
+        fun score(value: Float) = String.format(java.util.Locale.ROOT, "%.2f", value)
     }
 }
 
@@ -112,7 +145,10 @@ internal data class VoiceTurnRequest(
 )
 
 /** An armed wake-word listener: a microphone consumer that reports activations until closed. */
-interface WakeWordEngine : PcmConsumer, AutoCloseable
+interface WakeWordEngine : PcmConsumer, AutoCloseable {
+    /** Hand every scored window mean to [listener], or stop with null; an engine without scores ignores it. */
+    fun listenToScores(listener: io.panelassistant.android.assist.wakeword.WakeWordScoreListener?) {}
+}
 
 /**
  * Builds an engine for the requested bundled model ids, or returns null when no engine can run here
@@ -200,7 +236,13 @@ class VoiceAssistantCoordinator internal constructor(
     /** A fresh stop-word model for one run, or null where none can run. */
     private val stopWordModel: () -> LoadedWakeWordModel? = { null },
     private val log: (String) -> Unit = {},
-) : AutoCloseable {
+    /** How long the owner's level meter holds the microphone after the browser's last heartbeat. */
+    private val levelLeaseMs: Long = DEFAULT_LEVEL_LEASE_MS,
+    /** How long one wake-word test listens. */
+    private val wakeTestMs: Long = DEFAULT_WAKE_TEST_MS,
+    /** Wall-clock milliseconds, for when the last command ended. */
+    private val clock: () -> Long = System::currentTimeMillis,
+) : AutoCloseable, VoiceDiagnosticsControl {
 
     private val lock = Any()
     private var armed = false
@@ -229,6 +271,18 @@ class VoiceAssistantCoordinator internal constructor(
     // paused wake lease and open an unpaused one alongside the run's own, putting two consumers on one
     // capture; the run's teardown applies this instead.
     private var pendingReconfigure = false
+
+    // The owner's diagnostics: one browser session at a time owns the level meter and the wake-word test.
+    private var diagnosticsSession: String? = null
+    private var levelMeter: VoiceLevelMeter? = null
+    private var levelLease: io.panelassistant.android.audio.MicLease? = null
+    private var levelDeadlineNs = 0L
+    private var levelJob: Job? = null
+    private var wakeTest: WakeTest? = null
+    private var wakeTestJob: Job? = null
+    private var lastWakeTest = WakeTestReading.IDLE
+    // In memory only, for the owner: never in /diag, a log or a backup, and gone when voice is turned off.
+    private var lastCommand: LastCommand? = null
 
     // True from the moment a run is admitted until its capture attachment has been closed. The
     // microphone foreground-service type must outlive that attachment: dropping it while the run is
@@ -321,6 +375,9 @@ class VoiceAssistantCoordinator internal constructor(
             checkJob?.cancel()
             checkedSource = null
             setCheckLocked(MicrophoneCheck.NOT_RUN, null)
+            endDiagnosticsLocked()
+            lastWakeTest = WakeTestReading.IDLE
+            lastCommand = null
             disarmLocked()
         }
         job?.cancel()
@@ -396,7 +453,13 @@ class VoiceAssistantCoordinator internal constructor(
 
     /** A hit from the listener armed at [generation]; refused once that listener has been replaced. */
     private fun onActivation(generation: Long, activation: WakeWordActivation) {
-        beginRun(activation, settings(), generation)
+        // The owner is testing the wake word: count the hit instead of starting a run for it.
+        val swallowed = synchronized(lock) {
+            val test = wakeTest
+            if (test != null && generation == engineGeneration) test.fired += 1
+            test != null
+        }
+        if (!swallowed) beginRun(activation, settings(), generation)
     }
 
     private fun beginRun(activation: WakeWordActivation?, current: VoiceSettings): RunAdmission =
@@ -511,7 +574,7 @@ class VoiceAssistantCoordinator internal constructor(
                             lease.resume()
                             state.set(rest)
                         } else {
-                            releaseForegroundLocked()
+                            if (levelLease == null) releaseForegroundLocked()
                             state.set(if (armed) rest else VoiceState.OFF)
                         }
                     }
@@ -602,6 +665,7 @@ class VoiceAssistantCoordinator internal constructor(
                 playback = speaker,
                 onReply = { text -> stop?.reply(text) },
             )
+            outcome.turn?.let { record(request, activation, it) }
             val error = outcome.error
             if (error != null) return error.silent
             turns += 1
@@ -611,6 +675,164 @@ class VoiceAssistantCoordinator internal constructor(
     }
 
     private fun obtainSource(): MicrophoneSource? = source()
+
+    /** Keep [turn] as the last command, while voice is still on; the wake score belongs to the turn it woke. */
+    private fun record(request: VoiceTurnRequest, activation: WakeWordActivation?, turn: VoiceTurnRecord) {
+        val woke = activation?.takeIf { !request.continued }
+        synchronized(lock) {
+            if (!armed) return
+            lastCommand = LastCommand(
+                at = clock(),
+                wakeWord = request.wakeWordId,
+                wakeScore = woke?.probability,
+                heard = turn.heard,
+                reply = turn.reply,
+                outcome = turn.outcome,
+                code = turn.code,
+                listenMs = turn.listenMs,
+            )
+        }
+    }
+
+    /** The live scores of one wake-word test, fed from the capture thread. */
+    private inner class WakeTest(val endsAtNs: Long) : io.panelassistant.android.assist.wakeword.WakeWordScoreListener {
+        @Volatile var model: String? = null
+        @Volatile var peak: Float? = null
+        @Volatile var cutoff: Float? = null
+        var fired = 0
+
+        override fun onScore(modelId: String, mean: Float, cutoff: Float) {
+            val best = peak
+            if (best == null || mean > best) {
+                model = modelId
+                this.cutoff = cutoff
+                peak = mean
+            } else if (model == modelId) {
+                this.cutoff = cutoff
+            }
+        }
+
+        fun reading(state: String, nowNs: Long) = WakeTestReading(
+            state = state,
+            model = model ?: settings().wakeWords.firstOrNull(),
+            peak = peak,
+            cutoff = cutoff,
+            fired = fired,
+            remainingMs = if (state == "running") ((endsAtNs - nowNs) / 1_000_000L).coerceAtLeast(0L) else 0L,
+        )
+    }
+
+    override fun diagnostics(): VoiceDiagnosticsSnapshot = synchronized(lock) {
+        VoiceDiagnosticsSnapshot(
+            session = diagnosticsSession,
+            level = levelMeter?.reading(),
+            wakeTest = wakeTest?.reading("running", System.nanoTime()) ?: lastWakeTest,
+            lastCommand = lastCommand,
+        )
+    }
+
+    override fun diagnosticsAction(action: String, sessionId: String): String? {
+        if (closed.get()) return "voice assistant is shut down"
+        if (sessionId.isBlank()) return "a session is required"
+        val current = settings()
+        synchronized(lock) {
+            val owner = diagnosticsSession
+            val owned = owner == sessionId
+            if (owner != null && !owned && (levelLease != null || wakeTest != null)) {
+                return "another browser is tuning this panel's microphone"
+            }
+            when (action) {
+                VoiceDiagnosticsControl.ACTION_STOP -> {
+                    if (owned) endDiagnosticsLocked()
+                    return null
+                }
+                VoiceDiagnosticsControl.ACTION_HEARTBEAT -> {
+                    if (!owned || (levelLease == null && wakeTest == null)) return "this tuning session has ended"
+                    if (levelLease != null) levelDeadlineNs = System.nanoTime() + levelLeaseMs * 1_000_000L
+                    return null
+                }
+            }
+            if (!armed || !current.enabled) return "voice assistant is disabled"
+            val status = microphoneStatus()
+            if (status.muted) return MUTED_REASON
+            if (!status.usable) return "the microphone is not ready"
+            return when (action) {
+                VoiceDiagnosticsControl.ACTION_LEVEL -> startLevelLocked(sessionId)
+                VoiceDiagnosticsControl.ACTION_WAKE_TEST -> startWakeTestLocked(sessionId)
+                else -> "unsupported action"
+            }
+        }
+    }
+
+    /** Meter the microphone for [sessionId] on its own calibration lease, alongside the wake word, until heartbeats stop. */
+    private fun startLevelLocked(sessionId: String): String? {
+        diagnosticsSession = sessionId
+        levelDeadlineNs = System.nanoTime() + levelLeaseMs * 1_000_000L
+        if (levelLease != null) return null
+        val mic = obtainSource() ?: return "the microphone is not ready"
+        if (!claimForegroundLocked()) return "the panel could not claim the microphone; bring the dashboard forward and try again"
+        val meter = VoiceLevelMeter(LEVEL_WINDOW_FRAMES)
+        levelMeter = meter
+        levelLease = mic.lease(MicPurpose.CALIBRATION, consumer = meter)
+        levelJob = scope.launch {
+            while (true) {
+                val left = synchronized(lock) { levelDeadlineNs - System.nanoTime() }
+                if (left <= 0) break
+                delay((left / 1_000_000L).coerceAtLeast(1L))
+            }
+            synchronized(lock) {
+                levelJob = null
+                endLevelLocked()
+                if (wakeTest == null) diagnosticsSession = null
+            }
+        }
+        return null
+    }
+
+    private fun endLevelLocked() {
+        levelJob?.cancel()
+        levelJob = null
+        levelLease?.close()
+        levelLease = null
+        levelMeter = null
+        if (runJob == null && checkJob == null && wakeLease == null) releaseForegroundLocked()
+    }
+
+    /** Tap the armed listener's own scores for [wakeTestMs]; a wake word said meanwhile starts no run. */
+    private fun startWakeTestLocked(sessionId: String): String? {
+        val listener = engine ?: return "the wake word is not listening"
+        if (runJob != null) return "a voice run is already in progress"
+        endWakeTestLocked()
+        diagnosticsSession = sessionId
+        val test = WakeTest(System.nanoTime() + wakeTestMs * 1_000_000L)
+        wakeTest = test
+        listener.listenToScores(test)
+        wakeTestJob = scope.launch {
+            delay(wakeTestMs)
+            synchronized(lock) {
+                if (wakeTest !== test) return@launch
+                wakeTestJob = null
+                endWakeTestLocked()
+                if (levelLease == null) diagnosticsSession = null
+            }
+        }
+        return null
+    }
+
+    private fun endWakeTestLocked() {
+        val test = wakeTest ?: return
+        wakeTestJob?.cancel()
+        wakeTestJob = null
+        wakeTest = null
+        engine?.listenToScores(null)
+        lastWakeTest = test.reading("done", System.nanoTime())
+    }
+
+    private fun endDiagnosticsLocked() {
+        endWakeTestLocked()
+        endLevelLocked()
+        diagnosticsSession = null
+    }
 
     private fun armEngineLocked(current: VoiceSettings) {
         val mic = obtainSource()
@@ -643,6 +865,8 @@ class VoiceAssistantCoordinator internal constructor(
             return
         }
         engine = built
+        // A test running while the owner tries another setting follows the listener that replaced it.
+        wakeTest?.let { built.listenToScores(it) }
         wakeLease = mic.lease(MicPurpose.WAKE_WORD, consumer = built)
         state.set(VoiceState.IDLE)
     }
@@ -655,7 +879,7 @@ class VoiceAssistantCoordinator internal constructor(
         wakeLease = null
         engine?.close()
         engine = null
-        if (runJob == null && checkJob == null) releaseForegroundLocked()
+        if (runJob == null && checkJob == null && levelLease == null) releaseForegroundLocked()
     }
 
     /** Lease [mic] for a [MicrophoneSelfCheck]; the wake word arms from its result if it passes. */
@@ -695,7 +919,7 @@ class VoiceAssistantCoordinator internal constructor(
                         state.set(VoiceState.ERROR)
                     }
                 }
-                if (checkJob == null && runJob == null && wakeLease == null) releaseForegroundLocked()
+                if (checkJob == null && runJob == null && wakeLease == null && levelLease == null) releaseForegroundLocked()
             }
         }
     }
@@ -740,6 +964,10 @@ class VoiceAssistantCoordinator internal constructor(
         const val DEFAULT_FOREGROUND_RETRY_MS = 5 * 60_000L
         const val DEFAULT_CLOSE_TIMEOUT_MS = 2_000L
         const val DEFAULT_MAX_CONVERSATION_TURNS = 5
+        const val DEFAULT_LEVEL_LEASE_MS = 15_000L
+        const val DEFAULT_WAKE_TEST_MS = 30_000L
+        /** Half a second of 10 ms frames: the level the Voice card shows at each 500 ms read. */
+        private const val LEVEL_WINDOW_FRAMES = 50
         private const val ANNOUNCE_ADMISSION_ATTEMPTS = 3
         private const val CHECK_POLL_MS = 50L
         const val SILENT_REASON = "the microphone recorded only silence when the panel checked it"

@@ -158,6 +158,25 @@ class PanelAssistantVoiceTest {
         assertArrayEquals(byteArrayOf(7), rig.connection.binary[3])
     }
 
+    @Test fun `a turn's end says how Home Assistant ended it, and drops what is not a code`() = runTest {
+        val rig = rig()
+        val turn = rig.voice.begin("okay_nabu", continued = false)!!
+        runCurrent()
+        val run = rig.connection.sentOfType(PanelAssistantVoice.COMMAND_VOICE_RUN).single()
+        rig.connection.reply(run, JSONObject().put("handler_id", 3))
+        rig.connection.event(run, JSONObject().put("kind", "end").put("outcome", "error").put("code", "no_intent_match"))
+        runCurrent()
+        assertEquals(VoiceTurnEvent.End("error", "no_intent_match"), turn.events.receive())
+
+        val second = rig.voice.begin("okay_nabu", continued = false)!!
+        runCurrent()
+        val next = rig.connection.sentOfType(PanelAssistantVoice.COMMAND_VOICE_RUN).last()
+        rig.connection.reply(next, JSONObject().put("handler_id", 4))
+        rig.connection.event(next, JSONObject().put("kind", "end").put("outcome", "a sentence, not a code").put("code", 7))
+        runCurrent()
+        assertEquals(VoiceTurnEvent.End(), second.events.receive())
+    }
+
     @Test fun `a turn hears when to stop, what to play from its own server, and that it is over`() = runTest {
         val rig = rig()
         val turn = rig.voice.begin(null, continued = true)!!
@@ -176,7 +195,7 @@ class PanelAssistantVoiceTest {
 
         assertEquals(VoiceTurnEvent.ListenEnd, turn.events.receive())
         assertEquals(VoiceTurnEvent.Play("https://ha.example/api/tts_proxy/a.mp3", true), turn.events.receive())
-        assertEquals(VoiceTurnEvent.End, turn.events.receive())
+        assertEquals(VoiceTurnEvent.End(), turn.events.receive())
 
         rig.voice.played(null)
         runCurrent()
@@ -282,7 +301,7 @@ class PanelAssistantVoiceTest {
         )
         runCurrent()
         assertEquals(VoiceTurnEvent.Failed(PanelAssistantVoice.CODE_SESSION_CLOSED), turn.events.receive())
-        assertEquals(VoiceTurnEvent.End, turn.events.receive())
+        assertEquals(VoiceTurnEvent.End(), turn.events.receive())
     }
 
     private class Rig(

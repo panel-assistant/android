@@ -108,7 +108,7 @@ internal class VoiceConversation(
             }
             is VoiceTurnEvent.Play -> publish(card.copy(done = maxOf(card.done, 2)))
             is VoiceTurnEvent.Failed -> failure = event.code
-            VoiceTurnEvent.End -> if (failure == null) publish(card.copy(done = STEPS))
+            is VoiceTurnEvent.End -> if (failure == null) publish(card.copy(done = STEPS))
             VoiceTurnEvent.ListenEnd -> Unit
         }
         if (event is VoiceTurnEvent.Transcript) carried = false

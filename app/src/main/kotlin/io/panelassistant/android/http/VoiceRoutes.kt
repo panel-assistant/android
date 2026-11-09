@@ -16,6 +16,7 @@ import kotlinx.coroutines.withContext
 
 private const val MAX_WAKE_WORD_IMPORT_BYTES = 4L * 1024L * 1024L
 private const val WAKE_WORD_IMPORT_DEADLINE_MS = 30_000L
+private val SESSION_ID = Regex("^[A-Za-z0-9_-]{1,64}$")
 
 internal fun Route.voiceRoutes(
     hasMicrophone: () -> Boolean,
@@ -26,6 +27,8 @@ internal fun Route.voiceRoutes(
     wakeWords: io.panelassistant.android.assist.wakeword.WakeWordCatalog?,
     onWakeWordsChanged: () -> Unit,
     authorize: suspend (OpCall, SensitiveOperation, String, String) -> Boolean,
+    voiceDiagnostics: io.panelassistant.android.assist.VoiceDiagnosticsControl =
+        io.panelassistant.android.assist.VoiceDiagnosticsControl.NONE,
 ) {
     // Home Assistant Assist pipelines for the Configure voice_pipelines picker, through the
     // injected directory rather than talking to Home Assistant here.
@@ -48,12 +51,54 @@ internal fun Route.voiceRoutes(
     get("/voice/microphone") {
         call.respondText(voiceMicrophoneJson(microphone()), ContentType.Application.Json)
     }
+    // The owner's diagnostics for the Voice card: the level meter and wake-word test a tuning session runs,
+    // and the last command the panel heard, which is held in memory only.
+    get("/voice/diagnostics") {
+        if (!hasMicrophone()) {
+            call.respondText("{\"error\":\"unavailable\"}", ContentType.Application.Json, HttpStatusCode.ServiceUnavailable)
+            return@get
+        }
+        call.response.headers.append("Cache-Control", "no-store")
+        call.respondText(voiceDiagnosticsJson(voiceDiagnostics.diagnostics(), microphone()), ContentType.Application.Json)
+    }
+    // Starts, keeps or stops a tuning session. It leases the microphone, so it is the panel's own UI only,
+    // as proximity setup is: its socket and the sidebar relay, or a same-origin page that marks the request.
+    post("/voice/diagnostics", name = "voice.diagnostics.set") {
+        val fromDoorPage = call.http == null && (call.origin.peerAddress != null || call.origin.isUser)
+        if (!fromDoorPage && !proximityUiRequestAllowed(
+                call.request.headers["Origin"], call.request.headers["Referer"],
+                call.request.headers["Host"], call.request.headers["Sec-Fetch-Site"],
+                call.request.headers["X-Voice-UI"],
+            )) {
+            call.respondText("{\"error\":${Json.str("Tune the microphone from this panel's HTML UI.")}}",
+                ContentType.Application.Json, HttpStatusCode.Forbidden)
+            return@post
+        }
+        val parameters = receiveBoundedFormParameters(call) ?: return@post
+        val action = parameters["action"].orEmpty()
+        val sessionId = parameters["sessionId"].orEmpty()
+        if (action !in io.panelassistant.android.assist.VoiceDiagnosticsControl.ACTIONS || !SESSION_ID.matches(sessionId)) {
+            call.respondText("{\"error\":${Json.str("Unsupported diagnostics action.")}}",
+                ContentType.Application.Json, HttpStatusCode.BadRequest)
+            return@post
+        }
+        val refusal = voiceTestRefusal(hasMicrophone = hasMicrophone(), voiceEnabled = voiceEnabled())
+            ?.takeIf { action != io.panelassistant.android.assist.VoiceDiagnosticsControl.ACTION_STOP }
+            ?: withContext(Dispatchers.IO) { voiceDiagnostics.diagnosticsAction(action, sessionId) }
+        call.response.headers.append("Cache-Control", "no-store")
+        if (refusal != null) {
+            call.respondText("{\"error\":${Json.str(refusal)}}", ContentType.Application.Json, HttpStatusCode.Conflict)
+            return@post
+        }
+        call.respondText(voiceDiagnosticsJson(voiceDiagnostics.diagnostics(), microphone()),
+            ContentType.Application.Json, HttpStatusCode.Accepted)
     }
     // One-shot voice-assistant test run. Refused with 409 before ever reaching the trigger
     // when the panel has no microphone capability or voice_enabled is off, so a disabled
     // panel never depends on whether the coordinator lane happens to be wired up. The
     // refusal check and the trigger-result mapping are both pure (voiceTestRefusal(),
     // voiceTestTriggerResponse()) so every branch is unit-testable without a routed request.
+    // A named operation, so the sidebar relay and the socket door can run tap-to-talk too.
     post("/voice/test") {
         val refusal = voiceTestRefusal(hasMicrophone = hasMicrophone(), voiceEnabled = voiceEnabled())
         if (refusal != null) {
@@ -69,7 +114,6 @@ internal fun Route.voiceRoutes(
     }
     // The wake words this panel can listen for, and the import of one a user trained: a
     // microWakeWord manifest and model, sent as JSON with the model base64-encoded.
-    ops {
     get("/voice/wake-words") {
         val catalog = wakeWords
         if (catalog == null || !hasMicrophone()) {
