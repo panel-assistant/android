@@ -57,6 +57,7 @@ internal object BundledHelperShellFixtures {
         incumbentReadyMarker: File? = null,
         guardStatus: String = emptyStatus,
         supervisePidFile: File? = null,
+        superviseSignal: String = "TERM",
     ): String = """
         #!/bin/sh
         if [ "${'$'}1" = --replacement-safe ]; then
@@ -64,7 +65,7 @@ internal object BundledHelperShellFixtures {
           ${if (candidate) "echo REPLACE_SAFE; exit 0" else "exit 2"}
         fi
         if [ "${'$'}1" = --supervise ]; then
-          ${if (signalOnSupervise) "kill -TERM \"${'$'}PPID\"; sleep 1" else ":"}
+          ${if (signalOnSupervise) "kill -$superviseSignal \"${'$'}PPID\"; sleep 1" else ":"}
           ${if (supervisePidFile != null) "echo ${'$'}${'$'} > '${supervisePidFile.absolutePath}'; exec sleep 30" else ":"}
           exit ${if (starts) 0 else 7}
         fi
@@ -128,6 +129,152 @@ internal object BundledHelperShellFixtures {
         }
 
     data class CommandResult(val exitCode: Int, val output: String)
+
+    fun runCommand(command: String): CommandResult = runCommandWithInput(command, "")
+
+    // The pre-canonical /system rc a Guard-era helper still runs under, exactly: 119 bytes, sha256 9b430712.
+    val officeSystemRegistration = """
+        service hapaneld_helper /system/bin/hapaneld-helper
+            class main
+            user root
+            group root
+            seclabel u:r:su:s0
+    """.trimIndent() + "\n"
+
+    const val FIRST_BOOT_ID = "11111111-1111-4111-8111-111111111111"
+    const val SECOND_BOOT_ID = "22222222-2222-4222-8222-222222222222"
+
+    /**
+     * Layout F: a Guard-era helper served from /system/bin under the pre-canonical /system rc, with an
+     * unrelated stale copy at /data/local. `proc/1/root` is init's view of the same tree.
+     */
+    data class CustodyFixture(
+        val root: File,
+        val dataLocal: File,
+        val systemBin: File,
+        val registration: File,
+        val live: File,
+        val stage: File,
+        val archive: File,
+        val record: File,
+        val calls: File,
+        val bootId: File,
+        val incumbentReady: File,
+        val oldBytes: String,
+        val candidateBytes: String,
+        val registrationBytes: String,
+        val staleBytes: String?,
+    ) {
+        val oldSha: String get() = sha256(oldBytes)
+        val registrationSha: String get() = sha256(registrationBytes)
+        val candidateSha: String get() = sha256(candidateBytes)
+        fun callLog(): List<String> = if (calls.isFile) calls.readLines() else emptyList()
+
+        /** Power returns: init starts the /system helper only when its rc and binary are both there. */
+        fun reboot(bootId: String = SECOND_BOOT_ID) {
+            this.bootId.writeText("$bootId\n")
+            if (systemBin.isFile && registration.isFile) incumbentReady.writeText("ready\n") else incumbentReady.delete()
+        }
+
+        /** Arms a stub: the named hook delivers [signal] to the calling shell. */
+        fun signalOn(hook: String, signal: String) = File(root, hook).writeText(signal)
+    }
+
+    fun withCustodyFiles(
+        candidateStarts: Boolean = true,
+        staleBytes: String? = fakeHelper("f".repeat(64), candidate = true, starts = true),
+        registrationBytes: String = officeSystemRegistration,
+        signalOnReplacementCheck: Boolean = false,
+        signalOnSupervise: Boolean = false,
+        superviseSignal: String = "TERM",
+        guardStatus: String = emptyStatus,
+        test: (CustodyFixture) -> Unit,
+    ) {
+        val root = scratchDirectory("bundled-helper-custody-").toFile()
+        try {
+            val dataLocal = File(root, "data/local").apply { mkdirs() }
+            File(root, "dev").mkdirs()
+            File(dataLocal, ".hapaneld-guard-db").mkdirs()
+            File(dataLocal, ".hapaneld-guard-db/.owner.lock").writeText("")
+            val systemBin = File(root, "system/bin/hapaneld-helper").apply { parentFile!!.mkdirs() }
+            val registration = File(root, "system/etc/init/hapaneld-helper.rc").apply { parentFile!!.mkdirs() }
+            val incumbentReady = File(dataLocal, ".incumbent-serving").apply { writeText("ready\n") }
+            val calls = File(root, "calls")
+            val oldBytes = fakeHelper(incumbentBuild, candidate = false, starts = true, incumbentReadyMarker = incumbentReady)
+            val candidateBytes = fakeHelper(
+                stagedBuild,
+                candidate = true,
+                starts = candidateStarts,
+                signalOnReplacementCheck = signalOnReplacementCheck,
+                signalOnSupervise = signalOnSupervise,
+                guardStatus = guardStatus,
+                superviseSignal = superviseSignal,
+            )
+            writeExecutable(systemBin, oldBytes, 755)
+            writeExecutable(registration, registrationBytes, 644)
+            val live = File(dataLocal, "hapaneld-helper")
+            if (staleBytes != null) writeExecutable(live, staleBytes, 700)
+            val stage = File(dataLocal, ".hapaneld-helper.new")
+            writeExecutable(stage, candidateBytes, 700)
+            val dollar = '$'
+            // Each stub records its call; a marker file makes it fail or deliver a signal to the shell.
+            fun hook(name: String): String {
+                val marker = File(root, name).absolutePath
+                // One shot: a rollback that calls the same stub again is not interrupted a second time.
+                return "if [ -f '$marker' ]; then signal=${dollar}(cat '$marker'); rm -f '$marker'; " +
+                    "kill -\"${dollar}signal\" \"${dollar}PPID\"; sleep 1; fi"
+            }
+            writeExecutable(File(root, "system/bin/stop"), """
+                #!/bin/sh
+                echo "stop ${dollar}*" >> '${calls.absolutePath}'
+                [ "${dollar}1" = hapaneld_helper ] || exit 2
+                rm -f '${incumbentReady.absolutePath}'
+                tamper='${File(root, "tamper-on-stop").absolutePath}'
+                if [ -f "${dollar}tamper" ]; then echo tampered >> "${dollar}(cat "${dollar}tamper")"; rm -f "${dollar}tamper"; fi
+                ${hook("signal-on-stop")}
+                exit 0
+            """.trimIndent() + "\n", 755)
+            writeExecutable(File(root, "system/bin/start"), """
+                #!/bin/sh
+                echo "start ${dollar}*" >> '${calls.absolutePath}'
+                [ "${dollar}1" = hapaneld_helper ] || exit 2
+                [ -f '${registration.absolutePath}' ] && [ -f '${systemBin.absolutePath}' ] || exit 0
+                '${systemBin.absolutePath}' >/dev/null 2>&1
+            """.trimIndent() + "\n", 755)
+            writeExecutable(File(root, "system/bin/mount"), """
+                #!/bin/sh
+                echo "mount ${dollar}*" >> '${calls.absolutePath}'
+                case "${dollar}2" in
+                  rw,remount)
+                    ${hook("signal-on-remount-rw")}
+                    [ ! -f '${File(root, "remount-fails").absolutePath}' ] || exit 32 ;;
+                  ro,remount)
+                    ${hook("signal-on-remount-ro")} ;;
+                esac
+                exit 0
+            """.trimIndent() + "\n", 755)
+            File(root, "proc/1").mkdirs()
+            Files.createSymbolicLink(File(root, "proc/1/root").toPath(), root.toPath())
+            File(root, "proc/1/mountinfo").writeText(
+                "1 0 254:1 / / ro,relatime shared:1 - ext4 /dev/root ro\n" +
+                    "25 1 0:25 / /system ro,relatime shared:2 - overlay overlay ro,lowerdir=/x\n",
+            )
+            val bootId = File(root, "proc/sys/kernel/random/boot_id").apply {
+                parentFile!!.mkdirs()
+                writeText("$FIRST_BOOT_ID\n")
+            }
+            test(CustodyFixture(
+                root, dataLocal, systemBin, registration, live, stage,
+                File(dataLocal, ".hapaneld-custody-archive"),
+                File(dataLocal, ".hapaneld-helper.custody-migration"),
+                calls, bootId, incumbentReady, oldBytes, candidateBytes, registrationBytes, staleBytes,
+            ))
+        } finally {
+            // Unlink init's view first: a recursive delete must not walk back into the tree through it.
+            Files.deleteIfExists(File(root, "proc/1/root").toPath())
+            root.deleteRecursively()
+        }
+    }
 
     fun runCommandWithInput(command: String, input: String): CommandResult =
         ProcessBuilder("bash", "-c", command)
