@@ -58,10 +58,12 @@ internal object BundledHelperShellFixtures {
         guardStatus: String = emptyStatus,
         supervisePidFile: File? = null,
         superviseSignal: String = "TERM",
+        guardOwnerHeldWhile: File? = null,
     ): String = """
         #!/bin/sh
         if [ "${'$'}1" = --replacement-safe ]; then
           ${if (signalOnReplacementCheck) "kill -TERM \"${'$'}(ps -o ppid= -p \"${'$'}PPID\" | tr -d ' ')\"; sleep 1" else ":"}
+          ${if (guardOwnerHeldWhile != null) "if [ -f '${guardOwnerHeldWhile.absolutePath}' ]; then echo GUARD_ARMED; exit 3; fi" else ":"}
           ${if (candidate) "echo REPLACE_SAFE; exit 0" else "exit 2"}
         fi
         if [ "${'$'}1" = --supervise ]; then
@@ -221,6 +223,9 @@ internal object BundledHelperShellFixtures {
                 signalOnSupervise = signalOnSupervise,
                 guardStatus = guardStatus,
                 superviseSignal = superviseSignal,
+                // A Guard-era incumbent holds the Guard DB owner lock while it runs, so the candidate's
+                // --replacement-safe cannot take it until the incumbent has stopped.
+                guardOwnerHeldWhile = incumbentReady,
             )
             writeExecutable(systemBin, oldBytes, 755)
             writeExecutable(registration, registrationBytes, 644)
