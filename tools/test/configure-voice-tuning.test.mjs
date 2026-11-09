@@ -254,6 +254,35 @@ for (const engine of engines) {
     assert.deepEqual(errors, []);
   });
 
+  test(`${engine.name}: skipping to the suggestions while a tried setting is still being written saves over it`, async (t) => {
+    const { p, h } = await open(t);
+    const errors = [];
+    p.on('pageerror', (e) => errors.push(e.message));
+    await p.click('#voice-tuning-start');
+    await eventually('the wake word step', async () => (await text(p, 'voice-tuning-step')) === 'Step 3 of 4: the wake word' || await text(p, 'voice-tuning-step'), 12000);
+    h.voice.test.peak = 0.99; h.voice.test.cutoff = 0.97; h.voice.test.fired = 3;
+    await eventually('heard three times', async () => !(await p.locator('#voice-tuning-next').isDisabled()));
+    await p.click('#voice-tuning-next');
+    await eventually('the source step', async () => (await text(p, 'voice-tuning-step')) === 'Step 4 of 4: compare settings (optional)' || await text(p, 'voice-tuning-step'));
+    h.held.write = 'voice_audio_source=mic';
+    await p.selectOption('#voice-tuning-source', 'voice_audio_source=mic');
+    await p.click('#voice-tuning-try');
+    await eventually('the tried write is pending', async () => h.held.waiting || JSON.stringify(h.writes), 6000);
+    await p.click('#voice-tuning-skip');
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    // Save at once if the suggestions are already showing while the tried write is still unanswered.
+    if ((await text(p, 'voice-tuning-step')) === 'Suggested settings') await p.click('#voice-tuning-save');
+    h.held.release();
+    await eventually('the suggestions', async () => (await text(p, 'voice-tuning-step')) === 'Suggested settings' || (await text(p, 'voice-tuning-status')) === 'Saved.' || await text(p, 'voice-tuning-step'));
+    if ((await text(p, 'voice-tuning-status')) !== 'Saved.') await p.click('#voice-tuning-save');
+    await eventually('saved', async () => (await text(p, 'voice-tuning-status')) === 'Saved.' || await text(p, 'voice-tuning-status'));
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    assert.equal(h.settings.voice_audio_source, 'voice_recognition', 'the unmeasured trial is not left on the panel after Saved');
+    assert.deepEqual(h.writes.filter((w) => w.startsWith('voice_audio')), ['voice_audio_source=mic', 'voice_audio_source=voice_recognition']);
+    assert.equal(h.voice.session, null, 'the trial does not start a test after Skip');
+    assert.deepEqual(errors, []);
+  });
+
   test(`${engine.name}: the comparison tries capture routes one at a time and saves the one that heard best`, async (t) => {
     const { p, h } = await open(t);
     await p.click('#voice-tuning-start');

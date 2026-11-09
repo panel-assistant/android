@@ -382,13 +382,22 @@
     return values;
   }
 
-  // A trial's writes are drained before Cancel puts the settings back, so a reply that lands after Cancel
-  // cannot leave the trial's value on the panel once Cancel has reported the settings as they were.
+  // A trial's writes are drained before the wizard leaves the comparison (Skip, Next, Save or Cancel), so a reply
+  // that lands late cannot leave the trial's value on the panel after the wizard has saved or put back the settings.
   async function trySource(value) {
     if (!wizard || !value) return;
     var w = wizard;
-    w.writing = applyTrial(w, value);
-    await w.writing;
+    if (w.stopped || w.writing) return;
+    var run = applyTrial(w, value);
+    w.writing = run;
+    try { await run; } finally { if (w.writing === run) w.writing = null; }
+  }
+
+  // Stops the pending trial after the write in hand and waits for it, so cfg.values holds what the panel holds.
+  async function endTrial(w) {
+    w.stopped = true;
+    if (w.writing) await w.writing.catch(function () {});
+    w.writing = null;
   }
 
   async function applyTrial(w, value) {
@@ -396,7 +405,7 @@
     sourceTry.disabled = true;
     // The panel reopens its microphone on another route only once nothing holds the old one.
     await stopAll();
-    if (w.cancelled) return;
+    if (w.stopped) return;
     var values = routeWith(value), tried = candidate(value).key;
     // Put the others back first, so the microphone never opens on two changes at once.
     var order = Object.keys(values).filter(function (k) { return k !== tried; }).concat([tried]);
@@ -408,20 +417,21 @@
       if (reply && reply.outcome && reply.outcome !== "applied") {
         // Not applied: the panel keeps its value, so a later write of this key must not be skipped.
         refused = true;
-        if (!w.cancelled) status.textContent = L("refused", { reason: reply.code || reply.outcome });
+        if (!w.stopped) status.textContent = L("refused", { reason: reply.code || reply.outcome });
         continue;
       }
-      // Recorded even after Cancel, so Cancel's rollback sees what the panel now holds.
+      // Recorded even once the trial is stopped, so a later save or rollback sees what the panel now holds.
       cfg.values[key] = values[key];
-      if (w.cancelled) return;
+      if (w.stopped) return;
     }
     w.tryRefused = refused;
+    if (w.stopped) return;
     await new Promise(function (done) { setTimeout(done, SOURCE_SETTLE_MS); });
-    if (wizard !== w) return;
+    if (wizard !== w || w.stopped) return;
     w.trying = value;
     sourceTry.disabled = false;
-    if (await act("level") && wizard === w) await act("wake_test");
-    if (wizard !== w) return;
+    if (await act("level") && wizard === w && !w.stopped) await act("wake_test");
+    if (wizard !== w || w.stopped) return;
     nextButton.hidden = false;
     nextButton.disabled = false;
   }
@@ -457,6 +467,11 @@
 
   async function review() {
     if (!wizard) return;
+    var w = wizard;
+    if (w.reviewing) return;
+    w.reviewing = true;
+    await endTrial(w);
+    if (wizard !== w) return;
     if (wizard.step === "source") recordSource();
     await stopAll();
     var gain = suggestGain(parseInt(wizard.start.voice_mic_gain_db, 10) || 0);
@@ -482,6 +497,9 @@
 
   async function save() {
     if (!wizard || !wizard.suggested) return;
+    var w = wizard;
+    await endTrial(w);
+    if (wizard !== w) return;
     try {
       await write(wizard.suggested);
       finish(L("saved"));
@@ -491,9 +509,8 @@
   async function cancel() {
     if (!wizard) return;
     var w = wizard, start = w.start;
-    w.cancelled = true;
     clearTimeout(w.timer);
-    if (w.writing) await w.writing.catch(function () {});
+    await endTrial(w);
     if (wizard !== w) return;
     await stopAll();
     try {
