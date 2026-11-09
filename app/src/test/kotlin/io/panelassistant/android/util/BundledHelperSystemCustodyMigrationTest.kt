@@ -435,6 +435,35 @@ class BundledHelperSystemCustodyMigrationTest {
         }
     }
 
+    @Test fun `a probe that runs out of time is told apart from one that failed`() {
+        var now = 0L
+        val timedOut = probeSystemCustodyLayout(
+            execute = { _, timeout -> now += timeout; null },
+            monotonicMs = { now },
+        )
+        assertEquals(SystemCustodyLayout.Refused("probe_timeout", emptyList()), timedOut)
+        now = 0L
+        val failed = probeSystemCustodyLayout(execute = { _, _ -> now += 40; null }, monotonicMs = { now })
+        assertEquals(SystemCustodyLayout.Refused("probe_failed", emptyList()), failed)
+        var asked = 0L
+        probeSystemCustodyLayout(execute = { _, timeout -> asked = timeout; "LAYOUT_F\n" }, monotonicMs = { 0L })
+        assertEquals(SYSTEM_CUSTODY_PROBE_TIMEOUT_MS, asked)
+        assertTrue(SYSTEM_CUSTODY_PROBE_TIMEOUT_MS >= 60_000L)
+    }
+
+    @Test fun `the probe and the shells scan processes in one pass`() {
+        // A fork per process costs seconds on a panel with hundreds of them: each scan is one stat call.
+        listOf(
+            bundledHelperSystemCustodyProbeCommand(),
+            bundledLegacyHelperTakeoverCommand("c".repeat(64), stagedBuild, incumbentBuild, systemCustodyMigration = true),
+            bundledLegacyHelperTakeoverCommand("c".repeat(64), stagedBuild, incumbentBuild),
+            bundledFreshHelperInstallCommand("c".repeat(64), stagedBuild),
+        ).forEach { command ->
+            assertFalse(command, Regex("for [a-z_]+ in /proc/\\[0-9\\]\\*/exe").containsMatchIn(command))
+            assertFalse(command, "stat -Lc '%d:%i' \"\$executable\"" in command)
+        }
+    }
+
     @Test fun `the probe prints the inventory the hardware acceptance checks`() {
         withCustodyFiles { fixture ->
             val inventory = probe(fixture).inventory.joinToString("\n")
