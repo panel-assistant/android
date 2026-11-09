@@ -69,6 +69,24 @@ class WakeWordDetectorTest {
     }
 
     @Test
+    fun aScoreListenerHearsEveryWindowMeanAgainstItsCutoffOnceWarm() {
+        val rig = Rig(config("okay_nabu", cutoff = 0.5f, window = 2), cooldown = 0, warmup = 1)
+        val scores = mutableListOf<Triple<String, Float, Float>>()
+        rig.detector.scoreListener = WakeWordScoreListener { id, mean, cutoff -> scores += Triple(id, mean, cutoff) }
+        rig.scorers[0].script.addAll(listOf(255, 0, 255, -1))
+        rig.frames(4)
+        assertEquals(
+            "the warm-up and a chunk with no inference report nothing",
+            listOf(Triple("okay_nabu", 0.5f, 0.5f), Triple("okay_nabu", 0.5f, 0.5f)),
+            scores,
+        )
+        rig.detector.scoreListener = null
+        rig.scorers[0].script.addAll(listOf(255))
+        rig.frame()
+        assertEquals("a cleared listener hears nothing more", 2, scores.size)
+    }
+
+    @Test
     fun windowMeanBelowCutoffNeverFires() {
         val rig = Rig(config("okay_nabu", cutoff = 0.5f, window = 4))
         // mean of 4 window = (255+0+0+0)/4/255 = 0.25 < 0.5
