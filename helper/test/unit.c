@@ -3097,6 +3097,18 @@ static void test_pa_records(void) {
     CHECK(pa_field_is(out, "result", "restored") && access(PA_DISPLAY_RECORD, F_OK) != 0,
           "PA_RESTORE display forgets the record once it reads back (got '%s')\n", out);
 
+    // A display record missing a key is no baseline: nothing is written and the record stays.
+    pa_reset_records();
+    pa_write_fixture(PA_DISPLAY_RECORD, "density=420\n", 0644);
+    sysexec_stub_reset();
+    sysexec_stub_add_popen("wm density", "Physical density: 240\n", 0);
+    sysexec_stub_add_popen("settings get system font_scale", "1.0\n", 0);
+    dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "PA_RESTORE display", out, sizeof out);
+    CHECK(pa_field_is(out, "result", "unrestored") && pa_ran("wm", "density") == 0 &&
+          pa_ran("settings", "put") == 0 && pa_ran("settings", "delete") == 0 &&
+          pa_file_is(PA_DISPLAY_RECORD, "density=420\n"),
+          "PA_RESTORE display keeps a record missing a key and writes nothing (got '%s')\n", out);
+
     // Meta setup retry: the record already exists and must not be rewritten from blanked values.
     const char *meta = "screensaver_components=com.meta/.Dream\nscreensaver_default_component=com.meta/.Dream\ncontrolcenter_overlay=allow\n";
     pa_reset_records();

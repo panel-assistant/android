@@ -1344,7 +1344,6 @@ static const char *pa_restore_vendor(pa_run *r) {
     int have_meta = pa_record_load(PA_RECORD_META, PA_RECORD_META_KEYS, &meta);
     int have_verifier = pa_record_load(PA_RECORD_META_VERIFIER, PA_RECORD_VERIFIER_KEYS, &verifier);
     if (have_meta < 0 || have_verifier < 0) return NULL;
-    if (have_meta == 2 || have_verifier == 2) return "unrestored";
     static const char *const META_ALLOW[] = { "allow", "ignore", "default", "foreground", NULL };
     if (have_meta || have_verifier) {
         const char *result = "restored";
