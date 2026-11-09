@@ -71,7 +71,8 @@
   // the audio source and, where the panel offers them, the capture route's rate, channels and channel mix.
   var COMPARED = ["voice_audio_source", "voice_capture_rate", "voice_capture_channels", "voice_capture_downmix"];
   var QUIET_MS = 3000, SPEAK_MS = 5000, HEARTBEAT_MS = 5000, SOURCE_SETTLE_MS = 1500;
-  var session = "tab-" + Math.random().toString(36).slice(2, 12) + Date.now().toString(36);
+  // getRandomValues, unlike randomUUID, also works on the panel's plain-HTTP page.
+  var session = "tab-" + Array.prototype.map.call(crypto.getRandomValues(new Uint32Array(2)), function (n) { return n.toString(36); }).join("") + Date.now().toString(36);
   var latest = null, watch = null, heartbeat = null;
   var metering = false, testing = false;
   // The wizard: null when idle, else its step and what it has measured.
