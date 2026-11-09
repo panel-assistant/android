@@ -4,7 +4,6 @@ import io.panelassistant.android.util.BundledHelperShellFixtures.CustodyFixture
 import io.panelassistant.android.util.BundledHelperShellFixtures.FIRST_BOOT_ID
 import io.panelassistant.android.util.BundledHelperShellFixtures.REGISTRATION_LABEL
 import io.panelassistant.android.util.BundledHelperShellFixtures.SYSTEM_BIN_LABEL
-import io.panelassistant.android.util.BundledHelperShellFixtures.SECOND_BOOT_ID
 import io.panelassistant.android.util.BundledHelperShellFixtures.emptyStatus
 import io.panelassistant.android.util.BundledHelperShellFixtures.incumbentBuild
 import io.panelassistant.android.util.BundledHelperShellFixtures.runCommand
@@ -18,6 +17,7 @@ import java.io.File
 import java.nio.file.Files
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -75,7 +75,7 @@ class BundledHelperSystemCustodyMigrationTest {
         withCustodyFiles { fixture ->
             val result = runCommand(migrate(fixture))
             assertEquals(result.output, 0, result.exitCode)
-            assertMigrated(fixture, FIRST_BOOT_ID)
+            assertMigrated(fixture)
             assertTrue(fixture.callLog().toString(), "mount -o rw,remount /system" in fixture.callLog())
             // Owner, mode and label are kept beside each copy so a rollback can put them back exactly.
             assertEquals("0:0:755 $SYSTEM_BIN_LABEL\n",
@@ -112,15 +112,16 @@ class BundledHelperSystemCustodyMigrationTest {
         }
     }
 
-    @Test fun `the candidate may report counters the incumbent left but never a Guard phase that owns recovery`() {
-        withCustodyFiles(guardStatus = "OK GUARDSTATUS 3 EMPTY NONE NONE NONE NONE 0 0 0 NONE NONE 0 0") { fixture ->
-            val result = runCommand(migrate(fixture))
-            assertEquals(result.output, 0, result.exitCode)
-            assertMigrated(fixture, FIRST_BOOT_ID)
-        }
-        withCustodyFiles(guardStatus = emptyStatus.replace(" EMPTY ", " PREPARED ")) { fixture ->
-            assertEquals(1, runCommand(migrate(fixture)).exitCode)
-            assertRolledBack(fixture)
+    @Test fun `the candidate must report the exact empty Guard status`() {
+        // EMPTY always prints generation 0, so anything else is not an idle candidate.
+        listOf(
+            "OK GUARDSTATUS 3 EMPTY NONE NONE NONE NONE 0 0 0 NONE NONE 0 0",
+            emptyStatus.replace(" EMPTY ", " PREPARED "),
+        ).forEach { status ->
+            withCustodyFiles(guardStatus = status) { fixture ->
+                assertEquals(status, 1, runCommand(migrate(fixture)).exitCode)
+                assertRolledBack(fixture, status)
+            }
         }
     }
 
@@ -184,17 +185,6 @@ class BundledHelperSystemCustodyMigrationTest {
         assertEquals(listOf("custody record"), calls)
     }
 
-    @Test fun `startup recovery only relaunches a record whose system files are already gone`() {
-        val line = "OK CUSTODYMIGRATION 1 SYSTEM_REMOVED ${"1".repeat(64)} 10 ${"2".repeat(64)} 119 NONE 0 " +
-            "$incumbentBuild $stagedBuild ${"3".repeat(64)} 20 $FIRST_BOOT_ID\n"
-        val removed = requireNotNull(parseSystemCustodyMigrationRecord(line))
-        assertTrue(systemCustodyResumeOnlyAllowed(removed, stagedBuild))
-        assertFalse(systemCustodyResumeOnlyAllowed(removed, "9".repeat(64)))
-        val swapped = requireNotNull(parseSystemCustodyMigrationRecord(
-            line.replace("SYSTEM_REMOVED", "SWAPPED").replace(" $FIRST_BOOT_ID\n", " NONE\n")))
-        assertFalse(systemCustodyResumeOnlyAllowed(swapped, stagedBuild))
-    }
-
     @Test fun `a removal init still sees is restored and rolled back`() {
         withCustodyFiles { fixture ->
             // init's mount namespace keeps both files although this shell's view lost them.
@@ -230,23 +220,47 @@ class BundledHelperSystemCustodyMigrationTest {
         }
     }
 
-    @Test fun `power lost at each step converges on the next start`() {
-        val points = listOf(
-            "after archive" to { f: CustodyFixture -> f.signalOn("signal-on-stop", "KILL") },
-            "during swap" to { _: CustodyFixture -> },
-            "before removal" to { f: CustodyFixture -> f.signalOn("signal-on-remount-rw", "KILL") },
-            "after removal" to { f: CustodyFixture -> f.signalOn("signal-on-remount-ro", "KILL") },
+    @Test fun `power lost at each step converges on the next start in the same boot or after a reboot`() {
+        val points = listOf<Pair<String, (CustodyFixture) -> Unit>>(
+            "after archive" to { f -> f.signalOn("signal-on-stop", "KILL") },
+            "during swap" to { _ -> },
+            "before removal" to { f -> f.signalOn("signal-on-remount-rw", "KILL") },
+            "after removal" to { f -> f.signalOn("signal-on-remount-ro", "KILL") },
         )
-        points.forEach { (point, arm) ->
+        for (reboot in listOf(false, true)) points.forEach { (point, arm) ->
+            val label = "$point reboot=$reboot"
             withCustodyFiles(signalOnSupervise = point == "during swap", superviseSignal = "KILL") { fixture ->
                 arm(fixture)
-                assertEquals(point, 137, runCommand(migrate(fixture)).exitCode)
-                assertTrue(point, fixture.record.isFile)
-                fixture.root.listFiles()!!.filter { it.name.startsWith("signal-on-") }.forEach(File::delete)
-                fixture.reboot()
+                assertEquals(label, 137, runCommand(migrate(fixture)).exitCode)
+                assertTrue(label, fixture.record.isFile)
+                // The dead shell's transaction lock is left behind; the next start reclaims it.
+                assertTrue(label, File(fixture.root, "dev/.hapaneld-helper-transaction.lock").isDirectory)
+                if (reboot) fixture.reboot() else fixture.sameBoot()
                 val resumed = runCommand(migrate(fixture))
-                assertEquals("$point: ${resumed.output}", 0, resumed.exitCode)
-                assertMigrated(fixture, SECOND_BOOT_ID, point)
+                assertEquals("$label: ${resumed.output}", 0, resumed.exitCode)
+                assertMigrated(fixture, label)
+            }
+        }
+    }
+
+    @Test fun `a kill before any record write or between the removals converges`() {
+        val record = ".hapaneld-helper.custody-migration"
+        val cuts = listOf(
+            "before the first record write" to "[ -f '%L/$record.tmp' ] && [ ! -f '%L/$record' ]",
+            "before the swapped record write" to "[ -f '%L/$record.tmp' ] && grep -q ' ARCHIVED ' '%L/$record'",
+            "between the removals" to "[ ! -e '%R/system/etc/init/hapaneld-helper.rc' ] && [ -e '%R/system/bin/hapaneld-helper' ]",
+            "before the record is retired" to "[ ! -e '%R/system/bin/hapaneld-helper' ] && [ -f '%L/$record' ]",
+        )
+        for (reboot in listOf(false, true)) cuts.forEach { (point, condition) ->
+            val label = "$point reboot=$reboot"
+            withCustodyFiles { fixture ->
+                fixture.killAtSyncWhen(condition.replace("%L", fixture.dataLocal.absolutePath)
+                    .replace("%R", fixture.root.absolutePath))
+                assertEquals(label, 137, runCommand(migrate(fixture)).exitCode)
+                if (reboot) fixture.reboot() else fixture.sameBoot()
+                val resumed = runCommand(migrate(fixture))
+                assertEquals("$label: ${resumed.output}", 0, resumed.exitCode)
+                assertMigrated(fixture, label)
             }
         }
     }
@@ -256,76 +270,80 @@ class BundledHelperSystemCustodyMigrationTest {
             withCustodyFiles { fixture ->
                 fixture.signalOn("signal-on-remount-rw", "KILL")
                 assertEquals(cut, 137, runCommand(migrate(fixture)).exitCode)
-                File(fixture.root, "signal-on-remount-rw").delete()
                 if (cut == "registration removed") fixture.registration.delete() else fixture.systemBin.delete()
                 fixture.reboot()
                 val resumed = runCommand(migrate(fixture))
                 assertEquals("$cut: ${resumed.output}", 0, resumed.exitCode)
-                assertMigrated(fixture, SECOND_BOOT_ID, cut)
+                assertMigrated(fixture, cut)
             }
         }
     }
 
-    @Test fun `settlement waits for a reboot and then retires the migration record`() {
+    @Test fun `a removal the overlay did not keep is refused once and never retried`() {
         withCustodyFiles { fixture ->
             assertEquals(0, runCommand(migrate(fixture)).exitCode)
-            val record = requireNotNull(parseSystemCustodyMigrationRecord(fixture.record.readText()))
-            val kept = runCommand(systemCustodyMigrationSettleCommand(record, fixture.root.absolutePath))
-            assertEquals(kept.output, 0, kept.exitCode)
-            assertTrue(kept.output, "KEPT same_boot" in kept.output)
-            assertTrue(fixture.record.isFile)
-
-            // After the reboot nothing registers a helper: the socket is unreachable until the app
-            // relaunches the bundled copy under the record, and only then is the record retired.
-            fixture.reboot()
-            val relaunched = runCommand(migrate(fixture))
-            assertEquals(relaunched.output, 0, relaunched.exitCode)
-            assertEquals(record.copy(recordSha256 = "", recordBytes = 0),
-                parseSystemCustodyMigrationRecord(fixture.record.readText())!!.copy(recordSha256 = "", recordBytes = 0))
-            assertFalse(fixture.callLog().any { it.startsWith("start") })
-            val settled = runCommand(systemCustodyMigrationSettleCommand(record, fixture.root.absolutePath))
-            assertEquals(settled.output, 0, settled.exitCode)
-            assertTrue(settled.output, "SETTLED" in settled.output)
-            assertFalse(fixture.record.exists())
-            assertTrue(File(fixture.archive, "hapaneld-helper.system.${fixture.oldSha}").isFile)
-        }
-    }
-
-    @Test fun `settlement refuses when the system helper came back`() {
-        withCustodyFiles { fixture ->
-            assertEquals(0, runCommand(migrate(fixture)).exitCode)
-            val record = parseSystemCustodyMigrationRecord(fixture.record.readText())!!
+            // The reboot brings both /system files back and init serves the incumbent again.
             writeExecutable(fixture.systemBin, fixture.oldBytes, 755)
+            writeExecutable(fixture.registration, fixture.registrationBytes, 644)
             fixture.reboot()
-            assertEquals(1, runCommand(systemCustodyMigrationSettleCommand(record, fixture.root.absolutePath)).exitCode)
-            assertTrue(fixture.record.isFile)
+            assertEquals(SystemCustodyLayout.Refused("system_removal_not_persistent", emptyList()),
+                probe(fixture).withoutInventory())
+            writeExecutable(fixture.stage, fixture.candidateBytes, 700)
+            fixture.calls.delete()
+            val again = runCommand(migrate(fixture))
+            assertEquals(again.output, 1, again.exitCode)
+            assertTrue(again.output, "CUSTODY_REASON system_removal_not_persistent" in again.output)
+            assertFalse(fixture.record.exists())
+            assertEquals(fixture.oldBytes, fixture.systemBin.readText())
+            assertTrue(fixture.callLog().isEmpty())
         }
     }
 
-    @Test fun `fresh install refuses while the record exists and accepts the migrated layout`() {
+    @Test fun `a system overlay whose upper layer is tmpfs is refused`() {
+        withCustodyFiles { fixture ->
+            File(fixture.root, "proc/1/mountinfo").writeText(
+                "1 0 254:1 / / ro,relatime shared:1 - ext4 /dev/root ro\n" +
+                    "20 1 0:20 / /mnt/scratch rw,relatime shared:3 - tmpfs tmpfs rw\n" +
+                    "25 1 0:25 / /system ro,relatime shared:2 - overlay overlay ro,lowerdir=/x,upperdir=/mnt/scratch/upper,workdir=/mnt/scratch/work\n",
+            )
+            assertEquals(SystemCustodyLayout.Refused("system_overlay_not_persistent", emptyList()),
+                probe(fixture).withoutInventory())
+            val result = runCommand(migrate(fixture))
+            assertEquals(result.output, 1, result.exitCode)
+            assertTrue(result.output, "CUSTODY_REASON system_overlay_not_persistent" in result.output)
+            assertRolledBack(fixture)
+            assertFalse(fixture.callLog().any { it.startsWith("mount") })
+        }
+    }
+
+    @Test fun `the migrated layout is a plain fresh install after the reboot even after an app update`() {
         withCustodyFiles { fixture ->
             assertEquals(0, runCommand(migrate(fixture)).exitCode)
-            fixture.reboot()
-            writeExecutable(fixture.stage, fixture.candidateBytes, 700)
-            val fresh = bundledFreshHelperInstallCommand(
-                fixture.candidateSha, stagedBuild, filesystemRoot = fixture.root.absolutePath, polls = 1,
-            )
-            assertEquals(1, runCommand(fresh).exitCode)
-            assertTrue(fixture.record.isFile)
-
-            val record = parseSystemCustodyMigrationRecord(fixture.record.readText())!!
-            assertEquals(0, runCommand(systemCustodyMigrationSettleCommand(record, fixture.root.absolutePath)).exitCode)
             assertFalse(fixture.record.exists())
-            writeExecutable(fixture.stage, fixture.candidateBytes, 700)
-            val accepted = runCommand(fresh)
+            // An app update before the reboot replaced the live helper through Guard; the next build stages.
+            val newer = BundledHelperShellFixtures.fakeHelper("d".repeat(64), candidate = true, starts = true)
+            writeExecutable(fixture.live, newer, 700)
+            fixture.reboot()
+            writeExecutable(fixture.stage, newer, 700)
+            val accepted = runCommand(bundledFreshHelperInstallCommand(
+                sha256(newer), "d".repeat(64), filesystemRoot = fixture.root.absolutePath, polls = 1,
+            ))
             assertEquals(accepted.output, 0, accepted.exitCode)
-            assertEquals(fixture.candidateBytes, fixture.live.readText())
+            assertEquals(newer, fixture.live.readText())
+        }
+    }
 
-            // A record write cut before its rename still fences the fresh install.
-            val tmp = File(fixture.dataLocal, ".hapaneld-helper.custody-migration.tmp").apply { writeText("partial\n") }
-            setMode(tmp, 600)
-            writeExecutable(fixture.stage, fixture.candidateBytes, 700)
-            assertEquals(1, runCommand(fresh).exitCode)
+    @Test fun `fresh install refuses while a migration record or its temporary exists`() {
+        listOf(".hapaneld-helper.custody-migration", ".hapaneld-helper.custody-migration.tmp").forEach { name ->
+            withCustodyFiles(staleBytes = null) { fixture ->
+                fixture.systemBin.delete()
+                fixture.registration.delete()
+                File(fixture.dataLocal, name).apply { writeText("held\n") }.also { setMode(it, 600) }
+                assertEquals(name, 1, runCommand(bundledFreshHelperInstallCommand(
+                    fixture.candidateSha, stagedBuild, filesystemRoot = fixture.root.absolutePath, polls = 1,
+                )).exitCode)
+                assertFalse(name, fixture.live.exists())
+            }
         }
     }
 
@@ -404,22 +422,23 @@ class BundledHelperSystemCustodyMigrationTest {
 
     @Test fun `the migration record parser accepts only the exact line`() {
         val line = "OK CUSTODYMIGRATION 1 SWAPPED ${"1".repeat(64)} 10 ${"2".repeat(64)} 119 NONE 0 " +
-            "$incumbentBuild $stagedBuild ${"3".repeat(64)} 20 NONE\n"
+            "$incumbentBuild $stagedBuild ${"3".repeat(64)} 20\n"
         val parsed = requireNotNull(parseSystemCustodyMigrationRecord(line))
         assertEquals("SWAPPED", parsed.phase)
         assertNull(parsed.staleSha256)
-        assertNull(parsed.bootId)
         assertEquals(sha256(line), parsed.recordSha256)
-        assertNull(parseSystemCustodyMigrationRecord(line.replace("SWAPPED", "RC_WRITTEN")))
-        assertNull(parseSystemCustodyMigrationRecord(line.replace(" NONE\n", " NONE extra\n")))
+        assertNotNull(parseSystemCustodyMigrationRecord(line.replace("SWAPPED", "ARCHIVED")))
+        assertNull(parseSystemCustodyMigrationRecord(line.replace("SWAPPED", "SYSTEM_REMOVED")))
+        assertNull(parseSystemCustodyMigrationRecord(line.replace(" 20\n", " 20 extra\n")))
         assertNull(parseSystemCustodyMigrationRecord(line.replace(" NONE 0 ", " NONE 5 ")))
         assertNull(parseSystemCustodyMigrationRecord(line.replace("OK ", "OK  ")))
     }
 
-    private fun migrate(fixture: CustodyFixture, polls: Int = 1) = bundledLegacyHelperTakeoverCommand(
-        fixture.candidateSha, stagedBuild, incumbentBuild,
-        filesystemRoot = fixture.root.absolutePath, polls = polls, systemCustodyMigration = true,
-    )
+    private fun migrate(fixture: CustodyFixture, polls: Int = 1) =
+        "PATH='${File(fixture.root, "stubbin").absolutePath}':\$PATH\n" + bundledLegacyHelperTakeoverCommand(
+            fixture.candidateSha, stagedBuild, incumbentBuild,
+            filesystemRoot = fixture.root.absolutePath, polls = polls, systemCustodyMigration = true,
+        )
 
     private fun probe(fixture: CustodyFixture): SystemCustodyLayout =
         parseSystemCustodyProbe(runCommand(bundledHelperSystemCustodyProbeCommand(fixture.root.absolutePath)).output)
@@ -433,7 +452,8 @@ class BundledHelperSystemCustodyMigrationTest {
         File(fixture.root, path).apply { parentFile!!.mkdirs(); writeText(bytes) }
     }
 
-    private fun assertMigrated(fixture: CustodyFixture, bootId: String, label: String = "") {
+    /** The plain app-lease layout: no /system helper, the bundled copy live, and no record left to settle. */
+    private fun assertMigrated(fixture: CustodyFixture, label: String = "") {
         assertFalse(label, fixture.systemBin.exists())
         assertFalse(label, fixture.registration.exists())
         assertEquals(label, fixture.candidateBytes, fixture.live.readText())
@@ -444,9 +464,9 @@ class BundledHelperSystemCustodyMigrationTest {
         fixture.staleBytes?.let {
             assertEquals(label, it, File(fixture.archive, "hapaneld-helper.stale.${sha256(it)}").readText())
         }
-        val fields = fixture.record.readText().trimEnd('\n').split(' ')
-        assertEquals(label, "SYSTEM_REMOVED", fields[3])
-        assertEquals(label, bootId, fields.last())
+        assertFalse(label, fixture.record.exists())
+        assertFalse(label, File(fixture.dataLocal, ".hapaneld-helper.custody-migration.tmp").exists())
+        assertTrue(label, File(fixture.archive, "hapaneld-helper.removed.${fixture.oldSha}").isFile)
         assertFalse(label, File(fixture.dataLocal, ".hapaneld-helper.legacy-takeover").exists())
         assertFalse(label, fixture.callLog().any { it.startsWith("start") })
         assertFalse(label, File(fixture.root, "dev/.hapaneld-helper-transaction.lock").exists())

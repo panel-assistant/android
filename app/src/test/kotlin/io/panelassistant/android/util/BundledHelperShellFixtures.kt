@@ -181,6 +181,12 @@ internal object BundledHelperShellFixtures {
         /** Arms a stub: the named hook delivers [signal] to the calling shell. */
         fun signalOn(hook: String, signal: String) = File(root, hook).writeText(signal)
 
+        /** SIGKILLs the shell at its first sync after [condition] (a bash test) holds. */
+        fun killAtSyncWhen(condition: String) = File(root, "kill-on-sync").writeText(condition)
+
+        /** The power stays on: init keeps its stopped service and nothing starts the incumbent again. */
+        fun sameBoot() = Unit
+
         /** The SELinux label the `ls -Z` stub reports: by inode and change time, so a recreated file is unlabeled. */
         fun labelOf(file: File): String = runCommand("'${File(root, "system/bin/ls").absolutePath}' -Zd '${file.absolutePath}'")
             .output.trim().substringBefore(' ')
@@ -272,6 +278,18 @@ internal object BundledHelperShellFixtures {
                 path=${dollar}2
                 key=$labelKey
                 echo "${dollar}key ${dollar}1" >> '${labels.absolutePath}'
+            """.trimIndent() + "\n", 755)
+            // A sync that kills its caller with SIGKILL, as BoundedLaunch's destroyForcibly or the app's death
+            // does, the first time the shell condition in kill-on-sync holds. Tests put stubbin first on PATH.
+            val realSync = runCommand("command -v sync").output.trim()
+            File(root, "stubbin").mkdirs()
+            writeExecutable(File(root, "stubbin/sync"), """
+                #!/bin/bash
+                marker='${File(root, "kill-on-sync").absolutePath}'
+                if [ -f "${dollar}marker" ] && bash -c "${dollar}(cat "${dollar}marker")"; then
+                  rm -f "${dollar}marker"; kill -9 "${dollar}PPID"; exit 0
+                fi
+                exec '$realSync'
             """.trimIndent() + "\n", 755)
             writeExecutable(File(root, "system/bin/mount"), """
                 #!/bin/sh
