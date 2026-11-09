@@ -174,3 +174,25 @@ internal fun bundledHelperCustodyMigrationMode(
     if (mode == BundledHelperReplacementMode.GUARDED_RETIRE && incumbentIdentity == null &&
         layout() is SystemCustodyLayout.LayoutF
     ) BundledHelperReplacementMode.SYSTEM_CUSTODY_MIGRATION else mode
+
+/**
+ * The root work at the head of a start. An already-current start makes only the released takeover check it
+ * always made; the migration record is read only on a start that is going to root anyway (the bundled
+ * helper is not the one serving, or nothing answers).
+ */
+internal fun bundledHelperStartGate(
+    admission: BundledHelperInstaller.Result?,
+    currentLegacyCustody: () -> BundledHelperInstaller.Result?,
+    systemCustody: () -> BundledHelperInstaller.Result?,
+): BundledHelperInstaller.Result? = when (admission) {
+    null -> systemCustody()
+    BundledHelperInstaller.Result.ALREADY_CURRENT -> currentLegacyCustody() ?: admission
+    else -> admission
+}
+
+/**
+ * Writer-free startup may relaunch only a record whose /system files are already gone: that is the exact
+ * current-build candidate, nothing else could serve, and relaunching it stages and replaces nothing.
+ */
+internal fun systemCustodyResumeOnlyAllowed(record: SystemCustodyMigrationRecord, currentBuildId: String): Boolean =
+    record.phase == SYSTEM_CUSTODY_PHASE_REMOVED && record.stagedBuildId == currentBuildId

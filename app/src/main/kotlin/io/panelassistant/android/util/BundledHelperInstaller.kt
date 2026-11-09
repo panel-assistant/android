@@ -67,26 +67,28 @@ internal object BundledHelperInstaller {
             false -> return Result.FAILED
             null -> Unit
         }
-        systemCustodyMigrationOutcome()?.let { return it }
         if (!GuardDbProcessAdmission.ordinaryMutationsAllowed()) return Result.BLOCKED_ACTIVE
         val companionSupported = HelperClient.supportsCompanionData()
         val bundledBuildMatches = HelperClient.matchesBundledHelper()
         val guardSupported = companionSupported && bundledBuildMatches && GuardDbMaintenance.client.supported()
-        bundledHelperAdmission(
+        val admission = bundledHelperAdmission(
             bundledBuildMatches = bundledBuildMatches,
             companionSupported = companionSupported,
             guardSupported = guardSupported,
             rootObserved = { Su.available() },
-        )?.let {
-            if (it == Result.ALREADY_CURRENT && Su.available()) {
-                currentBundledLegacyTakeoverRecordResult(BuildConfig.HELPER_BUILD_ID)?.let { result ->
-                    Log.w(TAG, "current helper has legacy takeover custody requiring $result")
-                    return result
-                }
-            }
-            if (it == Result.REPROVISION_REQUIRED) lastReason = "equal_build_not_canonical"
-            return it
-        }
+        )
+        if (admission == Result.REPROVISION_REQUIRED) lastReason = "equal_build_not_canonical"
+        bundledHelperStartGate(
+            admission,
+            currentLegacyCustody = {
+                if (Su.available()) {
+                    currentBundledLegacyTakeoverRecordResult(BuildConfig.HELPER_BUILD_ID)?.also { result ->
+                        Log.w(TAG, "current helper has legacy takeover custody requiring $result")
+                    }
+                } else null
+            },
+            systemCustody = { systemCustodyMigrationOutcome(resumeOnly = false) },
+        )?.let { return it }
         val stagedBuildId = BuildConfig.HELPER_BUILD_ID
             .takeIf(GuardDbMaintenanceProtocol::validSha256) ?: return Result.FAILED
         val asset = helperAssetName(Build.SUPPORTED_ABIS.asIterable()) ?: return Result.SKIPPED
@@ -211,14 +213,14 @@ internal object BundledHelperInstaller {
      * way once nothing registers a helper), then retires it once the bundled build has served across a reboot.
      * Null when there is no record, or when it was retired or kept and the ordinary path should continue.
      */
-    private fun systemCustodyMigrationOutcome(): Result? {
-        if (!Su.available()) return null
+    private fun systemCustodyMigrationOutcome(resumeOnly: Boolean): Result? {
         val reply = Su.runOutputLong(systemCustodyMigrationRecordReadCommand(), INSTALL_TIMEOUT_MS) ?: return null
         val record = parseSystemCustodyMigrationRecord(reply) ?: return refused(Result.FAILED, "custody_record_malformed")
+        if (resumeOnly && !systemCustodyResumeOnlyAllowed(record, BuildConfig.HELPER_BUILD_ID)) return null
         if (record.stagedBuildId != BuildConfig.HELPER_BUILD_ID) {
             return refused(Result.REPROVISION_REQUIRED, "custody_record_other_build")
         }
-        if (!GuardDbProcessAdmission.ordinaryMutationsAllowed()) return Result.BLOCKED_ACTIVE
+        if (!resumeOnly && !GuardDbProcessAdmission.ordinaryMutationsAllowed()) return Result.BLOCKED_ACTIVE
         val serving = when (val status = GuardDbMaintenance.client.statusProbe()) {
             is GuardDbMaintenanceClient.StatusProbe.Valid -> {
                 if (status.status.ownsMaintenance) return Result.BLOCKED_ACTIVE
@@ -261,6 +263,15 @@ internal object BundledHelperInstaller {
                 ?.let(::parseBundledLegacyTakeoverRecord)
         } else {
             null
+        }
+        // Writer-free startup can run before ensureCurrent; after the reboot that follows a removal nothing
+        // registers a helper, so the exact recorded candidate is relaunched and the record settled here.
+        if (statusProbe == GuardDbMaintenanceClient.StatusProbe.Unreachable && retainedLegacy == null) {
+            when (systemCustodyMigrationOutcome(resumeOnly = true)) {
+                null -> Unit
+                Result.INSTALLED -> return true
+                else -> return false
+            }
         }
         return resumeBundledLegacyHelper(
             statusProbe, retainedLegacy, stagedBuildId,
@@ -1093,9 +1104,39 @@ internal fun bundledLegacyHelperTakeoverCommand(
         esac
         archived_bin=${dollar}archive/hapaneld-helper.system.${dollar}old_sha
         archived_registration=${dollar}archive/hapaneld-helper.rc.${dollar}registration_sha
+        # A restored file must be exactly what init found: owner, mode and SELinux label are archived beside
+        # each copy as `0:0:<mode> <label>`, and a restore that cannot apply all three fails closed.
+        file_label() {
+          label_line=${dollar}("${dollar}root/system/bin/ls" -Zd "${dollar}1" 2>/dev/null) || return 1
+          set -- ${dollar}label_line
+          case "${dollar}1" in u:object_r:*:s0) ;; *) return 1 ;; esac
+          case "${dollar}1" in *[!a-z0-9_:]*) return 1 ;; esac
+          printf '%s\n' "${dollar}1"
+        }
+        attr_read() {
+          [ -f "${dollar}1" ] && [ ! -L "${dollar}1" ] || return 1
+          set -- ${dollar}(cat "${dollar}1")
+          [ ${dollar}# -eq 2 ] || return 1
+          case "${dollar}1" in 0:0:644|0:0:755) ;; *) return 1 ;; esac
+          case "${dollar}2" in u:object_r:*:s0) ;; *) return 1 ;; esac
+          case "${dollar}2" in *[!a-z0-9_:]*) return 1 ;; esac
+          attr_mode=${dollar}{1##*:}; attr_label=${dollar}2
+        }
+        attr_capture() {
+          captured=${dollar}(file_label "${dollar}1") || return 1
+          if ! absent "${dollar}2"; then
+            attr_read "${dollar}2" && [ "${dollar}attr_mode" = "${dollar}3" ] && [ "${dollar}attr_label" = "${dollar}captured" ]
+            return
+          fi
+          umask 077
+          printf '0:0:%s %s\n' "${dollar}3" "${dollar}captured" > "${dollar}2.tmp" && chown 0:0 "${dollar}2.tmp" && chmod 600 "${dollar}2.tmp" &&
+            sync && mv -f "${dollar}2.tmp" "${dollar}2" && sync
+        }
         archive_exact() {
           exact_file "${dollar}archived_bin" "${dollar}old_sha" 600 "${dollar}old_bytes" &&
-            exact_file "${dollar}archived_registration" "${dollar}registration_sha" 600 "${dollar}registration_bytes"
+            exact_file "${dollar}archived_registration" "${dollar}registration_sha" 600 "${dollar}registration_bytes" &&
+            attr_read "${dollar}archived_bin.attr" && [ "${dollar}attr_mode" = 755 ] &&
+            attr_read "${dollar}archived_registration.attr" && [ "${dollar}attr_mode" = 644 ]
         }
         archive_copy() {
           exact_file "${dollar}2" "${dollar}3" 600 "${dollar}4" && return 0
@@ -1105,12 +1146,17 @@ internal fun bundledLegacyHelperTakeoverCommand(
             mv -f "${dollar}2.tmp" "${dollar}2" && sync && exact_file "${dollar}2" "${dollar}3" 600 "${dollar}4"
         }
         restore_file() {
+          attr_read "${dollar}1.attr" && [ "${dollar}attr_mode" = "${dollar}5" ] || return 1
           if absent "${dollar}2"; then
             umask 022
-            cat "${dollar}1" > "${dollar}6" && chown 0:0 "${dollar}6" && chmod "${dollar}5" "${dollar}6" && sync &&
+            cat "${dollar}1" > "${dollar}6" && chown 0:0 "${dollar}6" && chmod "${dollar}attr_mode" "${dollar}6" && sync &&
               mv -f "${dollar}6" "${dollar}2" && sync || return 1
           fi
-          exact_file "${dollar}2" "${dollar}3" "${dollar}5" "${dollar}4"
+          exact_file "${dollar}2" "${dollar}3" "${dollar}5" "${dollar}4" || return 1
+          if [ "${dollar}(file_label "${dollar}2")" != "${dollar}attr_label" ]; then
+            "${dollar}root/system/bin/chcon" "${dollar}attr_label" "${dollar}2" || return 1
+          fi
+          [ "${dollar}(file_label "${dollar}2")" = "${dollar}attr_label" ] && exact_file "${dollar}2" "${dollar}3" "${dollar}5" "${dollar}4" && sync
         }
         # Only a removal this run made is undone: init still holds the old service until the next reboot.
         restore_removed_system() {
@@ -1163,17 +1209,21 @@ internal fun bundledLegacyHelperTakeoverCommand(
           if absent "${dollar}archive"; then mkdir "${dollar}archive" || { rollback_candidate; exit 1; }; fi
           [ -d "${dollar}archive" ] && [ ! -L "${dollar}archive" ] && chown 0:0 "${dollar}archive" && chmod 700 "${dollar}archive" ||
             { rollback_candidate; exit 1; }
-          [ "${dollar}bin_present" = 0 ] || archive_copy "${dollar}old_bin" "${dollar}archived_bin" "${dollar}old_sha" "${dollar}old_bytes" ||
-            { rollback_candidate; exit 1; }
-          [ "${dollar}registration_present" = 0 ] ||
-            archive_copy "${dollar}registration" "${dollar}archived_registration" "${dollar}registration_sha" "${dollar}registration_bytes" ||
-            { rollback_candidate; exit 1; }
+          # The unrelated copy leaves first, so every later rollback finds /data/local as it restores it.
+          if [ "${dollar}stale_sha" != NONE ] && [ "${dollar}live_is_candidate" = 0 ] && [ -f "${dollar}live" ]; then
+            mv -f "${dollar}live" "${dollar}stale_archive" && sync || { rollback_candidate; exit 1; }
+          fi
+          if [ "${dollar}bin_present" = 1 ]; then
+            archive_copy "${dollar}old_bin" "${dollar}archived_bin" "${dollar}old_sha" "${dollar}old_bytes" &&
+              attr_capture "${dollar}old_bin" "${dollar}archived_bin.attr" 755 || { rollback_candidate; exit 1; }
+          fi
+          if [ "${dollar}registration_present" = 1 ]; then
+            archive_copy "${dollar}registration" "${dollar}archived_registration" "${dollar}registration_sha" "${dollar}registration_bytes" &&
+              attr_capture "${dollar}registration" "${dollar}archived_registration.attr" 644 || { rollback_candidate; exit 1; }
+          fi
         fi
         archive_exact || { rollback_candidate; exit 1; }
         if [ "${dollar}stale_sha" != NONE ]; then
-          if [ "${dollar}live_is_candidate" = 0 ] && [ -f "${dollar}live" ]; then
-            mv -f "${dollar}live" "${dollar}stale_archive" && sync || { rollback_candidate; exit 1; }
-          fi
           [ -f "${dollar}stale_archive" ] && [ ! -L "${dollar}stale_archive" ] &&
             [ "${dollar}(file_hash "${dollar}stale_archive")" = "${dollar}stale_sha" ] &&
             [ "${dollar}(stat -c %s "${dollar}stale_archive" 2>/dev/null || toybox stat -c %s "${dollar}stale_archive")" = "${dollar}stale_bytes" ] ||
