@@ -47,6 +47,8 @@ async function panel() {
   const writes = [];
   // Settings the panel cannot open (it falls back to its standard route) and writes it refuses, as `key=value`.
   const unopened = new Set(), refuse = new Set();
+  // A write held unanswered until the test releases it, as `key=value`: the reply that lands after Cancel.
+  const held = { write: null, waiting: false, release: null };
   const route = () => {
     const rate = settings.voice_capture_rate === 'auto' ? 16000 : Number(settings.voice_capture_rate);
     const channels = settings.voice_capture_channels === 'auto' ? 1 : Number(settings.voice_capture_channels);
@@ -95,6 +97,7 @@ async function panel() {
       for (const [key, value] of form) {
         writes.push(`${key}=${value}`);
         if (refuse.has(`${key}=${value}`)) return send('{"error":"refused"}', 'application/json', 409);
+        if (held.write === `${key}=${value}`) { held.write = null; await new Promise((resolve) => { held.waiting = true; held.release = resolve; }); }
         settings[key] = value;
       }
       return send('{}');
@@ -107,7 +110,7 @@ async function panel() {
     response.statusCode = 404; response.end('not found');
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  return { voice, writes, settings, unopened, refuse, server, url: `http://127.0.0.1:${server.address().port}` };
+  return { voice, writes, settings, unopened, refuse, held, server, url: `http://127.0.0.1:${server.address().port}` };
 }
 
 const text = (p, id) => p.evaluate((i) => document.getElementById(i)?.textContent ?? null, id);
@@ -223,6 +226,32 @@ for (const engine of engines) {
     assert.equal(h.settings.voice_audio_source, 'voice_recognition');
     assert.equal(h.voice.session, null);
     assert.equal(await p.locator('#voice-tuning-wizard').isHidden(), true);
+  });
+
+  test(`${engine.name}: cancelling while a tried setting is still being written waits for it, then puts it back`, async (t) => {
+    const { p, h } = await open(t);
+    const errors = [];
+    p.on('pageerror', (e) => errors.push(e.message));
+    await p.click('#voice-tuning-start');
+    await eventually('the wake word step', async () => (await text(p, 'voice-tuning-step')) === 'Step 3 of 4: the wake word' || await text(p, 'voice-tuning-step'), 12000);
+    h.voice.test.peak = 0.99; h.voice.test.cutoff = 0.97; h.voice.test.fired = 3;
+    await eventually('heard three times', async () => !(await p.locator('#voice-tuning-next').isDisabled()));
+    await p.click('#voice-tuning-next');
+    await eventually('the source step', async () => (await text(p, 'voice-tuning-step')) === 'Step 4 of 4: compare settings (optional)' || await text(p, 'voice-tuning-step'));
+    h.held.write = 'voice_audio_source=mic';
+    await p.selectOption('#voice-tuning-source', 'voice_audio_source=mic');
+    await p.click('#voice-tuning-try');
+    await eventually('the tried write is pending', async () => h.held.waiting || JSON.stringify(h.writes), 6000);
+    await p.click('#voice-tuning-cancel');
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    assert.notEqual(await text(p, 'voice-tuning-status'), 'Cancelled. The settings are as they were.', 'Cancel does not report before the pending write is answered');
+    h.held.release();
+    await eventually('cancel restores the source', async () => (await text(p, 'voice-tuning-status')) === 'Cancelled. The settings are as they were.' || await text(p, 'voice-tuning-status'));
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    assert.deepEqual(h.writes, ['voice_audio_source=mic', 'voice_audio_source=voice_recognition']);
+    assert.equal(h.settings.voice_audio_source, 'voice_recognition', 'the panel keeps the setting the wizard started with');
+    assert.equal(h.voice.session, null, 'the trial does not start a test after Cancel');
+    assert.deepEqual(errors, []);
   });
 
   test(`${engine.name}: the comparison tries capture routes one at a time and saves the one that heard best`, async (t) => {

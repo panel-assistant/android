@@ -382,12 +382,21 @@
     return values;
   }
 
+  // A trial's writes are drained before Cancel puts the settings back, so a reply that lands after Cancel
+  // cannot leave the trial's value on the panel once Cancel has reported the settings as they were.
   async function trySource(value) {
     if (!wizard || !value) return;
+    var w = wizard;
+    w.writing = applyTrial(w, value);
+    await w.writing;
+  }
+
+  async function applyTrial(w, value) {
     recordSource();
     sourceTry.disabled = true;
     // The panel reopens its microphone on another route only once nothing holds the old one.
     await stopAll();
+    if (w.cancelled) return;
     var values = routeWith(value), tried = candidate(value).key;
     // Put the others back first, so the microphone never opens on two changes at once.
     var order = Object.keys(values).filter(function (k) { return k !== tried; }).concat([tried]);
@@ -399,16 +408,20 @@
       if (reply && reply.outcome && reply.outcome !== "applied") {
         // Not applied: the panel keeps its value, so a later write of this key must not be skipped.
         refused = true;
-        status.textContent = L("refused", { reason: reply.code || reply.outcome });
+        if (!w.cancelled) status.textContent = L("refused", { reason: reply.code || reply.outcome });
         continue;
       }
+      // Recorded even after Cancel, so Cancel's rollback sees what the panel now holds.
       cfg.values[key] = values[key];
+      if (w.cancelled) return;
     }
-    wizard.tryRefused = refused;
+    w.tryRefused = refused;
     await new Promise(function (done) { setTimeout(done, SOURCE_SETTLE_MS); });
-    wizard.trying = value;
+    if (wizard !== w) return;
+    w.trying = value;
     sourceTry.disabled = false;
-    if (await act("level")) await act("wake_test");
+    if (await act("level") && wizard === w) await act("wake_test");
+    if (wizard !== w) return;
     nextButton.hidden = false;
     nextButton.disabled = false;
   }
@@ -477,8 +490,11 @@
 
   async function cancel() {
     if (!wizard) return;
-    var start = wizard.start;
-    clearTimeout(wizard.timer);
+    var w = wizard, start = w.start;
+    w.cancelled = true;
+    clearTimeout(w.timer);
+    if (w.writing) await w.writing.catch(function () {});
+    if (wizard !== w) return;
     await stopAll();
     try {
       await write(start);
