@@ -155,6 +155,7 @@ internal object BundledHelperInstaller {
             // A Guard helper that cannot name itself is reprovision-gated unless it is exactly layout F.
             val replacementMode = bundledHelperCustodyMigrationMode(probedMode, incumbentIdentity) {
                 probeSystemCustodyLayout().also { layout ->
+                    diagnostics.recordProbe(layout.inventory)
                     layout.inventory.forEach { line -> Log.i(TAG, "system custody probe: $line") }
                     if (layout is SystemCustodyLayout.Refused) lastReason = layout.reason
                 }
@@ -215,15 +216,15 @@ internal object BundledHelperInstaller {
                 },
                 cleanup = { cleanupAnyBundledLegacyTakeoverRecord() },
                 migrate = {
-                    Su.runSingleAttempt(
+                    runSystemCustodyShell(
                         bundledLegacyHelperTakeoverCommand(
                             expectedSha256,
                             stagedBuildId,
                             requireNotNull(incumbentBuildId),
                             systemCustodyMigration = true,
                         ),
-                        LEGACY_TAKEOVER_TIMEOUT_MS,
-                    ).also { if (!it) lastReason = "custody_migration_refused" }
+                        "custody_migration_refused",
+                    )
                 },
             )
             if (result == Result.REPROVISION_REQUIRED && lastReason == null) lastReason = "legacy_record_other_build"
@@ -261,14 +262,23 @@ internal object BundledHelperInstaller {
             else -> return refused(Result.FAILED, "custody_status_unusable")
         }
         if (serving != null && serving != record.candidateIdentity) return refused(Result.FAILED, "custody_foreign_helper")
-        val driven = Su.runSingleAttempt(
+        val driven = runSystemCustodyShell(
             bundledLegacyHelperTakeoverCommand(
                 record.candidateSha256, record.stagedBuildId, record.incumbentBuildId,
                 systemCustodyMigration = true,
             ),
-            LEGACY_TAKEOVER_TIMEOUT_MS,
+            "custody_migration_incomplete",
         )
-        return if (driven) Result.INSTALLED else refused(Result.FAILED, "custody_migration_incomplete")
+        return if (driven) Result.INSTALLED else Result.FAILED
+    }
+
+    /** One bounded root attempt; its output is kept for the diag dump and names the refusal. */
+    private fun runSystemCustodyShell(command: String, refusal: String): Boolean {
+        val reply = Su.runSingleAttemptOutput(command, LEGACY_TAKEOVER_TIMEOUT_MS)
+        reply?.second?.let(diagnostics::recordShell)
+        if (reply?.first == 0) return true
+        refused(Result.FAILED, "$refusal:${custodyShellReason(reply?.first, reply?.second)}")
+        return false
     }
 
     private fun resumeRetainedCurrentOutcome(context: Context): Boolean? {
@@ -885,6 +895,13 @@ internal fun bundledLegacyHelperTakeoverCommand(
     val expectedStatus = "OK GUARDSTATUS 0 EMPTY NONE NONE NONE NONE 0 0 0 NONE NONE 0 0"
     val migration = systemCustodyMigration
     val resumeAdmission = if (retainedResumeOnly) "exit 1" else ""
+    // A Guard-era incumbent holds the Guard DB owner lock while it runs, so the candidate's --replacement-safe
+    // (which takes that lock) can only run once the incumbent has stopped; it is proved in the swap instead.
+    val migrationInitialProof = """
+          exact_file "${dollar}stage" "$expectedSha256" 700 "${dollar}candidate_bytes" &&
+            [ "${dollar}("${dollar}old_bin" --request BUILDID 2>/dev/null)" = "BUILDID $incumbentBuildId" ] ||
+            { custody_reason incumbent_not_proved; exit 1; }
+""".trimEnd()
     val initialReplacementProof = if (retainedResumeOnly) {
         "exit 1"
     } else {
@@ -1019,6 +1036,10 @@ internal fun bundledLegacyHelperTakeoverCommand(
     // Layout F custody migration: archive the /system helper and its rc, swap the bundled build in, then
     // remove both from /system under one record. See BundledHelperSystemCustody.kt for the record.
     val migrationAdmission = """
+        # Traced, so the app keeps the end of this run's output for /api/v1/diag.
+        PS4='+${dollar}LINENO '
+        exec 2>&1
+        set -x
         custody_record=${dollar}data_local/.hapaneld-helper.custody-migration
         custody_tmp=${dollar}custody_record.tmp
         archive=${dollar}data_local/.hapaneld-custody-archive
@@ -1210,7 +1231,7 @@ internal fun bundledLegacyHelperTakeoverCommand(
         stale_archive=${dollar}archive/hapaneld-helper.stale.${dollar}stale_sha
 
         if [ "${dollar}phase" = NONE ]; then
-          $initialReplacementProof
+          $migrationInitialProof
           write_custody $SYSTEM_CUSTODY_PHASE_ARCHIVED || exit 1
         fi
         authority_written=1
@@ -1246,6 +1267,10 @@ internal fun bundledLegacyHelperTakeoverCommand(
         fi
         boot_service_stopped=1
         if [ "${dollar}bin_present" = 1 ]; then stop_path_processes "${dollar}old_bin" || { rollback_candidate; exit 1; }; fi
+        # The stopped incumbent has released the Guard DB owner lock: the candidate proves the namespace empty.
+        if [ "${dollar}("${dollar}candidate_source" --replacement-safe 2>/dev/null)" != REPLACE_SAFE ]; then
+          custody_reason guard_namespace_not_empty; rollback_candidate; exit 1
+        fi
         if [ "${dollar}candidate_source" = "${dollar}stage" ]; then
           mv -f "${dollar}stage" "${dollar}live" || { rollback_candidate; exit 1; }
           candidate_source=${dollar}live

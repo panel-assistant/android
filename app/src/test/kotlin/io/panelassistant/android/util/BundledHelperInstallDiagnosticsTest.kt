@@ -61,7 +61,7 @@ class BundledHelperInstallDiagnosticsTest {
     @Test fun `the migration shell's reason is its last custody reason, else the tail of its output`() {
         assertEquals("system_removal_refused",
             custodyShellReason(1, "+12 [ x ]\nCUSTODY_REASON system_mount_unknown\nCUSTODY_REASON system_removal_refused\n"))
-        assertEquals("exit_1:+30_exit_1", custodyShellReason(1, "+29 [ a = b ]\n+30 exit 1\n"))
+        assertEquals("exit_1:+29_[_a_=_b_]|+30_exit_1", custodyShellReason(1, "+29 [ a = b ]\n+30 exit 1\n"))
         assertEquals("no_reply", custodyShellReason(null, null))
     }
 }

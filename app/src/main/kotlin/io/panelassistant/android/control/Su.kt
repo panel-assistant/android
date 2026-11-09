@@ -285,6 +285,8 @@ object Su : RootShell by productionSu {
     fun runWithStdinLongChecked(cmd: String, input: File, timeoutMs: Long): String? =
         productionSu.runWithStdinLongChecked(cmd, input, timeoutMs)
     fun runOutputLong(cmd: String, timeoutMs: Long): String? = productionSu.runOutputLong(cmd, timeoutMs)
+    fun runSingleAttemptOutput(cmd: String, timeoutMs: Long): Pair<Int, String>? =
+        productionSu.runSingleAttemptOutput(cmd, timeoutMs)
 }
 
 private val productionSu = SuShell()
@@ -370,6 +372,19 @@ internal class SuShell(
         val form = workingForm() ?: return false
         return (runBounded("run-single", argvOneShot(form, cmd), timeoutMs) { it.waitFor() } == 0)
             .also { if (it) noteAnswering(true) }
+    }
+
+    /**
+     * [runSingleAttempt] that also returns the command's exit code and standard output; null when no su form
+     * works or the bound expired, which kills the root process exactly as [runSingleAttempt] does.
+     */
+    @Synchronized
+    fun runSingleAttemptOutput(cmd: String, timeoutMs: Long): Pair<Int, String>? {
+        val form = workingForm() ?: return null
+        return runBounded("run-single-out", argvOneShot(form, cmd), timeoutMs) { process ->
+            val text = process.inputStream.bufferedReader().readText()
+            process.waitFor() to text
+        }?.also { if (it.first == 0) noteAnswering(true) }
     }
 
     @Synchronized

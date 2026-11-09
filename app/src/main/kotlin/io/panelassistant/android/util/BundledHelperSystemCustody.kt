@@ -182,10 +182,37 @@ internal class BundledHelperInstallDiagnostics(
         startedAt = null
     }
 
+    @Volatile private var probeInventory: List<String> = emptyList()
+    @Volatile private var shellTail: String? = null
+
+    /** The last layout F probe's inventory: mount, SELinux, namespaces, the stale copy and the Guard DB. */
+    fun recordProbe(inventory: List<String>) {
+        probeInventory = inventory.take(40).map { it.take(240) }
+    }
+
+    /** The end of the last migration shell's traced output, on one line. */
+    fun recordShell(output: String) {
+        shellTail = output.lines().filter { it.isNotBlank() }.takeLast(40).joinToString(" | ").takeLast(2000)
+    }
+
+    fun detailLines(): List<String> =
+        probeInventory.map { "[helper install probe] $it" } + listOfNotNull(shellTail?.let { "[helper install shell] $it" })
+
     fun summary(): String {
         val running = if (startedAt != null) "running=yes" else "running=no"
         val outcome = last ?: return "never_run $running"
         val at = java.time.Instant.ofEpochSecond(outcome.atMs / 1000).toString()
         return "last=${outcome.result} reason=${outcome.reason} at=$at elapsed_ms=${outcome.elapsedMs} $running"
     }
+}
+
+/**
+ * Why the migration shell stopped: its last `CUSTODY_REASON`, or else its exit code and the last ten lines of
+ * its traced output on one line, so a refusal on a panel is readable from `/api/v1/diag` alone.
+ */
+internal fun custodyShellReason(exit: Int?, output: String?): String {
+    if (exit == null || output == null) return "no_reply"
+    val lines = output.lines().filter { it.isNotBlank() }
+    lines.lastOrNull { it.startsWith("CUSTODY_REASON ") }?.let { return it.removePrefix("CUSTODY_REASON ").trim() }
+    return "exit_$exit:" + lines.takeLast(10).joinToString("|") { it.trim().replace(Regex("\\s+"), "_") }.take(600)
 }
