@@ -125,6 +125,16 @@ class BundledHelperSystemCustodyMigrationTest {
         }
     }
 
+    @Test fun `a Guard owner lock still held after the incumbent stopped rolls the panel back`() {
+        withCustodyFiles(guardOwnerHeldAfterStop = true) { fixture ->
+            val result = runCommand(migrate(fixture))
+            assertEquals(result.output, 1, result.exitCode)
+            assertTrue(result.output, "CUSTODY_REASON guard_namespace_not_empty" in result.output)
+            assertRolledBack(fixture)
+            assertFalse(fixture.callLog().any { it.startsWith("mount") })
+        }
+    }
+
     @Test fun `a refused remount rolls the panel back to the system helper`() {
         withCustodyFiles { fixture ->
             File(fixture.root, "remount-fails").writeText("")

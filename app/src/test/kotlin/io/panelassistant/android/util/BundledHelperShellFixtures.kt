@@ -202,6 +202,7 @@ internal object BundledHelperShellFixtures {
         signalOnSupervise: Boolean = false,
         superviseSignal: String = "TERM",
         guardStatus: String = emptyStatus,
+        guardOwnerHeldAfterStop: Boolean = false,
         test: (CustodyFixture) -> Unit,
     ) {
         val root = scratchDirectory("bundled-helper-custody-").toFile()
@@ -225,7 +226,9 @@ internal object BundledHelperShellFixtures {
                 superviseSignal = superviseSignal,
                 // A Guard-era incumbent holds the Guard DB owner lock while it runs, so the candidate's
                 // --replacement-safe cannot take it until the incumbent has stopped.
-                guardOwnerHeldWhile = incumbentReady,
+                guardOwnerHeldWhile = if (guardOwnerHeldAfterStop) {
+                    File(root, "guard-owner-held").apply { writeText("held\n") }
+                } else incumbentReady,
             )
             writeExecutable(systemBin, oldBytes, 755)
             writeExecutable(registration, registrationBytes, 644)
