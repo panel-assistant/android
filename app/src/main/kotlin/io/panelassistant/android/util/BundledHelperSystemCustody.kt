@@ -109,7 +109,7 @@ internal fun systemCustodyMigrationRecordReadCommand(filesystemRoot: String = ""
         echo ${d}${d} > "${d}lock/pid"
         if [ ! -e "${d}record" ] && [ ! -L "${d}record" ] && [ -f "${d}record_tmp" ] && [ ! -L "${d}record_tmp" ]; then
           tmp_meta=${d}(file_meta "${d}record_tmp") &&
-          case "${d}tmp_meta" in 0:0:600:1:*) [ "${d}{tmp_meta##*:}" -le 1024 ] && true ;; esac
+          case "${d}tmp_meta" in 0:0:600:1:*) [ "${d}{tmp_meta##*:}" -le 1024 ] && rm -f "${d}record_tmp" && sync ;; esac
         fi
         rm -rf "${d}lock"; trap - 0
       fi
