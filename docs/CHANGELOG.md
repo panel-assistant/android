@@ -2,7 +2,11 @@
 
 The full notes for every release and pre-release, from 1.0.0 on, are on [panel-assistant.io](https://panel-assistant.io/go/release-notes). Each section here is a short summary with a link to them; earlier sections are the full notes as they were released.
 
-## v1.0.1
+## v1.0.1 - 2026-11-10
+
+The first update since 1.0: auto-sleep presence now learns the proximity sensor from your touches, the Voice card can tune the microphone, and WebView updates from Panel Assistant now work, along with fixes for fresh installs, proximity and screen-off reporting. Pairs with Panel Assistant 1.0.1, which offers each panel the update.
+
+[Full release notes](https://panel-assistant.io/go/release-notes?v=1.0.1&component=panel-app)
 
 ## v1.0.0 - 2026-11-06
 
