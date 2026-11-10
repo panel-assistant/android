@@ -134,6 +134,20 @@ class AndroidWebViewUpdateIoTest {
         assertEquals("original", fixture.io.readReceipt()!!.getString("request_id"))
     }
 
+    @Test fun deletedReceiptLeavesNoFileOrBackupToRecover() {
+        val fixture = fixture()
+        val receipt = File(fixture.io.directory, "receipt.json")
+        fixture.io.writeReceipt(JSONObject().put("request_id", "stale").put("state", "installed"))
+        assertTrue(receipt.renameTo(File(receipt.path + ".bak")))
+        fixture.io.deleteReceipt()
+        assertNull("A deleted receipt must not come back from its atomic backup", fixture.io.readReceipt())
+        fixture.io.writeReceipt(JSONObject().put("request_id", "stale").put("state", "installed"))
+        fixture.io.deleteReceipt()
+        assertNull(fixture.io.readReceipt())
+        fixture.io.deleteReceipt()
+        assertNull(fixture.io.readReceipt())
+    }
+
     @Test fun providerObservationUsesPlatformPackageAndInstallerAdmission() {
         val factory = Class.forName("android.webkit.WebViewFactory").getDeclaredField("sPackageInfo").apply { isAccessible = true }
         val previous = factory.get(null)
