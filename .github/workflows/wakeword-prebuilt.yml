@@ -50,8 +50,9 @@ jobs:
       # CMake took 18 s to download on the median push. Hosted runners skip it, as there: the repository's GitHub
       # cache is at its limit. A miss only costs the download, because the install step checks every package.
       - name: Restore the Android SDK packages
+        id: android-sdk
         if: startsWith(runner.name, 'blacksmith-')
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             /usr/local/lib/android/sdk/cmdline-tools/22.0
@@ -69,6 +70,19 @@ jobs:
 
       - name: Install the pinned NDK and CMake
         run: .github/scripts/install-android-sdk.sh "ndk;27.0.12077973" "cmake;3.22.1"
+      # Saved here, once the packages are complete, and only on a miss: as a post step of the restore it
+      # re-archived the entry (866 MB for the build SDK) after every job, 3 to 9 s, even after a hit.
+      - name: Save the Android SDK packages
+        if: startsWith(runner.name, 'blacksmith-') && steps.android-sdk.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            /usr/local/lib/android/sdk/cmdline-tools/22.0
+            /usr/local/lib/android/sdk/platforms/android-37.0
+            /usr/local/lib/android/sdk/build-tools/36.0.0
+            /usr/local/lib/android/sdk/ndk/27.0.12077973
+            /usr/local/lib/android/sdk/cmake/3.22.1
+          key: android-sdk-v1-${{ runner.os }}-cmdline-tools-22.0-platforms-37.0-build-tools-36.0.0-ndk-27.0.12077973-cmake-3.22.1
 
       - name: Rebuild and compare with the committed libraries
         run: tools/wakeword/build-prebuilt.sh check
