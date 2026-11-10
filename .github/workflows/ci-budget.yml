@@ -1,0 +1,28 @@
+name: CI budget
+
+# Weekly rather than per-push: this check exists to notice drift (a workflow's median, or one set-up
+# step's median, over its budget in .github/ci-budget.json), and each budgeted workflow already warns on
+# its own push. A red weekly run is a scheduled failure on main, which opens a "CI red" task by itself.
+on:
+  schedule:
+    - cron: "17 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  budget:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github
+      - name: Compare recent run times against the budget
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 .github/scripts/check_ci_budget.py
