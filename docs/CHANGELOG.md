@@ -4,7 +4,7 @@ The full notes for every release and pre-release, from 1.0.0 on, are on [panel-a
 
 ## v1.0.2-rc1
 
-## v1.0.1
+## v1.0.1 - 2026-11-10
 
 ## v1.0.0 - 2026-11-06
 
