@@ -26,10 +26,11 @@
       "Run gradle/actions/"
     ],
     "exempt": {
-      "Initialize CodeQL": "The hosted image's tool cache lags the CodeQL bundle the action pins, so init downloads it; using the older cached bundle would run older queries, and Security analysis is off the push's critical path.",
       "CodeQL · java-kotlin / Install Android build toolchain": "Hosted runner: the repository's GitHub cache is at its 10 GB limit and an NDK entry would evict the Gradle caches; Security analysis is off the push's critical path.",
-      "Release Gradle cache / Set up Android SDK": "Hosted on purpose, to fill the GitHub-hosted Gradle cache the release workflow restores; an SDK entry would evict that cache, and the job is off the push's critical path.",
-      "Release Gradle cache / Install Android build toolchain": "Hosted on purpose, to fill the GitHub-hosted Gradle cache the release workflow restores; an SDK entry would evict that cache, and the job is off the push's critical path."
+      "CodeQL · java-kotlin / Set up Android SDK": "Hosted runner: setup-android downloads its pinned command-line tools there, and caching them would add to a GitHub cache already at its 10 GB limit; Security analysis is off the push's critical path.",
+      "Initialize CodeQL": "The hosted image's tool cache lags the CodeQL bundle the action pins, so init downloads it; using the older cached bundle would run older queries, and Security analysis is off the push's critical path.",
+      "Release Gradle cache / Install Android build toolchain": "Hosted on purpose, to fill the GitHub-hosted Gradle cache the release workflow restores; an SDK entry would evict that cache, and the job is off the push's critical path.",
+      "Release Gradle cache / Set up Android SDK": "Hosted on purpose, to fill the GitHub-hosted Gradle cache the release workflow restores; an SDK entry would evict that cache, and the job is off the push's critical path."
     }
   }
 }
