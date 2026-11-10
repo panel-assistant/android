@@ -19,7 +19,10 @@ import org.junit.Test
 class EntityFilterQuestionHoldTest {
     private var rig: EntityHoldRig? = null
 
-    @After fun close() { rig?.close() }
+    @After fun close() {
+        rig?.close()
+        SetupWizardResume.clear()
+    }
 
     private fun signedInFreshPanel(): Config = Config(fakePreferences(initial = mapOf(
         "ha_url" to "http://ha.local:8123",
@@ -43,5 +46,59 @@ class EntityFilterQuestionHoldTest {
         assertEquals("Set up opens the setup wizard on the panel", listOf("/setup"), rig.opened)
         assertFalse("and answers nothing on the owner's behalf", config.setupEntityFilterAnswered)
         assertFalse(config.setupHomeDashboardChosen)
+    }
+
+    /**
+     * The sign-in, and each wizard answer that relaunches the renderer, bring the dashboard over the wizard.
+     * The panel then stopped on this screen and needed a Set up tap, sometimes two (fresh installs,
+     * 2026-11-09). It now goes straight back to the wizard on its own, with nothing answered for the owner.
+     */
+    @Test fun `after the on-panel sign-in the panel goes straight back to its setup wizard`() {
+        val config = signedInFreshPanel()
+        SetupWizardResume.arm() // what the sign-in's success does
+        val rig = EntityHoldRig(config).also { rig = it }
+        rig.start()
+
+        assertEquals("the wizard opened with no tap", listOf("/setup"), rig.opened)
+        assertTrue("nothing renders behind the open question", rig.admitted.isEmpty())
+        assertFalse(config.setupEntityFilterAnswered)
+        assertFalse(config.setupHomeDashboardChosen)
+    }
+
+    @Test fun `a relaunch over the wizard takes the panel back to it every time`() {
+        val config = signedInFreshPanel()
+        SetupWizardResume.arm()
+        val first = EntityHoldRig(config)
+        first.start()
+        first.close()
+        SetupWizardResume.clear() // the wizard came back on screen
+        SetupWizardResume.arm()   // and "Use this dashboard" relaunched the renderer over it
+        val rig = EntityHoldRig(config).also { rig = it }
+        rig.start()
+
+        assertEquals(listOf("/setup"), first.opened)
+        assertEquals("covered again, back again", listOf("/setup"), rig.opened)
+    }
+
+    @Test fun `leaving the wizard lands on the question screen, not the wizard again`() {
+        val config = signedInFreshPanel()
+        SetupWizardResume.arm()
+        SetupWizardResume.clear() // the person pressed Back in the wizard
+        val rig = EntityHoldRig(config).also { rig = it }
+        rig.start()
+
+        assertEquals("no wizard on its own", emptyList<String>(), rig.opened)
+        assertEquals(listOf(R.string.set_up, R.string.skip_load_dashboard), requireNotNull(rig.question).map { it.first })
+    }
+
+    @Test fun `skipping the question stops the wizard coming back`() {
+        val config = signedInFreshPanel()
+        val rig = EntityHoldRig(config).also { rig = it }
+        rig.start()
+        SetupWizardResume.arm()
+
+        requireNotNull(rig.question).first { it.first == R.string.skip_load_dashboard }.second()
+
+        assertFalse(SetupWizardResume.armed())
     }
 }

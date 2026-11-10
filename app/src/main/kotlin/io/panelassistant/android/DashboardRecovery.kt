@@ -4,11 +4,9 @@ import io.panelassistant.android.dashboard.RendererEntityHold
 import android.content.Intent
 import io.panelassistant.android.dashboard.EntityBootstrapProblem
 import io.panelassistant.android.dashboard.EntityFilterProtocol
-import io.panelassistant.android.http.HA_OAUTH_CALLBACK_PATH
 import io.panelassistant.android.util.ProfileRestartCoordinator
 import io.panelassistant.android.util.InstallPresentation
 import java.net.URI
-import java.net.URLEncoder
 
 /** Locale-neutral counterpart of the renderer-specific warning rendered by the HTTP server. */
 internal fun dashboardRecoveryPresentation(
@@ -303,22 +301,6 @@ internal fun entityFilterQuestionPending(
     !entityFilterAnswered &&
     haUrl.isNotBlank() &&
     (haToken.isNotBlank() || haRefreshToken.isNotBlank())
-
-internal fun panelHaOAuthStartUrl(haUrl: String, httpPort: Int): String =
-    "http://127.0.0.1:$httpPort/api/v1/ha/oauth/panel-start?ha_url=${URLEncoder.encode(haUrl.trim().trimEnd('/'), "UTF-8")}"
-
-internal fun panelHaOAuthNavigationAllowed(configuredUrl: String, candidateUrl: String, httpPort: Int): Boolean =
-    dashboardNavigationAllowed(configuredUrl, candidateUrl) || isPanelHaOAuthCallback(candidateUrl, httpPort)
-
-internal fun isPanelHaOAuthCallback(candidateUrl: String, httpPort: Int): Boolean = runCatching {
-    val uri = URI(candidateUrl.trim())
-    val scheme = uri.scheme?.lowercase() ?: return@runCatching false
-    val host = uri.host?.lowercase() ?: return@runCatching false
-    scheme == "http" &&
-        host in setOf("127.0.0.1", "localhost") &&
-        uri.port == httpPort &&
-        uri.path == HA_OAUTH_CALLBACK_PATH
-}.getOrDefault(false)
 
 /**
  * Exact document origins that may inherit panel startup scripts. This mirrors [dashboardNavigationAllowed]:

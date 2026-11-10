@@ -6,6 +6,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import io.panelassistant.android.DashboardRendererRig.Companion.HA
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.lang.reflect.Proxy
 
@@ -87,6 +88,32 @@ class PanelHaSignInClientTest {
 
         assertEquals(List(PanelHaSignInClient.CALLBACK_RESTARTS_MAX) { PanelHaSignInClient.CALLBACK_RESTART_MS }, retries)
         assertEquals("then the panel's verdict, once", 1, unreachable)
+    }
+
+    /**
+     * Home Assistant's sign-in page names the address it hands the credential to. Opened on 127.0.0.1 it told
+     * the owner "You're about to give http://127.0.0.1:8888 access" (ha-integration #31), so the sign-in opens on
+     * the panel's LAN address, and the callback that comes back there must complete it.
+     */
+    @Test fun aSignInOpenedOnThePanelsLanAddressCompletesThere() {
+        var signedIn = 0
+        val restarts = mutableListOf<Long>()
+        val lan = PanelHaSignInClient(HA, 8889, object : PanelHaSignInClient.Host {
+            override fun isCurrent(view: WebView) = true
+            override fun retryLater(view: WebView, delayMs: Long) { restarts += delayMs }
+            override fun showUnreachable() { unreachable++ }
+            override fun onSignedIn(view: WebView) { signedIn++ }
+        }, panelHost = panelSignInHost(listenerOffLan = false, lanIpv4 = "192.168.1.20"))
+
+        assertTrue(lan.startUrl, lan.startUrl.startsWith("http://192.168.1.20:8889/api/v1/ha/oauth/panel-start?"))
+
+        val otherPanel = RecordingWebView(lan.startUrl)
+        lan.onPageFinished(otherPanel, "http://192.168.1.21:8889/api/v1/ha/oauth/callback?state=s&code=c")
+        assertEquals("another address's callback is not this sign-in's", emptyList<String>(), otherPanel.calls)
+
+        lan.onPageFinished(CallbackPage("success"), "http://192.168.1.20:8889/api/v1/ha/oauth/callback?state=s&code=c")
+        assertEquals("the callback on the panel's own address completes the sign-in", 1, signedIn)
+        assertEquals(emptyList<Long>(), restarts)
     }
 
     @Test fun aSuccessfulCallbackHandsOverWithoutRestarting() {

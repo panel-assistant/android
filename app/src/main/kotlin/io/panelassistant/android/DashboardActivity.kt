@@ -54,6 +54,8 @@ import io.panelassistant.android.dashboard.EntityLearningRuntime
 import io.panelassistant.android.dashboard.HomeDashboardLaunchCache
 import io.panelassistant.android.util.DashboardTheme
 import io.panelassistant.android.util.HaTransportEvidence
+import io.panelassistant.android.util.localIpv4
+import io.panelassistant.android.http.listenerOffLan
 import org.json.JSONObject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -1653,6 +1655,36 @@ class DashboardActivity : AppCompatActivity() {
         signInShownForUrl = haUrl
         on(RendererEvent.SIGN_IN_SHOWN)
         val generation = rendererGate.open()
+        // One host for the whole sign-in: the start page, every restart and the callback check. The LAN address
+        // names this panel on Home Assistant's sign-in page; loopback is the fallback (panelSignInHost).
+        val panelHost = panelSignInHost(listenerOffLan(activityConfig), localIpv4())
+        lateinit var signIn: PanelHaSignInClient
+        signIn = PanelHaSignInClient(haUrl, activityConfig.httpPort, object : PanelHaSignInClient.Host {
+            override fun isCurrent(view: WebView) = rendererCurrent(generation, view)
+            override fun retryLater(view: WebView, delayMs: Long) {
+                main.postDelayed({
+                    if (rendererCurrent(generation, view) && !destroyed) view.loadUrl(signIn.startUrl)
+                }, delayMs)
+            }
+            override fun showUnreachable() = statusScreens.showBlockedAdmissionScreen(
+                getString(R.string.ha_sign_in_page_failed),
+                getString(R.string.ha_sign_in_page_failed_detail),
+                AdmissionOutcome.SIGN_IN_PAGE_UNREACHABLE,
+            )
+            override fun onSignedIn(view: WebView) {
+                // The sign-in covered the setup wizard; if a question is still open, the dashboard's
+                // setup-question screen takes the panel straight back to it rather than waiting for a tap.
+                SetupWizardResume.arm()
+                main.postDelayed({
+                    if (rendererCurrent(generation, view)) {
+                        compatibilityReadyUrl = null
+                        compatibilityCheckingOwner = null
+                        compatibilityAttempts.invalidate()
+                        buildAndLoad(activityConfig)
+                    }
+                }, 750L)
+            }
+        }, panelHost)
         val view = WebView(this).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
@@ -1661,29 +1693,7 @@ class DashboardActivity : AppCompatActivity() {
             setBackgroundColor(BG_DARK)
             CookieManager.getInstance().setAcceptCookie(true)
             CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-            webViewClient = PanelHaSignInClient(haUrl, activityConfig.httpPort, object : PanelHaSignInClient.Host {
-                override fun isCurrent(view: WebView) = rendererCurrent(generation, view)
-                override fun retryLater(view: WebView, delayMs: Long) {
-                    main.postDelayed({
-                        if (rendererCurrent(generation, view) && !destroyed) view.loadUrl(panelHaOAuthStartUrl(haUrl, activityConfig.httpPort))
-                    }, delayMs)
-                }
-                override fun showUnreachable() = statusScreens.showBlockedAdmissionScreen(
-                    getString(R.string.ha_sign_in_page_failed),
-                    getString(R.string.ha_sign_in_page_failed_detail),
-                    AdmissionOutcome.SIGN_IN_PAGE_UNREACHABLE,
-                )
-                override fun onSignedIn(view: WebView) {
-                    main.postDelayed({
-                        if (rendererCurrent(generation, view)) {
-                            compatibilityReadyUrl = null
-                            compatibilityCheckingOwner = null
-                            compatibilityAttempts.invalidate()
-                            buildAndLoad(activityConfig)
-                        }
-                    }, 750L)
-                }
-            })
+            webViewClient = signIn
         }
         web = view
         val content = FrameLayout(this).apply {
@@ -1701,7 +1711,8 @@ class DashboardActivity : AppCompatActivity() {
         setContentView(content)
         // The sign-in starts no dashboard load, so it must unfreeze timers an activity it replaced froze itself.
         pacer.resumeTimersIfOwner(view)
-        view.loadUrl(panelHaOAuthStartUrl(haUrl, activityConfig.httpPort))
+        Log.i(TAG, "on-panel sign-in opened on ${if (panelHost == PANEL_SIGN_IN_LOOPBACK_HOST) "loopback" else "the LAN address"}")
+        view.loadUrl(signIn.startUrl)
     }
 
     private fun compatibilityOwner(config: Config): DashboardV2CompatibilityOwner =
