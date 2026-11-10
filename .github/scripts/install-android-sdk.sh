@@ -8,13 +8,20 @@ set -euo pipefail
 sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
 [ -n "$sdk" ] || { echo "::error::ANDROID_HOME is not set" >&2; exit 1; }
 
-for attempt in 1 2 3; do
-  sdkmanager "$@" || true
-  missing=()
-  for package in "$@"; do
-    [ -f "$sdk/${package//;//}/source.properties" ] || missing+=("$package")
+# Packages already present (preinstalled, or restored from a cache) are not passed to sdkmanager, so a
+# complete SDK costs no repository fetch at all.
+missing=("$@")
+for attempt in 0 1 2 3; do
+  if [ "$attempt" -gt 0 ]; then
+    sdkmanager "${missing[@]}" || true
+  fi
+  still=()
+  for package in "${missing[@]}"; do
+    [ -f "$sdk/${package//;//}/source.properties" ] || still+=("$package")
   done
+  missing=("${still[@]}")
   [ "${#missing[@]}" -eq 0 ] && exit 0
+  [ "$attempt" -eq 0 ] && continue
   echo "::warning::Android SDK install attempt $attempt left ${missing[*]} missing"
   [ "$attempt" -lt 3 ] && sleep 15
 done
