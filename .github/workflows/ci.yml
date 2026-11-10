@@ -202,6 +202,23 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # Blacksmith serves actions/cache from beside its runners (a 423 MB Gradle entry restores in 2 s), so the
+      # pinned SDK packages and setup-android's command-line tools come from it rather than dl.google.com, whose
+      # NDK and command-line tools downloads took 6 to 53 s per job. Hosted runners skip it: this repository's
+      # GitHub cache is at its 10 GB limit and an NDK entry would evict the Gradle caches. A miss or a stale
+      # entry only costs the download, because the install step still checks every package.
+      - name: Restore the Android SDK packages
+        if: startsWith(runner.name, 'blacksmith-')
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            /usr/local/lib/android/sdk/cmdline-tools/22.0
+            /usr/local/lib/android/sdk/platforms/android-37.0
+            /usr/local/lib/android/sdk/build-tools/36.0.0
+            /usr/local/lib/android/sdk/ndk/27.0.12077973
+            /usr/local/lib/android/sdk/cmake/3.22.1
+          key: android-sdk-v1-${{ runner.os }}-cmdline-tools-22.0-platforms-37.0-build-tools-36.0.0-ndk-27.0.12077973-cmake-3.22.1
+
       - name: Set up Android SDK
         if: (runner.environment == 'github-hosted' || startsWith(runner.name, 'blacksmith-'))
         uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
@@ -598,6 +615,23 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+
+      # Blacksmith serves actions/cache from beside its runners (a 423 MB Gradle entry restores in 2 s), so the
+      # pinned SDK packages and setup-android's command-line tools come from it rather than dl.google.com, whose
+      # NDK and command-line tools downloads took 6 to 53 s per job. Hosted runners skip it: this repository's
+      # GitHub cache is at its 10 GB limit and an NDK entry would evict the Gradle caches. A miss or a stale
+      # entry only costs the download, because the install step still checks every package.
+      - name: Restore the Android SDK packages
+        if: startsWith(runner.name, 'blacksmith-')
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            /usr/local/lib/android/sdk/cmdline-tools/22.0
+            /usr/local/lib/android/sdk/platforms/android-37.0
+            /usr/local/lib/android/sdk/build-tools/36.0.0
+            /usr/local/lib/android/sdk/ndk/27.0.12077973
+            /usr/local/lib/android/sdk/cmake/3.22.1
+          key: android-sdk-v1-${{ runner.os }}-cmdline-tools-22.0-platforms-37.0-build-tools-36.0.0-ndk-27.0.12077973-cmake-3.22.1
 
       - name: Set up Android SDK
         if: (runner.environment == 'github-hosted' || startsWith(runner.name, 'blacksmith-'))
