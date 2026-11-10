@@ -1,0 +1,35 @@
+{
+  "_comment": "Median wall-clock ceiling in seconds for recent successful push runs on main, per workflow (release.yml runs only on tags and has none). check_ci_budget.py fails when a workflow's median exceeds its ceiling. Set on 2026-11-10 at the ten-push medians, which predate the set-up step cuts; lower them once ten pushes carry those cuts. Raise a number only with a reason in the commit body; the point of the file is that slowdown is a decision, not drift.",
+  "sample_size": 10,
+  "budgets": {
+    "CI": 640,
+    "Lint": 130,
+    "UI layout": 270,
+    "Security analysis": 380,
+    "Android instrumentation": 420,
+    "Wake-word prebuilt": 180
+  },
+  "setup_step": {
+    "_comment": "Ceiling in seconds for any one set-up step (a step whose name starts with one of the prefixes). The weekly check fails on a step whose median over the sampled push runs is over; each push's budget job warns on its own. Cut a slow step by eliminating, prebuilding or caching it; exempt a step only with the reason none of those can.",
+    "budget_seconds": 10,
+    "prefixes": [
+      "Set up ",
+      "Check out ",
+      "Pull ",
+      "Restore ",
+      "Install ",
+      "Initialize ",
+      "Download ",
+      "Post ",
+      "Run actions/",
+      "Run android-actions/",
+      "Run gradle/actions/"
+    ],
+    "exempt": {
+      "Initialize CodeQL": "The hosted image's tool cache lags the CodeQL bundle the action pins, so init downloads it; using the older cached bundle would run older queries, and Security analysis is off the push's critical path.",
+      "CodeQL · java-kotlin / Install Android build toolchain": "Hosted runner: the repository's GitHub cache is at its 10 GB limit and an NDK entry would evict the Gradle caches; Security analysis is off the push's critical path.",
+      "Release Gradle cache / Set up Android SDK": "Hosted on purpose, to fill the GitHub-hosted Gradle cache the release workflow restores; an SDK entry would evict that cache, and the job is off the push's critical path.",
+      "Release Gradle cache / Install Android build toolchain": "Hosted on purpose, to fill the GitHub-hosted Gradle cache the release workflow restores; an SDK entry would evict that cache, and the job is off the push's critical path."
+    }
+  }
+}

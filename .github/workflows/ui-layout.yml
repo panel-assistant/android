@@ -174,3 +174,27 @@ jobs:
           CHROME="$(command -v google-chrome || command -v chromium-browser || command -v chromium)"
           test -x "$CHROME"
           CHROME="$CHROME" node tools/test/layout-matrix.mjs | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # Warns, never fails, when this push to main has taken longer than the workflow's budget in
+  # .github/ci-budget.json, or when one of its set-up steps took longer than the per-step budget, so a
+  # slowdown shows on the push that caused it rather than in the next weekly check. GitHub-hosted on purpose.
+  budget:
+    if: ${{ always() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    needs: [suite, layout, ui-layout, cls]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Check out the budget
+        continue-on-error: true
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github
+      - name: Compare this run's time with its budget
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/check_ci_budget.py --this-run
