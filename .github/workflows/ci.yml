@@ -385,7 +385,16 @@ jobs:
     needs: [build-self-hosted, build]
     if: always() && (needs.build.result == 'success' || needs.build-self-hosted.result == 'success')
     runs-on: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !endsWith(github.actor, '[bot]') && !endsWith(github.triggering_actor, '[bot]') && vars.CI_RUNNER == 'blacksmith' && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04' }}
+    # Playwright's image for the pinned playwright-core, as in ui-layout.yml, carries both browsers and their
+    # system libraries. Installing WebKit's dependencies from the Ubuntu mirror took 29 of this job's 32 s of
+    # setup (175 packages, 129 MB); Blacksmith starts the image in 1 to 3 s. Chromium is the image's build.
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea
+      options: --ipc=host
     timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -397,14 +406,27 @@ jobs:
         with:
           name: jvm-test-fixtures
           path: app/build/test-fixtures
-      - name: Install playwright-core and WebKit
-        run: cd tools/test && npm ci --ignore-scripts && npx playwright-core install --with-deps webkit
+      - name: Install playwright-core
+        run: cd tools/test && npm ci --ignore-scripts
+      - name: Use the hosted runners' default font
+        # The image's only Latin sans fonts lose to a CJK default for system-ui; the fixture pages' 480 px fit
+        # was measured with DejaVu Sans, the hosted runners' default. The same two pinned packages as ui-layout.yml.
+        run: |
+          cd "$RUNNER_TEMP"
+          get() { curl -fsS --retry 3 --retry-all-errors --max-time 60 -o "$1" "http://archive.ubuntu.com/ubuntu/pool/main/f/fonts-dejavu/$1"; }
+          get fonts-dejavu-core_2.37-8_all.deb
+          get fonts-dejavu-mono_2.37-8_all.deb
+          printf '%s  %s\n' \
+            40049660c194f3b8a2541fc7369efebb10e9f94bdac836a2f38fafedd10fa73a fonts-dejavu-core_2.37-8_all.deb \
+            8a599d6553307db7ecb795d2f0e5a301e03234afc75c7358b0ba43466454c89a fonts-dejavu-mono_2.37-8_all.deb | sha256sum -c -
+          dpkg -i fonts-dejavu-mono_2.37-8_all.deb fonts-dejavu-core_2.37-8_all.deb > /dev/null
+          fc-match system-ui | grep -q 'DejaVu Sans'
       - name: Run the fixture browser tests
         run: |
-          CHROME="$(command -v google-chrome || command -v chromium-browser || command -v chromium)"
+          cd tools/test
+          CHROME="$(node -e "console.log(require('playwright-core').chromium.executablePath())")"
           export CHROME
           test -x "$CHROME"
-          cd tools/test
           tests=()
           for test in ./*.test.mjs; do if grep -q 'test-fixtures' "$test"; then tests+=("$test"); fi; done
           test "${#tests[@]}" -gt 0
