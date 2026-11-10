@@ -163,6 +163,7 @@ for (const engine of engines) {
     assert.equal(await text(p, 'voice-level-toggle'), 'Stop the level');
 
     await p.click('#voice-wake-test');
+    await eventually('the panel starts the wake word test', async () => h.voice.test !== null || 'not started');
     h.voice.test.peak = 0.81; h.voice.test.cutoff = 0.97; h.voice.test.fired = 1;
     await eventually('the wake word against its cutoff', async () => (await text(p, 'voice-wake-test-text')) === 'Say the wake word. Best score 0.81, needs 0.97; heard 1 times; 20 s left.' || await text(p, 'voice-wake-test-text'));
     await p.click('#voice-wake-test');
@@ -187,6 +188,7 @@ for (const engine of engines) {
     assert.equal(await p.locator('#voice-tuning-next').isDisabled(), true, 'not heard three times yet');
 
     // From across the room the wake word comes within reach of its cutoff once, and fires once.
+    await eventually('the panel starts the wake word test', async () => h.voice.test !== null || 'not started');
     h.voice.test.peak = 0.9; h.voice.test.cutoff = 0.97; h.voice.test.fired = 1;
     await eventually('the wake score', async () => (await text(p, 'voice-tuning-progress')) === 'Heard 1 of 3. Best score 0.90, needs 0.97.' || await text(p, 'voice-tuning-progress'));
     h.voice.lastTest = { ...h.voice.test, state: 'done', remaining_ms: 0 };
