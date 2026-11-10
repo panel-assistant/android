@@ -27,5 +27,20 @@ bash "$wrapper" "$work/obj" "$cc" -O1 -Werror "$work/missing.c" -o "$work/missin
 status=$?
 check 'a missing source exits non-zero' '[ "$status" -ne 0 ] && [ ! -e "$work/missing" ]'
 
+# A compiler that writes a good object and still fails: the failure must stop the build, and the
+# object must not be published to the cache for a later binary to reuse.
+printf 'int main(void) { return 0; }\n' > "$work/fresh.c"
+printf '%s\n' '#!/usr/bin/env bash' \
+	"\"$cc\" \"\$@\" || exit" \
+	'for argument in "$@"; do [ "$argument" = -c ] && { echo deliberate_compile_failure >&2; exit 42; }; done' \
+	'exit 0' > "$work/failing-cc"
+chmod +x "$work/failing-cc"
+bash "$wrapper" "$work/obj" "$work/failing-cc" -O1 -Werror "$work/fresh.c" -o "$work/failed" >"$work/failed.log" 2>&1
+status=$?
+check 'a compiler that exits non-zero after writing its object exits non-zero' '[ "$status" -ne 0 ]'
+check 'and links no binary' '[ ! -e "$work/failed" ]'
+check 'and publishes no object' '! ls "$work"/obj/fresh.*.o >/dev/null 2>&1'
+check 'and shows the compiler error' 'grep -q deliberate_compile_failure "$work/failed.log"'
+
 echo "shared_cc: $failures failures"
 [ "$failures" -eq 0 ]

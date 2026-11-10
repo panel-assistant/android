@@ -22,7 +22,7 @@ while (($#)); do
 	shift
 done
 [ -n "$out" ] && ((${#sources[@]})) || { echo "shared_cc.sh: need sources and -o" >&2; exit 2; }
-mkdir -p "$dir"
+mkdir -p "$dir" || exit 1
 
 # object <source>: prints the shared object path for this source under this command line. Fails, with
 # the preprocessor's own error, when the preprocessed text cannot be produced: a #error still prints
@@ -37,14 +37,18 @@ object() {
 	[[ $key =~ ^[0-9a-f]{32}$ ]] || return 1
 	printf '%s/%s.%s.o' "$dir" "$(basename "$1" .c)" "$key"
 }
-# build <source> <object> <flock option>: compiles the object unless present; returns 1 if the lock is busy.
+# build <source> <object> <flock option>: compiles the object unless present; returns 75 if the lock is
+# busy and 1 on any failure. It runs in an || list, where errexit is off, so every step is checked: an
+# object is published (renamed into place) only after the compiler itself exits 0.
 build() {
 	[ -s "$2" ] && return 0
 	(
 		flock $3 9 || exit 75
 		[ -s "$2" ] && exit 0
-		"$cc" "${codegen[@]}" "${pre[@]}" -c "$1" -o "$2.tmp.$$"
-		mv -f "$2.tmp.$$" "$2"
+		temporary="$2.tmp.$BASHPID"
+		if ! "$cc" "${codegen[@]}" "${pre[@]}" -c "$1" -o "$temporary"; then rm -f -- "$temporary"; exit 1; fi
+		[ -s "$temporary" ] || { rm -f -- "$temporary"; exit 1; }
+		mv -f -- "$temporary" "$2" || { rm -f -- "$temporary"; exit 1; }
 	) 9>"$2.lock"
 }
 
@@ -54,5 +58,5 @@ for i in "${!sources[@]}"; do
 	# Another binary compiling the same object now: take the other sources first, then wait for it.
 	build "${sources[i]}" "${objects[i]}" -n || { [ $? -eq 75 ] && deferred+=("$i") || exit 1; }
 done
-for i in "${deferred[@]}"; do build "${sources[i]}" "${objects[i]}" ""; done
-"$cc" "${codegen[@]}" "${objects[@]}" "${link[@]}" -o "$out"
+for i in "${deferred[@]}"; do build "${sources[i]}" "${objects[i]}" "" || exit 1; done
+exec "$cc" "${codegen[@]}" "${objects[@]}" "${link[@]}" -o "$out"
