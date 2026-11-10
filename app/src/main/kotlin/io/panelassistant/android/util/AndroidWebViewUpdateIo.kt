@@ -72,6 +72,8 @@ internal class AndroidWebViewUpdateIo(private val context: Context, private val 
         }
     }
 
+    override fun deleteReceipt() = receipt.delete()
+
     override fun download(spec: io.panelassistant.android.device.WebViewSpec, destination: File): Boolean =
         directory.usableSpace >= spec.size &&
             AppInstaller.download(spec.url, destination, spec.size) == AppInstaller.DownloadResult.Succeeded

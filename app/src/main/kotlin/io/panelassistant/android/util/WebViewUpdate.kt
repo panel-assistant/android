@@ -49,6 +49,7 @@ internal interface WebViewUpdateIo {
     fun inspect(file: File): WebViewApk?
     fun readReceipt(): JSONObject?
     fun writeReceipt(receipt: JSONObject)
+    fun deleteReceipt()
     fun download(spec: WebViewSpec, destination: File): Boolean
     fun installedMatches(spec: WebViewSpec): Boolean
     suspend fun install(file: File, beforeSubmit: () -> InstallOutcome.Failure?): InstallOutcome
@@ -138,6 +139,18 @@ internal class WebViewUpdate(
         if (active || (InstallProgress.running && InstallProgress.component == "WebView")) return
         val previous = receipt ?: return
         val state = previous.optString("state")
+        // A finished install that the panel no longer carries (its WebView was rolled back) is history,
+        // not a transaction: keeping it would report "installing" for good and hide the next offer.
+        val candidateSpec = candidate()?.second?.takeIf { it.apkSha256 == previous.optString("artifact_sha256") }
+        // The package readback must agree before durable state goes; it stops at the version on a rolled-back panel.
+        if (state == "installed" && candidateSpec != null && providerOlder(observation, candidateSpec) &&
+            !io.installedMatches(candidateSpec)
+        ) {
+            runCatching { io.deleteReceipt() }
+            receipt = null
+            stage(candidateSpec).delete()
+            return
+        }
         // Only an uncertain package submission needs evidence for the same candidate.
         val spec = if (state == "submitted_unknown") {
             candidate()?.second?.takeIf { it.apkSha256 == previous.optString("artifact_sha256") } ?: return
@@ -212,10 +225,27 @@ internal class WebViewUpdate(
 
     /** Only a durably verified package replacement can request the existing deferred process boundary. */
     private fun maybeRebind(observed: WebViewObservation) {
-        if (active || InstallProgress.running || rebindRequested || receipt?.optString("state") != "installed") return
-        val spec = candidate()?.second?.takeIf { it.apkSha256 == receipt?.optString("artifact_sha256") } ?: return
-        if (boundOld(observed, spec)) rebindRequested = requestRebind()
+        if (active || InstallProgress.running || rebindRequested) return
+        val spec = candidate()?.second ?: return
+        if (awaitsRebind(observed, spec)) rebindRequested = requestRebind()
     }
+
+    /**
+     * The installed package carries the candidate but this process still runs the engine it started with.
+     * Only the process that recorded the install waits for the restart: a later process bound whatever was
+     * installed when it started, so a restart there cannot change the engine and would only repeat.
+     */
+    private fun awaitsRebind(observed: WebViewObservation, spec: WebViewSpec): Boolean {
+        val installed = receipt ?: return false
+        return installed.optString("state") == "installed" && installed.optString("artifact_sha256") == spec.apkSha256 &&
+            installed.optString("process_id") == observed.processId &&
+            observed.providerPackage == AppInstaller.WEBVIEW_PKG && observed.versionCode != null &&
+            observed.versionCode >= spec.versionCode && boundOld(observed, spec)
+    }
+
+    /** The provider package is positively older than the candidate; an unread version never counts. */
+    private fun providerOlder(observed: WebViewObservation, spec: WebViewSpec): Boolean =
+        observed.providerPackage == AppInstaller.WEBVIEW_PKG && observed.versionCode != null && observed.versionCode < spec.versionCode
 
     private fun boundOld(observed: WebViewObservation, spec: WebViewSpec): Boolean =
         observed.boundPackage == AppInstaller.WEBVIEW_PKG &&
@@ -280,9 +310,7 @@ internal class WebViewUpdate(
             transaction.put("state", "installing")
         }
         // Package readback finishes before a deferred process boundary can bind the new engine.
-        if (transaction?.optString("state") == "installed" && spec != null &&
-            transaction.optString("artifact_sha256") == spec.apkSha256 && boundOld(observed, spec)
-        ) {
+        if (transaction != null && spec != null && awaitsRebind(observed, spec)) {
             transaction.put("state", "installing")
         }
         return JSONObject().put("schema", 1).put("supported", true).put("eligible", reason == null)

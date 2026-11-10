@@ -45,6 +45,7 @@ class WebViewUpdateTest {
             if (failReceipt) error("disk full")
             durable = JSONObject(receipt.toString())
         }
+        override fun deleteReceipt() { durable = null }
         override fun download(spec: WebViewSpec, destination: File): Boolean {
             downloads++
             beforeDownload()
@@ -73,7 +74,7 @@ class WebViewUpdateTest {
         assertTrue(owner.observe().getBoolean("eligible"))
         assertEquals(202, owner.install("owner-1", fixture.spec.apkSha256).status)
         finishWork()
-        assertEquals("installed", owner.observe().getJSONObject("transaction").getString("state"))
+        assertEquals("installed", owner.observe().optJSONObject("transaction")?.optString("state"))
         assertEquals(1, fixture.submissions)
         assertEquals(200, owner.install("owner-1", fixture.spec.apkSha256).status)
         assertEquals(1, fixture.submissions)
@@ -272,7 +273,7 @@ class WebViewUpdateTest {
             assertEquals(409, replacement.install("another-owner", fixture.spec.apkSha256).status)
             release.countDown()
             finishWork()
-            assertEquals("installed", replacement.observe().getJSONObject("transaction").getString("state"))
+            assertEquals("installed", replacement.observe().optJSONObject("transaction")?.optString("state"))
             assertEquals(1, fixture.submissions)
         } finally { release.countDown() }
     }
@@ -280,6 +281,9 @@ class WebViewUpdateTest {
     @Test fun `durably installed provider requests the existing restart only after releasing package ownership`() = runBlocking {
         val fixture = Fixture()
         fixture.observed = fixture.observed.copy(boundPackage = "com.android.webview", boundVersionCode = 530410501)
+        fixture.afterInstall = {
+            fixture.observed = fixture.observed.copy(versionName = fixture.spec.version, versionCode = fixture.spec.versionCode)
+        }
         var rebinds = 0
         val owner = fixture.owner(this) {
             assertFalse(InstallProgress.running)
@@ -376,5 +380,72 @@ class WebViewUpdateTest {
         assertEquals(1, fixture.submissions)
         assertEquals(1, restarts)
         assertTrue(scheduled.isEmpty())
+    }
+
+    private fun Fixture.installedBy(process: String) {
+        durable = JSONObject().put("schema", 1).put("request_id", "pa-update-old").put("artifact_sha256", spec.apkSha256)
+            .put("state", "installed").put("reason", JSONObject.NULL).put("process_id", process)
+    }
+
+    @Test fun `a WebView rolled back after its install clears the receipt so the panel offers it again and never restarts`() = runBlocking {
+        val fixture = Fixture()
+        fixture.installedBy("old-process")
+        // pm uninstall com.android.webview: package and this process's engine are the system 107 again.
+        fixture.observed = fixture.observed.copy(processId = "new-process", boundPackage = "com.android.webview",
+            boundVersionName = "107.0.5304.105", boundVersionCode = 530410501)
+        File(fixture.directory, fixture.spec.apkSha256 + ".apk").writeBytes(fixture.bytes)
+        var rebinds = 0
+        val owner = fixture.owner(this) { rebinds++; true }
+        repeat(2) {
+            val snapshot = owner.observe()
+            assertEquals(JSONObject.NULL, snapshot.get("transaction"))
+            assertTrue(snapshot.getBoolean("eligible"))
+            assertEquals(JSONObject.NULL, snapshot.get("reason"))
+        }
+        assertEquals(0, rebinds)
+        assertNull(fixture.durable)
+        assertFalse(File(fixture.directory, fixture.spec.apkSha256 + ".apk").exists())
+        // Every later process reads no receipt, so none of them restarts either.
+        assertEquals(JSONObject.NULL, fixture.owner(this) { rebinds++; true }.observe().get("transaction"))
+        assertEquals(0, rebinds)
+        // The owner's next request installs it again.
+        fixture.afterInstall = {
+            fixture.observed = fixture.observed.copy(versionName = fixture.spec.version, versionCode = fixture.spec.versionCode)
+        }
+        assertEquals(202, owner.install("pa-update-new", fixture.spec.apkSha256).status)
+        finishWork()
+        assertEquals(1, fixture.submissions)
+        assertEquals("pa-update-new", fixture.durable?.getString("request_id"))
+        assertEquals(1, rebinds)
+    }
+
+    @Test fun `an unread provider version never clears an installed receipt`() = runBlocking {
+        for (change in listOf<(WebViewObservation) -> WebViewObservation>(
+            { it.copy(versionCode = null) }, { it.copy(providerPackage = null) },
+        )) {
+            val fixture = Fixture()
+            fixture.installedBy("old-process")
+            fixture.observed = change(fixture.observed.copy(processId = "new-process"))
+            val owner = fixture.owner(this)
+            assertEquals("installed", owner.observe().optJSONObject("transaction")?.optString("state"))
+            assertEquals("installed", fixture.durable?.optString("state"))
+        }
+    }
+
+    @Test fun `a later process still on the old engine never requests another restart and reports the install`() = runBlocking {
+        val fixture = Fixture()
+        fixture.installedBy("old-process")
+        // The package is the candidate, yet this new process started on the old engine: a restart cannot help.
+        fixture.observed = fixture.observed.copy(processId = "new-process", versionName = fixture.spec.version,
+            versionCode = fixture.spec.versionCode, boundPackage = "com.android.webview",
+            boundVersionName = "107.0.5304.105", boundVersionCode = 530410501)
+        var rebinds = 0
+        repeat(3) { process ->
+            fixture.observed = fixture.observed.copy(processId = "new-process-$process")
+            val snapshot = fixture.owner(this) { rebinds++; true }.observe()
+            assertEquals("installed", snapshot.getJSONObject("transaction").getString("state"))
+        }
+        assertEquals(0, rebinds)
+        assertEquals("installed", fixture.durable?.getString("state"))
     }
 }
