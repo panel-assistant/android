@@ -425,19 +425,13 @@ jobs:
           path: app/build/test-fixtures
       - name: Install playwright-core
         run: cd tools/test && npm ci --ignore-scripts
-      - name: Use the hosted runners' default font
-        # The image's only Latin sans fonts lose to a CJK default for system-ui; the fixture pages' 480 px fit
-        # was measured with DejaVu Sans, the hosted runners' default. The same two pinned packages as ui-layout.yml.
-        run: |
-          cd "$RUNNER_TEMP"
-          get() { curl -fsS --retry 3 --retry-all-errors --max-time 60 -o "$1" "http://archive.ubuntu.com/ubuntu/pool/main/f/fonts-dejavu/$1"; }
-          get fonts-dejavu-core_2.37-8_all.deb
-          get fonts-dejavu-mono_2.37-8_all.deb
-          printf '%s  %s\n' \
-            40049660c194f3b8a2541fc7369efebb10e9f94bdac836a2f38fafedd10fa73a fonts-dejavu-core_2.37-8_all.deb \
-            8a599d6553307db7ecb795d2f0e5a301e03234afc75c7358b0ba43466454c89a fonts-dejavu-mono_2.37-8_all.deb | sha256sum -c -
-          dpkg -i fonts-dejavu-mono_2.37-8_all.deb fonts-dejavu-core_2.37-8_all.deb > /dev/null
-          fc-match system-ui | grep -q 'DejaVu Sans'
+      - name: Restore the DejaVu font packages
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /tmp/fonts-dejavu
+          key: fonts-dejavu-2.37-8-40049660c194-8a599d655330
+      - name: Install the hosted runners' default font
+        run: .github/scripts/install-dejavu-fonts.sh /tmp/fonts-dejavu
       - name: Run the fixture browser tests
         run: |
           cd tools/test
