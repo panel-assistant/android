@@ -208,8 +208,9 @@ jobs:
       # GitHub cache is at its 10 GB limit and an NDK entry would evict the Gradle caches. A miss or a stale
       # entry only costs the download, because the install step still checks every package.
       - name: Restore the Android SDK packages
+        id: android-sdk
         if: startsWith(runner.name, 'blacksmith-')
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             /usr/local/lib/android/sdk/cmdline-tools/22.0
@@ -230,6 +231,19 @@ jobs:
       - name: Install Android build toolchain
         if: (runner.environment == 'github-hosted' || startsWith(runner.name, 'blacksmith-'))
         run: .github/scripts/install-android-sdk.sh "platforms;android-37.0" "build-tools;36.0.0" "ndk;27.0.12077973" "cmake;3.22.1"
+      # Saved here, once the packages are complete, and only on a miss: as a post step of the restore it
+      # re-archived the entry (866 MB for the build SDK) after every job, 3 to 9 s, even after a hit.
+      - name: Save the Android SDK packages
+        if: startsWith(runner.name, 'blacksmith-') && steps.android-sdk.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            /usr/local/lib/android/sdk/cmdline-tools/22.0
+            /usr/local/lib/android/sdk/platforms/android-37.0
+            /usr/local/lib/android/sdk/build-tools/36.0.0
+            /usr/local/lib/android/sdk/ndk/27.0.12077973
+            /usr/local/lib/android/sdk/cmake/3.22.1
+          key: android-sdk-v1-${{ runner.os }}-cmdline-tools-22.0-platforms-37.0-build-tools-36.0.0-ndk-27.0.12077973-cmake-3.22.1
 
       # The project runner carries the pinned SDK packages (installed by its provisioning script
       # in the runner setup) and keeps its Gradle home between jobs, so it needs no download or cache.
@@ -425,19 +439,13 @@ jobs:
           path: app/build/test-fixtures
       - name: Install playwright-core
         run: cd tools/test && npm ci --ignore-scripts
-      - name: Use the hosted runners' default font
-        # The image's only Latin sans fonts lose to a CJK default for system-ui; the fixture pages' 480 px fit
-        # was measured with DejaVu Sans, the hosted runners' default. The same two pinned packages as ui-layout.yml.
-        run: |
-          cd "$RUNNER_TEMP"
-          get() { curl -fsS --retry 3 --retry-all-errors --max-time 60 -o "$1" "http://archive.ubuntu.com/ubuntu/pool/main/f/fonts-dejavu/$1"; }
-          get fonts-dejavu-core_2.37-8_all.deb
-          get fonts-dejavu-mono_2.37-8_all.deb
-          printf '%s  %s\n' \
-            40049660c194f3b8a2541fc7369efebb10e9f94bdac836a2f38fafedd10fa73a fonts-dejavu-core_2.37-8_all.deb \
-            8a599d6553307db7ecb795d2f0e5a301e03234afc75c7358b0ba43466454c89a fonts-dejavu-mono_2.37-8_all.deb | sha256sum -c -
-          dpkg -i fonts-dejavu-mono_2.37-8_all.deb fonts-dejavu-core_2.37-8_all.deb > /dev/null
-          fc-match system-ui | grep -q 'DejaVu Sans'
+      - name: Restore the DejaVu font packages
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /tmp/fonts-dejavu
+          key: fonts-dejavu-2.37-8-40049660c194-8a599d655330
+      - name: Install the hosted runners' default font
+        run: .github/scripts/install-dejavu-fonts.sh /tmp/fonts-dejavu
       - name: Run the fixture browser tests
         run: |
           cd tools/test
@@ -622,8 +630,9 @@ jobs:
       # GitHub cache is at its 10 GB limit and an NDK entry would evict the Gradle caches. A miss or a stale
       # entry only costs the download, because the install step still checks every package.
       - name: Restore the Android SDK packages
+        id: android-sdk
         if: startsWith(runner.name, 'blacksmith-')
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             /usr/local/lib/android/sdk/cmdline-tools/22.0
@@ -646,6 +655,19 @@ jobs:
       - name: Install Android build toolchain
         if: (runner.environment == 'github-hosted' || startsWith(runner.name, 'blacksmith-'))
         run: .github/scripts/install-android-sdk.sh "platforms;android-37.0" "build-tools;36.0.0" "ndk;27.0.12077973" "cmake;3.22.1"
+      # Saved here, once the packages are complete, and only on a miss: as a post step of the restore it
+      # re-archived the entry (866 MB for the build SDK) after every job, 3 to 9 s, even after a hit.
+      - name: Save the Android SDK packages
+        if: startsWith(runner.name, 'blacksmith-') && steps.android-sdk.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            /usr/local/lib/android/sdk/cmdline-tools/22.0
+            /usr/local/lib/android/sdk/platforms/android-37.0
+            /usr/local/lib/android/sdk/build-tools/36.0.0
+            /usr/local/lib/android/sdk/ndk/27.0.12077973
+            /usr/local/lib/android/sdk/cmake/3.22.1
+          key: android-sdk-v1-${{ runner.os }}-cmdline-tools-22.0-platforms-37.0-build-tools-36.0.0-ndk-27.0.12077973-cmake-3.22.1
 
       - name: Set up Gradle
         if: (runner.environment == 'github-hosted' || startsWith(runner.name, 'blacksmith-'))
@@ -757,3 +779,27 @@ jobs:
           fi
           ./gradlew :app:assembleRelease -x lintVitalRelease --stacktrace
           ./gradlew :app:cyclonedxDirectBom --stacktrace
+
+  # Warns, never fails, when this push to main has taken longer than the workflow's budget in
+  # .github/ci-budget.json, or when one of its set-up steps took longer than the per-step budget, so a
+  # slowdown shows on the push that caused it rather than in the next weekly check. GitHub-hosted on purpose.
+  budget:
+    if: ${{ always() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    needs: [android-runner, build-self-hosted, build, fixture-browser-tests, android-build, changes, helper, host-contracts, dependency-integrity, helper-aggregate, release-cache]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Check out the budget
+        continue-on-error: true
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github
+      - name: Compare this run's time with its budget
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/check_ci_budget.py --this-run

@@ -68,8 +68,9 @@ jobs:
       # GitHub cache is at its 10 GB limit and an NDK entry would evict the Gradle caches. A miss or a stale
       # entry only costs the download, because the install step still checks every package.
       - name: Restore the Android SDK packages
+        id: android-sdk
         if: startsWith(runner.name, 'blacksmith-')
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             /usr/local/lib/android/sdk/cmdline-tools/22.0
@@ -90,7 +91,22 @@ jobs:
           cache-provider: enhanced
 
       - name: Install build SDK, NDK, and emulator image
-        run: sdkmanager "platform-tools" "platforms;android-37.0" "build-tools;36.0.0" "system-images;android-${{ matrix.api-level }};default;x86_64" "ndk;27.0.12077973" "cmake;3.22.1"
+        # The script passes only missing packages to sdkmanager, so a cache hit makes no repository fetch.
+        run: .github/scripts/install-android-sdk.sh "platform-tools" "platforms;android-37.0" "build-tools;36.0.0" "system-images;android-${{ matrix.api-level }};default;x86_64" "ndk;27.0.12077973" "cmake;3.22.1"
+      # Saved here, once the packages are complete, and only on a miss: as a post step of the restore it
+      # re-archived the entry (866 MB for the build SDK) after every job, 3 to 9 s, even after a hit.
+      - name: Save the Android SDK packages
+        if: startsWith(runner.name, 'blacksmith-') && steps.android-sdk.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            /usr/local/lib/android/sdk/cmdline-tools/22.0
+            /usr/local/lib/android/sdk/platforms/android-37.0
+            /usr/local/lib/android/sdk/build-tools/36.0.0
+            /usr/local/lib/android/sdk/ndk/27.0.12077973
+            /usr/local/lib/android/sdk/cmake/3.22.1
+            /usr/local/lib/android/sdk/system-images/android-${{ matrix.api-level }}/default/x86_64
+          key: android-sdk-v1-${{ runner.os }}-cmdline-tools-22.0-platforms-37.0-build-tools-36.0.0-ndk-27.0.12077973-cmake-3.22.1-system-image-${{ matrix.api-level }}
 
       - name: Build app and instrumentation APKs
         run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace
@@ -281,3 +297,27 @@ jobs:
             /tmp/android-runner/emu-crash-*.db
             ${{ runner.temp }}/*.log
           if-no-files-found: warn
+
+  # Warns, never fails, when this push to main has taken longer than the workflow's budget in
+  # .github/ci-budget.json, or when one of its set-up steps took longer than the per-step budget, so a
+  # slowdown shows on the push that caused it rather than in the next weekly check. GitHub-hosted on purpose.
+  budget:
+    if: ${{ always() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    needs: [instrumentation]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Check out the budget
+        continue-on-error: true
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github
+      - name: Compare this run's time with its budget
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/check_ci_budget.py --this-run

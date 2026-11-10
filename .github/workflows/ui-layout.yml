@@ -55,19 +55,13 @@ jobs:
           node-version: '22.23.2'
       - name: Install playwright-core
         run: cd tools/test && npm ci --ignore-scripts
-      - name: Use the hosted runners' default font
-        # The image's only Latin sans fonts lose to a CJK default for system-ui; the layout checks are tuned
-        # to DejaVu Sans, the hosted runners' default. Two pinned packages, fetched directly, no apt index.
-        run: |
-          cd "$RUNNER_TEMP"
-          get() { curl -fsS --retry 3 --retry-all-errors --max-time 60 -o "$1" "http://archive.ubuntu.com/ubuntu/pool/main/f/fonts-dejavu/$1"; }
-          get fonts-dejavu-core_2.37-8_all.deb
-          get fonts-dejavu-mono_2.37-8_all.deb
-          printf '%s  %s\n' \
-            40049660c194f3b8a2541fc7369efebb10e9f94bdac836a2f38fafedd10fa73a fonts-dejavu-core_2.37-8_all.deb \
-            8a599d6553307db7ecb795d2f0e5a301e03234afc75c7358b0ba43466454c89a fonts-dejavu-mono_2.37-8_all.deb | sha256sum -c -
-          dpkg -i fonts-dejavu-mono_2.37-8_all.deb fonts-dejavu-core_2.37-8_all.deb > /dev/null
-          fc-match system-ui | grep -q 'DejaVu Sans'
+      - name: Restore the DejaVu font packages
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /tmp/fonts-dejavu
+          key: fonts-dejavu-2.37-8-40049660c194-8a599d655330
+      - name: Install the hosted runners' default font
+        run: .github/scripts/install-dejavu-fonts.sh /tmp/fonts-dejavu
       - name: Run tools/test
         run: |
           cd tools/test
@@ -111,19 +105,13 @@ jobs:
           node-version: '22.23.2'
       - name: Install playwright-core
         run: cd tools/test && npm ci --ignore-scripts
-      - name: Use the hosted runners' default font
-        # The image's only Latin sans fonts lose to a CJK default for system-ui; the layout checks are tuned
-        # to DejaVu Sans, the hosted runners' default. Two pinned packages, fetched directly, no apt index.
-        run: |
-          cd "$RUNNER_TEMP"
-          get() { curl -fsS --retry 3 --retry-all-errors --max-time 60 -o "$1" "http://archive.ubuntu.com/ubuntu/pool/main/f/fonts-dejavu/$1"; }
-          get fonts-dejavu-core_2.37-8_all.deb
-          get fonts-dejavu-mono_2.37-8_all.deb
-          printf '%s  %s\n' \
-            40049660c194f3b8a2541fc7369efebb10e9f94bdac836a2f38fafedd10fa73a fonts-dejavu-core_2.37-8_all.deb \
-            8a599d6553307db7ecb795d2f0e5a301e03234afc75c7358b0ba43466454c89a fonts-dejavu-mono_2.37-8_all.deb | sha256sum -c -
-          dpkg -i fonts-dejavu-mono_2.37-8_all.deb fonts-dejavu-core_2.37-8_all.deb > /dev/null
-          fc-match system-ui | grep -q 'DejaVu Sans'
+      - name: Restore the DejaVu font packages
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /tmp/fonts-dejavu
+          key: fonts-dejavu-2.37-8-40049660c194-8a599d655330
+      - name: Install the hosted runners' default font
+        run: .github/scripts/install-dejavu-fonts.sh /tmp/fonts-dejavu
       - name: Language layout gate
         run: |
           cd tools/test
@@ -174,3 +162,27 @@ jobs:
           CHROME="$(command -v google-chrome || command -v chromium-browser || command -v chromium)"
           test -x "$CHROME"
           CHROME="$CHROME" node tools/test/layout-matrix.mjs | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # Warns, never fails, when this push to main has taken longer than the workflow's budget in
+  # .github/ci-budget.json, or when one of its set-up steps took longer than the per-step budget, so a
+  # slowdown shows on the push that caused it rather than in the next weekly check. GitHub-hosted on purpose.
+  budget:
+    if: ${{ always() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    needs: [suite, layout, ui-layout, cls]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Check out the budget
+        continue-on-error: true
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github
+      - name: Compare this run's time with its budget
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/check_ci_budget.py --this-run
