@@ -17,9 +17,11 @@ interface WakeTap {
     fun canArm(): Boolean
 
     /**
-     * Start watching; [onTap] fires on the first tap while armed (may run on any thread). Returns only
-     * after the watcher is installed, and returns false when installation cannot be confirmed. A caller
-     * must not make the display dark unless this returns true.
+     * Start watching; [onTap] fires on a tap while armed (may run on any thread), one at a time: a tap
+     * during a running [onTap] is dropped, and one after it returned fires again, so an [onTap] that left
+     * the screen dark is retried by the next tap. An [onTap] that lit the screen calls [disarm]. Returns
+     * only after the watcher is installed, and returns false when installation cannot be confirmed. A
+     * caller must not make the display dark unless this returns true.
      */
     fun arm(onTap: () -> Unit): Boolean
 

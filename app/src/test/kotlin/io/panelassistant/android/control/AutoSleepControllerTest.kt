@@ -741,6 +741,22 @@ class AutoSleepControllerTest {
         assertEquals(1, h.learning.corrections.size)
     }
 
+    /** Control for TapWakeRetryTest: an automatic OFF is retried by its own raw-touch path, not the overlay's. */
+    @Test fun aFailedTapWakeOfAnAutomaticOffIsRetriedByTheNextRawTouch() = Harness(trackBacklightPower = true).use { h ->
+        val epoch = h.sleepAutomatically()
+        h.refuseWakes(true)
+        h.wakeTap.fireTap()
+        assertTrue("the tap's wake failed", h.screen.isIntendedOff())
+
+        h.refuseWakes(false)
+        assertFalse("nothing lit the screen meanwhile", h.backlightPowered())
+        h.controller.noteTouchForTest(h.now.get(), epoch.generation)
+
+        h.await { !h.screen.isIntendedOff() }
+        assertTrue(h.backlightPowered())
+        h.await { h.learning.corrections.size == 1 }
+    }
+
     @Test fun tapCallbackBeforeQueuedRawTouchTrainsExactlyOnce() = runTest {
         val h = virtualHarness()
         val epoch = h.sleepAutomatically()
@@ -1427,12 +1443,14 @@ class AutoSleepControllerTest {
             FakeDaemon(daemonReplies, onSend = { command ->
                 if (trackBacklightPower) when (command) {
                     "SCREEN OFF" -> daemonReplies["BLPOWER"] = "4"
-                    "SCREEN ON" -> daemonReplies["BLPOWER"] = "0"
+                    "SCREEN ON" -> if (daemonReplies["SCREEN ON"] == "OK") daemonReplies["BLPOWER"] = "0"
                 }
             }),
             wakeTap, ScreenOff.DAEMON_BLPOWER,
         )
         fun backlightPowered() = daemonReplies["BLPOWER"] == "0"
+        /** While refused, no wake lights the backlight: the helper says no and bl_power stays off. */
+        fun refuseWakes(refuse: Boolean) { daemonReplies["SCREEN ON"] = if (refuse) "ERR" else "OK" }
         val requests = CopyOnWriteArrayList<HaPresenceRequest>()
         val screenChanges = CopyOnWriteArrayList<Boolean>()
         val managerClosed = AtomicBoolean()
