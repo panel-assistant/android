@@ -49,6 +49,9 @@ async function panel() {
   const unopened = new Set(), refuse = new Set();
   // A write held unanswered until the test releases it, as `key=value`: the reply that lands after Cancel.
   const held = { write: null, waiting: false, release: null };
+  // Tuning replies held unanswered after the panel has applied the action, in arrival order: the next `level`,
+  // `stop` or `wake_test` whose action is listed in holdNext waits until the test releases it.
+  const replies = { holdNext: [], waiting: [] };
   const route = () => {
     const rate = settings.voice_capture_rate === 'auto' ? 16000 : Number(settings.voice_capture_rate);
     const channels = settings.voice_capture_channels === 'auto' ? 1 : Number(settings.voice_capture_channels);
@@ -89,7 +92,13 @@ async function panel() {
         voice.session = null; voice.level = false; voice.test = null;
       }
       if (action === 'heartbeat' && !(voice.level || voice.test)) return send('{"error":"this tuning session has ended"}', 'application/json', 409);
-      return send(json(true), 'application/json', 202);
+      const reply = json(true);
+      const hold = replies.holdNext.indexOf(action);
+      if (hold >= 0) {
+        replies.holdNext.splice(hold, 1);
+        await new Promise((release) => replies.waiting.push({ action, release }));
+      }
+      return send(reply, 'application/json', 202);
     }
     if (path === '/api/v1/config/schema') return send(JSON.stringify(SCHEMA));
     if (path === '/api/v1/config' && request.method === 'POST') {
@@ -110,9 +119,18 @@ async function panel() {
     response.statusCode = 404; response.end('not found');
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  return { voice, writes, settings, unopened, refuse, held, server, url: `http://127.0.0.1:${server.address().port}` };
+  // Answers the oldest held reply for [action].
+  const answer = (action) => {
+    const at = replies.waiting.findIndex((r) => r.action === action);
+    assert.ok(at >= 0, `a ${action} reply is held`);
+    replies.waiting.splice(at, 1)[0].release();
+  };
+  const holding = (action) => replies.waiting.some((r) => r.action === action);
+  return { voice, writes, settings, unopened, refuse, held, replies, answer, holding, server, url: `http://127.0.0.1:${server.address().port}` };
 }
 
+// The tuning actions the page sent, less the heartbeats that keep a session alive.
+const sent = (h) => h.voice.actions.filter((a) => a !== 'heartbeat');
 const text = (p, id) => p.evaluate((i) => document.getElementById(i)?.textContent ?? null, id);
 
 async function eventually(what, check, ms = 5000) {
@@ -139,6 +157,12 @@ for (const engine of engines) {
     const h = await panel();
     t.after(async () => { await browser.close(); await new Promise((resolve) => h.server.close(resolve)); });
     const p = await browser.newPage({ viewport: { width: 480, height: 1400 } });
+    // Uncaught errors and unhandled rejections, recorded in the page so both engines report them alike.
+    await p.addInitScript(() => {
+      window.__uncaught = [];
+      window.addEventListener('error', (e) => window.__uncaught.push(String(e.message)));
+      window.addEventListener('unhandledrejection', (e) => window.__uncaught.push(String(e.reason && e.reason.message || e.reason)));
+    });
     await p.goto(h.url);
     await p.locator('#voice-tuning').waitFor();
     return { p, h };
@@ -395,5 +419,81 @@ for (const engine of engines) {
     assert.equal(h.settings.voice_capture_rate, 'auto');
     assert.equal(h.settings.voice_capture_channels, 'auto', 'the refused put-back is written again');
     assert.equal(h.settings.voice_audio_source, 'voice_recognition');
+  });
+
+  // Cancel pressed while the wizard's first request is unanswered. The panel applies level, then Stop,
+  // and the level reply lands while Stop's is still outstanding: nothing may start after Stop.
+  test(`${engine.name}: Cancel while the wizard is starting starts no wake word test after Stop, and a new wizard runs untouched`, async (t) => {
+    const { p, h } = await open(t);
+    const pageErrors = [];
+    p.on('pageerror', (e) => pageErrors.push(e.message));
+    h.replies.holdNext.push('level', 'stop');
+    await p.click('#voice-tuning-start');
+    await eventually('the level reply is held', async () => h.holding('level') || JSON.stringify(sent(h)));
+    await p.click('#voice-tuning-cancel');
+    await eventually('Cancel sends Stop and its reply is held', async () => h.holding('stop') || JSON.stringify(sent(h)));
+    h.answer('level');
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    assert.deepEqual(sent(h), ['level', 'stop'], 'the late level reply sends no wake word test');
+    h.answer('stop');
+    await eventually('cancelled', async () => (await text(p, 'voice-tuning-status')) === 'Cancelled. The settings are as they were.' || await text(p, 'voice-tuning-status'));
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    assert.deepEqual(sent(h), ['level', 'stop'], 'no wake word test after Cancel');
+    assert.equal(h.voice.test, null, 'the panel answers the wake word again');
+    assert.equal(h.voice.session, null);
+    assert.equal(await p.locator('#voice-tuning-wizard').isHidden(), true, 'the wizard stays closed');
+    assert.equal(await p.locator('#voice-tuning-start').isHidden(), false);
+    assert.equal(await text(p, 'voice-level-toggle'), 'Show the microphone level', 'the late level reply does not leave the meter on');
+    assert.deepEqual(await p.evaluate(() => window.__uncaught), []);
+    assert.deepEqual(pageErrors, []);
+
+    // A wizard cancelled before its level reply lands, then a new wizard: the old reply must not drive the new one.
+    h.voice.actions.length = 0;
+    h.replies.holdNext.push('level', 'stop');
+    await p.click('#voice-tuning-start');
+    await eventually('the second level reply is held', async () => h.holding('level') || JSON.stringify(sent(h)));
+    await p.click('#voice-tuning-cancel');
+    await eventually('Stop is held', async () => h.holding('stop') || JSON.stringify(sent(h)));
+    h.answer('stop');
+    await eventually('cancelled again', async () => (await p.locator('#voice-tuning-wizard').isHidden()) || await text(p, 'voice-tuning-status'));
+    await p.click('#voice-tuning-start');
+    await eventually('the new wizard reaches the quiet step', async () => (await text(p, 'voice-tuning-step')) === 'Step 1 of 4: the room' && sent(h).length === 4 || JSON.stringify(sent(h)));
+    assert.deepEqual(sent(h), ['level', 'stop', 'level', 'wake_test']);
+    h.answer('level');
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    assert.deepEqual(sent(h), ['level', 'stop', 'level', 'wake_test'], 'the old wizard\'s reply sends nothing for the new one');
+    await eventually('the new wizard keeps its own timing', async () => (await text(p, 'voice-tuning-step')) === 'Step 2 of 4: your voice' || await text(p, 'voice-tuning-step'), 5000);
+    assert.equal(await p.locator('#voice-tuning-wizard').isHidden(), false);
+    await p.click('#voice-tuning-cancel');
+    await eventually('the new wizard cancels', async () => (await text(p, 'voice-tuning-status')) === 'Cancelled. The settings are as they were.' || await text(p, 'voice-tuning-status'));
+    assert.deepEqual(await p.evaluate(() => window.__uncaught), []);
+    assert.deepEqual(pageErrors, []);
+
+    // The owner's own diagnostics still work after it all.
+    h.voice.actions.length = 0;
+    await p.click('#voice-wake-test');
+    await eventually('the wake word test starts', async () => (await text(p, 'voice-wake-test')) === 'Stop the test' || await text(p, 'voice-wake-test'));
+    await p.click('#voice-wake-test');
+    await eventually('and stops', async () => h.voice.session === null && sent(h).join() === 'wake_test,stop' || JSON.stringify(sent(h)));
+  });
+
+  test(`${engine.name}: Cancel while the wake word step's test is starting leaves the wizard closed`, async (t) => {
+    const { p, h } = await open(t);
+    const pageErrors = [];
+    p.on('pageerror', (e) => pageErrors.push(e.message));
+    await p.click('#voice-tuning-start');
+    await eventually('the speaking step', async () => (await text(p, 'voice-tuning-step')) === 'Step 2 of 4: your voice' || await text(p, 'voice-tuning-step'), 6000);
+    h.replies.holdNext.push('wake_test');
+    await eventually('the step 3 test reply is held', async () => h.holding('wake_test') || JSON.stringify(sent(h)), 9000);
+    await p.click('#voice-tuning-cancel');
+    await eventually('cancelled', async () => (await text(p, 'voice-tuning-status')) === 'Cancelled. The settings are as they were.' || await text(p, 'voice-tuning-status'));
+    h.answer('wake_test');
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    assert.equal(await p.locator('#voice-tuning-wizard').isHidden(), true, 'the wizard stays closed');
+    assert.equal(await text(p, 'voice-tuning-status'), 'Cancelled. The settings are as they were.');
+    assert.equal(await text(p, 'voice-wake-test'), 'Test the wake word', 'the late reply is not taken for a running test');
+    assert.deepEqual(sent(h), ['level', 'wake_test', 'wake_test', 'stop'], 'nothing starts after Stop');
+    assert.deepEqual(await p.evaluate(() => window.__uncaught), []);
+    assert.deepEqual(pageErrors, []);
   });
 }

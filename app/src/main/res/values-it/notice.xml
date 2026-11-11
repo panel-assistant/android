@@ -24,7 +24,7 @@
     <string name="notice_line_entities_need_decision">entità richiedono una decisione prima che si apra la plancia</string>
     <string name="notice_line_sign_in_needed">Nulla può caricarsi finché il pannello non ha un accesso a Home Assistant.</string>
     <string name="notice_line_sign_in_stopped">L’accesso salvato ha smesso di funzionare.</string>
-    <string name="notice_line_setup_question">In Panel Assistant c’è una domanda di configurazione in attesa.</string>
+    <string name="notice_line_setup_question">Su questo pannello resta una domanda di configurazione</string>
     <string name="notice_attention_explanation">Home Assistant funziona correttamente. Il pannello ha bisogno di una risposta sui controlli di sicurezza emersi durante la lettura delle tue entità prima di poter aprire la plancia.</string>
     <string name="notice_qr_sign_in">Inquadra per accedere da un telefono</string>
     <string name="notice_qr_sign_in_again">Inquadra per accedere di nuovo da un telefono</string>

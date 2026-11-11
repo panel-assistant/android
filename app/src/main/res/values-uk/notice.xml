@@ -24,7 +24,7 @@
     <string name="notice_line_entities_need_decision">сутностей чекають рішення, перш ніж відкриється інформаційна панель</string>
     <string name="notice_line_sign_in_needed">Нічого не завантажиться, доки в панелі немає входу в Home Assistant.</string>
     <string name="notice_line_sign_in_stopped">Збережений вхід перестав працювати.</string>
-    <string name="notice_line_setup_question">У Panel Assistant чекає одне запитання щодо налаштування.</string>
+    <string name="notice_line_setup_question">На цій панелі ще лишилося одне запитання щодо налаштування</string>
     <string name="notice_attention_explanation">З Home Assistant усе гаразд. Панелі потрібна відповідь щодо перевірок безпеки, виявлених під час читання ваших сутностей, перш ніж вона зможе відкрити інформаційну панель.</string>
     <string name="notice_qr_sign_in">Скануйте, щоб увійти з телефона</string>
     <string name="notice_qr_sign_in_again">Скануйте, щоб увійти знову з телефона</string>

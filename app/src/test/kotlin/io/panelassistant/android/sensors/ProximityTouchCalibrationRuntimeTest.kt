@@ -23,8 +23,9 @@ class ProximityTouchCalibrationRuntimeTest {
 
     private class MemoryTouches : ProximityTouchStore {
         val values = mutableMapOf<String, String>()
+        var writes = 0
         override fun read(key: String) = values[key]
-        override fun write(key: String, json: String) { values[key] = json }
+        override fun write(key: String, json: String) { values[key] = json; writes++ }
     }
 
     private fun runtime(mode: PresenceMode, touches: ProximityTouchStore = MemoryTouches(), models: ProximityModelStore = MemoryModels()) =
@@ -120,6 +121,97 @@ class ProximityTouchCalibrationRuntimeTest {
         runtime(PresenceMode.AUTOMATIC, touches).replay("office-taps.csv", offset = 1_000)
         val restarted = runtime(PresenceMode.AUTOMATIC, touches)
         assertTrue(restarted.isLearnedSignal())
+    }
+
+    /**
+     * Someone stands at the panel (about 50) and touches it [touches] times, well apart (hand about 600), then
+     * leaves: from [StayedThenLeft.leftAt] every reading is a fresh empty-room reading (about 30). No touch and
+     * no mode change follows.
+     */
+    private class StayedThenLeft(val runtime: ProximityCalibrationRuntime, touches: Int) {
+        var now = 1_000L
+        val leftAt: Long
+        val afterLeaving = mutableListOf<Boolean?>()
+
+        init {
+            repeat(touches) { hold(50f, 8_000); tap(); hold(50f, 12_000) }
+            hold(50f, 6_000)
+            leftAt = now
+        }
+
+        fun hold(level: Float, ms: Long, fresh: Boolean = true) {
+            val end = now + ms
+            while (now < end) {
+                val near = runtime.observe(level + (now / 250 % 3) - 1, now, sparseReporting = false, calibrationLive = fresh).near
+                if (level < 40f) afterLeaving.add(near)
+                now += 250
+            }
+        }
+
+        private fun tap() {
+            repeat(2) { runtime.observe(600f, now, sparseReporting = false); now += 250 }
+            runtime.touch(now)
+            repeat(2) { runtime.observe(600f, now, sparseReporting = false); now += 250 }
+        }
+    }
+
+    private fun savedClearMean(touches: MemoryTouches): Double? =
+        touches.values.values.single().let(::JSONObject).optJSONObject("clear")?.getDouble("mean")
+
+    @Test fun aModelThatQualifiesOnlyOnceThePersonLeavesIsAdoptedAndSavedWithoutAnotherTouch() {
+        val touches = MemoryTouches()
+        val visit = StayedThenLeft(runtime(PresenceMode.AUTOMATIC, touches), touches = 3)
+        val runtime = visit.runtime
+        // While they stayed, the empty room had never been seen: three touches alone cannot calibrate.
+        assertEquals(null, runtime.touchLearning())
+        assertFalse(runtime.isLearnedSignal())
+        assertEquals("learning", JSONObject(runtime.statusJson()).getString("state"))
+
+        visit.hold(30f, 60_000)
+
+        assertEquals(30.0, checkNotNull(runtime.touchLearning()).clear.mean, 1.0)
+        assertTrue("the running calibration is the learned one", runtime.isLearnedSignal())
+        assertEquals("ready", JSONObject(runtime.statusJson()).getString("state"))
+        assertEquals("touch", JSONObject(runtime.json()).getString("calibrationSource"))
+        assertEquals("the empty room reads as clear", false, visit.afterLeaving.last())
+        assertEquals(30.0, checkNotNull(savedClearMean(touches)), 1.0)
+
+        val restarted = runtime(PresenceMode.AUTOMATIC, touches)
+        assertTrue("the saved model runs after a restart", restarted.isLearnedSignal())
+        assertEquals(30.0, checkNotNull(restarted.touchLearning()).clear.mean, 1.0)
+    }
+
+    @Test fun twoTouchesBeforeLeavingStayUncalibratedHoweverLongTheRoomIsEmpty() {
+        val touches = MemoryTouches()
+        val visit = StayedThenLeft(runtime(PresenceMode.AUTOMATIC, touches), touches = 2)
+        visit.hold(30f, 60_000)
+        assertEquals(null, visit.runtime.touchLearning())
+        assertFalse(visit.runtime.isLearnedSignal())
+        assertEquals("learning", JSONObject(visit.runtime.statusJson()).getString("state"))
+        assertTrue(visit.afterLeaving.all { it == null })
+        // The empty room it saw is still kept, so a third touch after a restart has a clear level to use.
+        assertEquals(30.0, checkNotNull(savedClearMean(touches)), 1.0)
+        assertFalse(runtime(PresenceMode.AUTOMATIC, touches).isLearnedSignal())
+    }
+
+    @Test fun heldReadingsAfterLeavingAreNotEvidenceOfAnEmptyRoom() {
+        val touches = MemoryTouches()
+        val visit = StayedThenLeft(runtime(PresenceMode.AUTOMATIC, touches), touches = 3)
+        val saved = touches.writes
+        visit.hold(30f, 60_000, fresh = false)
+        assertEquals(null, visit.runtime.touchLearning())
+        assertFalse(visit.runtime.isLearnedSignal())
+        assertEquals(saved, touches.writes)
+    }
+
+    @Test fun anEmptyRoomThatStaysTheSameIsNotSavedAgain() {
+        val touches = MemoryTouches()
+        val visit = StayedThenLeft(runtime(PresenceMode.AUTOMATIC, touches), touches = 3)
+        visit.hold(30f, 60_000)
+        assertTrue(visit.runtime.isLearnedSignal())
+        val saved = touches.writes
+        visit.hold(30f, 120_000)
+        assertEquals(saved, touches.writes)
     }
 
     @Test fun switchingFromManualToAutomaticUsesWhatWasAlreadyLearned() {

@@ -364,7 +364,7 @@
    "state": "machine-cross-checked"
   },
   "configure.auto_sleep.panel_reconnecting": {
-   "text": "Змінилося підключення панелі. Відновлюємо історію активності…",
+   "text": "Змінилося підключення панелі. Відновлюємо підключення до історії активності…",
    "sourceHash": "ea27e92ae4067d4f065ca5a4cc381d869d9a955c6f2fdbf658491cb79c5bed3a",
    "state": "machine-cross-checked"
   },
@@ -2189,7 +2189,7 @@
    "state": "machine-cross-checked"
   },
   "dashboard.banner.companion_probe_failed.explanation": {
-   "text": "Panel Assistant збереже останній відомий результат і автоматично повторить спробу.",
+   "text": "Panel Assistant збереже останній відомий результат, якщо він є, і автоматично повторить спробу.",
    "sourceHash": "c43df8683aaa878ddbd94179f89198c7276fbbcba18f428f25553b1f704d205b",
    "state": "machine-cross-checked"
   },
@@ -5329,7 +5329,7 @@
    "state": "machine-cross-checked"
   },
   "entities.reset.resetting": {
-   "text": "Скидання вивчених даних про сутності зі збереженням поточної активної підписки…",
+   "text": "Триває скидання зібраних даних про сутності зі збереженням поточної активної підписки…",
    "sourceHash": "4245bf2a7c7d1dfb95da35ba88bc5e7dcb1ae69ca3754477666697d1597eca3d",
    "state": "machine-cross-checked"
   },
@@ -8574,7 +8574,7 @@
    "state": "machine-cross-checked"
   },
   "profiles.result.rollback-unavailable": {
-   "text": "Попередніх перевірених варіантів вибору немає.",
+   "text": "Попередній вибір із підтвердженою працездатністю недоступний.",
    "sourceHash": "e0fc7f6179d43a7cf66abf0dfc38b909ae49f187452d1d66aa18ada69e18eb1e",
    "state": "machine-cross-checked"
   },
@@ -11544,7 +11544,7 @@
    "state": "machine-cross-checked"
   },
   "install.backup.companion.helper_required": {
-   "text": "Для резервного копіювання даних входу в Home Assistant Companion потрібен актуальний помічник Panel Assistant. Оновіть або повторно налаштуйте цю панель із правами суперкористувача, щоб це ввімкнути.",
+   "text": "Для резервного копіювання даних входу в Home Assistant Companion потрібен актуальний помічник Panel Assistant. Оновіть цю панель із правами суперкористувача або повторно виконайте її підготовку до роботи, щоб це ввімкнути.",
    "sourceHash": "7bbade58530582487566566efe8452df12852554b0c6e57269253b9e119c1416",
    "state": "machine-cross-checked"
   },

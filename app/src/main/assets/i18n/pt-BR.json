@@ -4759,7 +4759,7 @@
       "state": "machine-cross-checked"
     },
     "dashboard.sensors.note": {
-      "text": "Leituras ao vivo dos sensores deste painel — exibidas mesmo quando um valor está oculto no Home Assistant.",
+      "text": "Leituras ao vivo dos sensores deste painel — exibidas mesmo quando um valor está oculto para o Home Assistant.",
       "sourceHash": "1f6f4f6027a437487039e5c3332f9644a9bd582a3212f1acb1a5c689f20f55b1",
       "state": "machine-cross-checked"
     },
@@ -10149,7 +10149,7 @@
       "state": "machine-cross-checked"
     },
     "runtime.power_safety.action.acknowledged": {
-      "text": "Este aviso sem alterações foi confirmado nas páginas web do painel; a API, os diagnósticos e as verificações do instalador continuam a exibi-lo.",
+      "text": "Este aviso inalterado foi reconhecido nas páginas web do painel; a API, os diagnósticos e as verificações do instalador continuam a relatá-lo.",
       "sourceHash": "4f5c25820fd583ab50f8057662be99abef99e2a3ed6af5e21cc96a817e31316f",
       "state": "machine-cross-checked"
     },
@@ -10159,7 +10159,7 @@
       "state": "machine-cross-checked"
     },
     "runtime.power_safety.action.repair_degraded": {
-      "text": "Use Reparar proteção de energia para verificar as proteções do app e tentar novamente o acesso root direto deste painel, que está degradado. O reparo nunca reinicia o painel.",
+      "text": "Use Reparar proteção de energia para verificar as proteções do app e tentar novamente a via de acesso root direto deste painel, atualmente degradada. O reparo nunca reinicia o painel.",
       "sourceHash": "acb7d2bc475d897202962a44cc3c84ebffcdb1e55369edeadd13ab130dbf0735",
       "state": "machine-cross-checked"
     },

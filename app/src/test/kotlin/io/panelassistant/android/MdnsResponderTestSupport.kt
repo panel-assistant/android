@@ -28,12 +28,20 @@ internal object MdnsResponderTestSupport {
             false
         }
 
-    fun browse(browser: JmDNS, name: String = "responder-test-panel-$RUN"): ServiceInfo? {
+    /**
+     * Waits up to 9 s for this test's service with a probe token that also satisfies [accept]. The browser's cache can still
+     * hold an earlier registration of the same name, so a caller that re-advertised says which one it is waiting for.
+     */
+    fun browse(
+        browser: JmDNS,
+        name: String = "responder-test-panel-$RUN",
+        accept: (ServiceInfo) -> Boolean = { true },
+    ): ServiceInfo? {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(9)
         while (System.nanoTime() < deadline) {
             val remainingMs = TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime()).coerceAtLeast(1)
             browser.list(Config.MDNS_SERVICE_TYPE, minOf(3_000, remainingMs))
-                .firstOrNull { it.name == name && it.getPropertyString("probe") != null }
+                .firstOrNull { it.name == name && it.getPropertyString("probe") != null && accept(it) }
                 ?.let { return it }
             // A cached unrelated service can make list return immediately.
             val remainingNs = deadline - System.nanoTime()

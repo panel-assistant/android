@@ -2564,7 +2564,7 @@
       "state": "machine-cross-checked"
     },
     "dashboard.banner.companion_url.summary_many": {
-      "text": "({count} serverů) — ovládací panel se nemusí načíst s",
+      "text": "(počet serverů: {count}) — ovládací panel se nemusí načíst s",
       "sourceHash": "aa53e84cf786b06f13cee6812a280e46bae647fd0290b0849b9a20237e899afe",
       "state": "machine-cross-checked"
     },
@@ -2579,7 +2579,7 @@
       "state": "machine-cross-checked"
     },
     "dashboard.banner.ha_sign_in.action": {
-      "text": "připojit tento panel z prohlížeče",
+      "text": "připojte tento panel z prohlížeče",
       "sourceHash": "b9ce2f85fea6f8548721dc2e95170eb6501d1cb71444f211656d9aa22f968553",
       "state": "machine-cross-checked"
     },
@@ -5389,7 +5389,7 @@
       "state": "machine-cross-checked"
     },
     "entities.issue.ignore_confirm": {
-      "text": "Chcete pokračovat a vynechat všechny potenciální entity z této konfigurace? Tím se k odběru nepřidají žádné entity. Karty, které na nich závisí, se mohou zobrazovat jako nedostupné, dokud tyto entity ručně nepřipnete, nezúžíte ovládací panel nebo znovu nezapnete bezpečnostní kontrolu.",
+      "text": "Chcete pokračovat a vynechat všechny potenciální entity z této konfigurace? Tím se k odběru nepřidají žádné entity. Karty, které na nich závisí, se mohou zobrazovat jako nedostupné, dokud tyto entity ručně nepřipnete, nebude ovládací panel zúžen nebo nebude bezpečnostní kontrola znovu povolena.",
       "sourceHash": "67413638e256350b1b2523684e53c746d79e9ca69729a04598065bc78e18d4ce",
       "state": "machine-cross-checked"
     },
@@ -5414,7 +5414,7 @@
       "state": "machine-cross-checked"
     },
     "entities.issue.kiosk-mode-limited-support.recommendation": {
-      "text": "Pro automatické filtrování entit používejte doslovná ID entit v JavaScript pro HACS Kiosk Mode a vyhněte se výčtům; nastavení Jinja vykreslovaná na serveru nevyžadují závislosti v hlavním datovém proudu.",
+      "text": "Pro automatické filtrování entit používejte doslovná ID entit v kódu JavaScript pro HACS Kiosk Mode a vyhněte se výčtům; nastavení Jinja vykreslovaná na serveru nevyžadují závislosti v hlavním datovém proudu.",
       "sourceHash": "6722add1f9e7bd22036c91f7c5cdb90df36db9da4f5c444dd3db697dc862c2a7",
       "state": "machine-cross-checked"
     },
@@ -5499,7 +5499,7 @@
       "state": "machine-cross-checked"
     },
     "entities.issue.selector-total-budget.summary": {
-      "text": "Ohraničené selektory společně odpovídají počtu entit: {candidate_count}",
+      "text": "Ohraničené selektory společně vybírají entity v počtu {candidate_count}",
       "sourceHash": "b9b9031818790fa57e332221654ebb7128f3110f15825ee9040bdd50153d8446",
       "state": "machine-cross-checked"
     },
@@ -5534,7 +5534,7 @@
       "state": "machine-cross-checked"
     },
     "entities.issue.strategy_allowed_note": {
-      "text": "Home Assistant sestavuje tento ovládací panel ze strategie, která vytváří karty pouze pro entity, jež vidí. Je-li tato kontrola povolena, žádná entita mimo odběr zde nedostane kartu a nikdy se nenaučí, takže tato stránka nemůže vypsat, co chybí. Otevřete stejný ovládací panel v Home Assistant na jiném zařízení a připněte entitu za každou kartou, která zde chybí.",
+      "text": "Home Assistant sestavuje tento ovládací panel ze strategie, která vytváří karty pouze pro entity, jež vidí. Je-li tato kontrola povolena, žádná entita mimo odběr zde nedostane kartu a nikdy nebude zahrnuta do naučených dat, takže tato stránka nemůže vypsat, co chybí. Otevřete stejný ovládací panel v Home Assistant na jiném zařízení a připněte entitu za každou kartou, která zde chybí.",
       "sourceHash": "70b006b69bb10b22043fbe4f51269ef7cd47586b1e0dfa6f5c02be15f119782b",
       "state": "machine-cross-checked"
     },
@@ -10164,7 +10164,7 @@
       "state": "machine-cross-checked"
     },
     "runtime.power_safety.action.review": {
-      "text": "Zkontrolujte zjištěné ochrany napájení. Udržování bdělého stavu Android a změny Doze vyžadují přímý přístup root; akce bezpečnosti napájení panel nikdy nerestartují.",
+      "text": "Zkontrolujte zjištěné ochrany napájení. Změny udržování bdělého stavu systému Android a režimu Doze vyžadují přímý přístup root; akce bezpečnosti napájení panel nikdy nerestartují.",
       "sourceHash": "a449f72ec34777c6f2723e91a028c388bdfb91e3b06585275c0d95ad37139dbb",
       "state": "machine-cross-checked"
     },
@@ -10184,7 +10184,7 @@
       "state": "machine-cross-checked"
     },
     "runtime.power_safety.button.repair_title": {
-      "text": "Oprava je výslovná, ověřená zpětným čtením a panel nikdy nerestartuje",
+      "text": "Oprava se provádí na výslovný pokyn, ověřuje se zpětným čtením a panel nikdy nerestartuje",
       "sourceHash": "e8af7e6d7a717d25be060e60abb34f970a5534d9836423a0972de0690e5ecb34",
       "state": "machine-cross-checked"
     },
@@ -10249,7 +10249,7 @@
       "state": "machine-cross-checked"
     },
     "runtime.power_safety.summary.unknown": {
-      "text": "Bezpečnost napájení se nepodařilo určit, protože jedna nebo více sond napájení Android byla nedostupná nebo nejednoznačná.",
+      "text": "Bezpečnost napájení se nepodařilo určit, protože alespoň jedna sonda napájení systému Android byla nedostupná nebo nejednoznačná.",
       "sourceHash": "482ba8367efe4f0a16e888518f0570245fb2ef01f6ef68415d3c6e315b3e76be",
       "state": "machine-cross-checked"
     },
@@ -12109,7 +12109,7 @@
       "state": "machine-cross-checked"
     },
     "setup.renderer.failure.unresolved": {
-      "text": "Pro tento panel se nepodařilo najít žádnou aplikaci s ovládacím panelem.",
+      "text": "Pro tento panel se nepodařilo najít žádnou aplikaci pro ovládací panel.",
       "sourceHash": "7ad3852774eb0101f6c42c6d1e007d4bc14470995d3c423ee636462f1f138429",
       "state": "machine-cross-checked"
     },

@@ -1919,7 +1919,7 @@
       "state": "machine-cross-checked"
     },
     "configure.save.hardware_unavailable": {
-      "text": "Enregistré. Ce panneau ne peut pas encore appliquer ce paramètre ; il sera appliqué dès que ce sera possible.",
+      "text": "Enregistré. Ce panneau ne peut pas encore appliquer ce paramètre ; il sera appliqué si cela change.",
       "sourceHash": "67b5afeafe3ae46c4d5fe55a308ba88d39ff45f61c663e5fae47d17317334f3b",
       "state": "machine-cross-checked"
     },
@@ -2114,7 +2114,7 @@
       "state": "machine-cross-checked"
     },
     "configure.voice.import_help": {
-      "text": "Importez un modèle microWakeWord entraîné : son manifeste « .json » et son fichier « .tflite ».",
+      "text": "Importez un modèle microWakeWord que vous avez entraîné : son manifeste .json et son fichier .tflite.",
       "sourceHash": "4f5fb189552c28937a37b6125ac56114733f4d41c102b12d39ade8ed4dea00ff",
       "state": "machine-cross-checked"
     },
@@ -2709,7 +2709,7 @@
       "state": "machine-cross-checked"
     },
     "dashboard.banner.zoom.action_suffix": {
-      "text": "qui redimensionne nettement tout le panneau ; réglez-la, puis réinitialisez le zoom ici.",
+      "text": "qui met tout le panneau à l’échelle en conservant la netteté ; réglez-la, puis réinitialisez le zoom ici.",
       "sourceHash": "7220acdb7b7548881a3939db495a9a5117cc8975f49c21d5c5f447c802508074",
       "state": "machine-cross-checked"
     },
@@ -5409,7 +5409,7 @@
       "state": "machine-cross-checked"
     },
     "entities.issue.ignore_confirm": {
-      "text": "Continuer en omettant toutes les entités potentielles de cette configuration ? Aucune entité ne sera ajoutée à l’abonnement. Les cartes qui en dépendent peuvent apparaître indisponibles jusqu’à ce que vous épingliez ces entités manuellement, restreigniez le tableau de bord ou réactiviez la vérification de sécurité.",
+      "text": "Continuer en omettant toutes les entités potentielles de cette configuration ? Aucune entité ne sera ajoutée à l’abonnement. Les cartes qui en dépendent peuvent apparaître indisponibles jusqu’à ce que vous épingliez ces entités manuellement, que le tableau de bord soit restreint ou que la vérification de sécurité soit réactivée.",
       "sourceHash": "67413638e256350b1b2523684e53c746d79e9ca69729a04598065bc78e18d4ce",
       "state": "machine-cross-checked"
     },
@@ -9379,7 +9379,7 @@
       "state": "machine-cross-checked"
     },
     "profiles.modal.rollback_title": {
-      "text": "Revenir au profil précédent ?",
+      "text": "Effectuer un retour en arrière du profil ?",
       "sourceHash": "3cc17c41ff0e2a2c29ab8d6beb9949c17924c6e96c2bc8109b8fb654bf310a49",
       "state": "machine-cross-checked"
     },
@@ -10229,7 +10229,7 @@
       "state": "machine-cross-checked"
     },
     "runtime.power_safety.summary.caution": {
-      "text": "La disponibilité du panneau ne repose actuellement que sur un seul mécanisme observé empêchant la mise en veille.",
+      "text": "L’accessibilité du panneau ne dépend actuellement que d’une seule protection d’alimentation observée.",
       "sourceHash": "f542740e25ab3bcbc4d751bf69c2afc0a98ba6522b8e62b8890e3a077f4d1640",
       "state": "machine-cross-checked"
     },
@@ -10959,7 +10959,7 @@
       "state": "machine-cross-checked"
     },
     "settings.log_ship_host.summary": {
-      "text": "Adresse du collecteur de journaux. Vide désactive l’envoi.",
+      "text": "Adresse du collecteur de journaux. Un champ vide désactive l’envoi.",
       "sourceHash": "2de7304ca6cbdb82707a94e19b7e94df4ae18b8d408730c04fe716f554625fba",
       "state": "machine-cross-checked"
     },

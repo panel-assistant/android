@@ -4,11 +4,9 @@ import io.panelassistant.android.dashboard.RendererEntityHold
 import android.content.Intent
 import io.panelassistant.android.dashboard.EntityBootstrapProblem
 import io.panelassistant.android.dashboard.EntityFilterProtocol
-import io.panelassistant.android.http.HA_OAUTH_CALLBACK_PATH
 import io.panelassistant.android.util.ProfileRestartCoordinator
 import io.panelassistant.android.util.InstallPresentation
 import java.net.URI
-import java.net.URLEncoder
 
 /** Locale-neutral counterpart of the renderer-specific warning rendered by the HTTP server. */
 internal fun dashboardRecoveryPresentation(
@@ -304,21 +302,23 @@ internal fun entityFilterQuestionPending(
     haUrl.isNotBlank() &&
     (haToken.isNotBlank() || haRefreshToken.isNotBlank())
 
-internal fun panelHaOAuthStartUrl(haUrl: String, httpPort: Int): String =
-    "http://127.0.0.1:$httpPort/api/v1/ha/oauth/panel-start?ha_url=${URLEncoder.encode(haUrl.trim().trimEnd('/'), "UTF-8")}"
-
-internal fun panelHaOAuthNavigationAllowed(configuredUrl: String, candidateUrl: String, httpPort: Int): Boolean =
-    dashboardNavigationAllowed(configuredUrl, candidateUrl) || isPanelHaOAuthCallback(candidateUrl, httpPort)
-
-internal fun isPanelHaOAuthCallback(candidateUrl: String, httpPort: Int): Boolean = runCatching {
-    val uri = URI(candidateUrl.trim())
-    val scheme = uri.scheme?.lowercase() ?: return@runCatching false
-    val host = uri.host?.lowercase() ?: return@runCatching false
-    scheme == "http" &&
-        host in setOf("127.0.0.1", "localhost") &&
-        uri.port == httpPort &&
-        uri.path == HA_OAUTH_CALLBACK_PATH
-}.getOrDefault(false)
+/**
+ * Whether the built-in renderer is held on the setup question ([entityFilterQuestionPending]) by [config] as it
+ * stands. Nothing renders until the answer, and the answer releases the renderer itself, so a home-dashboard
+ * change made meanwhile has nothing to bring to the front. Relaunching for it anyway destroyed the setup wizard
+ * that made the change (the renderer is singleTask, so its relaunch clears the wizard above it) in the middle
+ * of "Use this dashboard": the rest of that step's answers never reached the panel and setup stopped half-way,
+ * with the filter on and the question unanswered (bench Shelly X2i, 2026-11-09 and 2026-11-11).
+ */
+internal fun setupQuestionHoldsRenderer(config: Config): Boolean = entityFilterQuestionPending(
+    builtinRenderer = true,
+    haUrl = config.haUrl,
+    haToken = config.haToken,
+    haRefreshToken = config.haRefreshToken,
+    entityFilterAnswered = config.setupEntityFilterAnswered,
+    setupEverCompleted = config.setupEverCompleted,
+    entityFilterEnabled = config.dashboardEntityLearningEnabled,
+)
 
 /**
  * Exact document origins that may inherit panel startup scripts. This mirrors [dashboardNavigationAllowed]:

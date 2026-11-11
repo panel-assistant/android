@@ -329,7 +329,7 @@
    "state": "machine-cross-checked"
   },
   "configure.auto_sleep.lane_label": {
-   "text": "{label}{kind}{state}, over {hours} uur: {detail}",
+   "text": "{label}{kind}{state}, gedurende {hours} uur: {detail}",
    "sourceHash": "4d8fa2ee7835714feea3cc80f75f7b012694800508fd59de772e5d8d57e4b289",
    "state": "machine-cross-checked"
   },
@@ -1769,7 +1769,7 @@
    "state": "machine-cross-checked"
   },
   "configure.voice.microphone_no_audio": {
-   "text": "De microfoon leverde geen geluid toen het paneel die controleerde, dus het paneel luistert niet. Zet de spraakassistent uit en weer aan om opnieuw te controleren.",
+   "text": "De microfoon leverde geen audio toen het paneel die controleerde, dus het paneel luistert niet. Zet de spraakassistent uit en weer aan om opnieuw te controleren.",
    "sourceHash": "161b1ad1b64eeb61758adf95b0fafe1e88965b0998c4623c18514b349a24c533",
    "state": "machine-cross-checked"
   },
@@ -4834,7 +4834,7 @@
    "state": "machine-cross-checked"
   },
   "entities.issue.allow_note": {
-   "text": "Als je deze controle toestaat, worden er nooit entiteiten toegevoegd. Het zorgt er alleen voor dat automatische updates zonder die entiteiten doorgaan. Om je op een ervan te abonneren, zoek je die op met de zoekfunctie in de catalogus bovenaan deze pagina en stel je die in op {pinned}; een handmatige vastzetting blijft behouden totdat je die verwijdert.",
+   "text": "Het toestaan van deze controle voegt nooit entiteiten toe. Het maakt alleen mogelijk dat automatische updates zonder die entiteiten doorgaan. Om je op een ervan te abonneren, zoek je die op met de zoekfunctie in de catalogus bovenaan deze pagina en stel je die in op {pinned}; een handmatige vastzetting blijft behouden totdat je die verwijdert.",
    "sourceHash": "d3c4b6d2399ff0b190f6ccafb3bb888b75db62d7a682cd5a5c06dbe91a24df72",
    "state": "machine-cross-checked"
   },
@@ -7279,7 +7279,7 @@
    "state": "machine-cross-checked"
   },
   "profiles.action.use_automatic": {
-   "text": "Automatisch gebruiken",
+   "text": "Automatische selectie gebruiken",
    "sourceHash": "539ca38b10265667d2ecca6424e6bec15d47aaed08577648ad463be14c6b75b2",
    "state": "machine-cross-checked"
   },

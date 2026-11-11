@@ -41,6 +41,7 @@ class WebViewOrphanReceiptTest {
                 setOf(spec.certSha256), spec.minSdk, spec.abis)
             override fun readReceipt() = if (receiptFile.exists()) JSONObject(receiptFile.readText()) else null
             override fun writeReceipt(receipt: JSONObject) { receiptFile.writeText(receipt.toString()) }
+            override fun deleteReceipt() { receiptFile.delete() }
             override fun download(spec: WebViewSpec, destination: File): Boolean {
                 downloads++; beforeDownload(); destination.writeBytes(bytes); return true
             }

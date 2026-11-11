@@ -24,7 +24,7 @@
     <string name="notice_line_entities_need_decision">entiteiten wachten op een beslissing voordat het dashboard opent</string>
     <string name="notice_line_sign_in_needed">Er kan niets laden totdat het paneel een Home Assistant-login heeft.</string>
     <string name="notice_line_sign_in_stopped">De opgeslagen login werkt niet meer.</string>
-    <string name="notice_line_setup_question">Er wacht één instelvraag in Panel Assistant.</string>
+    <string name="notice_line_setup_question">Op dit paneel staat nog één instelvraag open</string>
     <string name="notice_attention_explanation">Er is niets mis met Home Assistant. Het paneel heeft een antwoord nodig over veiligheidscontroles die zijn gevonden bij het lezen van je entiteiten voordat het het dashboard kan openen.</string>
     <string name="notice_qr_sign_in">Scan om in te loggen vanaf een telefoon</string>
     <string name="notice_qr_sign_in_again">Scan om opnieuw in te loggen vanaf een telefoon</string>

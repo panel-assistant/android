@@ -121,7 +121,7 @@
     el("p", { class: "prox-learning-state", text: L("last_title") }),
     lastHeard, lastReply, lastResult].forEach(function (n) { root.appendChild(n); });
 
-  async function post(action) {
+  async function post(action, owner) {
     var reply = await window.PaneldTransport.request("voice.diagnostics.set", { action: action, sessionId: session });
     if (reply.outcome !== "applied") {
       var body = reply.result, reason = body && typeof body === "object" ? body.error : (typeof body === "string" ? body : "");
@@ -130,14 +130,20 @@
       throw error;
     }
     // The reply leaves the last command out (only the GET family carries it), so keep the one already shown.
-    if (reply.result && typeof reply.result === "object") show(Object.assign({}, latest, reply.result));
+    // A reply for a wizard that has closed is left to the next poll, so it adds nothing to another wizard's step.
+    if (reply.result && typeof reply.result === "object" && owns(owner)) show(Object.assign({}, latest, reply.result));
     return reply.result;
   }
 
-  async function act(action) {
+  // An action the wizard [owner] asked for counts only while that wizard is still the open one and not cancelled:
+  // a reply landing after Cancel, or after another wizard started, is not this tab's meter or test any more.
+  function owns(owner) { return !owner || (wizard === owner && !owner.stopped); }
+
+  async function act(action, owner) {
     status.textContent = "";
     try {
-      await post(action);
+      await post(action, owner);
+      if (!owns(owner)) return false;
       if (action === "level") metering = true;
       if (action === "wake_test") testing = true;
       keepAlive();
@@ -248,11 +254,16 @@
       }, sources: [], falseWakes: 0
     };
     COMPARED.forEach(function (key) { if (field(key)) wizard.start[key] = setting(key); });
+    var w = wizard;
     status.textContent = "";
     wizardBox.hidden = false;
-    if (!(await act("level"))) { await abandon(); return; }
+    // Cancel can come while either reply is outstanding. Its Stop is then already on its way, so a late reply
+    // must start nothing more: no wake-word test after Stop, and no step for a wizard that has closed.
+    if (!(await act("level", w))) { if (owns(w)) await abandon(); return; }
     // The quiet step listens for the wake word too, where one is armed: a wake heard in a quiet room is a false one.
-    wizard.wakeArmed = await act("wake_test");
+    var armed = await act("wake_test", w);
+    if (!owns(w)) return;
+    w.wakeArmed = armed;
     status.textContent = "";
     enter("quiet");
   }
@@ -297,7 +308,7 @@
 
   async function finishTimed(step) {
     if (!wizard || wizard.step !== step) return;
-    var samples = wizard.samples;
+    var w = wizard, samples = wizard.samples;
     if (step === "quiet") {
       wizard.floor = pick(samples, "floor_dbfs", Math.min);
       var test = latest && latest.wake_test;
@@ -308,8 +319,8 @@
       wizard.clipped = samples.reduce(function (sum, s) { return sum + (s.clipped || 0); }, 0);
       // A fresh test for the wake word, so the quiet step's count does not carry over. A panel with no wake
       // word armed has nothing to test, and goes straight to the suggestions.
-      if (wizard.wakeArmed && await act("wake_test")) enter("wake");
-      else review();
+      if (w.wakeArmed && await act("wake_test", w)) enter("wake");
+      else if (owns(w)) review();
     }
   }
 
@@ -431,7 +442,7 @@
     if (wizard !== w || w.stopped) return;
     w.trying = value;
     sourceTry.disabled = false;
-    if (await act("level") && wizard === w && !w.stopped) await act("wake_test");
+    if (await act("level", w)) await act("wake_test", w);
     if (wizard !== w || w.stopped) return;
     nextButton.hidden = false;
     nextButton.disabled = false;

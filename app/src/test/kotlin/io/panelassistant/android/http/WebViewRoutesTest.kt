@@ -119,6 +119,7 @@ class WebViewRoutesTest {
         }
         override fun readReceipt() = receipt
         override fun writeReceipt(receipt: JSONObject) { this.receipt = receipt }
+        override fun deleteReceipt() { receipt = null }
         override fun download(spec: WebViewSpec, destination: File): Boolean {
             if (acceptedSpec == null) return false
             destination.writeBytes(byteArrayOf(1, 2, 3, 4))

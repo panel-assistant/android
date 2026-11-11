@@ -400,6 +400,23 @@ class DashboardRecoveryTest {
         }
     }
 
+    @Test fun `on-panel sign-in names the panel's LAN address while the listener answers the LAN`() {
+        assertEquals("192.168.1.20", panelSignInHost(listenerOffLan = false, lanIpv4 = "192.168.1.20"))
+        assertEquals(
+            "http://192.168.1.20:8889/api/v1/ha/oauth/panel-start?ha_url=https%3A%2F%2Fha.example",
+            panelHaOAuthStartUrl("https://ha.example", 8889, panelSignInHost(false, "192.168.1.20")),
+        )
+        // Off the LAN the listener binds loopback alone, and a LAN address would not load.
+        assertEquals("127.0.0.1", panelSignInHost(listenerOffLan = true, lanIpv4 = "192.168.1.20"))
+        // No IPv4 address (IPv6-only, interface down) or anything that is not one: loopback.
+        for (none in listOf(null, "", "fd00::20", "192.168.1", "192.168.1.256", "panel.local")) {
+            assertEquals("$none", "127.0.0.1", panelSignInHost(listenerOffLan = false, lanIpv4 = none))
+        }
+        assertTrue(isPanelHaOAuthCallback("http://192.168.1.20:8889/api/v1/ha/oauth/callback?state=s", 8889, "192.168.1.20"))
+        assertFalse(isPanelHaOAuthCallback("http://192.168.1.21:8889/api/v1/ha/oauth/callback?state=s", 8889, "192.168.1.20"))
+        assertFalse(isPanelHaOAuthCallback("http://192.168.1.20:8888/api/v1/ha/oauth/callback?state=s", 8889, "192.168.1.20"))
+    }
+
     @Test fun `physical panel oauth start url targets current local control port`() {
         assertEquals(
             "http://127.0.0.1:8889/api/v1/ha/oauth/panel-start?ha_url=https%3A%2F%2Fha.example%3A8123",

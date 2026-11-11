@@ -76,7 +76,8 @@ internal class OpCallRequest(
     val uri: String,
 )
 
-internal class OpCallOrigin(val remoteAddress: String, val method: HttpMethod)
+/** The request's method. Who sent it is [OpCall.origin], never an address projected here. */
+internal class OpCallOrigin(val method: HttpMethod)
 
 internal class OpCallResponse(private val append: (String, String) -> Unit) {
     val headers = Headers()
@@ -96,7 +97,7 @@ internal class HttpOpCall(private val call: ApplicationCall) : OpCall() {
         OpCallRequest(
             call.request.queryParameters,
             call.request.headers,
-            OpCallOrigin(call.request.origin.remoteAddress, call.request.origin.method),
+            OpCallOrigin(call.request.origin.method),
             call.request.httpMethod,
             call.request.uri,
         )
@@ -158,7 +159,7 @@ internal class ManageOpCall(
             // The headers the door read from its own connection: the page's Host and language.
             managed.origin.headers.forEach { (name, value) -> append(name, value) }
         },
-        OpCallOrigin(managed.origin.peerAddress.orEmpty(), method),
+        OpCallOrigin(method),
         method,
         path,
     )

@@ -24,7 +24,7 @@
     <string name="notice_line_entities_need_decision">encji czeka na decyzję, zanim otworzy się pulpit</string>
     <string name="notice_line_sign_in_needed">Nic nie może się załadować, dopóki panel nie ma logowania do Home Assistant.</string>
     <string name="notice_line_sign_in_stopped">Zapisane logowanie przestało działać.</string>
-    <string name="notice_line_setup_question">W Panel Assistant czeka jedno pytanie konfiguracyjne.</string>
+    <string name="notice_line_setup_question">Na tym panelu pozostaje jedno pytanie konfiguracyjne</string>
     <string name="notice_attention_explanation">Z Home Assistant wszystko w porządku. Panel potrzebuje odpowiedzi w sprawie kontroli bezpieczeństwa wykrytych podczas odczytu twoich encji, zanim będzie mógł otworzyć pulpit.</string>
     <string name="notice_qr_sign_in">Zeskanuj, aby zalogować się z telefonu</string>
     <string name="notice_qr_sign_in_again">Zeskanuj, aby zalogować się ponownie z telefonu</string>

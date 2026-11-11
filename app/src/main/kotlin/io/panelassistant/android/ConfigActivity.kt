@@ -78,6 +78,33 @@ class ConfigActivity : AppCompatActivity() {
     private var readinessJob: Job? = null
     private var pageUrl: String = ""
     private var healthUrl: String = ""
+    /** This screen is the setup wizard ([SETUP_WIZARD_PATH]), and whether the person left it. */
+    private var setupWizard = false
+    private var leftByPerson = false
+
+    /** The person leaves this screen themselves: the setup wizard must not come back on its own after that. */
+    private fun leave() {
+        markLeftByPerson()
+        finish()
+    }
+
+    private fun markLeftByPerson() {
+        leftByPerson = true
+        if (setupWizard) SetupWizardResume.clear()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (setupWizard) SetupWizardResume.clear()
+    }
+
+    override fun onPause() {
+        // Paused without the person leaving: something came over the wizard, most often the built-in renderer
+        // relaunched by one of the wizard's own answers. Arming here, before that renderer resumes, lets its
+        // setup-question screen bring the wizard straight back (SetupWizardResume).
+        if (setupWizard && !leftByPerson) SetupWizardResume.arm()
+        super.onPause()
+    }
 
     override fun onStart() {
         super.onStart()
@@ -149,7 +176,7 @@ class ConfigActivity : AppCompatActivity() {
                 this@ConfigActivity, R.drawable.ic_toolbar_back,
             )
             navigationContentDescription = getString(R.string.back_to_dashboard)
-            setNavigationOnClickListener { finish() }
+            setNavigationOnClickListener { leave() }
             // The title and subtitle take the panel's faces where a vendor font replaces Roboto (PanelFont).
             if (PanelFont.bundled) for (i in 0 until childCount) (getChildAt(i) as? TextView)?.let {
                 it.typeface = if (it.text == title) PanelFont.medium(this@ConfigActivity) else PanelFont.regular(this@ConfigActivity)
@@ -172,6 +199,7 @@ class ConfigActivity : AppCompatActivity() {
         setContentView(root)
         // Optional path (e.g. the sidebar "App Configuration" tap opens /configure); default = the info page.
         val path = intent?.getStringExtra("path")?.takeIf { it.startsWith("/") } ?: "/"
+        setupWizard = path == SETUP_WIZARD_PATH
         // Pin the web UI to the panel's own light/dark (the app applies DayNight at process start, so the
         // activity's uiMode reflects the panel's dark_mode/system setting). The :8888 UI honours ?theme=.
         val dark = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
@@ -345,7 +373,12 @@ class ConfigActivity : AppCompatActivity() {
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         if (maintenanceFence.stop(this)) return
-        if (web.canGoBack()) web.goBack() else super.onBackPressed()
+        if (web.canGoBack()) {
+            web.goBack()
+            return
+        }
+        markLeftByPerson()
+        super.onBackPressed()
     }
 
 }

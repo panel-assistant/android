@@ -64,6 +64,30 @@ class ProximityTouchLearnerTest {
         assertNull(learner.model())
     }
 
+    @Test fun observeReportsTheReadingThatFirstQualifiesTheModelAfterTheLastTouch() {
+        val learner = ProximityTouchLearner()
+        var now = 0L
+        fun hold(raw: Float, ms: Long): Int {
+            var reported = 0
+            val end = now + ms
+            while (now < end) { if (learner.observe(raw + (now / 250 % 3) - 1, now)) reported++; now += 250 }
+            return reported
+        }
+        repeat(3) { hold(50f, 8_000); hold(600f, 500); learner.touch(now); hold(600f, 500); hold(50f, 12_000) }
+        hold(50f, 6_000)
+        assertNull(learner.model())
+        var qualifiedAt: Long? = null
+        val end = now + 60_000
+        while (now < end) {
+            val reported = learner.observe(30f + (now / 250 % 3) - 1, now)
+            if (qualifiedAt == null && learner.model() != null) { qualifiedAt = now; assertTrue("the qualifying reading is reported", reported) }
+            now += 250
+        }
+        checkNotNull(qualifiedAt)
+        // Nothing changes while the room stays as it is, so nothing more is reported.
+        assertEquals(0, hold(30f, 60_000))
+    }
+
     @Test fun durableStateRestoresTheModelAfterARestart() {
         val learned = replay("x2i-taps.csv")
         val restored = ProximityTouchLearner().apply { restore(learned.toJson(), 0L) }

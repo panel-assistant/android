@@ -10,13 +10,13 @@ internal object ConfigSensitiveAdmission {
         hardenedSecurityEnabled: Boolean,
         loopbackPeer: Boolean,
         requestedOperations: List<SensitiveOperation>,
+        /** Operations this caller performs without approval; only the others are held to one approval per save. */
+        exempt: (SensitiveOperation) -> Boolean = { false },
         authorize: suspend (SensitiveOperation) -> Boolean,
     ): ConfigSensitiveAdmissionResult {
-        val operations = requestedOperations.distinct()
-        if (hardenedSecurityEnabled && !loopbackPeer && operations.size > 1) {
-            return ConfigSensitiveAdmissionResult.SEPARATE_SENSITIVE_CHANGES
-        }
         if (!hardenedSecurityEnabled || loopbackPeer) return ConfigSensitiveAdmissionResult.AUTHORIZED
+        val operations = requestedOperations.distinct().filterNot(exempt)
+        if (operations.size > 1) return ConfigSensitiveAdmissionResult.SEPARATE_SENSITIVE_CHANGES
         for (operation in operations) {
             if (!authorize(operation)) return ConfigSensitiveAdmissionResult.DENIED
         }

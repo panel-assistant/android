@@ -349,6 +349,8 @@ internal class DashboardEntityGate(
                 main.postDelayed(this, ENTITY_FILTER_ANSWER_CHECK_MS)
                 return
             }
+            // Answered: the wizard has nothing left to come back for.
+            SetupWizardResume.clear()
             host.buildAndLoad(config)
         }
     }
@@ -493,6 +495,8 @@ internal class DashboardEntityGate(
         val config = readConfig()
         config.setupEntityFilterAnswered = true
         config.setupHomeDashboardChosen = true
+        // Skipping declines the wizard: nothing may bring it back on its own after this.
+        SetupWizardResume.clear()
         main.removeCallbacks(entityFilterAnswerCheck)
         host.buildAndLoad(config)
     }
@@ -521,6 +525,10 @@ internal class DashboardEntityGate(
                 R.string.skip_load_dashboard to { skipEntityFilterQuestion() },
             ),
         )
+        // Straight back to the wizard when this screen only came up because something covered it: the on-panel
+        // sign-in, or a relaunch from one of the wizard's own answers. The screen stays painted underneath, so
+        // leaving the wizard with Back lands here, on Set up and Skip.
+        if (SetupWizardResume.armed()) openSettings(SETUP_WIZARD_PATH)
         main.postDelayed(entityFilterAnswerCheck, ENTITY_FILTER_ANSWER_CHECK_MS)
     }
 
@@ -845,7 +853,5 @@ internal class DashboardEntityGate(
         // Backstop only: answering normally relaunches the renderer from the server. This catches the case
         // where that relaunch is missed, so the panel still proceeds on its own. Local pref read, no network.
         const val ENTITY_FILTER_ANSWER_CHECK_MS = 1_500L
-        /** The panel's own setup wizard, as [MainActivity] opens it before setup first completes. */
-        const val SETUP_WIZARD_PATH = "/setup"
     }
 }

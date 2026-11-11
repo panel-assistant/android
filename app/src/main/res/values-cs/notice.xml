@@ -24,7 +24,7 @@
     <string name="notice_line_entities_need_decision">entit čeká na rozhodnutí, než se otevře ovládací panel</string>
     <string name="notice_line_sign_in_needed">Nic se nenačte, dokud panel nemá přihlášení k Home Assistant.</string>
     <string name="notice_line_sign_in_stopped">Uložené přihlášení přestalo fungovat.</string>
-    <string name="notice_line_setup_question">V aplikaci Panel Assistant čeká jedna otázka nastavení.</string>
+    <string name="notice_line_setup_question">Na tomto panelu zbývá jedna otázka nastavení</string>
     <string name="notice_attention_explanation">Home Assistant je v pořádku. Panel potřebuje odpověď ohledně bezpečnostních kontrol nalezených při čtení vašich entit, než bude moci otevřít ovládací panel.</string>
     <string name="notice_qr_sign_in">Naskenováním z telefonu se přihlásíte</string>
     <string name="notice_qr_sign_in_again">Naskenováním z telefonu se přihlásíte znovu</string>

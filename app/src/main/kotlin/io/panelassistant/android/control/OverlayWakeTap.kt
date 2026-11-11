@@ -14,14 +14,19 @@ import java.util.concurrent.atomic.AtomicLong
  * Needs `SYSTEM_ALERT_WINDOW` (root-granted for the navbar). [canArm] reports whether it's held so
  * ScreenController can degrade a screen-off to a dim when there'd otherwise be no guaranteed local wake.
  */
-class OverlayWakeTap(
-    context: Context,
-    private val observer: PanelTouchObserver = PanelTouchObserver.shared(context),
+class OverlayWakeTap internal constructor(
+    private val canObserve: () -> Boolean,
+    private val captureWakeTouches: (onTouch: () -> Unit) -> AutoCloseable?,
+    // Screen wake can call helper/root I/O; never run it on the main touch callback.
+    private val runWake: (() -> Unit) -> Unit = { Thread(it, "screen-wake-tap").start() },
 ) : WakeTap {
-    @Volatile private var subscription: PanelTouchObserver.Subscription? = null
+    constructor(context: Context, observer: PanelTouchObserver = PanelTouchObserver.shared(context)) :
+        this(observer::canObserve, observer::captureWakeTouches)
+
+    @Volatile private var subscription: AutoCloseable? = null
     private val generation = AtomicLong()
 
-    override fun canArm(): Boolean = observer.canObserve()
+    override fun canArm(): Boolean = canObserve()
 
     @Synchronized
     override fun arm(onTap: () -> Unit): Boolean {
@@ -29,17 +34,22 @@ class OverlayWakeTap(
         val token = generation.incrementAndGet()
         subscription?.close()
         subscription = null
-        val fired = AtomicBoolean()
-        val installed = observer.captureWakeTouches {
-            if (generation.get() == token && fired.compareAndSet(false, true)) {
+        val waking = AtomicBoolean()
+        val installed = captureWakeTouches {
+            if (generation.get() == token && waking.compareAndSet(false, true)) {
                 Log.d(TAG, "tap while dark -> wake")
-                // Screen wake can call helper/root I/O; never run it on the main touch callback.
-                Thread({
-                    runCatching { onTap() }.onFailure {
-                        fired.set(false) // an exceptional wake must leave the next tap able to retry
-                        Log.w(TAG, "wake onTap failed: ${it.message}")
+                runWake {
+                    try {
+                        onTap()
+                    } catch (e: Throwable) {
+                        Log.w(TAG, "wake onTap failed: ${e.message}")
+                    } finally {
+                        // A wake that lit the screen disarmed this generation, so this admits nothing more.
+                        // One that returned or threw with the screen still dark must leave the next tap
+                        // able to retry: a failed wake is an ordinary return, not only an exception.
+                        waking.set(false)
                     }
-                }, "screen-wake-tap").start()
+                }
             }
         }
         if (installed == null || generation.get() != token) {

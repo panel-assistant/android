@@ -39,15 +39,21 @@ class MdnsAdvertiserResponderTest {
         val listener = io.panelassistant.android.http.PaneldListener(scope, { rig.config.httpPort }, { true }, onBound = { rig.config.httpPort = it }) {}
         try {
             advertiser.start(LOOPBACK)
-            assertEquals(8888, browse(browser)!!.port)
+            val first = browse(browser)
+            assertEquals(8888, first!!.port)
+            val firstProbe = first.getPropertyString("probe")
             listener.start {}
             assertTrue(rig.config.httpPort in 1024..32767 && rig.config.httpPort != 8888)
             advertiser.ensureStarted()
             assertTrue(advertiser.health().advertising)
             assertEquals(1, locksHeld)
 
-            val service = browse(browser)
-            assertNotNull("the advertisement never reached the browser", service)
+            // Moving off 8888 retires the first registration with a goodbye and announces a new one. Until the
+            // browser drops the old entry it can still list it, its address records already withdrawn.
+            val service = browse(browser) {
+                it.getPropertyString("probe") != firstProbe && it.port == rig.config.httpPort && it.inet4Addresses.isNotEmpty()
+            }
+            assertNotNull("the re-advertisement on the bound port never reached the browser", service)
             assertEquals(listOf(LOOPBACK), service!!.inet4Addresses.map { it.hostAddress })
             assertTrue(service.inet6Addresses.isEmpty())
             assertEquals(rig.config.httpPort, service.port)

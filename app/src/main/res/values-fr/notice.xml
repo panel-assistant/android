@@ -24,7 +24,7 @@
     <string name="notice_line_entities_need_decision">entités attendent une décision avant l’ouverture du tableau de bord</string>
     <string name="notice_line_sign_in_needed">Rien ne peut se charger tant que le panneau n’a pas de connexion à Home Assistant.</string>
     <string name="notice_line_sign_in_stopped">La connexion enregistrée ne fonctionne plus.</string>
-    <string name="notice_line_setup_question">Une question de configuration attend une réponse dans Panel Assistant.</string>
+    <string name="notice_line_setup_question">Une question de configuration reste ouverte sur ce panneau</string>
     <string name="notice_attention_explanation">Home Assistant fonctionne normalement. Le panneau a besoin d’une réponse sur des contrôles de sécurité détectés pendant la lecture de vos entités avant de pouvoir ouvrir le tableau de bord.</string>
     <string name="notice_qr_sign_in">Scannez pour vous connecter depuis un téléphone</string>
     <string name="notice_qr_sign_in_again">Scannez pour vous reconnecter depuis un téléphone</string>
