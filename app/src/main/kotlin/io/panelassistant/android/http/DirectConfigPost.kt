@@ -27,14 +27,12 @@ import io.panelassistant.android.config.SettingsRegistry
 import io.panelassistant.android.config.Validation
 import io.panelassistant.android.control.PowerSafetyMutationPolicy
 import io.panelassistant.android.security.SensitiveOperation
-import io.panelassistant.android.util.isLoopbackPeer
 import io.panelassistant.android.util.InstallProgress
 import io.panelassistant.android.util.Json
 import io.panelassistant.android.util.RendererPreparationCoordinator
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
-import io.ktor.server.plugins.origin
 import io.ktor.server.response.respondText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -237,8 +235,9 @@ internal class DirectConfigPost(
         val approvalPayload = exactHttpApprovalPayload(call, p.canonicalDigest())
         when (ConfigSensitiveAdmission.authorize(
             hardenedSecurityEnabled = config.hardenedSecurityEnabled,
-            loopbackPeer = isLoopbackPeer(call.request.origin.remoteAddress),
+            loopbackPeer = call.origin.isLoopback,
             requestedOperations = sensitiveOperations,
+            exempt = { operation -> relayedAdministratorExempt(call.origin, operation) },
             authorize = { operation ->
                 authorizeSensitive(
                     call,

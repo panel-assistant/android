@@ -9,6 +9,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.Parameters
 import io.ktor.server.application.ApplicationCall
+import io.ktor.server.plugins.origin
 import io.ktor.server.request.httpMethod
 import io.ktor.server.request.uri
 import io.ktor.server.response.respondText
@@ -232,10 +233,10 @@ internal suspend fun authorizeSensitiveRequest(
     broker: ApprovalBroker,
 ): Boolean {
     call.http?.let { http ->
-        return authorizeSensitiveRequest(http, hardened, call.request.origin.remoteAddress, operation, payload, summary, broker)
+        return authorizeSensitiveRequest(http, hardened, http.request.origin.remoteAddress, operation, payload, summary, broker)
     }
     val origin = call.origin
-    if (!hardened || origin.peerAddress?.let(::isLoopbackPeer) == true) return true
+    if (!hardened || origin.isLoopback) return true
     if (relayedAdministratorExempt(origin, operation)) return true
     val registration = { broker.request(operation, origin.approvalKey, payload, summary) }
     val (decision, id) = (call as? ManageOpCall)?.managed?.approval?.request(registration) ?: registration()

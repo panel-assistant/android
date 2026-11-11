@@ -1,5 +1,7 @@
 package io.panelassistant.android
 
+import io.panelassistant.android.util.isLoopbackPeer
+
 /**
  * Who a command came from (protocol section 20.2). [approvalKey] is the approval principal: `panel_assistant`,
  * `user:<Home Assistant user id>` or `peer:<address>`, so an approval earned by one origin can never be
@@ -20,6 +22,12 @@ internal data class CommandOrigin private constructor(
 ) {
     val isPanelAssistant: Boolean get() = approvalKey == PANEL_ASSISTANT
     val isUser: Boolean get() = approvalKey.startsWith(USER_PREFIX)
+
+    /**
+     * Whether the request came from software on the panel itself: a `peer` whose address is loopback. Panel
+     * Assistant and a relayed Home Assistant user have no peer address and are remote, whatever else they may do.
+     */
+    val isLoopback: Boolean get() = peerAddress?.let(::isLoopbackPeer) == true
 
     /**
      * Who owns a subscription (protocol section 20.9 check 4): the connection when there is one, so two tabs
