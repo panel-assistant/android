@@ -31,9 +31,15 @@ class NetworkAdbManagedConfigPostTest {
         ManagedNetworkAdb.ownerSwitch = null
     }
 
-    private fun ownerSwitch(waitMs: Long?) = object : ManagedNetworkAdb.OwnerSwitch {
+    /** The lease owner as the door sees it; [releases] counts how often the door asked for the lease back. */
+    private class OwnerSwitch(private val waitMs: Long?, private val gives: Boolean) : ManagedNetworkAdb.OwnerSwitch {
+        var releases = 0
         override fun waitMs() = waitMs
-        override fun release() = false
+        override fun release(): Boolean {
+            releases++
+            if (gives) ManagedNetworkAdb.managed = false
+            return gives
+        }
     }
 
     @Test fun `a Configure ON while Panel Assistant manages ADB is refused and leaves nothing pending`() =
@@ -79,7 +85,9 @@ class NetworkAdbManagedConfigPostTest {
             setField(fixture.server, "applySetting", { _: String, value: String -> applied += value; false })
             setField(fixture.server, "onReconfigure", { _: Set<String> -> })
             ManagedNetworkAdb.managed = true
-            ManagedNetworkAdb.ownerSwitch = ownerSwitch(waitMs = 61_001)
+            // A lease owner that would give the lease back if asked: the door must not ask yet.
+            val owner = OwnerSwitch(waitMs = 61_001, gives = true)
+            ManagedNetworkAdb.ownerSwitch = owner
             testApplication {
                 application { fixture.mount(this) }
                 val response = client.post("/api/v1/config") {
@@ -90,7 +98,38 @@ class NetworkAdbManagedConfigPostTest {
                 assertEquals(HttpStatusCode.Conflict, response.status, body.toString())
                 assertEquals("network-adb-managed-by-panel-assistant", body.getString("error"))
                 assertEquals(62, body.getInt("owner_switch_wait_s"))
+                assertEquals(0, owner.releases, "the lease is not asked for before the bound")
                 assertTrue(applied.isEmpty(), "a refused ON never reaches the controller: $applied")
+                assertFalse(config.networkAdbEnabled)
+            }
+        }
+
+    @Test fun `an ON after the bound that cannot have the lease back is refused and leaves nothing pending`() =
+        withFullReadServer { config, fixture ->
+            capabilities(fixture, Capabilities(appCanSu = true, networkAdb = true))
+            val authority = LiveSettingAuthority(setOf("network_adb"), bootIdentity = { "test-boot" })
+            val applied = mutableListOf<String>()
+            setField(fixture.server, "applySetting", { key: String, value: String ->
+                authority.applyOrQueueOutcome(key, value, null) { _, appliedValue, _ ->
+                    applied += appliedValue
+                    LiveSettingApplyResult.FAILED
+                }
+            })
+            setField(fixture.server, "onReconfigure", { _: Set<String> -> })
+            ManagedNetworkAdb.managed = true
+            // The session came back in the meantime, say, or the helper did not answer.
+            val owner = OwnerSwitch(waitMs = 0, gives = false)
+            ManagedNetworkAdb.ownerSwitch = owner
+            testApplication {
+                application { fixture.mount(this) }
+                val response = client.post("/api/v1/config") {
+                    header(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+                    setBody(JSONObject(mapOf("network_adb" to true)).toString())
+                }
+                assertEquals(HttpStatusCode.Conflict, response.status, response.bodyAsText())
+                assertEquals(1, owner.releases)
+                assertTrue(applied.isEmpty(), "a refused ON never reaches the controller: $applied")
+                assertTrue(authority.pendingSnapshot().isEmpty(), "nothing is left to open ADB later")
                 assertFalse(config.networkAdbEnabled)
             }
         }
@@ -108,7 +147,8 @@ class NetworkAdbManagedConfigPostTest {
             })
             setField(fixture.server, "onReconfigure", { _: Set<String> -> })
             ManagedNetworkAdb.managed = true
-            ManagedNetworkAdb.ownerSwitch = ownerSwitch(waitMs = 0)
+            val owner = OwnerSwitch(waitMs = 0, gives = true)
+            ManagedNetworkAdb.ownerSwitch = owner
             testApplication {
                 application { fixture.mount(this) }
                 val response = client.post("/api/v1/config") {
@@ -116,6 +156,7 @@ class NetworkAdbManagedConfigPostTest {
                     setBody(JSONObject(mapOf("network_adb" to true)).toString())
                 }
                 assertFalse(response.status == HttpStatusCode.Conflict, response.bodyAsText())
+                assertEquals(1, owner.releases, "the owner's press asks for the lease back exactly once")
                 assertEquals(listOf("true"), applied)
             }
         }

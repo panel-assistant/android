@@ -92,16 +92,10 @@ class AdbController internal constructor(
      * intent + brings adb up. OFF clears the intent, and only tears adb down if ha-paneld was the one
      * persisting it — an adb port another mechanism opened is left running.
      */
-    internal fun set(on: Boolean): ControlApplyOutcome {
-        // The owner's switch while Panel Assistant's lease keeps ADB off: the lease owner decides whether
-        // it may be given back (no session for long enough, not Hardened) and reopens ADB itself. It takes
-        // the transition gate in its own order, so this runs before the gate is held here.
-        if (on && ManagedNetworkAdb.managed) ManagedNetworkAdb.releaseToOwner()
-        return RemoteDebugSecurityTransitionGate.mutate { setLocked(on) }
-    }
-
-    private fun setLocked(on: Boolean): ControlApplyOutcome = run mutate@{
+    internal fun set(on: Boolean): ControlApplyOutcome = RemoteDebugSecurityTransitionGate.mutate {
         if (on) {
+            // Never gives a held lease back: a queued or restored ON reaches here too. Only the owner's
+            // own press does that, at the settings door (directNetworkAdbOnRefusalJson), before this.
             if (ManagedNetworkAdb.ownsRuntime()) return@mutate ControlApplyOutcome.FAILED
             // A marker is a durable OFF instruction, including when its contents are corrupt. Never
             // convert an interrupted teardown into TCP enablement merely because config ownership is
@@ -434,12 +428,17 @@ internal fun completeHardenedNetworkAdbAdmission(
     }
 }
 
-/** The refusal body for a direct Network ADB ON while Panel Assistant's lease keeps ADB off, or null
- *  when the request may go on: it is not an ON, nothing is managed, or the owner's switch works now. */
-internal fun managedNetworkAdbRefusalJson(turnOn: Boolean): String? {
+/**
+ * The settings door for a direct Network ADB ON, the owner's own press. Null lets the request go on: it
+ * is not an ON, nothing is managed, or the panel has been without its session for long enough and the
+ * lease was given back just now. Otherwise the refusal body, and the lease is untouched. This is the
+ * only place a held lease is given back; it blocks briefly on the helper, and must not hold the
+ * transition gate.
+ */
+internal fun directNetworkAdbOnRefusalJson(turnOn: Boolean): String? {
     if (!turnOn || !ManagedNetworkAdb.managed) return null
     val wait = ManagedNetworkAdb.ownerSwitchWaitMs()
-    if (wait == 0L) return null
+    if (wait == 0L && ManagedNetworkAdb.releaseToOwner()) return null
     val seconds = wait?.let { (it + 999) / 1000 }
     val message = if (seconds == null) "Panel Assistant manages network ADB on this panel."
         else "Panel Assistant manages network ADB on this panel. This switch works after the panel has been without its Home Assistant connection for ${ManagedNetworkAdb.OWNER_SWITCH_AFTER_MS / 60_000} minutes."

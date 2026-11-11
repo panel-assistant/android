@@ -2,6 +2,7 @@ package io.panelassistant.android
 
 import io.panelassistant.android.control.FakeRootShell
 import io.panelassistant.android.control.ManagedNetworkAdb
+import io.panelassistant.android.control.directNetworkAdbOnRefusalJson
 import io.panelassistant.android.panelassistant.LocalAdbEndpoint
 import io.panelassistant.android.panelassistant.LocalAdbRuntime
 import io.panelassistant.android.panelassistant.LocalAdbState
@@ -36,6 +37,8 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
         clock.now += bound - 1
         assertEquals(1L, ManagedNetworkAdb.ownerSwitchWaitMs())
         assertNotEquals(LiveSettingRequestOutcome.APPLIED, turnOn(rig))
+        // The lease owner refuses by itself too, whatever a caller believes about the bound.
+        assertFalse(ManagedNetworkAdb.releaseToOwner())
         assertEquals("the lease still holds one millisecond short of the bound", LocalAdbState(true, false), endpoint.state())
         assertFalse(endpoint.listening)
         assertFalse(rig.config.networkAdbEnabled)
@@ -72,6 +75,24 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
         assertTrue(ManagedNetworkAdb.managed)
         assertNull(ManagedNetworkAdb.ownerSwitchWaitMs())
         assertTrue(rig.config.networkAdbEnabled)
+    }
+
+    @Test fun anOnThatIsNotTheOwnersPressNeverGivesTheLeaseBack() = lease { rig, endpoint, clock ->
+        runtime.sessionEnded()
+        clock.now += 10 * bound
+        assertEquals("the owner's switch would work now", 0L, ManagedNetworkAdb.ownerSwitchWaitMs())
+
+        // An ON an older version queued, or one a restore carries, reaches the apply path with nobody at
+        // the door. It stays refused, however often it is tried, and Panel Assistant's own command too.
+        val authority = LiveSettingAuthority(setOf("network_adb"), bootIdentity = { "test-boot" })
+        repeat(2) { assertNotEquals(LiveSettingRequestOutcome.APPLIED, applyOn(rig, authority)) }
+        assertNotEquals(io.panelassistant.android.panelassistant.PanelAssistantCommandResult.Applied, submitNative(rig, "network_adb", "on"))
+        assertEquals(LocalAdbState(true, false), endpoint.state())
+        assertFalse(endpoint.listening)
+        assertFalse(rig.config.networkAdbEnabled)
+        val renewals = endpoint.beats
+        advanceTimeBy(65_000)
+        assertEquals("the lease is still renewed", renewals + 2, endpoint.beats)
     }
 
     @Test fun aSessionThatReturnsBeforeTheBoundStartsTheCountAgain() = lease { rig, endpoint, clock ->
@@ -127,11 +148,13 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
         }
     }
 
-    /** The owner's switch as the Configure page applies it. */
-    private fun turnOn(rig: Rig): LiveSettingRequestOutcome = requestLiveSetting(
-        LiveSettingAuthority(setOf("network_adb"), bootIdentity = { "test-boot" }), rig.config, { rig.commands },
-        "network_adb", "true", unlockKiosk = { true }, refreshAutoSleep = {},
-    )
+    /** The owner's press: the settings door first, and only an ON it lets through is applied. */
+    private fun turnOn(rig: Rig): LiveSettingRequestOutcome =
+        if (directNetworkAdbOnRefusalJson(turnOn = true) != null) LiveSettingRequestOutcome.REJECTED else applyOn(rig)
+
+    /** The apply path alone, as a queued or restored ON reaches it, with no owner at the door. */
+    private fun applyOn(rig: Rig, authority: LiveSettingAuthority = LiveSettingAuthority(setOf("network_adb"), bootIdentity = { "test-boot" })) =
+        requestLiveSetting(authority, rig.config, { rig.commands }, "network_adb", "true", unlockKiosk = { true }, refreshAutoSleep = {})
 
     /** Native daemon boundary only; the session runtime, dispatcher and controller are production. */
     private class LeaseEndpoint : LocalAdbEndpoint {
