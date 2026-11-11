@@ -87,9 +87,9 @@ class AddressClassifierTest {
 
     @Test fun unparseableReturnsFalseEverywhere() {
         // Values that make getByName throw (UnknownHostException / IllegalArgumentException) → all false.
-        // NB: getByName("") resolves to loopback in the JVM, so the empty string is deliberately NOT here —
-        // it is a genuine loopback input under both the original and consolidated classifiers.
-        for (bad in listOf("—", "not-an-address!", "999.999.999.999")) {
+        // An empty value is no address either, nor is one that is only the `/` or `%zone` the parser strips:
+        // it is never resolved.
+        for (bad in listOf("—", "not-an-address!", "999.999.999.999", "", " ", "/", "%lo")) {
             assertFalse("isLoopbackPeer($bad)", isLoopbackPeer(bad))
             assertFalse("isLocalSource($bad)", isLocalSource(bad))
             assertFalse("isRoutable($bad)", isRoutable(bad))

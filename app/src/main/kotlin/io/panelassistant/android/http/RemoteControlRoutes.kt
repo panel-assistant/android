@@ -11,14 +11,12 @@ import io.panelassistant.android.metrics.FeatureCosts
 import io.panelassistant.android.metrics.FeatureCostOperation
 import io.panelassistant.android.metrics.FeatureCostOutcome
 import io.panelassistant.android.security.SensitiveOperation
-import io.panelassistant.android.util.isLoopbackPeer
 import io.panelassistant.android.util.Json
 import io.panelassistant.android.util.LatestDispatcher
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.call
-import io.ktor.server.plugins.origin
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.post
 import io.ktor.server.routing.Route
@@ -145,8 +143,9 @@ internal class RemoteControlRoutes(
     private suspend fun respondRemoteAdmission(call: OpCall, command: RemoteControl) {
         // Coordinate injection cannot be made self-approving: an approved tap could target the next
         // approval dialog. Hardened mode therefore trusts taps only from loopback software already on
-        // the panel. Non-coordinate navigation remains routine; reboot has its own explicit gate below.
-        val loopback = isLoopbackPeer(call.request.origin.remoteAddress)
+        // the panel, on either door: a relayed Home Assistant administrator is remote and has no exemption
+        // here. Non-coordinate navigation remains routine; reboot has its own explicit gate below.
+        val loopback = call.origin.isLoopback
         if (command is RemoteControl.Tap && config.hardenedSecurityEnabled && !loopback) {
             call.respondText(
                 """{"ok":false,"error":"remote-input-disabled"}""",

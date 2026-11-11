@@ -67,8 +67,12 @@ fun localIpv6(): String? {
  * an IPv4-mapped IPv6 form (`::ffff:a.b.c.d`) to its IPv4 address, so a dual-stack bind cannot smuggle a
  * public IPv4 past the [isLanLocal] check.
  */
-private fun parseAddress(host: String): InetAddress? =
-    runCatching { InetAddress.getByName(host.substringBefore('%').removePrefix("/")) }.getOrNull()
+private fun parseAddress(host: String): InetAddress? {
+    val literal = host.substringBefore('%').removePrefix("/")
+    // An empty value is no address and is never resolved.
+    if (literal.isBlank()) return null
+    return runCatching { InetAddress.getByName(literal) }.getOrNull()
+}
 
 /**
  * True if [addr] is a LAN-local address: loopback, link-local, RFC1918 site-local, wildcard/any-local, or
