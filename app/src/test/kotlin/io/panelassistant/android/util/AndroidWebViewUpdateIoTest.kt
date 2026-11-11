@@ -226,20 +226,23 @@ class AndroidWebViewUpdateIoTest {
             val source = File(fixture.root, "expected.apk").apply { writeBytes(bytes) }
             val expected = spec(source).copy(url = "https://localhost:${server.address.port}/provider.apk")
             val destination = File(fixture.io.directory, "candidate.apk")
-            assertTrue(fixture.io.download(expected, destination))
+            assertNull(fixture.io.download(expected, destination))
             assertArrayEquals(bytes, destination.readBytes())
             assertEquals(1, hits.get())
-            assertFalse(fixture.io.download(expected.copy(size = Long.MAX_VALUE), destination))
+            assertEquals("no_space", fixture.io.download(expected.copy(size = Long.MAX_VALUE), destination))
             assertEquals("Insufficient space must prevent opening a connection", 1, hits.get())
             status = 503
-            assertFalse(fixture.io.download(expected, destination))
+            assertEquals("http_503", fixture.io.download(expected, destination))
             assertEquals(2, hits.get())
+            status = 404
+            assertEquals("An unpublished artifact is told apart from other statuses", "not_found", fixture.io.download(expected, destination))
+            assertEquals(3, hits.get())
             status = 200
             bytes = ByteArray(8) { 1 }
-            assertFalse("A response larger than the manifest bound must fail", fixture.io.download(expected, destination))
-            assertEquals(3, hits.get())
+            assertEquals("A response larger than the manifest bound must fail", "too_large", fixture.io.download(expected, destination))
+            assertEquals(4, hits.get())
             server.stop(0)
-            assertFalse(fixture.io.download(expected, destination))
+            assertEquals("unreachable", fixture.io.download(expected, destination))
         } finally {
             server.stop(0)
             HttpsURLConnection.setDefaultSSLSocketFactory(previous)

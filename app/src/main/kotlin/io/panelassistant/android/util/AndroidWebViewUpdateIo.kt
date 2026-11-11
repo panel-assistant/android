@@ -12,6 +12,8 @@ import io.panelassistant.android.control.Su
 import io.panelassistant.android.device.DeviceProfile
 import io.panelassistant.android.http.PanelInfo
 import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
 import java.security.MessageDigest
 import java.util.UUID
 import java.util.zip.ZipFile
@@ -74,9 +76,8 @@ internal class AndroidWebViewUpdateIo(private val context: Context, private val 
 
     override fun deleteReceipt() = receipt.delete()
 
-    override fun download(spec: io.panelassistant.android.device.WebViewSpec, destination: File): Boolean =
-        directory.usableSpace >= spec.size &&
-            AppInstaller.download(spec.url, destination, spec.size) == AppInstaller.DownloadResult.Succeeded
+    override fun download(spec: io.panelassistant.android.device.WebViewSpec, destination: File): String? =
+        fetch(spec, destination, directory.usableSpace)
 
     override fun installedMatches(spec: io.panelassistant.android.device.WebViewSpec): Boolean = runCatching {
         val installed = packageInfo(AppInstaller.WEBVIEW_PKG) ?: return@runCatching false
@@ -106,5 +107,20 @@ internal class AndroidWebViewUpdateIo(private val context: Context, private val 
     @Suppress("DEPRECATION")
     private fun versionCode(info: PackageInfo): Long = if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
 
-    companion object { private val PROCESS_ID = UUID.randomUUID().toString() }
+    companion object {
+        private val PROCESS_ID = UUID.randomUUID().toString()
+
+        /** Null when [destination] holds the pinned response; otherwise the transaction's download cause. */
+        internal fun fetch(
+            spec: io.panelassistant.android.device.WebViewSpec,
+            destination: File,
+            usableSpace: Long,
+            openConnection: (URL) -> HttpURLConnection = { it.openConnection() as HttpURLConnection },
+        ): String? {
+            if (usableSpace < spec.size) return "no_space"
+            var cause = "failed"
+            val result = AppInstaller.download(spec.url, destination, spec.size, cause = { cause = it }, openConnection = openConnection)
+            return if (result == AppInstaller.DownloadResult.Succeeded) null else cause
+        }
+    }
 }

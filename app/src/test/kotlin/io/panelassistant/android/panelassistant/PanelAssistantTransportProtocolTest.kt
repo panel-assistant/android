@@ -107,6 +107,13 @@ class PanelAssistantTransportProtocolTest {
         assertEquals("inner", fromArgs.args?.opt("request_id"))
         assertEquals(sha, fromArgs.args?.opt("artifact_sha256"))
 
+        // Home Assistant's blob stays in the arguments when the request fields are lifted from the top level.
+        val blob = JSONObject().put("url", "/api/panel_assistant/blob/token").put("size", 4).put("sha256", sha)
+        val lifted = manage(JSONObject().put("op", "webview.install").put("request_id", "r-2").put("artifact_sha256", sha)
+            .put("args", JSONObject().put("blob", blob)))
+        assertEquals("r-2", lifted.args?.opt("request_id"))
+        assertEquals(blob.toString(), lifted.args?.optJSONObject("blob")?.toString())
+
         val otherOp = manage(JSONObject().put("op", "status").put("request_id", "r-1").put("artifact_sha256", sha))
         assertNull(otherOp.args)
     }

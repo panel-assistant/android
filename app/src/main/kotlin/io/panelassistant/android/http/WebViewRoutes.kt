@@ -9,7 +9,7 @@ import io.ktor.server.routing.Route
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** Owner-started provider operation; the native session calls the same owner with its own admission. */
+/** Owner-started provider operation; the native session calls the same owner with its own admission, and only it may offer Home Assistant's copy of the pin (`args.blob`). */
 internal fun Route.webViewRoutes(
     owner: WebViewUpdate,
     authorize: suspend (OpCall, SensitiveOperation, String, String) -> Boolean,
