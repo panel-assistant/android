@@ -31,7 +31,12 @@ internal class DashboardRendererRig(
     entityGateScope: CoroutineScope = CoroutineScope(Dispatchers.Unconfined),
     /** The activity's own scope; by default nothing launched on it ever runs. */
     activityScope: CoroutineScope = CoroutineScope(java.util.concurrent.Executor {}.asCoroutineDispatcher()),
+    /** Let the entity gate show the setup-question screen, recording its actions and the settings it opens. */
+    setupQuestion: Boolean = false,
 ) : AutoCloseable {
+    /** The setup-question screen's actions as last painted, and every settings path the gate opened. */
+    var question: List<Pair<Int, () -> Unit>>? = null
+    val opened = mutableListOf<String>()
     val activity: DashboardActivity = allocate(DashboardActivity::class.java)
     private val main: Handler = allocate(Handler::class.java)
     private val gate = RendererGenerationGate()
@@ -56,10 +61,12 @@ internal class DashboardRendererRig(
             override val destroyed get() = false
             override val screenAwake get() = pacer.screenAwake
             override fun buildAndLoad(config: Config) = error("no rebuild expected")
-            override fun teardownWeb() = error("no teardown expected")
+            override fun teardownWeb() { if (!setupQuestion) error("no teardown expected") }
             override fun reconcile() = error("no reconcile expected")
         },
         readConfig = { config },
+        openSettings = { opened += it },
+        questionPainter = { actions -> if (setupQuestion) question = actions else error("no setup question expected") },
     )
 
     init {

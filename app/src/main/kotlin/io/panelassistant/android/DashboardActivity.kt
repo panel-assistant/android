@@ -849,6 +849,10 @@ class DashboardActivity : AppCompatActivity() {
         // a refused re-admission otherwise re-fired the change on every later trigger, replaying the
         // refused credential to Home Assistant over the status screen.
         if (RendererRebuildCause.CREDENTIAL in causes) builtAuthOwner = config.haAuthSnapshot().stableOwner()
+        // The on-panel sign-in ends here, not in its page's success callback: committing the credential relaunches
+        // this renderer, and the rebuild tears the sign-in page down before that callback can run (bench Shelly
+        // X2i, 2026-11-11). A setup question still open then takes the panel straight back to its wizard.
+        if (RendererRebuildCause.SIGNED_IN in causes) SetupWizardResume.arm()
         teardownWeb()
         entityGate.configureEntityFilter(config, prepared)
         buildAndLoad(config)

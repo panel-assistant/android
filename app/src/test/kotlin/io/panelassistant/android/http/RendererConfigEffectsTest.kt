@@ -49,6 +49,19 @@ class RendererConfigEffectsTest {
         assertTrue(effects.relaunchBuiltin)
     }
 
+    /** Only a lone home change may wait for the setup question's answer; a credential with it still relaunches. */
+    @Test fun aHomeChangeIsHomeOnlyUnlessSomethingElseNeedsTheRelaunch() {
+        val home = RendererConfigEffects.between(mapOf("home_dashboard" to ""), mapOf("home_dashboard" to "/home"))
+        assertTrue(home.relaunchBuiltin)
+        assertTrue(home.relaunchForHomeOnly)
+        val homeAndCredential = RendererConfigEffects.between(
+            mapOf("home_dashboard" to "", "ha_token" to ""),
+            mapOf("home_dashboard" to "/home", "ha_token" to "fresh"),
+        )
+        assertTrue(homeAndCredential.relaunchBuiltin)
+        assertFalse(homeAndCredential.relaunchForHomeOnly)
+    }
+
     @Test fun nativeKioskChangeNeedsForegroundRelaunchWithoutReload() {
         val effects = RendererConfigEffects.between(
             previous = mapOf("dashboard_native_kiosk" to "false"),

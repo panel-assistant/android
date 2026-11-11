@@ -303,6 +303,24 @@ internal fun entityFilterQuestionPending(
     (haToken.isNotBlank() || haRefreshToken.isNotBlank())
 
 /**
+ * Whether the built-in renderer is held on the setup question ([entityFilterQuestionPending]) by [config] as it
+ * stands. Nothing renders until the answer, and the answer releases the renderer itself, so a home-dashboard
+ * change made meanwhile has nothing to bring to the front. Relaunching for it anyway destroyed the setup wizard
+ * that made the change (the renderer is singleTask, so its relaunch clears the wizard above it) in the middle
+ * of "Use this dashboard": the rest of that step's answers never reached the panel and setup stopped half-way,
+ * with the filter on and the question unanswered (bench Shelly X2i, 2026-11-09 and 2026-11-11).
+ */
+internal fun setupQuestionHoldsRenderer(config: Config): Boolean = entityFilterQuestionPending(
+    builtinRenderer = true,
+    haUrl = config.haUrl,
+    haToken = config.haToken,
+    haRefreshToken = config.haRefreshToken,
+    entityFilterAnswered = config.setupEntityFilterAnswered,
+    setupEverCompleted = config.setupEverCompleted,
+    entityFilterEnabled = config.dashboardEntityLearningEnabled,
+)
+
+/**
  * Exact document origins that may inherit panel startup scripts. This mirrors [dashboardNavigationAllowed]:
  * HTTPS is restricted to its configured origin, while an HTTP configuration also admits only the same-host
  * HTTPS upgrade using the same explicit port (or the HTTPS default when neither URL has one).
