@@ -723,7 +723,7 @@ class ScreenController(
                 // wrote; either way the app's level goes back on, and stays on through a late vendor write.
                 settleAtAppLevel(savedLevel.coerceAtLeast(MIN_ON))
                 // Known dark, or unanswered and unknown: a vendor still enforcing its off may hold the
-                // node at zero. Keep a one-shot consuming touch that retries this wake, so a person is
+                // node at zero. Keep a consuming touch that retries this wake, so a person is
                 // never left with a dark panel and no way back.
                 val finalLit = vendor.lit()
                 val woke = completeWake(if (relit) "screen -> on (vendor rpc)" else "screen -> on (brightness; the vendor screen RPC did not relight it)")
