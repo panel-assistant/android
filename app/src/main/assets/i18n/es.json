@@ -1919,7 +1919,7 @@
       "text": "Valor deseado guardado; falta aplicarlo al hardware."
     },
     "configure.save.hardware_unavailable": {
-      "text": "Guardado. Este panel todavía no puede aplicar el ajuste; se aplicará en cuanto sea posible.",
+      "text": "Guardado. Este panel aún no tiene forma de aplicarlo; se aplicará si eso cambia.",
       "sourceHash": "67b5afeafe3ae46c4d5fe55a308ba88d39ff45f61c663e5fae47d17317334f3b",
       "state": "machine-cross-checked"
     },
@@ -2711,7 +2711,7 @@
     "dashboard.banner.zoom.action_suffix": {
       "sourceHash": "7220acdb7b7548881a3939db495a9a5117cc8975f49c21d5c5f447c802508074",
       "state": "machine-cross-checked",
-      "text": "del panel, que ajusta la escala de todo el panel con nitidez; configúrala y luego restablece aquí el zoom."
+      "text": "propia del panel, que ajusta la escala de todo el panel con nitidez; configúrala y luego restablece aquí el zoom."
     },
     "dashboard.banner.zoom.display_density": {
       "sourceHash": "8ed65550c9c872be049e78dc7c88aeca0b7a035c05b7fa79496c17ab127ebb6f",
@@ -5254,7 +5254,7 @@
       "state": "machine-cross-checked"
     },
     "entities.issue.allow_note": {
-      "text": "Permitir esta comprobación nunca añade entidades. Solo permite que las actualizaciones automáticas continúen sin ellas. Para suscribirte a una, búscala en el catálogo de la parte superior de esta página y establécela como {pinned}; el anclaje manual se conserva hasta que lo quites.",
+      "text": "Permitir esta comprobación nunca añade entidades. Solo permite que las actualizaciones automáticas continúen sin ellas. Para suscribirte a una, búscala con el buscador del catálogo de la parte superior de esta página y establécela como {pinned}; el anclaje manual se conserva hasta que lo quites.",
       "sourceHash": "d3c4b6d2399ff0b190f6ccafb3bb888b75db62d7a682cd5a5c06dbe91a24df72",
       "state": "machine-cross-checked"
     },
@@ -5409,7 +5409,7 @@
       "state": "machine-cross-checked"
     },
     "entities.issue.ignore_confirm": {
-      "text": "¿Continuar omitiendo todas las entidades potenciales de esta configuración? Esto no añade entidades a la suscripción. Las tarjetas que dependan de ellas pueden aparecer como no disponibles hasta que ancles manualmente esas entidades, limites el panel de control o vuelvas a activar la comprobación de seguridad.",
+      "text": "¿Continuar omitiendo todas las entidades potenciales de esta configuración? Esto no añade entidades a la suscripción. Las tarjetas que dependan de ellas pueden aparecer como no disponibles hasta que ancles manualmente esas entidades, se limite el panel de control o se vuelva a activar la comprobación de seguridad.",
       "sourceHash": "67413638e256350b1b2523684e53c746d79e9ca69729a04598065bc78e18d4ce",
       "state": "machine-cross-checked"
     },
@@ -5739,7 +5739,7 @@
       "state": "machine-cross-checked"
     },
     "entities.reset.confirm": {
-      "text": "¿Restablecer todas las evidencias de entidades aprendidas, las excepciones manuales de anclaje o exclusión y las decisiones de ignorar comprobaciones de seguridad de detección de entidades? Esta acción no se puede deshacer. La suscripción activa actual se conservará mientras un análisis de sustitución reconstruye las evidencias.",
+      "text": "¿Restablecer todas las evidencias aprendidas sobre entidades, las excepciones manuales de anclaje o exclusión y las decisiones de ignorar comprobaciones de seguridad de detección de entidades? Esta acción no se puede deshacer. La suscripción activa actual se conservará mientras un análisis de sustitución reconstruye las evidencias.",
       "sourceHash": "af56ee112e5d4353209106117b9426c18de16a6c7cfc2c2e2db39526d56a1db6",
       "state": "machine-cross-checked"
     },
@@ -10229,7 +10229,7 @@
       "state": "machine-cross-checked"
     },
     "runtime.power_safety.summary.caution": {
-      "text": "La conectividad del panel depende actualmente de una sola protección de alimentación observada.",
+      "text": "La posibilidad de acceder al panel depende actualmente de una sola protección de alimentación observada.",
       "sourceHash": "f542740e25ab3bcbc4d751bf69c2afc0a98ba6522b8e62b8890e3a077f4d1640",
       "state": "machine-cross-checked"
     },

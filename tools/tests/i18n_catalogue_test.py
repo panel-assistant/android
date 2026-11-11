@@ -1274,7 +1274,8 @@ class CatalogueTest(unittest.TestCase):
                 i18n.validate_target_language(key, text, "cs", record)
                 for changed_key, changed_text, locale in (
                     (f"{key}.other", text, "cs"),
-                    (key, text, "it"),
+                    (key, text, next(locale for locale in ("it", "fr", "de", "es", "pl")
+                                     if i18n.UNCHANGED_TARGET_EXCEPTIONS.get((locale, key)) != text)),
                     (key, text + " ", "cs"),
                     (key, text + " Ελληνικά", "cs"),
                 ):

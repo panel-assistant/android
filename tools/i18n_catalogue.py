@@ -193,6 +193,7 @@ UNCHANGED_TARGET_EXCEPTIONS = {
     ("fr", "configure.descriptions"): "Descriptions",
     ("fr", "settings.dashboard_zoom.label"): "Zoom (%)",
     ("it", "dashboard.fact.ha_companion"): "Home Assistant Companion",
+    ("it", "configure.duration.minutes"): "{count} min",
     ("it", "configure.group.dashboard"): "Dashboard",
     ("it", "configure.option.auto_detail"): "auto ({value})",
     ("it", "dashboard.camera.label.bitrate"): "Bitrate",
