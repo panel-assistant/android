@@ -217,6 +217,25 @@ class ModesTest(unittest.TestCase):
             self.assertEqual("SETUP    CI / unit / Set up JDK 17: median 25s" in out, failed)
 
 
+    def test_the_weekly_median_leaves_out_the_budget_job(self):
+        # The reporter runs last; a 29 s run reported by a 10 s budget job measures 29 s.
+        self.budget.write_text(json.dumps({"sample_size": 3, "budgets": {"CI": 35}}))
+
+        def fetch(url, _token):
+            path = urlparse(url).path
+            if path.endswith("/actions/workflows"):
+                return {"workflows": [{"name": "CI", "id": 7}]}
+            if path.endswith("/jobs"):
+                return {"jobs": [{"name": "build", "completed_at": "2026-11-11T11:48:56Z"},
+                                 {"name": "budget", "completed_at": "2026-11-11T11:49:05Z"}]}
+            return {"workflow_runs": [_run("2026-11-11T11:48:27Z", "2026-11-11T11:49:06Z", id=n) for n in range(3)]}
+
+        result, out = _main(["--repository", "example/repo", "--budget-file", str(self.budget)], fetch,
+                            {"GITHUB_TOKEN": "t"})
+        self.assertEqual(result, 0, out)
+        self.assertIn("median 29s", out)
+
+
 class WorkflowContractTest(unittest.TestCase):
     def setUp(self):
         self.config = json.loads((ROOT / ".github/ci-budget.json").read_text(encoding="utf-8"))

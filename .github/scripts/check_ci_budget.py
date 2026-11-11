@@ -50,6 +50,23 @@ def run_seconds(run: dict[str, Any]) -> float | None:
     return seconds if seconds >= 0 else None
 
 
+# The job that runs this check on each push. It starts after every other job and
+# so finishes last; the weekly median stops at the end of the work it reports on,
+# or the check would count its own start gap and run against the workflow's budget.
+REPORTER_JOB = "budget"
+
+
+def work_finished_at(jobs: list[dict[str, Any]]) -> str | None:
+    """Return when a run's last job other than the budget reporter finished."""
+    ends = [
+        job["completed_at"]
+        for job in jobs
+        if job.get("name") != REPORTER_JOB and job.get("completed_at")
+    ]
+    # One fixed UTC timestamp format, so the latest string is the latest time.
+    return max(ends) if ends else None
+
+
 def median_seconds(runs: list[dict[str, Any]], sample_size: int) -> float | None:
     """Return the median duration of the most recent usable runs."""
     if sample_size < 1:
@@ -339,6 +356,19 @@ def main(argv: list[str] | None = None) -> int:
                         break
             if len(runs) == sample_size or len(history) < 100:
                 break
+    jobs_by_run: dict[object, list[dict[str, Any]]] = {}
+
+    def jobs_of(run: dict[str, Any]) -> list[dict[str, Any]]:
+        if run.get("id") is None:
+            return []
+        if run["id"] not in jobs_by_run:
+            jobs_by_run[run["id"]] = _jobs(api, run["id"], token)
+        return jobs_by_run[run["id"]]
+
+    for runs in by_workflow.values():
+        for index, run in enumerate(runs):
+            if end := work_finished_at(jobs_of(run)):
+                runs[index] = run | {"updated_at": end}
     measured = {
         workflow: median_seconds(runs, sample_size)
         for workflow, runs in by_workflow.items()
@@ -348,7 +378,7 @@ def main(argv: list[str] | None = None) -> int:
     no_data = False
     rule = config.get("setup_step")
     for workflow, runs in by_workflow.items() if rule else ():
-        samples = [setup_step_times(_jobs(api, run["id"], token), rule) for run in runs]
+        samples = [setup_step_times(jobs_of(run), rule) for run in runs]
         for job, step, seconds in slow_setup_steps(samples, rule["budget_seconds"]):
             print(
                 f"SETUP    {workflow} / {job} / {step}: median {seconds:.0f}s "
