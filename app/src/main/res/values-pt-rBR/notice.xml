@@ -24,7 +24,7 @@
     <string name="notice_line_entities_need_decision">entidades precisam de uma decisão antes que o dashboard abra</string>
     <string name="notice_line_sign_in_needed">Nada pode carregar até que o painel tenha um login do Home Assistant.</string>
     <string name="notice_line_sign_in_stopped">O login salvo parou de funcionar.</string>
-    <string name="notice_line_setup_question">Há uma pergunta de configuração aguardando resposta no Panel Assistant.</string>
+    <string name="notice_line_setup_question">Ainda há uma pergunta de configuração neste painel</string>
     <string name="notice_attention_explanation">Não há nada de errado com o Home Assistant. O painel precisa de uma resposta sobre verificações de segurança encontradas ao ler suas entidades antes de poder abrir o dashboard.</string>
     <string name="notice_qr_sign_in">Escaneie para entrar pelo celular</string>
     <string name="notice_qr_sign_in_again">Escaneie para entrar de novo pelo celular</string>

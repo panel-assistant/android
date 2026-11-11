@@ -24,7 +24,7 @@
     <string name="notice_line_entities_need_decision">Entitäten brauchen eine Entscheidung, bevor sich das Dashboard öffnet</string>
     <string name="notice_line_sign_in_needed">Nichts kann laden, bis das Panel eine Home Assistant-Anmeldung hat.</string>
     <string name="notice_line_sign_in_stopped">Die gespeicherte Anmeldung funktioniert nicht mehr.</string>
-    <string name="notice_line_setup_question">In Panel Assistant wartet eine Einrichtungsfrage.</string>
+    <string name="notice_line_setup_question">Auf diesem Panel ist noch eine Einrichtungsfrage offen</string>
     <string name="notice_attention_explanation">Mit Home Assistant ist alles in Ordnung. Das Panel braucht eine Antwort zu Sicherheitsprüfungen, die beim Lesen deiner Entitäten gefunden wurden, bevor es das Dashboard öffnen kann.</string>
     <string name="notice_qr_sign_in">Mit dem Handy scannen, um dich anzumelden</string>
     <string name="notice_qr_sign_in_again">Mit dem Handy scannen, um dich erneut anzumelden</string>

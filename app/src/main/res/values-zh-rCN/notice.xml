@@ -24,7 +24,7 @@
     <string name="notice_line_entities_need_decision">个实体需要先做决定，仪表盘才能打开</string>
     <string name="notice_line_sign_in_needed">面板登录 Home Assistant 之前，什么都无法加载。</string>
     <string name="notice_line_sign_in_stopped">已保存的登录已失效。</string>
-    <string name="notice_line_setup_question">Panel Assistant 中有一个设置问题等待回答。</string>
+    <string name="notice_line_setup_question">此面板上还有一个设置问题待回答</string>
     <string name="notice_attention_explanation">Home Assistant 一切正常。面板需要您就读取实体时发现的安全检查作出答复，然后才能打开仪表盘。</string>
     <string name="notice_qr_sign_in">用手机扫码登录</string>
     <string name="notice_qr_sign_in_again">用手机扫码重新登录</string>
