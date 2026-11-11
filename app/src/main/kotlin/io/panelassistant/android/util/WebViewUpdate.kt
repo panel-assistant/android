@@ -199,8 +199,10 @@ internal class WebViewUpdate(
                         else -> "mismatch"
                     }
                 }
-                // The panel's own download replaces whatever an unusable blob left in the partial file.
                 if (supplied != "fetched") {
+                    // An unusable blob's bytes go first: left in place they count against the free space the
+                    // download checks before it starts, and a disk with room for one copy reports no_space.
+                    partial.delete()
                     io.download(spec, partial)?.let { reason = "download_failed"; cause = it; return }
                     if (!validStage(partial, spec)) { result = "rejected"; reason = "artifact_mismatch"; return }
                 }

@@ -224,6 +224,8 @@ class PaneldServerWebViewApprovalTest {
                         WebViewApk(AppInstaller.WEBVIEW_PKG, spec.version, spec.versionCode, setOf(signer), spec.minSdk, spec.abis) else null
                     override fun download(spec: WebViewSpec, destination: File): String? {
                         ownDownloads++
+                        // A disk with room for one copy: bytes already in the partial file leave none for this one.
+                        if (destination.exists()) return "no_space"
                         destination.writeBytes(pinned)
                         return null
                     }
