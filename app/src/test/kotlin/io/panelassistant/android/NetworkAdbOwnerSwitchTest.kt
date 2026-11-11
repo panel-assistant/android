@@ -128,6 +128,26 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
         assertTrue(endpoint.listening)
     }
 
+    @Test fun aSessionAcceptedWhileTheHelperReopensStillArmsAndIsRenewed() = lease { rig, endpoint, clock ->
+        runtime.sessionEnded()
+        clock.now += bound
+        // Home Assistant comes back at the worst moment: after the helper was asked, before it answered.
+        endpoint.whileRecovering = { runtime.session("returned", true) }
+        assertEquals("the press is not a release: the panel is managed again", LiveSettingRequestOutcome.REJECTED, turnOn(rig))
+        runCurrent()
+        assertEquals("the returned session armed its own lease", LocalAdbState(true, false), endpoint.state())
+        assertEquals(2, endpoint.arms)
+        assertFalse(endpoint.listening)
+        assertTrue(ManagedNetworkAdb.managed)
+        assertFalse(ManagedNetworkAdb.releasedToOwner)
+        assertNull(ManagedNetworkAdb.ownerSwitchWaitMs())
+        assertFalse(rig.config.networkAdbEnabled)
+        val renewals = endpoint.beats
+        advanceTimeBy(65_000)
+        assertEquals("and it is renewed", renewals + 2, endpoint.beats)
+        assertFalse(endpoint.listening)
+    }
+
     @Test fun aSessionThatReturnsBeforeTheBoundStartsTheCountAgain() = lease { rig, endpoint, clock ->
         runtime.sessionEnded()
         clock.now += bound - 1_000
@@ -198,6 +218,7 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
     private class LeaseEndpoint : LocalAdbEndpoint {
         private var status = LocalAdbState(false, false)
         var recovery = Recovery.REOPENS
+        var whileRecovering: () -> Unit = {}
         var listening = false
         var arms = 0
             private set
@@ -222,6 +243,7 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
                     listening = true
                 }
             }) return null
+            whileRecovering()
             // The helper reopened ADB and its answer never arrived.
             if (recovery == Recovery.REOPENS_THEN_FAILS) throw java.io.IOException("reply lost")
             return recovery == Recovery.REOPENS

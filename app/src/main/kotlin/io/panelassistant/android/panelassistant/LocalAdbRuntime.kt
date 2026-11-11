@@ -187,26 +187,31 @@ internal class LocalAdbRuntime(
      * as every lease effect does, so a caller must not already hold the gate. The answer is the helper's own
      * state after the attempt, never the reply alone: a lost reply to a reopening that happened is a
      * release, and a helper that still holds the lease goes on being renewed as if nothing was asked.
+     * Only the lease that was asked about is ended. A session accepted while the helper was answering has
+     * its own generation, which is left alone: its arm is next in the effects queue and closes ADB again,
+     * so that press is not a release.
      */
     override fun release(): Boolean = kotlinx.coroutines.runBlocking { effects.withLock {
-        var asked = false
+        var asked: Long? = null
         val answer = runCatching {
             endpoint.recover(nonce) { write ->
                 RemoteDebugSecurityTransitionGate.withLock {
-                    if (waitMs() != 0L) false else transition { asked = true; write(); true }
+                    if (waitMs() != 0L) false else transition { asked = generation.get(); write(); true }
                 }
             }
         }.getOrNull()
-        if (!asked) return@withLock false
+        val leased = asked ?: return@withLock false
         val state = runCatching { endpoint.state() }.getOrNull()
         val reopened = if (state != null) !state.managed else answer == true
-        if (reopened) {
-            // No renewal can have run meanwhile: each one needs the effects queue held here.
-            generation.incrementAndGet()
-            ManagedNetworkAdb.releasedToOwner = true
+        // No renewal can have run meanwhile: each one needs the effects queue held here. A new session
+        // changes the generation under the same gate, so it and this retirement cannot interleave.
+        val released = reopened && RemoteDebugSecurityTransitionGate.withLock {
+            (generation.get() == leased).also { mine ->
+                if (mine) { generation.incrementAndGet(); ManagedNetworkAdb.releasedToOwner = true }
+            }
         }
         runCatching { publish() }
-        reopened
+        released
     } }
 
     /** Main recovery becomes available only after the canonical helper passes capability admission. */
