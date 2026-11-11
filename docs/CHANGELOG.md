@@ -6,6 +6,10 @@ The full notes for every release and pre-release, from 1.0.0 on, are on [panel-a
 
 ## v1.0.1 - 2026-11-10
 
+The first update since 1.0: auto-sleep presence now learns the proximity sensor from your touches, the Voice card can tune the microphone, and WebView updates from Panel Assistant now work, along with fixes for fresh installs, proximity and screen-off reporting. Pairs with Panel Assistant 1.0.1, which offers each panel the update.
+
+[Full release notes](https://panel-assistant.io/go/release-notes?v=1.0.1&component=panel-app)
+
 ## v1.0.0 - 2026-11-06
 
 The panel app's 1.0: the panel and Panel Assistant now talk over one connection for everything, and MQTT and the old app are gone for good. Pairs with Panel Assistant 1.0.0, which offers each panel the update.
