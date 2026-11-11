@@ -20,7 +20,14 @@ import io.panelassistant.android.util.AndroidInput
 import kotlin.concurrent.thread
 
 /** Shell-only write-ahead capture and acknowledgement for the installer's deferred HOME ownership. */
-class PreservePreviousHomeReceiver : BroadcastReceiver() {
+class PreservePreviousHomeReceiver internal constructor(
+    private val config: (Context) -> Config,
+    private val env: (Context) -> SystemEnv,
+    private val parse: (String) -> ActivityRef?,
+    private val deliver: BroadcastReceiver.(PreviousHomeReply) -> Unit,
+) : BroadcastReceiver() {
+    constructor() : this(::Config, ::AndroidSystemEnv, ::parseComponent, { resultCode = it.code; resultData = it.data })
+
     override fun onReceive(context: Context, intent: Intent) {
         val operation = intent.getStringExtra("operation")
         if (operation == "claim_pending_home" || operation == "pending_home_shell_lock_eligibility") {
@@ -51,18 +58,19 @@ class PreservePreviousHomeReceiver : BroadcastReceiver() {
             return
         }
         val reply = runCatching {
-            val config = Config(context)
-            val env = AndroidSystemEnv(context)
             previousHomeOperation(
-                config, env, context.packageName, operation, intent.getStringExtra("previous_home_component"),
+                config(context), env(context), context.packageName, operation, intent.getStringExtra("previous_home_component"),
                 shellLockIdentity = intent.getStringExtra("home_lock_identity"),
                 requirePending = intent.getBooleanExtra("pending_setup", false),
+                parse = parse,
             )
         }.getOrElse { PreviousHomeReply(0) }
-        resultCode = reply.code
-        resultData = reply.data
+        deliver(reply)
     }
 }
+
+private fun parseComponent(flat: String): ActivityRef? =
+    ComponentName.unflattenFromString(flat)?.let { ActivityRef(it.packageName, it.className) }
 
 internal class PreviousHomeReply(val code: Int, val data: String? = null)
 
@@ -76,9 +84,7 @@ internal fun previousHomeOperation(
     shellLockIdentity: String? = null,
     lockIdentity: () -> String? = NativeHomeLock::identity,
     requirePending: Boolean = false,
-    parse: (String) -> ActivityRef? = {
-        ComponentName.unflattenFromString(it)?.let { component -> ActivityRef(component.packageName, component.className) }
-    },
+    parse: (String) -> ActivityRef? = ::parseComponent,
 ): PreviousHomeReply {
     if (operation != null) config.migrateSetupQuestionsForExistingInstall()
     if (operation == "dashboard_home_policy" || operation == "restore_previous_home_shell_lock_eligibility" ||
