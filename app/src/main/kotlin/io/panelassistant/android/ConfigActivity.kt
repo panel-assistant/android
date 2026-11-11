@@ -84,9 +84,13 @@ class ConfigActivity : AppCompatActivity() {
 
     /** The person leaves this screen themselves: the setup wizard must not come back on its own after that. */
     private fun leave() {
+        markLeftByPerson()
+        finish()
+    }
+
+    private fun markLeftByPerson() {
         leftByPerson = true
         if (setupWizard) SetupWizardResume.clear()
-        finish()
     }
 
     override fun onResume() {
@@ -369,7 +373,12 @@ class ConfigActivity : AppCompatActivity() {
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         if (maintenanceFence.stop(this)) return
-        if (web.canGoBack()) web.goBack() else leave()
+        if (web.canGoBack()) {
+            web.goBack()
+            return
+        }
+        markLeftByPerson()
+        super.onBackPressed()
     }
 
 }
