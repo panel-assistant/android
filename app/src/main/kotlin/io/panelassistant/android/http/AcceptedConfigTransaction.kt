@@ -11,6 +11,7 @@ import io.panelassistant.android.dashboardEntityLearningEnabled
 import io.panelassistant.android.haAuthSnapshot
 import io.panelassistant.android.isHaOAuthAttemptCurrent
 import io.panelassistant.android.normalizeDashboardEntityPath
+import io.panelassistant.android.setupQuestionHoldsRenderer
 import io.panelassistant.android.stableOwner
 import io.panelassistant.android.config.Capabilities
 import io.panelassistant.android.config.ConfigBundle
@@ -310,6 +311,9 @@ internal class AcceptedConfigTransaction(
                     reason = "applying your settings",
                 )
             }
+            effects.relaunchBuiltin && effects.relaunchForHomeOnly && effectiveDashboardIsBuiltin() &&
+                setupQuestionHoldsRenderer(config) ->
+                Log.i(TAG, "home dashboard set while the setup question holds the renderer — the answer releases it")
             effects.relaunchBuiltin && effectiveDashboardIsBuiltin() -> {
                 val result = rendererPreparation.prepareIfNeeded()
                 requireRendererResult(result)

@@ -11,6 +11,9 @@ internal data class RendererConfigEffects(
     val reloadBuiltin: Boolean,
     val relaunchBuiltin: Boolean,
     val darkMode: Boolean?,
+    /** [relaunchBuiltin] is for a new home dashboard alone, which a renderer held before its first load has
+     *  nothing to show for ([io.panelassistant.android.setupQuestionHoldsRenderer]). */
+    val relaunchForHomeOnly: Boolean = false,
 ) {
     companion object {
         private val CREDENTIAL_KEYS = setOf(
@@ -77,9 +80,9 @@ internal data class RendererConfigEffects(
             // A reload on top of the renderer's own rebuild for a credential, home or theme change would load
             // the rebuilt page a second time; those are foregrounded and the renderer reconciles them.
             val reload = !dashboardChanged && (zoomChanged || darkMode != null)
-            val relaunch = !dashboardChanged && !reload &&
-                (credentialChanged || homeChanged || themePolicyChanged || fullscreenChanged || nativeKioskChanged)
-            return RendererConfigEffects(dashboardChanged, reload, relaunch, darkMode)
+            val relaunchForOther = credentialChanged || themePolicyChanged || fullscreenChanged || nativeKioskChanged
+            val relaunch = !dashboardChanged && !reload && (relaunchForOther || homeChanged)
+            return RendererConfigEffects(dashboardChanged, reload, relaunch, darkMode, relaunchForHomeOnly = relaunch && !relaunchForOther)
         }
     }
 }
