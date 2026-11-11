@@ -94,8 +94,9 @@ class NetworkAdbManagedConfigPostTest {
                     header(HttpHeaders.ContentType, ContentType.Application.Json.toString())
                     setBody(JSONObject(mapOf("network_adb" to true)).toString())
                 }
-                val body = JSONObject(response.bodyAsText())
-                assertEquals(HttpStatusCode.Conflict, response.status, body.toString())
+                val text = response.bodyAsText()
+                assertEquals(HttpStatusCode.Conflict, response.status, text)
+                val body = JSONObject(text)
                 assertEquals("network-adb-managed-by-panel-assistant", body.getString("error"))
                 assertEquals(62, body.getInt("owner_switch_wait_s"))
                 assertEquals(0, owner.releases, "the lease is not asked for before the bound")
