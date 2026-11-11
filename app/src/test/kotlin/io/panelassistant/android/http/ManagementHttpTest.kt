@@ -54,6 +54,37 @@ class ManagementHttpTest {
         }
     }
 
+    @Test fun statusSaysWhetherPanelAssistantKeepsAdbOffAndWhenTheOwnersSwitchWorks() {
+        val adb = io.panelassistant.android.control.ManagedNetworkAdb
+        fun ownerSwitch(waitMs: Long?) = object : io.panelassistant.android.control.ManagedNetworkAdb.OwnerSwitch {
+            override fun waitMs() = waitMs
+            override fun release() = false
+        }
+        PaneldServerHttpFixture().use { fixture ->
+            fixture.useManagementStatus { error("Passive status read must not refresh storage") }
+            testApplication {
+                application { fixture.mount(this) }
+                suspend fun read() = org.json.JSONObject(client.get("/api/v1/status").bodyAsText()).getJSONObject("network_adb")
+                try {
+                    read().let { assertFalse(it.getBoolean("managed")); assertTrue(it.isNull("owner_switch_wait_s")) }
+                    adb.managed = true
+                    adb.ownerSwitch = ownerSwitch(null)
+                    read().let { assertTrue(it.getBoolean("managed")); assertTrue(it.isNull("owner_switch_wait_s")) }
+                    adb.ownerSwitch = ownerSwitch(120_001)
+                    assertEquals(121, read().getInt("owner_switch_wait_s"))
+                    adb.ownerSwitch = ownerSwitch(0)
+                    read().let { assertTrue(it.getBoolean("managed")); assertEquals(0, it.getInt("owner_switch_wait_s")) }
+                    // Nothing managed: the wait says nothing, whatever the lease owner would answer.
+                    adb.managed = false
+                    assertTrue(read().isNull("owner_switch_wait_s"))
+                } finally {
+                    adb.managed = false
+                    adb.ownerSwitch = null
+                }
+            }
+        }
+    }
+
     @Test fun statusSaysWhyPanelAssistantRefusedThePanel() {
         PaneldServerHttpFixture().use { fixture ->
             fixture.useManagementStatus { error("Passive status read must not refresh storage") }

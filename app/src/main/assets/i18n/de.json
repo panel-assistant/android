@@ -1313,6 +1313,16 @@
       "sourceHash": "1a7a2f8db70c54fc9bacab8eae1395b666d9ceb583101692b453e1d55e40ed55",
       "state": "machine-cross-checked"
     },
+    "configure.network_adb.managed_available": {
+      "text": "This panel has lost its Home Assistant connection. Turning this on takes ADB back from Panel Assistant until the panel connects again.",
+      "sourceHash": "02aa42624aabbe764eabac336e498e416d11ac459c0a901f3df357ac6c6513ab",
+      "state": "english-fallback"
+    },
+    "configure.network_adb.managed_waiting": {
+      "text": "Panel Assistant manages ADB on this panel and keeps it off. This panel has lost its Home Assistant connection; this switch works after {minutes} minutes without it.",
+      "sourceHash": "3629d98dc5c57aadc5d95eff248532aab6eed586ffbc512d4264538ec84f3ae9",
+      "state": "english-fallback"
+    },
     "configure.oauth.browser_recommended": {
       "text": "Die Browser-Anmeldung wird empfohlen; das Langzeit-Zugriffstoken bleibt als erweiterte Ausweichoption verfügbar.",
       "sourceHash": "cf970982eab16b244e4b741429787443be4627c11c694862e71bd2b3981661b5",

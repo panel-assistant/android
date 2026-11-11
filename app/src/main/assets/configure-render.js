@@ -31,11 +31,17 @@
     }) : null;
     labelText.appendChild(cfg.el("span", { class: "flabel-tail" }, [lastWord, advancedMark, cfg.helpButton(f)]));
     // Panel Assistant keeps network ADB off here and the app cannot turn it on: the row says so instead of
-    // offering a switch whose ON could only ever wait.
-    var adbManaged = f.key === "network_adb" && cfg.networkAdbManaged === true;
-    var managedNote = adbManaged ? cfg.el("small", {
+    // offering a switch whose ON could only ever wait. A panel that has lost its Home Assistant connection
+    // is the exception: after a while its owner's switch works, and the row says when.
+    var adbHeld = f.key === "network_adb" && cfg.networkAdbManaged === true;
+    var adbManaged = adbHeld && cfg.networkAdbOwnerSwitch !== "available";
+    var managedNote = adbHeld ? cfg.el("small", {
       id: "cfg-network_adb-managed", class: "managed-status",
-      text: cfg.i18nText("configure.network_adb.managed", "Panel Assistant manages ADB on this panel and keeps it off. Removing the panel from Panel Assistant turns ADB back on.")
+      text: cfg.networkAdbOwnerSwitch === "available" ?
+          cfg.i18nText("configure.network_adb.managed_available", "This panel has lost its Home Assistant connection. Turning this on takes ADB back from Panel Assistant until the panel connects again.")
+        : cfg.networkAdbOwnerSwitch === "waiting" ?
+          cfg.i18nText("configure.network_adb.managed_waiting", "Panel Assistant manages ADB on this panel and keeps it off. This panel has lost its Home Assistant connection; this switch works after {minutes} minutes without it.", { minutes: cfg.networkAdbOwnerSwitchAfterMin })
+        : cfg.i18nText("configure.network_adb.managed", "Panel Assistant manages ADB on this panel and keeps it off. Removing the panel from Panel Assistant turns ADB back on.")
     }) : null;
     var label = cfg.el("div", { class: "flabel" }, [
       labelText,

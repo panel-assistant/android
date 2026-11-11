@@ -17,6 +17,7 @@ internal fun releaseReady(locale: String, key: String, translated: TargetString)
     TranslationState.ENGLISH_FALLBACK ->
         (locale to key) in APPROVED_PROFILES_ENGLISH_FALLBACKS || key.startsWith(DEFERRED_VOICE_TUNING_PREFIX) ||
             key in DEFERRED_PROXIMITY_OPTIONAL_KEYS ||
+            key in DEFERRED_NETWORK_ADB_OWNER_SWITCH_KEYS ||
             DEFERRED_VOICE_CAPTURE_PATTERN.matches(key) ||
             EarlyAccessReviewHold.holds(locale, key, translated)
 }
@@ -32,6 +33,11 @@ internal val DEFERRED_VOICE_CAPTURE_PATTERN = Regex("""(settings|configure\.enum
 // The proximity card's "optional" wording ships in English until its translation pass; remove each key as its
 // translations land.
 internal val DEFERRED_PROXIMITY_OPTIONAL_KEYS = setOf("configure.proximity.setup.required")
+
+// The Network ADB row's two notes for a panel that has lost its Home Assistant connection ship in English until
+// their translation pass; remove each key as its translations land.
+internal val DEFERRED_NETWORK_ADB_OWNER_SWITCH_KEYS =
+    setOf("configure.network_adb.managed_available", "configure.network_adb.managed_waiting")
 
 class ReleaseReadinessContractTest {
     // Source-text reason: loads the shipped i18n catalogues as input data.

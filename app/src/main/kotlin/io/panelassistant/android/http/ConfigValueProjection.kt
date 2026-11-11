@@ -30,6 +30,8 @@ internal class ConfigValueProjection(
     private val haAreaCatalogJson: () -> String?,
     // Panel Assistant keeps network ADB off on this panel and the app cannot turn it on (AdbController.set).
     private val networkAdbManaged: () -> Boolean = { io.panelassistant.android.control.ManagedNetworkAdb.managed },
+    // Null while the switch cannot work at all; 0 once the panel has been without its session for long enough.
+    private val networkAdbOwnerSwitchWaitMs: () -> Long? = { io.panelassistant.android.control.ManagedNetworkAdb.ownerSwitchWaitMs() },
 ) {
     fun liveValues(): Map<String, String> = configLiveValues()
 
@@ -70,14 +72,25 @@ internal class ConfigValueProjection(
 
     /** `"apply_pending":{…},"apply_stalled":[…],"network_adb_managed":…`: the live settings saved but not yet
      *  applied, those stuck, and whether Panel Assistant manages network ADB. While it does, a desired
-     *  network_adb value cannot apply, so the row shows the management instead of a value waiting forever. */
+     *  network_adb value cannot apply, so the row shows the management instead of a value waiting forever.
+     *  `network_adb_owner_switch` says whether the owner's switch works all the same: `waiting` and then
+     *  `available` once the panel has lost its session, null while a session is up or in Hardened mode. */
     private fun applyStateJson(): String {
         val managed = networkAdbManaged()
         val pending = pendingLiveSettings().let { all -> if (managed) all - "network_adb" else all }
         val pendingDesired = pending.entries.joinToString(",") { (key, value) -> "${Json.str(key)}:${Json.str(value)}" }
         return "\"apply_pending\":{$pendingDesired}," +
             "\"apply_stalled\":${jarr(stalledApplyKeys(pending.keys, stalledLiveSettings()))}," +
-            "\"network_adb_managed\":$managed"
+            "\"network_adb_managed\":$managed," +
+            // A state, not a countdown: an open page re-renders the row only when it changes.
+            "\"network_adb_owner_switch\":${
+                when (val wait = if (managed) networkAdbOwnerSwitchWaitMs() else null) {
+                    null -> "null"
+                    0L -> "\"available\""
+                    else -> "\"waiting\""
+                }
+            }," +
+            "\"network_adb_owner_switch_after_min\":${io.panelassistant.android.control.ManagedNetworkAdb.OWNER_SWITCH_AFTER_MS / 60_000}"
     }
 
     /**

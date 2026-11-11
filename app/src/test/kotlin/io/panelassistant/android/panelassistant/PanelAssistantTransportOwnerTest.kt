@@ -1198,6 +1198,44 @@ class PanelAssistantTransportOwnerTest {
         assertTrue("local_adb_commands_v1" in offeredWith(rootKnownUnusable = false, endpointAnswers = false))
     }
 
+    @Test fun theEndOfAnAcceptedSessionStartsTheCountTowardsTheOwnersNetworkAdbSwitch() = runTest {
+        val endpoint = object : LocalAdbEndpoint {
+            var status = LocalAdbState(false, false)
+            override fun state() = status
+            override fun arm(nonce: String): Boolean { status = LocalAdbState(true, false); return true }
+            override fun beat(nonce: String) = true
+            override fun recover(nonce: String, submit: (() -> Unit) -> Boolean): Boolean? = true
+            override fun shell(command: ByteArray, timeoutMs: Int, submit: (() -> Unit) -> Boolean): JSONObject? = null
+        }
+        var now = 40_000L
+        val runtime = LocalAdbRuntime(
+            backgroundScope, endpoint, { false }, { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), { it() },
+            monotonicMs = { now },
+        )
+        val management = object : PanelAssistantManagement by FakeManagement() {
+            override val localAdb: PanelAssistantLocalAdb = runtime
+        }
+        val connection = FakeConnection(Ha.accepting(capabilities = listOf("management", "local_adb")))
+        val harness = harness(connection, management = management)
+        try {
+            harness.owner.replaceDemand(DEMAND)
+            runCurrent()
+            assertEquals(LocalAdbState(true, false), endpoint.status)
+            assertNull("no count while the session is up", runtime.waitMs())
+
+            // No session_closed event: Home Assistant's side simply goes away, as behind a new firewall rule.
+            connection.inbound.close()
+            runCurrent()
+            assertEquals(io.panelassistant.android.control.ManagedNetworkAdb.OWNER_SWITCH_AFTER_MS, runtime.waitMs())
+            now += 90_000
+            assertEquals(io.panelassistant.android.control.ManagedNetworkAdb.OWNER_SWITCH_AFTER_MS - 90_000, runtime.waitMs())
+        } finally {
+            harness.owner.close()
+            io.panelassistant.android.control.ManagedNetworkAdb.managed = false
+            io.panelassistant.android.control.ManagedNetworkAdb.recoveryHold = false
+        }
+    }
+
     @Test fun aRelayedCommandRunsAsItsUserThroughTheSidebarDoorAndNeverThroughPanelAssistantsOwnCommands() = runTest {
         val sink = ImmediateSink()
         val submitted = mutableListOf<Pair<String, String>>()
