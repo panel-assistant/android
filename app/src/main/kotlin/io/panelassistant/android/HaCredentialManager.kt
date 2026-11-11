@@ -1,6 +1,7 @@
 package io.panelassistant.android
 
 import io.panelassistant.android.util.HaLink
+import io.panelassistant.android.util.HaTransportEvidence
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
@@ -47,7 +48,10 @@ internal object HaCredentialManager {
         val snapshot = config.haAuthSnapshot()
         val owner = snapshot.stableOwner()
         val route = HaConnectionRoutes.resolve(config) ?: return DashboardAuth.Result(
-            null, transientDetail = "Home Assistant connection unavailable",
+            null,
+            transientDetail = "Home Assistant connection unavailable",
+            // No route proved itself: a transport failure, whatever the credential's state.
+            transientEvidence = HaTransportEvidence.UNKNOWN,
         )
         if (route.owner != owner || !stillCurrent()) return NOT_ATTEMPTED
         if (snapshot.url.isNotBlank() && snapshot.refreshToken.isNotBlank() && isRefused(owner)) {
