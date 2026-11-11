@@ -41,7 +41,7 @@ class PaneldServerWebViewApprovalTest {
                     override fun writeReceipt(receipt: JSONObject): Unit = error("Unadmitted install wrote a receipt")
                     override fun deleteReceipt(): Unit = error("Unadmitted install deleted a receipt")
                     override fun inspect(file: File): WebViewApk? = error("Unadmitted install inspected an APK")
-                    override fun download(spec: io.panelassistant.android.device.WebViewSpec, destination: File): Boolean =
+                    override fun download(spec: io.panelassistant.android.device.WebViewSpec, destination: File): String? =
                         error("Unadmitted install downloaded an APK")
                     override fun installedMatches(spec: io.panelassistant.android.device.WebViewSpec): Boolean = false
                     override suspend fun install(file: File, beforeSubmit: () -> InstallOutcome.Failure?): InstallOutcome =
@@ -143,7 +143,7 @@ class PaneldServerWebViewApprovalTest {
                 override fun writeReceipt(receipt: JSONObject): Unit = error("A refused request wrote a receipt")
                 override fun deleteReceipt(): Unit = error("A refused request deleted a receipt")
                 override fun inspect(file: File): WebViewApk? = error("A refused request inspected an APK")
-                override fun download(spec: io.panelassistant.android.device.WebViewSpec, destination: File): Boolean =
+                override fun download(spec: io.panelassistant.android.device.WebViewSpec, destination: File): String? =
                     error("A refused request downloaded an APK")
                 override fun installedMatches(spec: io.panelassistant.android.device.WebViewSpec): Boolean = false
                 override suspend fun install(file: File, beforeSubmit: () -> InstallOutcome.Failure?): InstallOutcome =

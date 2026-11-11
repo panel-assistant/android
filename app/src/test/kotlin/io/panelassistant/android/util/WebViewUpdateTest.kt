@@ -46,11 +46,11 @@ class WebViewUpdateTest {
             durable = JSONObject(receipt.toString())
         }
         override fun deleteReceipt() { durable = null }
-        override fun download(spec: WebViewSpec, destination: File): Boolean {
+        override fun download(spec: WebViewSpec, destination: File): String? {
             downloads++
             beforeDownload()
             destination.writeBytes(bytes)
-            return true
+            return null
         }
         override fun installedMatches(spec: WebViewSpec) = installed
         override suspend fun install(file: File, beforeSubmit: () -> InstallOutcome.Failure?): InstallOutcome {

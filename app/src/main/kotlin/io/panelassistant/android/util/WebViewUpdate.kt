@@ -50,7 +50,8 @@ internal interface WebViewUpdateIo {
     fun readReceipt(): JSONObject?
     fun writeReceipt(receipt: JSONObject)
     fun deleteReceipt()
-    fun download(spec: WebViewSpec, destination: File): Boolean
+    /** Null when [destination] holds the response; otherwise why not (`transaction.cause`). */
+    fun download(spec: WebViewSpec, destination: File): String?
     fun installedMatches(spec: WebViewSpec): Boolean
     suspend fun install(file: File, beforeSubmit: () -> InstallOutcome.Failure?): InstallOutcome
 }
@@ -169,13 +170,14 @@ internal class WebViewUpdate(
         val partial = File(completed.path + ".part")
         var result = "deferred"
         var reason: String? = "interrupted"
+        var cause: String? = null
         try {
             io.directory.mkdirs()
             partial.delete()
             // A resumed complete stage is never trusted by presence, filename, or an old receipt.
             if (!validStage(completed, spec)) {
                 completed.delete()
-                if (!io.download(spec, partial)) { reason = "download_failed"; return }
+                io.download(spec, partial)?.let { reason = "download_failed"; cause = it; return }
                 if (!validStage(partial, spec)) { result = "rejected"; reason = "artifact_mismatch"; return }
                 if (!partial.renameTo(completed)) { reason = "staging_failed"; return }
             }
@@ -214,7 +216,7 @@ internal class WebViewUpdate(
         } finally {
             partial.delete()
             synchronized(lock) {
-                runCatching { save(transaction(requestId, spec, io.observe().processId, result, reason)) }
+                runCatching { save(transaction(requestId, spec, io.observe().processId, result, reason).apply { cause?.let { put("cause", it) } }) }
                 active = false
             }
             if (result == "installed" || result == "rejected") completed.delete()
