@@ -28,6 +28,12 @@ class NetworkAdbManagedConfigPostTest {
     @After fun releaseManagement() {
         ManagedNetworkAdb.managed = false
         ManagedNetworkAdb.recoveryHold = false
+        ManagedNetworkAdb.ownerSwitch = null
+    }
+
+    private fun ownerSwitch(waitMs: Long?) = object : ManagedNetworkAdb.OwnerSwitch {
+        override fun waitMs() = waitMs
+        override fun release() = false
     }
 
     @Test fun `a Configure ON while Panel Assistant manages ADB is refused and leaves nothing pending`() =
@@ -66,6 +72,54 @@ class NetworkAdbManagedConfigPostTest {
             }
         }
 
+    @Test fun `a panel that has just lost its session still refuses the ON and says how long the switch waits`() =
+        withFullReadServer { config, fixture ->
+            capabilities(fixture, Capabilities(appCanSu = true, networkAdb = true))
+            val applied = mutableListOf<String>()
+            setField(fixture.server, "applySetting", { _: String, value: String -> applied += value; false })
+            setField(fixture.server, "onReconfigure", { _: Set<String> -> })
+            ManagedNetworkAdb.managed = true
+            ManagedNetworkAdb.ownerSwitch = ownerSwitch(waitMs = 61_001)
+            testApplication {
+                application { fixture.mount(this) }
+                val response = client.post("/api/v1/config") {
+                    header(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+                    setBody(JSONObject(mapOf("network_adb" to true)).toString())
+                }
+                val body = JSONObject(response.bodyAsText())
+                assertEquals(HttpStatusCode.Conflict, response.status, body.toString())
+                assertEquals("network-adb-managed-by-panel-assistant", body.getString("error"))
+                assertEquals(62, body.getInt("owner_switch_wait_s"))
+                assertTrue(applied.isEmpty(), "a refused ON never reaches the controller: $applied")
+                assertFalse(config.networkAdbEnabled)
+            }
+        }
+
+    @Test fun `once the panel has been without its session for the bound the ON reaches the controller`() =
+        withFullReadServer { _, fixture ->
+            capabilities(fixture, Capabilities(appCanSu = true, networkAdb = true))
+            val authority = LiveSettingAuthority(setOf("network_adb"), bootIdentity = { "test-boot" })
+            val applied = mutableListOf<String>()
+            setField(fixture.server, "applySetting", { key: String, value: String ->
+                authority.applyOrQueueOutcome(key, value, null) { _, appliedValue, _ ->
+                    applied += appliedValue
+                    LiveSettingApplyResult.APPLIED
+                }
+            })
+            setField(fixture.server, "onReconfigure", { _: Set<String> -> })
+            ManagedNetworkAdb.managed = true
+            ManagedNetworkAdb.ownerSwitch = ownerSwitch(waitMs = 0)
+            testApplication {
+                application { fixture.mount(this) }
+                val response = client.post("/api/v1/config") {
+                    header(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+                    setBody(JSONObject(mapOf("network_adb" to true)).toString())
+                }
+                assertFalse(response.status == HttpStatusCode.Conflict, response.bodyAsText())
+                assertEquals(listOf("true"), applied)
+            }
+        }
+
     @Test fun `without management a Configure ON is still accepted`() =
         withFullReadServer { _, fixture ->
             capabilities(fixture, Capabilities(appCanSu = true, networkAdb = true))
@@ -91,9 +145,9 @@ class NetworkAdbManagedConfigPostTest {
             val live = mapOf("panel_id" to "test_panel", "friendly_name" to "Test panel")
             // A desired ON an older version journalled while Panel Assistant already managed ADB.
             val queued = mapOf("network_adb" to "true", "touch_sound" to "false")
-            fun values(managed: Boolean) = JSONObject(ConfigValueProjection(
+            fun values(managed: Boolean, ownerSwitchWaitMs: Long? = null) = JSONObject(ConfigValueProjection(
                 config, { live }, { live }, { queued }, { emptySet() }, { "{}" }, { "{}" }, { null },
-                networkAdbManaged = { managed },
+                networkAdbManaged = { managed }, networkAdbOwnerSwitchWaitMs = { ownerSwitchWaitMs },
             ).valuesJson(null))
 
             val managed = values(true)
@@ -101,8 +155,16 @@ class NetworkAdbManagedConfigPostTest {
             assertFalse(managed.getJSONObject("apply_pending").has("network_adb"))
             assertEquals("false", managed.getJSONObject("apply_pending").getString("touch_sound"))
 
-            val unmanaged = values(false)
+            assertTrue(managed.isNull("network_adb_owner_switch"), "a live session leaves the switch off the table")
+            assertEquals(ManagedNetworkAdb.OWNER_SWITCH_AFTER_MS / 60_000, managed.getLong("network_adb_owner_switch_after_min"))
+            // The page follows a state, not a countdown.
+            assertEquals("waiting", values(true, ownerSwitchWaitMs = 299_000).getString("network_adb_owner_switch"))
+            assertEquals("waiting", values(true, ownerSwitchWaitMs = 1).getString("network_adb_owner_switch"))
+            assertEquals("available", values(true, ownerSwitchWaitMs = 0).getString("network_adb_owner_switch"))
+
+            val unmanaged = values(false, ownerSwitchWaitMs = 0)
             assertFalse(unmanaged.getBoolean("network_adb_managed"))
+            assertTrue(unmanaged.isNull("network_adb_owner_switch"))
             assertEquals("true", unmanaged.getJSONObject("apply_pending").getString("network_adb"))
         }
 

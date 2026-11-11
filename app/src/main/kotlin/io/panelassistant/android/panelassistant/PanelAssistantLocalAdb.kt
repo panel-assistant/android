@@ -7,5 +7,7 @@ internal interface PanelAssistantLocalAdb {
     /** Whether the hello offers local ADB: only when this panel could reach its root endpoint. */
     fun offered(): Boolean = true
     fun session(token: String, granted: Boolean)
+    /** The accepted session ended, however it ended; nothing is known about when the next one comes. */
+    fun sessionEnded() {}
     suspend fun request(op: String, args: JSONObject, admit: () -> Boolean, onPending: () -> Unit = {}): PanelAssistantManageReply
 }

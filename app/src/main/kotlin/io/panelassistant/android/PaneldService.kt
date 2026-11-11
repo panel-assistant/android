@@ -1449,8 +1449,12 @@ class PaneldService : Service() {
             "Zigbee" to controllers.zigbee.status,
             "Relays" to controllers.relayCount.let { if (it > 0) it.toString() else "none" },
             "CPU profile" to (controllers.cpuTier ?: "n/a"),
-            "Network ADB" to networkAdbDiagnostic(controllers.networkAdbPersisted, controllers.networkAdbActive),
-            "USB debugging" to controls.usbDebugging.statusText(),
+            "Network ADB" to networkAdbDiagnostic(
+                controllers.networkAdbPersisted, controllers.networkAdbActive,
+                io.panelassistant.android.control.ManagedNetworkAdb.managed,
+                io.panelassistant.android.control.ManagedNetworkAdb.ownerSwitchWaitMs(),
+            ),
+            "USB debugging" to io.panelassistant.android.control.usbDebuggingDiagnostic(controls.usbDebugging.statusText()),
             "Log shipping" to logShipper.statusText(),
             "Audio playback" to voiceAudio.audio.snapshot().statusText(),
         )

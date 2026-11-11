@@ -434,6 +434,7 @@ internal class PanelAssistantTransportOwner(
                                     streaming?.close()
                                     commanding?.close()
                                     reporting?.close()
+                                    management?.localAdb?.sessionEnded()
                                     // Every way an accepted session ends reopens the window: a Core
                                     // restart is a bare socket close, never a session_closed event.
                                     warmUntil = monotonicMillis() + warmupWindowMs

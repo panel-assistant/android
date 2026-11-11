@@ -34,13 +34,15 @@ const SCHEMA = [
     summary: 'Security risk. Keep ADB listening on port 5555 across boots.' },
 ];
 
-async function harness(managed) {
+async function harness(managed, ownerSwitch) {
   const state = {
     settings: { network_adb: false },
     ha_expose: {}, ha_auth: { configured: false }, renderer_pending: [],
-    // A desired ON an older version queued while Panel Assistant already managed ADB.
-    apply_pending: { network_adb: 'true' }, apply_stalled: [],
+    // A desired ON an older version queued while Panel Assistant already managed ADB. The panel's own
+    // projection drops it while ADB is managed; the plain managed case keeps it to prove the page does too.
+    apply_pending: ownerSwitch === undefined ? { network_adb: 'true' } : {}, apply_stalled: [],
     ...(managed === undefined ? {} : { network_adb_managed: managed }),
+    ...(ownerSwitch === undefined ? {} : { network_adb_owner_switch: ownerSwitch, network_adb_owner_switch_after_min: 5 }),
   };
   const posts = [];
   const server = createServer(async (request, response) => {
@@ -54,6 +56,8 @@ async function harness(managed) {
       let raw = '';
       for await (const chunk of request) raw += chunk;
       posts.push(Object.fromEntries(new URLSearchParams(raw)));
+      // The panel lets the owner's switch through once it has been without its session long enough.
+      if (ownerSwitch === 'available') return send({ ok: true });
       response.statusCode = 409;
       return send({ ok: false, error: 'network-adb-managed-by-panel-assistant', message: 'Panel Assistant manages network ADB on this panel.' });
     }
@@ -73,8 +77,8 @@ const engines = [
   { name: 'webkit', type: webkit, launch: {}, available: existsSync(webkit.executablePath()) },
 ];
 
-async function open(engine, t, managed) {
-  const h = await harness(managed);
+async function open(engine, t, managed, ownerSwitch) {
+  const h = await harness(managed, ownerSwitch);
   const browser = await engine.type.launch(engine.launch);
   t.after(async () => { await browser.close(); await new Promise((resolve) => h.server.close(resolve)); });
   const p = await browser.newPage({ viewport: { width: 390, height: 844 } });
@@ -106,6 +110,36 @@ for (const engine of engines) {
     assert.deepEqual(h.posts, [], 'a press sends nothing');
     assert.equal(await toggle.getAttribute('aria-checked'), 'false', 'a press leaves it off');
     assert.equal(await row.locator(`text=${PENDING_TEXT}`).count(), 0);
+  });
+
+  engineTest(`${engine.name}: a managed row on a panel that has just lost its connection stays disabled and says when the switch works`, async (t) => {
+    const h = await open(engine, t, true, 'waiting');
+    const row = h.p.locator('#cfg-network_adb');
+    const toggle = row.locator('[role=switch]');
+    await h.p.waitForTimeout(800);
+    assert.equal(await toggle.getAttribute('aria-disabled'), 'true', 'the switch is still disabled');
+    const text = await row.innerText();
+    assert.match(text, /lost its Home Assistant connection; this switch works after 5 minutes without it/);
+    assert.doesNotMatch(text, /Removing the panel from Panel Assistant/, 'removal needs the connection this panel has lost');
+    await toggle.click({ force: true });
+    await h.p.waitForTimeout(300);
+    assert.deepEqual(h.posts, [], 'a press sends nothing yet');
+  });
+
+  engineTest(`${engine.name}: once the panel has been without its connection long enough the switch works and says what it does`, async (t) => {
+    const h = await open(engine, t, true, 'available');
+    const row = h.p.locator('#cfg-network_adb');
+    const toggle = row.locator('[role=switch]');
+    await h.p.waitForTimeout(800);
+    assert.equal(await toggle.getAttribute('aria-disabled'), 'false', 'the switch is enabled');
+    assert.equal(await toggle.getAttribute('aria-checked'), 'false', 'and reads off: ADB is still closed');
+    const text = await row.innerText();
+    assert.match(text, /Turning this on takes ADB back from Panel Assistant until the panel connects again/);
+    assert.doesNotMatch(text, /keeps it off/);
+    await toggle.click();
+    await h.p.waitForTimeout(400);
+    assert.equal(h.posts.length, 1, 'one press sends one request');
+    assert.equal(h.posts[0].network_adb, 'true');
   });
 
   engineTest(`${engine.name}: an unmanaged Network ADB row stays an ordinary switch`, async (t) => {
