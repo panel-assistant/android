@@ -259,6 +259,24 @@ class HaConnectionRoutesTest {
         assertNoProofCredentials(configured)
     }
 
+    @Test fun aHeldCredentialWithNoProvedRouteIsReportedAsANetworkRefusal() = runTest {
+        val configured = server()
+        val (config, _) = config(configured.url)
+        assertTrue(learn(config))
+        configured.identity = "d".repeat(32)
+        val result = HaCredentialManager.resolve(config)
+        assertNull(result.session)
+        assertFalse(result.rejected)
+        assertNotEquals(io.panelassistant.android.util.HaTransportFault.NONE, result.transientEvidence.fault)
+        val native = native(config)
+        native.owner.replaceDemand(PanelAssistantTransportDemand(HaConnectionRoutes.current(config).owner, helloIdentity))
+        runCurrent()
+        assertEquals(PanelAssistantTransportOwner.REFUSAL_ROUTE_UNAVAILABLE, native.owner.status.refusal)
+        assertFalse(native.owner.status.slowRetry)
+        assertTrue("no socket opens without a proved route", native.connects.isEmpty())
+        native.owner.close()
+    }
+
     @Test fun explicitServerReplacementAndReturnCannotResurrectLearnedAuthority() {
         val configured = server()
         val alternate = server()
