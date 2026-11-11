@@ -41,3 +41,9 @@ internal fun protocolHealthToken(
     min: Int = io.panelassistant.android.panelassistant.PanelAssistantTransportProtocol.PROTOCOL_MIN,
     max: Int = io.panelassistant.android.panelassistant.PanelAssistantTransportProtocol.PROTOCOL_MAX,
 ): String = " proto=$min-$max"
+
+/**
+ * This panel's ADB serial, learned from its own adbd's mDNS announcement, so Panel Assistant can fold the
+ * `_adb._tcp` discovery card into this panel's. Absent while unknown: released parsers reject an empty value.
+ */
+internal fun adbSerialHealthToken(serial: String?): String = serial?.let { " adb=$it" }.orEmpty()
