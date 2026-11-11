@@ -74,22 +74,26 @@ extract_integrated_checks_step() {
 run_integrated_checks_step() {
   checks_file="$1"
   output_file="$2"
+  runs_file="${3:-$TMP/no-main-runs.json}"
+  [ -f "$TMP/no-main-runs.json" ] || printf '{"workflow_runs":[]}\n' > "$TMP/no-main-runs.json"
   mock_bin="$TMP/mock-bin"
   mkdir -p "$mock_bin"
   printf '%s\n' \
     '#!/usr/bin/env bash' \
     'case "$*" in' \
     '  *check-runs*) sed -n "p" "$MOCK_CHECKS_FILE" ;;' \
+    '  *actions/runs\?head_sha=*) sed -n "p" "$MOCK_RUNS_FILE" ;;' \
     '  *code-scanning/alerts*) printf "%s\n" 0 ;;' \
     '  *) printf "unexpected gh invocation: %s\n" "$*" >&2; exit 2 ;;' \
     'esac' > "$mock_bin/gh"
   chmod +x "$mock_bin/gh"
   PATH="$mock_bin:$PATH" \
     MOCK_CHECKS_FILE="$checks_file" \
+    MOCK_RUNS_FILE="$runs_file" \
     SOURCE_COMMIT=1111111111111111111111111111111111111111 \
     GITHUB_REPOSITORY=maxlyth/ha-paneld \
     GITHUB_ENV="$TMP/github-env" \
-    bash <(extract_integrated_checks_step | sed -e 's/max_attempts=60/max_attempts=1/' -e 's/sleep_seconds=10/sleep_seconds=0/') > "$output_file" 2>&1
+    bash <(extract_integrated_checks_step | sed -e 's/max_attempts=150/max_attempts=1/' -e 's/sleep_seconds=10/sleep_seconds=0/') > "$output_file" 2>&1
 }
 
 if extract_release_notes_step | bash -n; then
@@ -221,6 +225,59 @@ else
   fail_test "integrated gate waits for a newer queued exact-source check instead of accepting an older success"
 fi
 
+# The tag can be pushed with main, so every workflow that main push started for the source commit
+# gates publication, including path-filtered ones with no fixed check name.
+main_run() {  # id workflow_id name head_branch status conclusion
+  jq -cn --argjson id "$1" --argjson wf "$2" --arg name "$3" --arg branch "$4" --arg status "$5" --arg conclusion "$6" \
+    '{id: $id, workflow_id: $wf, name: $name, head_sha: "1111111111111111111111111111111111111111", head_branch: $branch,
+      event: "push", status: $status, conclusion: (if $conclusion == "" then null else $conclusion end),
+      html_url: "https://example.test/run/\($id)"}'
+}
+main_runs() { jq -cs '{workflow_runs: .}'; }
+
+{ main_run 10 1 CI main completed success; main_run 11 2 "Android instrumentation" main completed success
+  main_run 12 3 Release v9.9.9 in_progress ""; } | main_runs > "$TMP/runs-green.json"
+if run_integrated_checks_step "$latest_success_checks" "$TMP/runs-green-output.log" "$TMP/runs-green.json"; then
+  pass "integrated gate passes when every main push workflow passed, ignoring the tag's own run"
+else
+  sed -n '1,20p' "$TMP/runs-green-output.log" >&2
+  fail_test "integrated gate passes when every main push workflow passed, ignoring the tag's own run"
+fi
+
+{ main_run 10 1 CI main completed success; main_run 11 2 "Android instrumentation" main completed failure; } | main_runs > "$TMP/runs-failed.json"
+if ! run_integrated_checks_step "$latest_success_checks" "$TMP/runs-failed-output.log" "$TMP/runs-failed.json" && \
+   grep -Fq 'did not pass: Android instrumentation completed as failure' "$TMP/runs-failed-output.log"; then
+  pass "integrated gate refuses a failed path-filtered main workflow even when every named check passed"
+else
+  fail_test "integrated gate refuses a failed path-filtered main workflow even when every named check passed"
+fi
+
+{ main_run 10 1 CI main completed success; main_run 11 4 "UI layout" main completed failure
+  main_run 13 4 "UI layout" main completed success; } | main_runs > "$TMP/runs-rerun.json"
+if run_integrated_checks_step "$latest_success_checks" "$TMP/runs-rerun-output.log" "$TMP/runs-rerun.json"; then
+  pass "integrated gate judges each main workflow by its latest run"
+else
+  sed -n '1,20p' "$TMP/runs-rerun-output.log" >&2
+  fail_test "integrated gate judges each main workflow by its latest run"
+fi
+
+{ main_run 10 1 CI main completed success; main_run 11 4 "UI layout" main in_progress ""; } | main_runs > "$TMP/runs-pending.json"
+if ! run_integrated_checks_step "$latest_success_checks" "$TMP/runs-pending-output.log" "$TMP/runs-pending.json" && \
+   grep -Fq 'Timed out waiting for required checks' "$TMP/runs-pending-output.log" && \
+   grep -Fq 'UI layout workflow (in_progress)' "$TMP/runs-pending-output.log"; then
+  pass "integrated gate waits for a running main workflow after the named checks pass"
+else
+  fail_test "integrated gate waits for a running main workflow after the named checks pass"
+fi
+
+{ main_run 10 1 CI main completed success; main_run 12 3 Release v9.9.9 completed failure; } | main_runs > "$TMP/runs-tag-failed.json"
+if run_integrated_checks_step "$latest_success_checks" "$TMP/runs-tag-output.log" "$TMP/runs-tag-failed.json"; then
+  pass "integrated gate ignores runs that are not the main push"
+else
+  sed -n '1,20p' "$TMP/runs-tag-output.log" >&2
+  fail_test "integrated gate ignores runs that are not the main push"
+fi
+
 verify_job="$(awk '/^  verify:$/ { in_job=1 } /^  package:$/ { exit } in_job' "$WORKFLOW")"
 package_job="$(awk '/^  package:$/ { in_job=1 } /^  sign-and-publish:$/ { exit } in_job' "$WORKFLOW")"
 publish_job="$(awk '/^  sign-and-publish:$/ { in_job=1 } in_job' "$WORKFLOW")"
@@ -239,7 +296,9 @@ if grep -Fq 'Require clean integrated checks for the source commit' "$WORKFLOW" 
    grep -Fq '"CodeQL · java-kotlin"' "$WORKFLOW" && \
    grep -Fq '"CodeQL · javascript-typescript"' "$WORKFLOW" && \
    grep -Fq '"CodeQL · python"' "$WORKFLOW" && \
-   grep -Fq 'max_attempts=60' "$WORKFLOW" && \
+   grep -Fq 'max_attempts=150' "$WORKFLOW" && \
+   grep -Fq 'actions/runs?head_sha=$SOURCE_COMMIT&event=push&branch=main' "$WORKFLOW" && \
+   grep -Fqx '      actions: read' <<<"$verify_job" && \
    grep -Fq 'sleep_seconds=10' "$WORKFLOW" && \
    grep -Fqx '      checks: read' <<<"$verify_job" && \
    grep -Fqx '      security-events: read' <<<"$verify_job" && \

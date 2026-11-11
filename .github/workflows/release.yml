@@ -33,7 +33,7 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     permissions:
       actions: read
       checks: read
@@ -138,6 +138,9 @@ jobs:
       # lands on main. The tag workflow consumes their latest results instead of rerunning them, while
       # the package jobs independently create release inputs from a clean checkout of the exact tag. They
       # restore, read-only, the basic Gradle cache that CI writes on main for the same build files.
+      # The tag may be pushed together with main, so the package jobs build while main's checks still
+      # run. Besides the named checks, every workflow the main push started for this commit must pass,
+      # including path-filtered ones such as instrumentation and UI layout that have no fixed name here.
       - name: Require clean integrated checks for the source commit
         env:
           GH_TOKEN: ${{ github.token }}
@@ -155,7 +158,7 @@ jobs:
             "CodeQL · javascript-typescript"
             "CodeQL · python"
           )
-          max_attempts=60
+          max_attempts=150
           sleep_seconds=10
           for ((attempt = 1; attempt <= max_attempts; attempt++)); do
             checks="$(gh api "repos/$GITHUB_REPOSITORY/commits/$SOURCE_COMMIT/check-runs?per_page=100")"
@@ -175,6 +178,19 @@ jobs:
                 pending+=("$name ($status)")
               fi
             done
+            runs="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$SOURCE_COMMIT&event=push&branch=main&per_page=100")"
+            latest_runs="$(jq -c --arg source "$SOURCE_COMMIT" \
+              '[.workflow_runs[] | select(.head_sha == $source and .head_branch == "main" and .event == "push")]
+               | group_by(.workflow_id) | map(max_by(.id))' <<<"$runs")"
+            failed="$(jq -r '.[] | select(.status == "completed" and ((.conclusion == "success" or .conclusion == "skipped") | not))
+              | "\(.name) completed as \(.conclusion) (\(.html_url))"' <<<"$latest_runs")"
+            if [ -n "$failed" ]; then
+              echo "::error::A main push workflow for $SOURCE_COMMIT did not pass: ${failed//$'\n'/; }"
+              exit 1
+            fi
+            while IFS= read -r line; do
+              pending+=("$line")
+            done < <(jq -r '.[] | select(.status != "completed") | "\(.name) workflow (\(.status))"' <<<"$latest_runs")
             if [ "${#pending[@]}" -eq 0 ]; then
               break
             fi
