@@ -362,6 +362,8 @@ internal class DashboardStatusScreens(
         evidence: HaTransportEvidence = HaTransportEvidence.NONE,
         /** The hero of a screen that neither retries on its own nor offers a QR: a number or a word. */
         heroWord: String? = null,
+        /** The sentence under the hero; the title unless the screen can say more, such as the address tried. */
+        line: String = title,
     ) {
         RendererAdmissionRuntime.record(
             owner = host.activityOwner,
@@ -370,7 +372,7 @@ internal class DashboardStatusScreens(
             outcome = outcome,
             evidence = evidence,
         )
-        showV2CompatibilityScreen(title, detail, activity.getString(R.string.retry), admissionRetryClass(outcome), outcome, heroWord, title)
+        showV2CompatibilityScreen(title, detail, activity.getString(R.string.retry), admissionRetryClass(outcome), outcome, heroWord, line)
     }
 
     /** A screen that reports work in flight; it is replaced by that work's outcome, so it never arms. Its
