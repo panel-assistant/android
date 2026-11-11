@@ -4,6 +4,7 @@ import io.panelassistant.android.HaAuthOwner
 import io.panelassistant.android.sensors.HaApiSession
 import io.panelassistant.android.sensors.HaApiSessionProvider
 import io.panelassistant.android.sensors.HaAuthenticationException
+import io.panelassistant.android.util.HaTransportEvidence
 import io.panelassistant.android.sensors.HaLifecycle
 import io.panelassistant.android.sensors.HaLifecycleCoordinator
 import io.panelassistant.android.sensors.HaLifecycleRuntime
@@ -691,6 +692,31 @@ class PanelAssistantTransportOwnerTest {
         assertEquals(PanelAssistantTransportOwner.REFUSAL_CREDENTIAL_UNAVAILABLE, moved.owner.status.refusal)
         assertEquals(0, moved.connector.times.size)
         moved.owner.close()
+    }
+
+    @Test fun `a held credential without a route to Home Assistant reports a network refusal on the fast schedule`() = runTest {
+        val unreachable = harness()
+        unreachable.session = {
+            HaApiSession(
+                "https://ha.example", null,
+                transientDetail = "Home Assistant connection unavailable",
+                transientEvidence = HaTransportEvidence.UNKNOWN,
+            )
+        }
+        unreachable.owner.replaceDemand(DEMAND)
+        runCurrent()
+        assertFalse(unreachable.owner.status.slowRetry)
+        assertEquals(PanelAssistantTransportOwner.REFUSAL_ROUTE_UNAVAILABLE, unreachable.owner.status.refusal)
+        assertEquals(0, unreachable.connector.times.size)
+        unreachable.owner.close()
+
+        val missing = harness()
+        missing.session = { HaApiSession("https://ha.example", null) }
+        missing.owner.replaceDemand(DEMAND)
+        runCurrent()
+        assertFalse(missing.owner.status.slowRetry)
+        assertEquals(PanelAssistantTransportOwner.REFUSAL_CREDENTIAL_UNAVAILABLE, missing.owner.status.refusal)
+        missing.owner.close()
     }
 
     @Test fun `a panel connects within seconds after prolonged identity or account confirmation`() = runTest {
