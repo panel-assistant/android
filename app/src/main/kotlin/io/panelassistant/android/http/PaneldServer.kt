@@ -301,15 +301,14 @@ class PaneldServer internal constructor(
      * A direct ON while Panel Assistant manages network ADB is refused rather than journalled: the app cannot
      * apply it (AdbController.set), so a queued ON would read as pending for good and could open port 5555
      * later without a new action from the owner. Restores and imports keep the hardened check only.
-     * Once the panel has been without its session for long enough this door, the owner's own press, gives
-     * the lease back (directNetworkAdbOnRefusalJson), and the ON then goes on to AdbController.set.
+     * Once the panel has been without its session for long enough the ON is let through here, and the
+     * direct config POST gives the lease back as its last step before applying it (DirectConfigPost).
      */
     private suspend fun rejectDirectNetworkAdb(call: OpCall, requested: String?): Boolean {
         if (rejectHardenedNetworkAdb(call, requested)) return true
-        val turnOn = SettingValue.parseBool(requested.orEmpty()) == true
-        val refusal = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            io.panelassistant.android.control.directNetworkAdbOnRefusalJson(turnOn)
-        } ?: return false
+        val refusal = io.panelassistant.android.control.directNetworkAdbOnRefusalJson(
+            SettingValue.parseBool(requested.orEmpty()) == true,
+        ) ?: return false
         call.respondText(refusal, ContentType.Application.Json, HttpStatusCode.Conflict)
         return true
     }

@@ -105,7 +105,7 @@ class NetworkAdbManagedConfigPostTest {
             }
         }
 
-    @Test fun `an ON after the bound that cannot have the lease back is refused and leaves nothing pending`() =
+    @Test fun `an ON after the bound that cannot have the lease back is rejected and leaves nothing pending`() =
         withFullReadServer { config, fixture ->
             capabilities(fixture, Capabilities(appCanSu = true, networkAdb = true))
             val authority = LiveSettingAuthority(setOf("network_adb"), bootIdentity = { "test-boot" })
@@ -127,9 +127,12 @@ class NetworkAdbManagedConfigPostTest {
                     header(HttpHeaders.ContentType, ContentType.Application.Json.toString())
                     setBody(JSONObject(mapOf("network_adb" to true)).toString())
                 }
-                assertEquals(HttpStatusCode.Conflict, response.status, response.bodyAsText())
+                val text = response.bodyAsText()
+                assertFalse(JSONObject(text).getBoolean("ok"), text)
+                val rejected = JSONObject(text).getJSONArray("rejected")
+                assertEquals(listOf("network_adb"), (0 until rejected.length()).map(rejected::getString), text)
                 assertEquals(1, owner.releases)
-                assertTrue(applied.isEmpty(), "a refused ON never reaches the controller: $applied")
+                assertTrue(applied.isEmpty(), "a rejected ON never reaches the controller: $applied")
                 assertTrue(authority.pendingSnapshot().isEmpty(), "nothing is left to open ADB later")
                 assertFalse(config.networkAdbEnabled)
             }

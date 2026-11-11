@@ -182,27 +182,32 @@ internal class LocalAdbRuntime(
     }
 
     /**
-     * Ends this lease's renewals and reopens ADB; the next accepted session arms a new lease. Runs on the
-     * caller's thread and takes the effects queue before the transition gate, as every lease effect does,
-     * so a caller must not already hold the gate.
+     * Asks the helper to reopen ADB and, once it has, ends this lease's renewals; the next accepted session
+     * arms a new lease. Runs on the caller's thread and takes the effects queue before the transition gate,
+     * as every lease effect does, so a caller must not already hold the gate. The answer is the helper's own
+     * state after the attempt, never the reply alone: a lost reply to a reopening that happened is a
+     * release, and a helper that still holds the lease goes on being renewed as if nothing was asked.
      */
-    override fun release(): Boolean = runCatching {
-        kotlinx.coroutines.runBlocking { effects.withLock {
-            val released = endpoint.recover(nonce) { write ->
+    override fun release(): Boolean = kotlinx.coroutines.runBlocking { effects.withLock {
+        var asked = false
+        val answer = runCatching {
+            endpoint.recover(nonce) { write ->
                 RemoteDebugSecurityTransitionGate.withLock {
-                    if (waitMs() != 0L) false
-                    else {
-                        // Renewal stops with the generation, before the helper reopens anything.
-                        generation.incrementAndGet()
-                        transition { write(); true }
-                    }
+                    if (waitMs() != 0L) false else transition { asked = true; write(); true }
                 }
-            } == true
-            if (released) ManagedNetworkAdb.releasedToOwner = true
-            publish()
-            released
-        } }
-    }.getOrDefault(false)
+            }
+        }.getOrNull()
+        if (!asked) return@withLock false
+        val state = runCatching { endpoint.state() }.getOrNull()
+        val reopened = if (state != null) !state.managed else answer == true
+        if (reopened) {
+            // No renewal can have run meanwhile: each one needs the effects queue held here.
+            generation.incrementAndGet()
+            ManagedNetworkAdb.releasedToOwner = true
+        }
+        runCatching { publish() }
+        reopened
+    } }
 
     /** Main recovery becomes available only after the canonical helper passes capability admission. */
     private fun currentDaemon(): LocalAdbState? {

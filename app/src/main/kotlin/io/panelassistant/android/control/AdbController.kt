@@ -95,7 +95,7 @@ class AdbController internal constructor(
     internal fun set(on: Boolean): ControlApplyOutcome = RemoteDebugSecurityTransitionGate.mutate {
         if (on) {
             // Never gives a held lease back: a queued or restored ON reaches here too. Only the owner's
-            // own press does that, at the settings door (directNetworkAdbOnRefusalJson), before this.
+            // own press does that, at the settings door (takeNetworkAdbBackForOwner), before this.
             if (ManagedNetworkAdb.ownsRuntime()) return@mutate ControlApplyOutcome.FAILED
             // A marker is a durable OFF instruction, including when its contents are corrupt. Never
             // convert an interrupted teardown into TCP enablement merely because config ownership is
@@ -429,21 +429,27 @@ internal fun completeHardenedNetworkAdbAdmission(
 }
 
 /**
- * The settings door for a direct Network ADB ON, the owner's own press. Null lets the request go on: it
- * is not an ON, nothing is managed, or the panel has been without its session for long enough and the
- * lease was given back just now. Otherwise the refusal body, and the lease is untouched. This is the
- * only place a held lease is given back; it blocks briefly on the helper, and must not hold the
- * transition gate.
+ * The settings door's first look at a direct Network ADB ON, the owner's own press. Null lets the request
+ * go on: it is not an ON, nothing is managed, or the panel has been without its session for long enough.
+ * Otherwise the refusal body. Nothing is changed here: the lease is given back only once the request has
+ * passed every other admission, by [takeNetworkAdbBackForOwner].
  */
 internal fun directNetworkAdbOnRefusalJson(turnOn: Boolean): String? {
     if (!turnOn || !ManagedNetworkAdb.managed) return null
     val wait = ManagedNetworkAdb.ownerSwitchWaitMs()
-    if (wait == 0L && ManagedNetworkAdb.releaseToOwner()) return null
+    if (wait == 0L) return null
     val seconds = wait?.let { (it + 999) / 1000 }
     val message = if (seconds == null) "Panel Assistant manages network ADB on this panel."
         else "Panel Assistant manages network ADB on this panel. This switch works after the panel has been without its Home Assistant connection for ${ManagedNetworkAdb.OWNER_SWITCH_AFTER_MS / 60_000} minutes."
     return """{"ok":false,"error":"network-adb-managed-by-panel-assistant","message":"$message","owner_switch_wait_s":${seconds ?: "null"}}"""
 }
+
+/**
+ * The last step of the owner's press, straight before the ON is applied: true when nothing holds ADB off,
+ * or the lease was given back just now. This is the only caller that gives a held lease back. It blocks
+ * briefly on the helper and must not hold the transition gate.
+ */
+internal fun takeNetworkAdbBackForOwner(): Boolean = !ManagedNetworkAdb.managed || ManagedNetworkAdb.releaseToOwner()
 
 /** Android's USB debugging setting says nothing about adbd while Panel Assistant's lease keeps it stopped. */
 internal fun usbDebuggingDiagnostic(setting: String, managed: Boolean = ManagedNetworkAdb.managed): String =

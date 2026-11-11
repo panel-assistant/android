@@ -3,6 +3,7 @@ package io.panelassistant.android
 import io.panelassistant.android.control.FakeRootShell
 import io.panelassistant.android.control.ManagedNetworkAdb
 import io.panelassistant.android.control.directNetworkAdbOnRefusalJson
+import io.panelassistant.android.control.takeNetworkAdbBackForOwner
 import io.panelassistant.android.panelassistant.LocalAdbEndpoint
 import io.panelassistant.android.panelassistant.LocalAdbRuntime
 import io.panelassistant.android.panelassistant.LocalAdbState
@@ -95,6 +96,38 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
         assertEquals("the lease is still renewed", renewals + 2, endpoint.beats)
     }
 
+    @Test fun aHelperThatKeepsTheLeaseLeavesEverythingAsItWasAndStillRenewed() = lease { rig, endpoint, clock ->
+        runtime.sessionEnded()
+        clock.now += bound
+        endpoint.recovery = Recovery.REFUSED
+        assertEquals(LiveSettingRequestOutcome.REJECTED, turnOn(rig))
+        assertEquals(LocalAdbState(true, false), endpoint.state())
+        assertFalse(endpoint.listening)
+        assertTrue(ManagedNetworkAdb.managed)
+        assertFalse(rig.config.networkAdbEnabled)
+        // The press changed nothing, so the lease is renewed as before and ADB does not reopen by itself.
+        val renewals = endpoint.beats
+        advanceTimeBy(65_000)
+        assertEquals(renewals + 2, endpoint.beats)
+        // The owner can press again.
+        endpoint.recovery = Recovery.REOPENS
+        assertEquals(LiveSettingRequestOutcome.APPLIED, turnOn(rig))
+        assertTrue(endpoint.listening)
+    }
+
+    @Test fun aReopeningWhoseReplyIsLostIsStillARelease() = lease { rig, endpoint, clock ->
+        runtime.sessionEnded()
+        clock.now += bound
+        endpoint.recovery = Recovery.REOPENS_THEN_FAILS
+        assertEquals("ADB is open, so the press is not answered with a refusal", LiveSettingRequestOutcome.APPLIED, turnOn(rig))
+        assertEquals(LocalAdbState(false, true), endpoint.state())
+        assertFalse(ManagedNetworkAdb.managed)
+        val (arms, beats) = endpoint.arms to endpoint.beats
+        advanceTimeBy(95_000)
+        assertEquals(arms to beats, endpoint.arms to endpoint.beats)
+        assertTrue(endpoint.listening)
+    }
+
     @Test fun aSessionThatReturnsBeforeTheBoundStartsTheCountAgain() = lease { rig, endpoint, clock ->
         runtime.sessionEnded()
         clock.now += bound - 1_000
@@ -148,17 +181,23 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
         }
     }
 
-    /** The owner's press: the settings door first, and only an ON it lets through is applied. */
-    private fun turnOn(rig: Rig): LiveSettingRequestOutcome =
-        if (directNetworkAdbOnRefusalJson(turnOn = true) != null) LiveSettingRequestOutcome.REJECTED else applyOn(rig)
+    /** The owner's press as the settings door runs it: the first look, then the lease, then the apply. */
+    private fun turnOn(rig: Rig): LiveSettingRequestOutcome = when {
+        directNetworkAdbOnRefusalJson(turnOn = true) != null -> LiveSettingRequestOutcome.REJECTED
+        !takeNetworkAdbBackForOwner() -> LiveSettingRequestOutcome.REJECTED
+        else -> applyOn(rig)
+    }
 
     /** The apply path alone, as a queued or restored ON reaches it, with no owner at the door. */
     private fun applyOn(rig: Rig, authority: LiveSettingAuthority = LiveSettingAuthority(setOf("network_adb"), bootIdentity = { "test-boot" })) =
         requestLiveSetting(authority, rig.config, { rig.commands }, "network_adb", "true", unlockKiosk = { true }, refreshAutoSleep = {})
 
+    private enum class Recovery { REOPENS, REFUSED, REOPENS_THEN_FAILS }
+
     /** Native daemon boundary only; the session runtime, dispatcher and controller are production. */
     private class LeaseEndpoint : LocalAdbEndpoint {
         private var status = LocalAdbState(false, false)
+        var recovery = Recovery.REOPENS
         var listening = false
         var arms = 0
             private set
@@ -178,10 +217,14 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
         }
         override fun recover(nonce: String, submit: (() -> Unit) -> Boolean): Boolean? {
             if (!submit {
-                status = LocalAdbState(false, true)
-                listening = true
+                if (recovery != Recovery.REFUSED) {
+                    status = LocalAdbState(false, true)
+                    listening = true
+                }
             }) return null
-            return true
+            // The helper reopened ADB and its answer never arrived.
+            if (recovery == Recovery.REOPENS_THEN_FAILS) throw java.io.IOException("reply lost")
+            return recovery == Recovery.REOPENS
         }
         override fun shell(command: ByteArray, timeoutMs: Int, submit: (() -> Unit) -> Boolean): JSONObject? =
             error("this test does not execute maintenance shell commands")
