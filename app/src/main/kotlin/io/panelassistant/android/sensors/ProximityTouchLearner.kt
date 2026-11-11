@@ -48,7 +48,12 @@ internal class ProximityTouchLearner(private val seed: Seed? = null) {
 
     fun model(): Model? = model
 
-    /** A fresh acquisition. Held values or timer ticks must not be passed: they are not evidence. */
+    /**
+     * A fresh acquisition. Held values or timer ticks must not be passed: they are not evidence. True when
+     * what [model] reports or [toJson] saves changed: a touch was finalised, or a steady plateau moved the
+     * clear anchor. A plateau changes the model only through that anchor, and can first do so long after
+     * the last touch, once the person leaves.
+     */
     fun observe(raw: Float, now: Long): Boolean {
         if (!raw.isFinite()) return false
         if (lastSampleAt?.let { now < it } == true) return false
@@ -60,8 +65,9 @@ internal class ProximityTouchLearner(private val seed: Seed? = null) {
         lastSampleAt = now
         samples.addLast(now to raw)
         while (samples.isNotEmpty() && now - samples.first().first > RING_MS) samples.removeFirst()
+        val anchorBefore = clearAnchor
         accumulatePlateau(raw, now)
-        return finalise(now)
+        return finalise(now) || clearAnchor != anchorBefore
     }
 
     /**
