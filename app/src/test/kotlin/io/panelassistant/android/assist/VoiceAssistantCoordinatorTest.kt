@@ -859,6 +859,35 @@ class VoiceAssistantCoordinatorTest {
         assertNull(c.diagnosticsAction("stop", "tab-1"))
     }
 
+    /**
+     * What the panel receives when the owner cancels the tuning wizard while its first request is unanswered
+     * (configure-voice-tuning.test.mjs pins that the page sends exactly level then Stop). Through the listener's
+     * own callback, the next wake word is answered with a run. Had the late level reply started the wake-word test
+     * after Stop, as it once did, the same wake word would only have been counted.
+     */
+    @Test
+    fun `a wizard cancelled while starting leaves the wake word answered, where a test after Stop would count it`() {
+        val c = coordinator()
+        c.start()
+        val engine = engines.single()
+        assertNull(c.diagnosticsAction("level", "tab-1"))
+        assertNull(c.diagnosticsAction("stop", "tab-1"))
+        assertNull(c.diagnostics().session)
+        assertEquals("idle", c.diagnostics().wakeTest.state)
+        engine.onActivation(WakeWordActivation("okay_nabu", "okay nabu"))
+        awaitRunner(0).release.complete(AssistOutcome())
+        awaitState(VoiceState.IDLE)
+
+        // The order the defect allowed: the coordinator admits a fresh test after Stop, and swallows the wake word.
+        assertNull(c.diagnosticsAction("level", "tab-1"))
+        assertNull(c.diagnosticsAction("stop", "tab-1"))
+        assertNull(c.diagnosticsAction("wake_test", "tab-1"))
+        engine.onActivation(WakeWordActivation("okay_nabu", "okay nabu"))
+        assertEquals(1, c.diagnostics().wakeTest.fired)
+        assertEquals("no second run", 1, runners.size)
+        assertNull(c.diagnosticsAction("stop", "tab-1"))
+    }
+
     @Test
     fun `the level meter listens beside the wake word until the browser stops its heartbeat`() {
         val c = coordinator(levelLeaseMs = 400L)
