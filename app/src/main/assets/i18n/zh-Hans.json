@@ -336,7 +336,7 @@
     "configure.auto_sleep.manual_override": {
       "sourceHash": "4bc8faafa960b63173114d6ddc443e477303a41f4e648438e74c819aec55edb1",
       "state": "machine-cross-checked",
-      "text": "手动屏幕控制：{state}"
+      "text": "手动覆盖：{state}"
     },
     "configure.auto_sleep.no_credible_sources": {
       "sourceHash": "1fafdf61adcae38c76552e518a2883c4dc158891ef5ac59ef17f4d51af719158",
@@ -2104,7 +2104,7 @@
       "state": "machine-cross-checked"
     },
     "configure.voice.microphone_absent": {
-      "text": "此面板未报告麦克风，或其设备配置文件将 hardware.microphone 设为 false，因此不提供语音功能。",
+      "text": "此面板报告没有麦克风，或其设备配置文件将 hardware.microphone 设为 false，因此不提供语音功能。",
       "sourceHash": "4de4b6204ee7bace69a84ce679fa1b1d918a717fd4d7045ae0854ebcca6cd84f",
       "state": "machine-cross-checked"
     },

@@ -996,7 +996,7 @@
     "configure.duration.minutes": {
       "sourceHash": "1829c58ba472520fd39e61f9e337a1b7da27e86299332dde5bfdea355c3895a8",
       "state": "machine-cross-checked",
-      "text": "{count} minuti"
+      "text": "{count} min"
     },
     "configure.empty": {
       "sourceHash": "98d6ce0ae7ddc3af8406b87feaba58535a5f45b9a47286fa83adcc6db2df7808",
@@ -2746,7 +2746,7 @@
     "dashboard.camera.action.enable": {
       "sourceHash": "b5ba02397f9882f0957226dffeb565fed6081c3851f010523f56a31b0c5608f0",
       "state": "machine-cross-checked",
-      "text": "abilita la fotocamera per fornire istantanee e streaming"
+      "text": "attiva l’impostazione della fotocamera per fornire istantanee e un flusso video"
     },
     "dashboard.camera.action.encoder_unavailable": {
       "sourceHash": "62374b18e506772270e18c91afafca04ccb240b69e763ad83de6b8350a21f082",
@@ -5371,7 +5371,7 @@
     "entities.issue.default-broad.recommendation": {
       "sourceHash": "ee01905364ebf98329a8c55c886e5437838273b6eb78f464b5320cc42501932a",
       "state": "machine-cross-checked",
-      "text": "Restringi il selettore specificando un'area, un piano, un'etichetta, un modello di entità o un elenco esplicito di entità."
+      "text": "Restringi il selettore specificando un'area, un piano, un'etichetta, uno schema di corrispondenza per le entità o un elenco esplicito di entità."
     },
     "entities.issue.default-unbounded.reason": {
       "sourceHash": "82a4eeff8f306907cd156b2847f430a0801bcb6b05b669c47879476497494fda",
@@ -5586,7 +5586,7 @@
     "entities.issue.template-selector.summary": {
       "sourceHash": "77922d0110ae843152f8e1cdc92a41f6c88e478f06bbc0f0468702219af5efd7",
       "state": "machine-cross-checked",
-      "text": "Selettore di entità con modello senza limiti"
+      "text": "Selettore di entità senza limiti basato su un modello"
     },
     "entities.issue.view.untitled": {
       "sourceHash": "e0c10b993769c8866cab87427180d78d70c00b4fc959b01afa01f0ada563419e",

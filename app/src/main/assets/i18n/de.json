@@ -1919,7 +1919,7 @@
       "state": "machine-cross-checked"
     },
     "configure.save.hardware_unavailable": {
-      "text": "Gespeichert. Dieses Panel kann die Einstellung noch nicht übernehmen; sie wird übernommen, sobald das möglich ist.",
+      "text": "Gespeichert. Dieses Panel kann die Einstellung noch nicht übernehmen; sie wird übernommen, falls sich das ändert.",
       "sourceHash": "67b5afeafe3ae46c4d5fe55a308ba88d39ff45f61c663e5fae47d17317334f3b",
       "state": "machine-cross-checked"
     },
@@ -2599,7 +2599,7 @@
       "state": "machine-cross-checked"
     },
     "dashboard.banner.ha_sign_in.action": {
-      "text": "dieses Panel über einen Browser verbinden",
+      "text": "verbinde dieses Panel über einen Browser",
       "sourceHash": "b9ce2f85fea6f8548721dc2e95170eb6501d1cb71444f211656d9aa22f968553",
       "state": "machine-cross-checked"
     },
@@ -9359,7 +9359,7 @@
       "state": "machine-cross-checked"
     },
     "profiles.modal.restart_warning": {
-      "text": "Der Paneldienst wird neu gestartet. Wenn die Revision nicht fehlerfrei wird, kehrt Panel Assistant zum zuletzt als fehlerfrei bekannten Profil zurück.",
+      "text": "Der Paneldienst wird neu gestartet. Wenn die Revision keinen gesunden Zustand erreicht, kehrt Panel Assistant zum zuletzt als gesund bekannten Profil zurück.",
       "sourceHash": "9e5d170f1bd135db3e5579a04d8fc9f5be6139ba2b870e143dd07c67530dbb3f",
       "state": "machine-cross-checked"
     },

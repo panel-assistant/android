@@ -2214,12 +2214,12 @@
    "state": "machine-cross-checked"
   },
   "dashboard.banner.companion_url.summary_many": {
-   "text": "(liczba serwerów: {count}) — pulpit może się nie załadować z",
+   "text": "(liczba serwerów: {count}) — pulpit może się nie załadować z błędem",
    "sourceHash": "aa53e84cf786b06f13cee6812a280e46bae647fd0290b0849b9a20237e899afe",
    "state": "machine-cross-checked"
   },
   "dashboard.banner.companion_url.summary_one": {
-   "text": "({count} serwer) — pulpit może się nie załadować z",
+   "text": "({count} serwer) — pulpit może się nie załadować z błędem",
    "sourceHash": "56203c170dac72c1625b265579265ec88a750300873d2accad41690efe1e0a0f",
    "state": "machine-cross-checked"
   },
@@ -2284,7 +2284,7 @@
    "state": "machine-cross-checked"
   },
   "dashboard.banner.proximity_learning.touch_available": {
-   "text": "Funkcja „Dotknij, by wybudzić” nadal działa.",
+   "text": "Wybudzanie dotykiem nadal jest dostępne.",
    "sourceHash": "903915dd8ee56238ac39ddd50edf407ff66796e29173afbeb3da700f6838c234",
    "state": "machine-cross-checked"
   },
@@ -2339,7 +2339,7 @@
    "state": "machine-cross-checked"
   },
   "dashboard.banner.zoom.action_suffix": {
-   "text": "które ostro skaluje cały panel; ustaw je, a potem zresetuj tutaj powiększenie.",
+   "text": "które skaluje cały panel z zachowaniem ostrości; ustaw je, a potem zresetuj tutaj powiększenie.",
    "sourceHash": "7220acdb7b7548881a3939db495a9a5117cc8975f49c21d5c5f447c802508074",
    "state": "machine-cross-checked"
   },
@@ -4589,7 +4589,7 @@
    "state": "machine-cross-checked"
   },
   "entities.apply.enable_confirm": {
-   "text": "Zachować bieżący strumień (liczba encji: {current}) i włączyć przyszłe automatyczne aktualizacje zasad?",
+   "text": "Zachować bieżący strumień (liczba encji: {current}) i włączyć przyszłe automatyczne aktualizacje subskrypcji zgodnie z zasadami?",
    "sourceHash": "bac6011889095102b94474f07be420771d6019f85ae6145be6e969f509525ecc",
    "state": "machine-cross-checked"
   },
@@ -5134,7 +5134,7 @@
    "state": "machine-cross-checked"
   },
   "entities.issue.strategy_allowed_note": {
-   "text": "Home Assistant tworzy ten pulpit na podstawie strategii, a strategia tworzy karty tylko dla encji, które widzi. Gdy ta kontrola jest dozwolona, żadna encja spoza subskrypcji nie dostaje tu karty i nie zostanie wykryta przez mechanizm uczenia zależności, więc ta strona nie może pokazać, czego brakuje. Otwórz ten sam pulpit w Home Assistant na innym urządzeniu i przypnij encję stojącą za każdą kartą, której tu brakuje.",
+   "text": "Home Assistant tworzy ten pulpit na podstawie strategii, a strategia tworzy karty tylko dla encji, które widzi. Po zezwoleniu na kontynuowanie mimo wyniku tej kontroli żadna encja spoza subskrypcji nie dostaje tu karty i nie zostanie wykryta przez mechanizm uczenia zależności, więc ta strona nie może pokazać, czego brakuje. Otwórz ten sam pulpit w Home Assistant na innym urządzeniu i przypnij encję stojącą za każdą kartą, której tu brakuje.",
    "sourceHash": "70b006b69bb10b22043fbe4f51269ef7cd47586b1e0dfa6f5c02be15f119782b",
    "state": "machine-cross-checked"
   },
@@ -5319,7 +5319,7 @@
    "state": "machine-cross-checked"
   },
   "entities.reset.confirm": {
-   "text": "Czy na pewno chcesz zresetować wszystkie dane o encjach zebrane podczas uczenia zależności, ręczne przypięcia i wykluczenia oraz decyzje o ignorowaniu kontroli bezpieczeństwa wykrywania encji? Nie można tego cofnąć. Bieżąca subskrypcja na żywo zostanie zachowana, a skanowanie zastępcze odbuduje te dane.",
+   "text": "Czy na pewno chcesz zresetować wszystkie dane o encjach zebrane podczas uczenia zależności, ręczne przypięcia i wykluczenia oraz decyzje o ignorowaniu kontroli bezpieczeństwa wykrywania encji? Nie można tego cofnąć. Bieżąca subskrypcja na żywo zostanie zachowana podczas odbudowy tych danych przez skanowanie zastępcze.",
    "sourceHash": "af56ee112e5d4353209106117b9426c18de16a6c7cfc2c2e2db39526d56a1db6",
    "state": "machine-cross-checked"
   },
@@ -7279,7 +7279,7 @@
    "state": "machine-cross-checked"
   },
   "profiles.action.use_automatic": {
-   "text": "Tryb automatyczny",
+   "text": "Włącz tryb automatyczny",
    "sourceHash": "539ca38b10265667d2ecca6424e6bec15d47aaed08577648ad463be14c6b75b2",
    "state": "machine-cross-checked"
   },
@@ -8649,7 +8649,7 @@
    "state": "machine-cross-checked"
   },
   "profiles.schema.description.model_label_strategy": {
-   "text": "Należąca do rdzenia strategia etykiet lokalnych.",
+   "text": "Lokalna strategia etykiet należąca do rdzenia.",
    "sourceHash": "7136f1a6d0605edafec45bba2994d73e2d1a1627348c1fccf1b12be4a00acc63",
    "state": "machine-cross-checked"
   },
@@ -8974,7 +8974,7 @@
    "state": "machine-cross-checked"
   },
   "runtime.power_safety.action.repair_degraded": {
-   "text": "Użyj opcji „Napraw zabezpieczenia zasilania”, żeby sprawdzić zabezpieczenia aplikacji i ponowić obecnie niesprawną ścieżkę bezpośredniego dostępu root tego panelu. Naprawa nigdy nie restartuje panelu.",
+   "text": "Użyj opcji „Napraw zabezpieczenia zasilania”, żeby sprawdzić zabezpieczenia aplikacji i ponowić próbę użycia obecnie nieprawidłowo działającej ścieżki bezpośredniego dostępu root tego panelu. Naprawa nigdy nie restartuje panelu.",
    "sourceHash": "acb7d2bc475d897202962a44cc3c84ebffcdb1e55369edeadd13ab130dbf0735",
    "state": "machine-cross-checked"
   },
