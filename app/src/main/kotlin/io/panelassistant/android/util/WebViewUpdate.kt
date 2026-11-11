@@ -1,6 +1,8 @@
 package io.panelassistant.android.util
 
 import io.panelassistant.android.device.WebViewSpec
+import io.panelassistant.android.panelassistant.PanelAssistantBlobs
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -72,6 +74,13 @@ internal class WebViewUpdate(
 
     data class Reply(val status: Int, val body: JSONObject)
 
+    /**
+     * Home Assistant's copy of the pinned APK, offered over the Panel Assistant session for a panel that
+     * cannot reach the download host: its declared hash and size, and a one-use fetch into a file (null
+     * when the reference is unusable). It only carries the pinned bytes; the stage is admitted as any other.
+     */
+    class Blob(val sha256: String, val size: Long?, val fetch: (suspend (File) -> PanelAssistantBlobs.Fetched)?)
+
     fun observe(): JSONObject = synchronized(lock) {
         val observation = io.observe()
         loadAndReconcile(observation)
@@ -79,10 +88,12 @@ internal class WebViewUpdate(
         snapshot(observation)
     }
 
-    fun install(requestId: String?, artifactSha256: String?): Reply = synchronized(lock) {
+    fun install(requestId: String?, artifactSha256: String?, blob: Blob? = null): Reply = synchronized(lock) {
         val observation = io.observe()
         loadAndReconcile(observation)
-        if (requestId == null || !REQUEST_ID.matches(requestId) || artifactSha256 == null || !SHA256.matches(artifactSha256)) {
+        if (requestId == null || !REQUEST_ID.matches(requestId) || artifactSha256 == null || !SHA256.matches(artifactSha256) ||
+            (blob != null && blob.sha256 != artifactSha256)
+        ) {
             return@synchronized answer(400, observation, false, "invalid_request")
         }
         receipt?.takeIf { it.optString("request_id") == requestId }?.let {
@@ -104,7 +115,7 @@ internal class WebViewUpdate(
             return@synchronized answer(503, observation, false, "receipt_unavailable")
         }
         active = true
-        val job = scope.launch(Dispatchers.IO) { runInstall(requestId, spec, ticket) }
+        val job = scope.launch(Dispatchers.IO) { runInstall(requestId, spec, ticket, blob) }
         // Completion also runs when a cancelled parent prevents the coroutine body from starting.
         job.invokeOnCompletion {
             synchronized(lock) {
@@ -165,23 +176,37 @@ internal class WebViewUpdate(
         if (next == "installed" && spec != null) stage(spec).delete()
     }
 
-    private suspend fun runInstall(requestId: String, spec: WebViewSpec, ticket: InstallProgress.Ticket) {
+    private suspend fun runInstall(requestId: String, spec: WebViewSpec, ticket: InstallProgress.Ticket, blob: Blob?) {
         val completed = stage(spec)
         val partial = File(completed.path + ".part")
         var result = "deferred"
         var reason: String? = "interrupted"
         var cause: String? = null
+        var supplied: String? = null
         try {
             io.directory.mkdirs()
             partial.delete()
             // A resumed complete stage is never trusted by presence, filename, or an old receipt.
             if (!validStage(completed, spec)) {
                 completed.delete()
-                io.download(spec, partial)?.let { reason = "download_failed"; cause = it; return }
-                if (!validStage(partial, spec)) { result = "rejected"; reason = "artifact_mismatch"; return }
+                // Home Assistant's copy goes first: its one-use reference expires minutes after the request.
+                supplied = blob?.let { offered ->
+                    val fetched = offered.fetch?.takeIf { offered.size == spec.size }?.let { fetchBlob(it, partial) }
+                    when {
+                        fetched == null -> "mismatch"
+                        fetched == PanelAssistantBlobs.Fetched.WRITTEN && validStage(partial, spec) -> "fetched"
+                        fetched == PanelAssistantBlobs.Fetched.UNAVAILABLE -> "unavailable"
+                        else -> "mismatch"
+                    }
+                }
+                // The panel's own download replaces whatever an unusable blob left in the partial file.
+                if (supplied != "fetched") {
+                    io.download(spec, partial)?.let { reason = "download_failed"; cause = it; return }
+                    if (!validStage(partial, spec)) { result = "rejected"; reason = "artifact_mismatch"; return }
+                }
                 if (!partial.renameTo(completed)) { reason = "staging_failed"; return }
             }
-            synchronized(lock) { save(transaction(requestId, spec, io.observe().processId, "verified")) }
+            synchronized(lock) { save(transaction(requestId, spec, io.observe().processId, "verified", supplied = supplied)) }
             val outcome = io.install(completed) {
                 synchronized(lock) {
                     val latest = io.observe()
@@ -190,7 +215,7 @@ internal class WebViewUpdate(
                     else if (!validStage(completed, spec)) InstallOutcome.Rejected("artifact_mismatch")
                     else try {
                         // Durable before any submission: process/socket loss can never authorize replay.
-                        save(transaction(requestId, spec, latest.processId, "submitted_unknown"))
+                        save(transaction(requestId, spec, latest.processId, "submitted_unknown", supplied = supplied))
                         null
                     } catch (_: Exception) {
                         InstallOutcome.Retryable("receipt_unavailable")
@@ -216,13 +241,21 @@ internal class WebViewUpdate(
         } finally {
             partial.delete()
             synchronized(lock) {
-                runCatching { save(transaction(requestId, spec, io.observe().processId, result, reason).apply { cause?.let { put("cause", it) } }) }
+                runCatching { save(transaction(requestId, spec, io.observe().processId, result, reason, cause, supplied)) }
                 active = false
             }
             if (result == "installed" || result == "rejected") completed.delete()
             InstallProgress.finish(ticket, if (result == "installed") "WebView installed" else "WebView update deferred: ${reason ?: result}")
             synchronized(lock) { maybeRebind(io.observe()) }
         }
+    }
+
+    private suspend fun fetchBlob(fetch: suspend (File) -> PanelAssistantBlobs.Fetched, partial: File) = try {
+        fetch(partial)
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        PanelAssistantBlobs.Fetched.UNAVAILABLE
     }
 
     /** Only a durably verified package replacement can request the existing deferred process boundary. */
@@ -315,7 +348,7 @@ internal class WebViewUpdate(
         if (transaction != null && spec != null && awaitsRebind(observed, spec)) {
             transaction.put("state", "installing")
         }
-        return JSONObject().put("schema", 1).put("supported", true).put("eligible", reason == null)
+        return JSONObject().put("schema", 1).put("supported", true).put("accepts_blob", true).put("eligible", reason == null)
             .put("reason", reason ?: JSONObject.NULL).put("profile_id", observed.profileId)
             .put("android_sdk", observed.sdk).put("supported_abis", JSONArray(observed.abis.toList()))
             .put("process", JSONObject().put("id", observed.processId).put("pid", observed.pid).put("started_elapsed_ms", observed.processStartedMs))
@@ -334,9 +367,12 @@ internal class WebViewUpdate(
             .put("transaction", transaction ?: JSONObject.NULL)
     }
 
-    private fun transaction(id: String, spec: WebViewSpec, process: String, state: String, reason: String? = null) = JSONObject()
+    private fun transaction(
+        id: String, spec: WebViewSpec, process: String, state: String, reason: String? = null, cause: String? = null, supplied: String? = null,
+    ) = JSONObject()
         .put("schema", 1).put("request_id", id).put("artifact_sha256", spec.apkSha256).put("state", state)
         .put("reason", reason ?: JSONObject.NULL).put("process_id", process)
+        .also { if (cause != null) it.put("cause", cause) }.also { if (supplied != null) it.put("supplied", supplied) }
 
     companion object {
         private val REQUEST_ID = Regex("^[A-Za-z0-9_-]{1,80}$")

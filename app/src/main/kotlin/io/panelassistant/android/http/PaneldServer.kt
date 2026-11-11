@@ -890,12 +890,21 @@ class PaneldServer internal constructor(
         if (op == "webview.install") {
             val requestId = args.opt("request_id") as? String
             val hash = args.opt("artifact_sha256") as? String
+            // Home Assistant's copy of the pin (protocol section 20.5). It carries only the bytes the hash
+            // already pins, so hardened approval stays bound to the operation, request and hash alone.
+            val blob = args.opt("blob")?.takeUnless { it == JSONObject.NULL }?.let { raw ->
+                val reference = io.panelassistant.android.panelassistant.PanelAssistantBlobs.reference(raw as? JSONObject, Long.MAX_VALUE)
+                io.panelassistant.android.util.WebViewUpdate.Blob(
+                    (raw as? JSONObject)?.opt("sha256") as? String ?: "", reference?.size,
+                    reference?.let { { file -> io.panelassistant.android.panelassistant.PanelAssistantBlobs(auth).download(it, file) } },
+                )
+            }
             val refusal = authorizeSessionRequest(
                 config.hardenedSecurityEnabled, io.panelassistant.android.security.SensitiveOperation.APK_INSTALL,
                 "$op\u0000${requestId.orEmpty()}\u0000${hash.orEmpty()}", "Update System WebView", LocalApprovalBroker.instance, onPending,
             )
             if (refusal != null) return PanelAssistantManageReply(PanelAssistantTransportProtocol.OUTCOME_REFUSED, refusal, null)
-            val answer = withContext(Dispatchers.IO) { webViewUpdate.install(requestId, hash) }
+            val answer = withContext(Dispatchers.IO) { webViewUpdate.install(requestId, hash, blob) }
             // The owner's own reason stays in the body; the reply code comes from the one status table.
             val mapped = manageReplyFor(answer.status, answer.body, ContentType.Application.Json.toString(), emptyList())
             return PanelAssistantManageReply(mapped.outcome, mapped.code, answer.body)

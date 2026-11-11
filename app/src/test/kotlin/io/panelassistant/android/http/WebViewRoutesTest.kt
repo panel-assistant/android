@@ -160,6 +160,39 @@ class WebViewRoutesTest {
         }
     }
 
+    @Test fun `HTTP install never takes a Home Assistant blob and downloads the pin itself`() = testApplication {
+        val scope = CoroutineScope(SupervisorJob())
+        val io = FakeIo(temporary.newFolder())
+        val source = File(io.directory, "source").apply { writeBytes(byteArrayOf(1, 2, 3, 4)) }
+        val candidate = spec.copy(apkSha256 = AppInstaller.sha256(source))
+        io.acceptedSpec = candidate
+        io.release.countDown()
+        var downloads = 0
+        io.downloader = { _, destination -> downloads++; destination.writeBytes(byteArrayOf(1, 2, 3, 4)); null }
+        val owner = WebViewUpdate(scope, { "pin" to candidate }, io)
+        try {
+            application { routing { route("/api/v1") { webViewRoutes(owner) { _, _, _, _ -> true } } } }
+            val blob = JSONObject().put("url", "/api/panel_assistant/blob/" + "t".repeat(32)).put("size", 4)
+                .put("sha256", candidate.apkSha256).put("type", "application/vnd.android.package-archive")
+            // The HTTP body admits only scalar fields, so the session's blob object is refused before the owner.
+            val nested = client.post("/api/v1/webview") {
+                contentType(ContentType.Application.Json)
+                setBody(JSONObject().put("request_id", "owner").put("artifact_sha256", candidate.apkSha256).put("blob", blob).toString())
+            }
+            assertEquals(HttpStatusCode.BadRequest, nested.status)
+            assertNull(io.receipt)
+            // Any other blob field is ignored: the panel downloads the pin itself and records no supply.
+            val scalar = client.post("/api/v1/webview") {
+                contentType(ContentType.Application.Json)
+                setBody(JSONObject().put("request_id", "owner").put("artifact_sha256", candidate.apkSha256).put("blob", blob.toString()).toString())
+            }
+            assertEquals(HttpStatusCode.Accepted, scalar.status)
+            scope.coroutineContext[Job]!!.children.toList().joinAll()
+            assertEquals(1, downloads)
+            assertFalse(io.receipt!!.has("supplied"))
+        } finally { scope.cancel() }
+    }
+
     private class FakeIo(override val directory: File) : WebViewUpdateIo {
         @Volatile var receipt: JSONObject? = null
         var installs = 0
