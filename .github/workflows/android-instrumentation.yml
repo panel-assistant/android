@@ -137,8 +137,11 @@ jobs:
           # The emulator action executes each parsed newline separately.
           # The app declares HOME, so a fresh API 35 emulator can show the system home chooser; that chooser
           # hides every app overlay, and the wake-tap taps then reach it instead. home_preflight pins Launcher3.
+          # Every bare adb call is bounded at 60 s: when the emulator dies, adb otherwise waits for the device
+          # until the job times out (28 min on 2026-11-10). Calls that need longer carry their own timeout.
           script: >-
             bash -euo pipefail -c '
+            adb() { timeout 60 adb "$@"; };
             adb install app/build/outputs/apk/debug/app-debug.apk;
             adb install app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk;
             avd_adb() {
@@ -176,7 +179,7 @@ jobs:
             log="$RUNNER_TEMP/core-instrumentation.log";
             status=0;
             adb logcat -c;
-            adb shell am instrument -w -e annotation io.panelassistant.android.CoreInstrumentation io.panelassistant.android.test/androidx.test.runner.AndroidJUnitRunner > "$log" 2>&1 || status=$?;
+            timeout 300 adb shell am instrument -w -e annotation io.panelassistant.android.CoreInstrumentation io.panelassistant.android.test/androidx.test.runner.AndroidJUnitRunner > "$log" 2>&1 || status=$?;
             cat "$log";
             if [ "$status" -ne 0 ] || grep -Eq "FAILURES!!!|Process crashed|INSTRUMENTATION_FAILED|shortMsg=|No tests found" "$log"; then adb logcat -d -b main,crash,system | tail -n 3000; fi;
             test "$status" -eq 0;
@@ -240,6 +243,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Bounded like the core step: a dead emulator must fail in a minute, not at the job timeout.
+          adb() { timeout 60 adb "$@"; }
           export ANDROID_AVD_HOME="$RUNNER_TEMP/root-status-avd"
           export ANDROID_SERIAL=emulator-5582
           mkdir -p "$ANDROID_AVD_HOME"
