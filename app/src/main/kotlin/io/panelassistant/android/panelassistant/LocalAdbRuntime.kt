@@ -78,6 +78,7 @@ internal class LocalAdbRuntime(
     @Volatile private var compatibleHistory = false
     // When the last accepted session ended; null while one is up, and before the first.
     @Volatile private var sessionEndedAt: Long? = null
+    @Volatile private var sessionToken = ""
 
     // A structural su refusal need not hide a compatible running ordinary helper. This short read-only
     // capability check runs per PA hello; the eventual action independently admits its carrying socket.
@@ -87,7 +88,10 @@ internal class LocalAdbRuntime(
         val (current, fresh, retainExistingLease) = RemoteDebugSecurityTransitionGate.withLock {
             val current = generation.incrementAndGet()
             this.granted = granted
+            sessionToken = token
             sessionEndedAt = null
+            // Whatever hold the helper is in from here on is this session's, not an earlier owner's press.
+            ManagedNetworkAdb.releasedToOwner = false
             val retain = !granted && compatibleHistory && nonce.isNotEmpty()
             if (granted) compatibleHistory = true
             val fresh = if (retain) nonce else MessageDigest.getInstance("SHA-256").digest(UUID.randomUUID().toString().toByteArray()).joinToString("") { "%02x".format(it) }
@@ -165,8 +169,11 @@ internal class LocalAdbRuntime(
         }
     }
 
-    override fun sessionEnded() {
-        RemoteDebugSecurityTransitionGate.withLock { if (sessionEndedAt == null) sessionEndedAt = monotonicMs() }
+    override fun sessionEnded(token: String) {
+        // The end of a session a newer one has already replaced says nothing about the newer one.
+        RemoteDebugSecurityTransitionGate.withLock {
+            if (token == sessionToken && sessionEndedAt == null) sessionEndedAt = monotonicMs()
+        }
     }
 
     /**

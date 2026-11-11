@@ -33,7 +33,7 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
         assertNotEquals(LiveSettingRequestOutcome.APPLIED, turnOn(rig))
         assertEquals(LocalAdbState(true, false), endpoint.state())
 
-        runtime.sessionEnded()
+        runtime.sessionEnded(session)
         assertEquals(bound, ManagedNetworkAdb.ownerSwitchWaitMs())
         clock.now += bound - 1
         assertEquals(1L, ManagedNetworkAdb.ownerSwitchWaitMs())
@@ -52,7 +52,7 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
     }
 
     @Test fun afterTheBoundTheSwitchTakesAdbBackAndTheLeaseStaysAwayUntilTheNextSession() = lease { rig, endpoint, clock ->
-        runtime.sessionEnded()
+        runtime.sessionEnded(session)
         clock.now += bound
         assertEquals(0L, ManagedNetworkAdb.ownerSwitchWaitMs())
 
@@ -69,7 +69,7 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
         assertTrue(endpoint.listening)
 
         // The next accepted session arms a new lease; the saved intent waits for management to end.
-        runtime.session("again", true)
+        session = "again"; runtime.session(session, true)
         runCurrent()
         assertEquals(LocalAdbState(true, false), endpoint.state())
         assertFalse(endpoint.listening)
@@ -79,7 +79,7 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
     }
 
     @Test fun anOnThatIsNotTheOwnersPressNeverGivesTheLeaseBack() = lease { rig, endpoint, clock ->
-        runtime.sessionEnded()
+        runtime.sessionEnded(session)
         clock.now += 10 * bound
         assertEquals("the owner's switch would work now", 0L, ManagedNetworkAdb.ownerSwitchWaitMs())
 
@@ -97,7 +97,7 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
     }
 
     @Test fun aHelperThatKeepsTheLeaseLeavesEverythingAsItWasAndStillRenewed() = lease { rig, endpoint, clock ->
-        runtime.sessionEnded()
+        runtime.sessionEnded(session)
         clock.now += bound
         endpoint.recovery = Recovery.REFUSED
         assertEquals(LiveSettingRequestOutcome.REJECTED, turnOn(rig))
@@ -116,7 +116,7 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
     }
 
     @Test fun aReopeningWhoseReplyIsLostIsStillARelease() = lease { rig, endpoint, clock ->
-        runtime.sessionEnded()
+        runtime.sessionEnded(session)
         clock.now += bound
         endpoint.recovery = Recovery.REOPENS_THEN_FAILS
         assertEquals("ADB is open, so the press is not answered with a refusal", LiveSettingRequestOutcome.APPLIED, turnOn(rig))
@@ -129,10 +129,10 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
     }
 
     @Test fun aSessionAcceptedWhileTheHelperReopensStillArmsAndIsRenewed() = lease { rig, endpoint, clock ->
-        runtime.sessionEnded()
+        runtime.sessionEnded(session)
         clock.now += bound
         // Home Assistant comes back at the worst moment: after the helper was asked, before it answered.
-        endpoint.whileRecovering = { runtime.session("returned", true) }
+        endpoint.whileRecovering = { session = "returned"; runtime.session(session, true) }
         assertEquals("the press is not a release: the panel is managed again", LiveSettingRequestOutcome.REJECTED, turnOn(rig))
         runCurrent()
         assertEquals("the returned session armed its own lease", LocalAdbState(true, false), endpoint.state())
@@ -148,13 +148,44 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
         assertFalse(endpoint.listening)
     }
 
+    @Test fun theLateEndOfASessionANewerOneReplacedStartsNoCount() = lease { rig, endpoint, clock ->
+        // A newer session is accepted before the old one's teardown reports its end.
+        runtime.session("newer", true)
+        runCurrent()
+        runtime.sessionEnded("panel-assistant")
+        clock.now += 10 * bound
+        assertNull("a session is up, whatever an older one reports", ManagedNetworkAdb.ownerSwitchWaitMs())
+        assertEquals(LiveSettingRequestOutcome.REJECTED, turnOn(rig))
+        assertEquals(LocalAdbState(true, false), endpoint.state())
+        assertFalse(endpoint.listening)
+        // The newer session's own end does start it.
+        runtime.sessionEnded("newer")
+        assertEquals(bound, ManagedNetworkAdb.ownerSwitchWaitMs())
+    }
+
+    @Test fun aHoldPanelAssistantTakesAfterTheOwnersPressIsPanelAssistantsAgain() = lease { rig, endpoint, clock ->
+        runtime.sessionEnded(session)
+        clock.now += bound
+        assertEquals(LiveSettingRequestOutcome.APPLIED, turnOn(rig))
+        assertFalse(ManagedNetworkAdb.ownsRuntime())
+        assertTrue(rig.config.setNetworkAdbEnabled(false))
+
+        // Panel Assistant reconnects without granting local ADB: the helper's hold is now its own.
+        runtime.session("without-local-adb", false)
+        runCurrent()
+        assertEquals(LocalAdbState(false, true), endpoint.state())
+        assertTrue("the hold is Panel Assistant's, so the apply path refuses again", ManagedNetworkAdb.ownsRuntime())
+        assertNotEquals(LiveSettingRequestOutcome.APPLIED, applyOn(rig))
+        assertFalse(rig.config.networkAdbEnabled)
+    }
+
     @Test fun aSessionThatReturnsBeforeTheBoundStartsTheCountAgain() = lease { rig, endpoint, clock ->
-        runtime.sessionEnded()
+        runtime.sessionEnded(session)
         clock.now += bound - 1_000
-        runtime.session("back", true)
+        session = "back"; runtime.session(session, true)
         runCurrent()
         assertNull(ManagedNetworkAdb.ownerSwitchWaitMs())
-        runtime.sessionEnded()
+        runtime.sessionEnded(session)
         clock.now += 2_000
         assertEquals(bound - 2_000, ManagedNetworkAdb.ownerSwitchWaitMs())
         assertNotEquals(LiveSettingRequestOutcome.APPLIED, turnOn(rig))
@@ -162,7 +193,7 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
     }
 
     @Test fun hardenedModeKeepsTheLeaseHoweverLongTheSessionHasBeenLost() = lease(hardened = true) { _, endpoint, clock ->
-        runtime.sessionEnded()
+        runtime.sessionEnded(session)
         clock.now += 10 * bound
         assertNull(ManagedNetworkAdb.ownerSwitchWaitMs())
         assertFalse(ManagedNetworkAdb.releaseToOwner())
@@ -172,6 +203,8 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
 
     private class Clock { var now = 1_000_000L }
     private lateinit var runtime: LocalAdbRuntime
+    /** The token of the session the test last had accepted. */
+    private var session = "panel-assistant"
 
     private fun lease(hardened: Boolean = false, body: suspend TestScope.(Rig, LeaseEndpoint, Clock) -> Unit) = runTest {
         val endpoint = LeaseEndpoint()
@@ -187,7 +220,8 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
         // Production installs the runtime as the switch's lease owner where it is created.
         ManagedNetworkAdb.ownerSwitch = runtime
         try {
-            runtime.session("panel-assistant", true)
+            session = "panel-assistant"
+            runtime.session(session, true)
             runCurrent()
             assertEquals(LocalAdbState(true, false), endpoint.state())
             assertTrue(ManagedNetworkAdb.managed)
