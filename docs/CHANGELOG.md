@@ -2,7 +2,7 @@
 
 The full notes for every release and pre-release, from 1.0.0 on, are on [panel-assistant.io](https://panel-assistant.io/go/release-notes). Each section here is a short summary with a link to them; earlier sections are the full notes as they were released.
 
-## v1.0.3-rc1
+## v1.0.3
 
 ## v1.0.2 - 2026-11-11
 
