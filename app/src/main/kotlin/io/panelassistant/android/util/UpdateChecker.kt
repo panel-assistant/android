@@ -71,19 +71,60 @@ object UpdateChecker {
     @Volatile private var companionCachePolicy: CompanionPolicy? = null
     private val checkMutex = Mutex()
 
+    /** When the last scheduled lookup ran and its result: [SCHEDULED_OK], [SCHEDULED_SKIPPED] or the
+     *  failure class. Shown in /diag so an owner whose firewall blocks GitHub can see what the panel tried. */
+    data class ScheduledAttempt(val atMs: Long, val result: String)
+
+    @Volatile var lastScheduled: ScheduledAttempt? = null
+        internal set
+
+    /** The service's start-up and daily lookup. It asks GitHub only when a Companion app is installed; the
+     *  manual refresh and the lookup after a Companion install call [check] directly and always run. */
+    suspend fun scheduledCheck(context: Context, companionChannel: String, companionMaxVersion: String?) =
+        scheduledCheck(installedCompanion(context), companionChannel, companionMaxVersion) {
+            CompanionInstaller.target(companionChannel, companionMaxVersion)
+        }
+
+    internal suspend fun scheduledCheck(
+        companion: Pair<String, String>?,
+        companionChannel: String,
+        companionMaxVersion: String?,
+        resolve: () -> CompanionInstaller.Target?,
+    ) {
+        val result = if (companion == null) {
+            // No request at all; observers still hear that the scheduled check completed.
+            onChecked?.let { runCatching { it() } }
+            SCHEDULED_SKIPPED
+        } else {
+            runCatching { check(companion, companionChannel, companionMaxVersion, resolve) }
+                .getOrElse { it.javaClass.simpleName }
+        }
+        lastScheduled = ScheduledAttempt(System.currentTimeMillis(), result)
+    }
+
     /** Resolve the Companion under one serialized cache transaction. A failed lookup keeps its last-known
-     *  result; a successful lookup authoritatively adds or removes the update. */
+     *  result; a successful lookup authoritatively adds or removes the update. Returns [SCHEDULED_OK] when a
+     *  release was resolved, otherwise the failure class. */
     suspend fun check(
         context: Context,
         companionChannel: String = "stable",
         companionMaxVersion: String?,
-    ) = withContext(Dispatchers.IO) {
-        checkMutex.withLock {
+    ): String = check(installedCompanion(context), companionChannel, companionMaxVersion) {
+        CompanionInstaller.target(companionChannel, companionMaxVersion)
+    }
+
+    internal suspend fun check(
+        companion: Pair<String, String>?,
+        companionChannel: String,
+        companionMaxVersion: String?,
+        resolve: () -> CompanionInstaller.Target?,
+    ): String = withContext(Dispatchers.IO) {
+        val outcome = checkMutex.withLock {
             val previous = available
-            val companion = installedCompanion(context)
             // Resolved even when no Companion is installed: absent is an installable state for the
             // update entity. The banner's `available` projection below still ignores an absent app.
-            val companionResolved = CompanionInstaller.target(companionChannel, companionMaxVersion)
+            ReleaseCatalog.lastFailure = null
+            val companionResolved = resolve()
             val companionResolution = if (companion == null) {
                 Resolution.Resolved(null)
             } else {
@@ -122,9 +163,10 @@ object UpdateChecker {
                     newestVersion = it.newestVersion,
                 )
             }
+            if (companionResolved != null) SCHEDULED_OK else ReleaseCatalog.lastFailure ?: "no release found"
         }
         onChecked?.let { runCatching { it() } }
-        Unit
+        outcome
     }
 
     /** The Companion target resolved under exactly [channel] and [cap], or null. Never triggers a lookup. */
@@ -296,4 +338,6 @@ object UpdateChecker {
     internal fun isNewer(candidate: String, current: String): Boolean = compareVersions(candidate, current)?.let { it > 0 } == true
 
     private const val COMPANION_LABEL = "HA Companion"
+    const val SCHEDULED_OK = "ok"
+    const val SCHEDULED_SKIPPED = "skipped, no Companion installed"
 }

@@ -1887,9 +1887,9 @@ class PaneldService : Service() {
                 tag = TAG,
                 name = "update-check",
             ) {
-                // Refresh release observations only; installation requires an explicit request.
+                // Refresh release observations only, never without a Companion app; installs need a request.
                 runCatching {
-                    UpdateChecker.check(
+                    UpdateChecker.scheduledCheck(
                         this@PaneldService,
                         "stable",
                         profile.companionMaxVersion,

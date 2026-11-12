@@ -200,6 +200,9 @@ object ReleaseCatalog {
         return null
     }
 
+    /** Why the most recent request failed (an HTTP status or exception class), for /diag; callers clear it. */
+    @Volatile internal var lastFailure: String? = null
+
     private fun get(url: String): String? {
         val conn = URL(url).openConnection() as HttpURLConnection
         conn.connectTimeout = 8_000; conn.readTimeout = 8_000
@@ -208,9 +211,13 @@ object ReleaseCatalog {
             if (conn.responseCode == 200) {
                 conn.inputStream.use { readResponse(it, conn.contentLengthLong) }
             } else {
+                lastFailure = "HTTP ${conn.responseCode}"
                 conn.closeBody()
                 null
             }
+        } catch (e: Exception) {
+            lastFailure = e.javaClass.simpleName
+            throw e
         } finally {
             conn.disconnect()
         }
