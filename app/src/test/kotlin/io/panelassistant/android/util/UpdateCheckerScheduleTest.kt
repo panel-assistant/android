@@ -58,6 +58,20 @@ class UpdateCheckerScheduleTest {
         assertTrue(line, line.startsWith("[update-check] ") && line.endsWith(": UnknownHostException"))
     }
 
+    @Test fun aSwallowedCatalogueFailureStillReachesDiag() = runBlocking {
+        // The real catalogue swallows network errors and returns nothing; the class arrives through lastFailure.
+        UpdateChecker.scheduledCheck(CompanionInstaller.FULL_PKG to "2026.4.1-full", "stable", cap) {
+            ReleaseCatalog.lastFailure = "HTTP 403"
+            null
+        }
+        assertEquals("HTTP 403", UpdateChecker.lastScheduled?.result)
+    }
+
+    @Test fun anEmptyCatalogueWithoutAnErrorSaysSo() = runBlocking {
+        UpdateChecker.scheduledCheck(CompanionInstaller.FULL_PKG to "2026.4.1-full", "stable", cap) { null }
+        assertEquals("no release found", UpdateChecker.lastScheduled?.result)
+    }
+
     @Test fun theManualRefreshStillAsksWithoutACompanion() = runBlocking {
         // The status?refresh=1 route and the post-install refresh call check directly, never the schedule.
         assertEquals(UpdateChecker.SCHEDULED_OK, UpdateChecker.check(null, "stable", cap, ::fakeGithub))
