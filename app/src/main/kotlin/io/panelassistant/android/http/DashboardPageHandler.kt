@@ -60,7 +60,10 @@ internal class DashboardPageHandler(
     fun html(strings: AppStrings, embed: EmbedMode? = null, peer: String? = null): String {
         // Stale-while-revalidate: render the last-known snapshot instantly (placeholders if none yet)
         // and let the page hydrate/refresh from /api/v1/info when the snapshot is missing or old.
-        val s = managementObservations.snapCache.peek()
+        // The sidebar's embed link is the only credential its page loads carry, so a page rendered for
+        // it is always the cold shell: the panel's facts, banners and controls arrive by hydration over
+        // the administrator's own Home Assistant connection, never in the document a copied link fetches.
+        val s = if (embed != null) null else managementObservations.snapCache.peek()
         // One health snapshot shared by every warm branch below (banner + facts + diagnostics), captured
         // lazily so a cold shell (s == null, nothing rendered warm) still probes nothing.
         val h: PageHealth.Inputs by lazy(LazyThreadSafetyMode.NONE) { pageHealth.healthInputs() }

@@ -489,7 +489,7 @@ class PaneldServer internal constructor(
                 assetRoutes(asset, bundleAssets::bytes, panelFontBundled)
                 // Tabbed multi-page shell. `/` stays the existing dashboard (now with a tab bar); the
                 // other tabs are dedicated pages that consume /api/v1.
-                configurePageRoute(::requestStrings, { pages }) { strings -> configurePageHandler().body(strings) }
+                configurePageRoute(::requestStrings, { pages }) { strings, embedded -> configurePageHandler().body(strings, embedded) }
                 setupPageRoute(::requestStrings, { pages }, ::buildToken)
                 profilesPageRoute(::requestStrings, { pages })
                 installPageRoute(::requestStrings, { pages }) { strings -> installPageHandler().body(strings) }

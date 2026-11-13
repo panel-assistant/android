@@ -54,7 +54,7 @@ internal fun Route.apiSpecificationRoute(asset: (String) -> String) {
 internal fun Route.configurePageRoute(
     requestStrings: (OpCall) -> AppStrings,
     pages: () -> PageShell,
-    body: (AppStrings) -> String,
+    body: (AppStrings, Boolean) -> String,
 ) = ops {
     served("/configure", name = "page.configure") {
         val strings = requestStrings(call)
@@ -67,7 +67,7 @@ internal fun Route.configurePageRoute(
             pages().page(
                 active = "configure",
                 title = strings.get("shell.nav.configure"),
-                body = body(strings),
+                body = body(strings, call.embedMode() != null),
                 strings = strings,
                 embed = call.embedMode(),
                 peer = call.origin.peerAddress,
