@@ -111,6 +111,15 @@ jobs:
       - name: Build app and instrumentation APKs
         run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace
 
+      # The build leaves its Gradle daemon (2 GB heap) and Kotlin daemon (3 GB) running beside the emulator.
+      # The API 35 emulator has vanished mid-run with no crash report (2026-11-08, 11-10, 11-13); this frees
+      # their memory before it starts, and the failure step below shows what the host saw if it dies again.
+      - name: Stop the build daemons before the emulator starts
+        run: |
+          ./gradlew --stop
+          pkill -f org.jetbrains.kotlin.daemon.KotlinCompileDaemon || true
+          free -m
+
       - name: Enable KVM group permissions
         run: |
           if [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
@@ -289,9 +298,15 @@ jobs:
           if grep -Eq 'FAILURES!!!|Process crashed|INSTRUMENTATION_FAILED|shortMsg=|No tests found' "$log"; then exit 1; fi
           grep -Eq '^OK \(12 tests\)[[:space:]]*$' "$log"
 
-      - name: Show connected devices on failure
+      - name: Show devices and host state on failure
         if: failure()
-        run: adb devices -l
+        run: |
+          adb devices -l || true
+          pgrep -a -f qemu-system || echo 'No emulator process is running.'
+          free -m || true
+          df -h || true
+          sudo dmesg -T | grep -iE 'oom|killed process|out of memory|segfault|qemu' | tail -n 50 || true
+          { sudo dmesg -T 2>&1 || echo 'The host kernel log is not readable here.'; } | tail -n 40
 
       - name: Upload emulator crash reports and instrumentation logs
         if: always()
