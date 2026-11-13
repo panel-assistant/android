@@ -95,6 +95,71 @@ class TouchSoundStatePolicyTest {
         assertNull(hardware.restored)
     }
 
+    // --- startup writes SOUND_EFFECTS_ENABLED only while the intent is first adopted ---
+
+    /** The intent is persisted and the owner then turned the flag off in Android; a restart leaves it. */
+    @Test fun `a start with the intent on and the flag changed by the owner writes nothing`() {
+        val events = mutableListOf<String>()
+        val store = FakeStore(events).apply { enabled = true; prior = TouchSoundState(0) }
+        val policy = TouchSoundStatePolicy(store, FakeHardware(TouchSoundState(1), events))
+        val intent = resolveTouchSoundIntent(
+            persistedIntent = true,
+            controllerRecord = policy.recordedState(),
+            observedHardware = false,
+            registryDefault = false,
+        )
+        events.clear()
+
+        assertEquals(ControlApplyOutcome.APPLIED, policy.settleAtStart(intent.enabled, intent.needsAdoption))
+
+        assertEquals(emptyList<String>(), events)
+    }
+
+    @Test fun `a start with the intent off and the flag changed by the owner writes nothing`() {
+        val events = mutableListOf<String>()
+        val store = FakeStore(events).apply { enabled = false }
+        val policy = TouchSoundStatePolicy(store, FakeHardware(TouchSoundState(1), events))
+        events.clear()
+
+        assertEquals(ControlApplyOutcome.APPLIED, policy.settleAtStart(on = false, settle = false))
+
+        assertEquals(emptyList<String>(), events)
+    }
+
+    @Test fun `the first run adopts the intent, writes the flag once and records it`() {
+        val events = mutableListOf<String>()
+        val store = FakeStore(events)
+        val policy = TouchSoundStatePolicy(store, FakeHardware(TouchSoundState(0), events))
+        val intent = resolveTouchSoundIntent(
+            persistedIntent = null,
+            controllerRecord = policy.recordedState(),
+            observedHardware = null,
+            registryDefault = true,
+        )
+        events.clear()
+
+        assertEquals(ControlApplyOutcome.APPLIED, policy.settleAtStart(intent.enabled, intent.needsAdoption))
+        assertEquals(listOf("capture", "save:TouchSoundState(effectsSetting=0)", "enable"), events)
+        assertEquals(true, policy.recordedState())
+
+        // The next start has a persisted intent, so it writes nothing.
+        events.clear()
+        val next = resolveTouchSoundIntent(true, policy.recordedState(), false, true)
+        assertEquals(ControlApplyOutcome.APPLIED, policy.settleAtStart(next.enabled, next.needsAdoption))
+        assertEquals(emptyList<String>(), events)
+    }
+
+    @Test fun `turning it on from the owner or Home Assistant writes the flag once`() {
+        val events = mutableListOf<String>()
+        val store = FakeStore(events).apply { enabled = false }
+        val policy = TouchSoundStatePolicy(store, FakeHardware(TouchSoundState(0), events))
+        events.clear()
+
+        assertEquals(ControlApplyOutcome.APPLIED, policy.enable())
+
+        assertEquals(1, events.count { it == "enable" })
+    }
+
     private class FakeStore(
         private val events: MutableList<String>,
         private val saveSucceeds: Boolean = true,

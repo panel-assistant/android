@@ -303,6 +303,97 @@ class BootChimeControllerTest {
         assertFalse("set() still reports a plain failure to its existing callers", controller.set(true))
     }
 
+    // --- startup writes only until the first silence has succeeded (Android keeps these volumes) ---
+
+    private fun startupController(
+        configured: Boolean,
+        store: FakeBootStore,
+        hardware: FakeBootHardware,
+    ): Pair<BootChimeController, () -> Boolean> {
+        var on = configured
+        return BootChimeController({ on }, { on = it }, store, hardware) to { on }
+    }
+
+    /** After a recorded silence the owner raised the ring volume in Android; a restart must leave it. */
+    @Test fun `a start with the setting on and a recorded silence writes nothing`() {
+        val events = mutableListOf<String>()
+        val store = FakeBootStore(events).apply { state = prior; silenced = true }
+        val hardware = FakeBootHardware(prior, events)
+        val (controller, _) = startupController(true, store, hardware)
+
+        controller.applyPersisted()
+
+        assertEquals(emptyList<String>(), events)
+        assertFalse(hardware.silenced)
+    }
+
+    @Test fun `turning it on silences once and records it, so the next start writes nothing`() {
+        val events = mutableListOf<String>()
+        val store = FakeBootStore(events)
+        val hardware = FakeBootHardware(prior, events)
+        val (controller, configured) = startupController(false, store, hardware)
+
+        assertTrue(controller.set(true))
+        assertTrue(configured())
+        assertTrue(store.silenced)
+        assertEquals(listOf("capture", "save", "silence"), events)
+
+        events.clear()
+        controller.applyPersisted()
+        assertEquals(emptyList<String>(), events)
+    }
+
+    @Test fun `the first run with the default on silences once and records it`() {
+        val events = mutableListOf<String>()
+        val store = FakeBootStore(events)
+        val hardware = FakeBootHardware(prior, events)
+        val (controller, _) = startupController(true, store, hardware)
+
+        controller.applyPersisted()
+        assertEquals(listOf("capture", "save", "silence"), events)
+        assertTrue(store.silenced)
+
+        events.clear()
+        controller.applyPersisted()
+        assertEquals("the second start leaves the volume alone", emptyList<String>(), events)
+    }
+
+    @Test fun `a first silence that failed is tried again at the next start`() {
+        val events = mutableListOf<String>()
+        val store = FakeBootStore(events)
+        val (failing, _) = startupController(
+            true, store, FakeBootHardware(prior, events, silenceOutcome = ControlApplyOutcome.FAILED),
+        )
+
+        failing.applyPersisted()
+        assertFalse(store.silenced)
+
+        events.clear()
+        val (next, _) = startupController(true, store, FakeBootHardware(prior, events))
+        next.applyPersisted()
+        assertEquals(listOf("silence"), events)
+        assertTrue(store.silenced)
+    }
+
+    @Test fun `turning it off restores the snapshot and clears the record`() {
+        val events = mutableListOf<String>()
+        val store = FakeBootStore(events)
+        val hardware = FakeBootHardware(prior, events)
+        val (controller, configured) = startupController(false, store, hardware)
+
+        assertTrue(controller.set(true))
+        assertTrue(controller.set(false))
+
+        assertFalse(configured())
+        assertEquals(prior, hardware.restored)
+        assertFalse(store.silenced)
+        assertNull(store.state)
+
+        events.clear()
+        assertTrue("turning it on again silences again", controller.set(true))
+        assertEquals(listOf("capture", "save", "silence"), events)
+    }
+
     private class FakeBootStore(
         private val events: MutableList<String>,
         private val saveSucceeds: Boolean = true,
@@ -317,8 +408,13 @@ class BootChimeControllerTest {
         override fun clear(): Boolean {
             events += "clear"
             state = null
+            silenced = false
             return true
         }
+        var silenced = false
+        override fun silenced() = silenced
+        override fun markSilenced(): Boolean { silenced = true; return true }
+        override fun clearSilenced(): Boolean { silenced = false; return true }
     }
 
     private class FakeBootHardware(

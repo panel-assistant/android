@@ -549,6 +549,8 @@ class PaneldService : Service() {
             portalStartupOverlayFactory(this@PaneldService, resolvedProfile.profile.id)
         })
         val preparedConfig = Config(this@PaneldService)
+        // Reads config_schema as upgrade evidence, so before migrateLiveStore writes it on a fresh store.
+        preparedConfig.migrateStartupSettleMarkers()
         preparedConfig.migrateLiveStore() // carry persisted settings across a schema bump before anything reads them
         // These migrations and generated identities precede every renderer and network owner.
         preparedConfig.migrateLogShipTcpDefault()
