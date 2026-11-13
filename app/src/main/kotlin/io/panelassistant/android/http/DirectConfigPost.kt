@@ -311,7 +311,16 @@ internal class DirectConfigPost(
                     }
                     mutationPlan = planDirectConfigMutation(
                         posted = postedValues,
-                        before = directMutationValues(),
+                        before = directMutationValues().let { before ->
+                            // An ON the door let through while Panel Assistant manages network ADB is the
+                            // owner's press (PaneldServer refuses it otherwise). ADB is off, so compare it with
+                            // off: an ON queued while the lease held (a restore, say) would otherwise make the
+                            // press a no-op that never asks for the lease back. An OFF still meets that
+                            // queued ON, and clears it.
+                            if (io.panelassistant.android.control.ManagedNetworkAdb.managed &&
+                                SettingValue.parseBool(postedValues["network_adb"].orEmpty()) == true
+                            ) before + ("network_adb" to "false") else before
+                        },
                     )
                     expectedReadBack = directConfigExpectedReadBack(config, postedValues)
                     if (mutationPlan.isNoOp) return@synchronizedTransaction true
@@ -451,6 +460,15 @@ internal class DirectConfigPost(
                                 is Validation.Bad -> return@dispatchDirectConfigLiveSettings
                             }
                         } else raw.trim()
+                        // The owner's press of Network ADB on a panel that has lost its session: every
+                        // admission above has passed, so this is where Panel Assistant's lease is given
+                        // back. An ON that cannot have it is rejected before anything is queued.
+                        if (key == "network_adb" && value == "true" &&
+                            !io.panelassistant.android.control.takeNetworkAdbBackForOwner()
+                        ) {
+                            liveRejected += key
+                            return@dispatchDirectConfigLiveSettings
+                        }
                         recordLiveApplyOutcome(
                             key,
                             applySetting(key, value),

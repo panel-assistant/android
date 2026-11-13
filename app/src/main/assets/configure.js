@@ -62,6 +62,8 @@
       applyPending: ["apply_pending", function (v) { return v || {}; }],
       applyStalled: ["apply_stalled", stalledMap],
       networkAdbManaged: ["network_adb_managed", function (v) { return v === true; }],
+      networkAdbOwnerSwitch: ["network_adb_owner_switch", function (v) { return v === "waiting" || v === "available" ? v : null; }],
+      networkAdbOwnerSwitchAfterMin: ["network_adb_owner_switch_after_min", function (v) { return typeof v === "number" ? v : null; }],
       rendererPending: ["renderer_pending", stalledMap],
     };
     var changed = false;

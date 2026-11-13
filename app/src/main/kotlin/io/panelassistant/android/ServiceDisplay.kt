@@ -307,7 +307,7 @@ internal class ServiceDisplay(
     /** The live source manager, for the owner's presence-sensor picker routes. */
     @Volatile private var presenceSourceManager: io.panelassistant.android.sensors.HaPresenceSourceManager? = null
 
-    /** Runtime lane, startup: adaptive inputs, the Ambient theme return listener and idle-dim prevention. */
+    /** Runtime lane, startup: adaptive inputs, the Ambient theme return listener and the first application of idle-dim prevention. */
     fun startAdaptive() {
         refreshAdaptiveBrightnessInputs(restartSource = false)
         autoBright.activate()
@@ -315,7 +315,7 @@ internal class ServiceDisplay(
         BuiltinDashboard.setForegroundGainedListener {
             scope.launch(Dispatchers.Default) { reconcileAmbientTheme() }
         }
-        brightness.applyPreventIdleDim(config().preventIdleDim, config())
+        brightness.applyPreventIdleDimAtStart(config())
     }
 
     fun applyKeepAwake() {

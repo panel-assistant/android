@@ -1632,12 +1632,21 @@ class DashboardActivity : AppCompatActivity() {
                             },
                         )
                     }
-                    is DashboardV2ProbeResult.Unavailable -> statusScreens.showBlockedAdmissionScreen(
-                        getString(R.string.cannot_reach_ha),
-                        statusScreens.localizedHaUnavailableDetail(blocked),
-                        AdmissionOutcome.TRANSPORT_FAILED,
-                        blocked.evidence,
-                    )
+                    is DashboardV2ProbeResult.Unavailable -> {
+                        val tried = HaTriedAddress.describe(HaConnectionRoutes.current(config).url, blocked.evidence.fault)
+                        // The lookup suspended: draw only if this attempt still owns the screen.
+                        if (destroyed || !BuiltinDashboard.ownsActivity(activityOwner) ||
+                            !compatibilityAttempts.owns(compatibilityTicket, compatibilityOwner(activityConfig))
+                        ) return@launch
+                        statusScreens.showBlockedAdmissionScreen(
+                            getString(R.string.cannot_reach_ha),
+                            statusScreens.localizedHaUnavailableDetail(blocked),
+                            AdmissionOutcome.TRANSPORT_FAILED,
+                            blocked.evidence,
+                            // The address stands on its own line, so it needs no words and reads the same in every language.
+                            line = listOfNotNull(getString(R.string.cannot_reach_ha), tried).joinToString("\n"),
+                        )
+                    }
                     is DashboardV2ProbeResult.Compatible -> error("compatible result cannot be blocked")
                 }
             }

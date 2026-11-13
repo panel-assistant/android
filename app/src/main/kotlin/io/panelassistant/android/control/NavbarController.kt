@@ -67,8 +67,8 @@ import java.util.concurrent.locks.ReentrantReadWriteLock
  * `PanelAccessibilityService` must be enabled); Launcher opens the device launcher / app drawer via
  * [SystemController]; brightness/volume go through their controllers — all of those work without a11y.
  * Drawing the overlay needs `SYSTEM_ALERT_WINDOW`, which the panels don't grant by default — we grant
- * it via root appops when available. Without the permission and without root the overlay silently
- * no-ops, like the other root-gated capabilities.
+ * it via root appops when available and the op is still unset ([OwnOverlayPermission]); an owner's deny
+ * is kept. Without the permission the overlay silently no-ops, like the other root-gated capabilities.
  *
  * All [WindowManager] mutations are posted to the main looper — `addView`/`removeView` must run on the
  * UI thread, but [apply] is called from a command thread.
@@ -93,6 +93,7 @@ class NavbarController(
     private val onVolumeChanged: () -> Unit = {},
     private val overlayHeld: () -> Boolean = { Settings.canDrawOverlays(context) },
     private val overscanRoot: RootShell = Su,
+    private val overlayRoot: RootShell = Su,
 ) {
     private val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val main = Handler(Looper.getMainLooper())
@@ -502,7 +503,7 @@ class NavbarController(
     private fun addBar(autoHide: Boolean): Boolean {
         if (bar != null) return true
         if (!canDraw()) {
-            Log.w(TAG, "SYSTEM_ALERT_WINDOW not held (no root to grant it); navbar suppressed")
+            Log.w(TAG, "SYSTEM_ALERT_WINDOW not held (no root to grant it, or turned off); navbar suppressed")
             return false
         }
         val row = LinearLayout(context).apply {
@@ -718,7 +719,7 @@ class NavbarController(
     private fun addStrip(): Boolean {
         if (strip != null) return true
         if (!canDraw()) {
-            Log.w(TAG, "SYSTEM_ALERT_WINDOW not held (no root to grant it); navbar suppressed")
+            Log.w(TAG, "SYSTEM_ALERT_WINDOW not held (no root to grant it, or turned off); navbar suppressed")
             return false
         }
         val edge = View(context)
@@ -1000,12 +1001,10 @@ class NavbarController(
         if (!opened) Log.w(TAG, "no Android page to grant the overlay permission; navbar stays hidden")
     }
 
-    /** Grant `SYSTEM_ALERT_WINDOW` via root appops if it isn't already held (panels have no UI flow). */
-    private fun ensureOverlayPermission(): Boolean {
-        if (canDraw()) return true
-        Su.run("appops set ${context.packageName} SYSTEM_ALERT_WINDOW allow")
-        return canDraw()
-    }
+    /** Grant `SYSTEM_ALERT_WINDOW` via root appops only while it is unset (panels have no UI flow); an
+     *  owner's deny is kept. */
+    private fun ensureOverlayPermission(): Boolean =
+        OwnOverlayPermission.ensure(context.packageName, overlayRoot, ::canDraw, TAG)
 
     private fun applyOwnedOverscan(heightDp: Int): Boolean = synchronized(overscanApplyLock) {
         overscanRecovery.applyBottom(dp(heightDp))

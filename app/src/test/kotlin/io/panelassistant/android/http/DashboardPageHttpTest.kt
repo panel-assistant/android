@@ -80,6 +80,16 @@ class DashboardPageHttpTest {
     }
 
     // The sidebar cannot load the last capture's URL itself: the page asks the transport for it by the id.
+    /** One page as the sidebar's embed link gets it: a `page.<name>` manage over the panel's session. */
+    private fun relayedPage(fixture: PaneldServerHttpFixture, name: String): String {
+        val answer = java.util.concurrent.LinkedBlockingQueue<io.panelassistant.android.ManageReply>()
+        fixture.door.manage(
+            java.util.UUID.randomUUID().toString(), "page.$name", org.json.JSONObject().put("embed", "v=1;lang=en"),
+            io.panelassistant.android.CommandOrigin.user("0123456789abcdef0123456789abcdef").withConnection("relay-1"),
+        ) { answer.put(it) }
+        return requireNotNull(answer.poll(20, java.util.concurrent.TimeUnit.SECONDS)).result as String
+    }
+
     @Test fun `in the sidebar the screenshot card names the last capture instead of loading it`() {
         PaneldServerHttpFixture().use { fixture ->
             fixture.enablePages()
@@ -100,18 +110,41 @@ class DashboardPageHttpTest {
             testApplication {
                 application { fixture.mount(this) }
                 startApplication()
-                client.get("/api/v1/info?lang=en")
+                val hydration = org.json.JSONObject(client.get("/api/v1/info?lang=en").bodyAsText())
                 val lan = client.get("/?lang=en") { header(HttpHeaders.Cookie, "wiz_escape=1") }.bodyAsText()
-                val answer = java.util.concurrent.LinkedBlockingQueue<io.panelassistant.android.ManageReply>()
-                fixture.door.manage(
-                    java.util.UUID.randomUUID().toString(), "page.info", org.json.JSONObject().put("embed", "v=1;lang=en"),
-                    io.panelassistant.android.CommandOrigin.user("0123456789abcdef0123456789abcdef").withConnection("relay-1"),
-                ) { answer.put(it) }
-                val relayed = requireNotNull(answer.poll(20, java.util.concurrent.TimeUnit.SECONDS)).result as String
+                val relayed = relayedPage(fixture, "info")
                 val card = { html: String -> requireNotNull(Regex("<div class=\"card\" id=\"shotcard\"[^>]*>.*?</a></div>").find(html)) { html }.value }
                 assertTrue(card(lan).contains("src=\"$url\""))
-                assertTrue(card(relayed).contains("data-cached-shot=\"$url\""))
+                // The sidebar's page is the cold shell; hydration over the relay names the last capture.
+                assertEquals(url, hydration.getString("shotCached"))
                 assertTrue("the sidebar's browser never asks for an address it cannot reach", !card(relayed).contains("<img src="))
+            }
+        }
+    }
+
+    @Test fun `a page rendered for the sidebar's embed link carries no panel facts or address`() {
+        PaneldServerHttpFixture().use { fixture ->
+            fixture.enablePages()
+            fixture.enableWarmDashboard()
+            testApplication {
+                application { fixture.mount(this) }
+                startApplication()
+                client.get("/api/v1/info?lang=en")
+                val lan = client.get("/?lang=en") { header(HttpHeaders.Cookie, "wiz_escape=1") }.bodyAsText()
+                assertTrue("the LAN page is warm, so the check below can fail", lan.contains("Warm &lt;panel&gt;"))
+                assertTrue(lan.contains("<span class=\"secret\">secret-value</span>"))
+                // Anyone holding the embed link gets this document, so the facts must come only by hydration
+                // over the administrator's own connection.
+                val relayed = relayedPage(fixture, "info")
+                assertTrue(relayed.contains("data-hydrate=\"cold\""))
+                assertTrue(relayed.contains("id=\"infotbl\""))
+                assertTrue(!relayed.contains("Warm &lt;panel&gt;"))
+                assertTrue(!relayed.contains("secret-value"))
+                assertTrue(!relayed.contains("halifecell"))
+                val panelUrl = { html: String -> requireNotNull(Regex("id=\"cfg-help\" class=\"cfg-help\" data-panel-url=\"([^\"]*)\"").find(html)) { html }.groupValues[1] }
+                val lanConfigure = client.get("/configure?lang=en") { header(HttpHeaders.Cookie, "wiz_escape=1") }.bodyAsText()
+                assertTrue("the LAN Configure page names the panel's address", panelUrl(lanConfigure).isNotEmpty())
+                assertEquals("", panelUrl(relayedPage(fixture, "configure")))
             }
         }
     }

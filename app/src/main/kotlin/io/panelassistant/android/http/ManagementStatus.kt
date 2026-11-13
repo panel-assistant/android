@@ -182,6 +182,8 @@ internal fun managementStatusJson(
         // `ha_network` follows the same unconditional rule: idle with measuring=false when no
         // socket is held, never absent.
         "\"ha_network\":${HaNetworkPathRuntime.statusJson()}," +
+        // What holds ADB off and when the owner's own switch works; Panel Assistant words its texts from it.
+        "\"network_adb\":${io.panelassistant.android.control.ManagedNetworkAdb.statusJson()}," +
             "\"ha_path_probe\":${PathProbeRuntime.statusJson()}," +
         // Unconditional too, so a panel Panel Assistant refuses says why somewhere a reader can see.
         "\"panel_assistant_transport\":${

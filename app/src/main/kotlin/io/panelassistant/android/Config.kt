@@ -945,6 +945,73 @@ class Config private constructor(
             prefs.edit().putInt("saved_screen_off_timeout", v).apply()
         }
 
+    // Whether prevent_idle_dim's "never" timeout has been applied on this panel, so startup leaves
+    // SCREEN_OFF_TIMEOUT alone afterwards. Android keeps the value across reboots, and an owner may change
+    // it in Android settings; only a transition (or the first run with the default on) writes it.
+    // Cleared when turning the setting off restores the saved timeout. An installation upgraded from a
+    // version that re-applied it at every start starts with it set; see [migrateStartupSettleMarkers].
+    var preventIdleDimApplied: Boolean
+        get() = settleMarker(PREVENT_IDLE_DIM_APPLIED_PREF)
+        set(v) {
+            prefs.edit().putBoolean(PREVENT_IDLE_DIM_APPLIED_PREF, v).commit()
+        }
+
+    /**
+     * Whether a boot-chime silence has succeeded since the last restore, so startup leaves the ring and
+     * notification volumes alone. Android keeps them across reboots, and an owner may raise them.
+     */
+    val bootChimeSilenced: Boolean get() = settleMarker(BOOT_CHIME_SILENCED_PREF)
+    fun commitBootChimeSilenced(v: Boolean): Boolean = prefs.edit().putBoolean(BOOT_CHIME_SILENCED_PREF, v).commit()
+
+    /**
+     * Whether the platform `SOUND_EFFECTS_ENABLED` flag has been settled to the persisted touch-sound
+     * intent. Separate from the intent itself: the intent is committed before the flag is written, and a
+     * start whose write failed must try again at the next start while the reported intent stays as it is.
+     */
+    val touchSoundSettled: Boolean get() = settleMarker(TOUCH_SOUND_SETTLED_PREF)
+    fun commitTouchSoundSettled(v: Boolean): Boolean = prefs.edit().putBoolean(TOUCH_SOUND_SETTLED_PREF, v).commit()
+
+    // Markers a pre-existing installation must read as set while their migration commit has not landed.
+    @Volatile private var startupSettleFallback: Set<String> = emptySet()
+
+    private fun settleMarker(key: String): Boolean = prefs.getBoolean(key, key in startupSettleFallback)
+
+    /**
+     * One-shot, run first by [migrateLiveStore]: decide once whether this panel's start-time hardware
+     * settings have already been applied.
+     *
+     * Earlier versions re-applied the screen timeout, the boot-chime silence and the touch-sound flag at
+     * every start, so on an installation upgraded from one of them each enabled setting has already been
+     * applied, and the hardware now holds either that value or one the owner chose since in Android. Its
+     * marker is set and the first start of this version writes nothing. A fresh installation records
+     * every marker unset, so its first start applies the defaults once.
+     *
+     * `config_schema` is the evidence: [migrateLiveStore] writes it at every released version's first
+     * start, and nothing else writes it. So this runs inside [migrateLiveStore], ahead of its write, for
+     * every caller: the dashboard activity can migrate the store before the service does (Android 8.1
+     * starts the HOME activity first), and a fresh panel must not read its own first write as an upgrade. Each
+     * marker is written explicitly, true or false, so a marker is never absent once this has run, and a
+     * failed first application in this version stays distinguishable from an upgrade. A failed commit
+     * leaves the migration to run again at the next start, and this process reads the upgrade answer.
+     */
+    internal fun migrateStartupSettleMarkers() = synchronized(CONFIG_LOCK) {
+        if (prefs.getBoolean(STARTUP_SETTLE_MIGRATION_PREF, false)) return@synchronized
+        val upgraded = prefs.contains("config_schema")
+        val applied = mapOf(
+            PREVENT_IDLE_DIM_APPLIED_PREF to (upgraded && preventIdleDim),
+            BOOT_CHIME_SILENCED_PREF to (upgraded && silenceBootChime),
+            TOUCH_SOUND_SETTLED_PREF to (upgraded && touchSoundIntent != null),
+        )
+        startupSettleFallback = applied.filterValues { it }.keys
+        val committed = prefs.edit().apply {
+            applied.forEach { (key, value) -> putBoolean(key, value) }
+            putBoolean(STARTUP_SETTLE_MIGRATION_PREF, true)
+        }.commit()
+        if (committed) startupSettleFallback = emptySet()
+        else Log.w(TAG, "could not record the start-time settings migration; retrying next start")
+        Unit
+    }
+
     // The screen-off timeout (ms) the screen-timeout screen-off route displaced while the panel sleeps;
     // restored on wake and at the next service start. -1 = nothing displaced. Not [savedScreenOffTimeout]:
     // that one is the firmware default from before prevent-idle-dim raised it.
@@ -1552,6 +1619,8 @@ class Config private constructor(
     }
 
     fun migrateLiveStore(): Boolean = synchronized(CONFIG_LOCK) {
+        // Reads config_schema as upgrade evidence, so ahead of every write of it below.
+        migrateStartupSettleMarkers()
         rerootDashboardEntityOwners()
         canonicalizeStoredHomeDashboard()
         val from = storedSchema
@@ -1678,6 +1747,12 @@ class Config private constructor(
         private const val DEVICE_UID_BYTES = 16
         private const val LOG_SHIP_TCP_DEFAULT_MIGRATION_PREF =
             "device_local_log_ship_tcp_default_migrated_v1"
+        // Start-time settle markers: device-local, never exported or restored, because they describe this
+        // panel's hardware and not a choice. See migrateStartupSettleMarkers.
+        private const val STARTUP_SETTLE_MIGRATION_PREF = "device_local_startup_settle_migrated_v1"
+        private const val PREVENT_IDLE_DIM_APPLIED_PREF = "device_local_prevent_idle_dim_applied"
+        private const val BOOT_CHIME_SILENCED_PREF = "device_local_boot_chime_silenced"
+        private const val TOUCH_SOUND_SETTLED_PREF = "device_local_touch_sound_settled"
         private const val HA_AREA_USER_OVERRIDE_PREF = "device_local_ha_area_user_override"
         private const val LIGHT_SENSOR_REPORTED_PREF = "device_local_light_sensor_reported"
         internal const val AUTO_SLEEP_GENERATION_PREF = "auto_sleep_generation_v1"

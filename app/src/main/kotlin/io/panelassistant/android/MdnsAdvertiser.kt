@@ -86,6 +86,8 @@ class MdnsAdvertiser(
     private val refreshIntervalMs: Long = REFRESH_MS,
     private val createDns: (InetAddress, String) -> JmDNS = ::MdnsSendRetryDns,
 ) {
+    // The serial learned from this panel's own adbd announcement; the health line reads the same holder.
+    private val ownAdbSerial = OwnAdbSerial.shared
     private val ownerGate = RetirableMutationGate()
     private var jmdns: JmDNS? = null
     private var lock: (() -> Unit)? = null
@@ -161,6 +163,42 @@ class MdnsAdvertiser(
         override fun serviceRemoved(event: ServiceEvent) {
             if (browsing && jmdns === event.dns) peerMap.remove(event.name)
         }
+    }
+
+    // Android's own adbd announces `_adb._tcp` as `adb-<serial>`. Every panel on the link answers, so only
+    // a service resolved to an address this advertiser is bound to is ours. The primary alone browses it.
+    private val adbListener = object : ServiceListener {
+        override fun serviceAdded(event: ServiceEvent) {
+            val dns = event.dns.takeIf { it === jmdns } ?: return
+            val type = event.type
+            val name = event.name
+            val executor = resolver ?: return
+            try {
+                executor.execute {
+                    runCatching { dns.getServiceInfo(type, name, RESOLVE_MS) }.getOrNull()?.let { learnAdbSerial(it, dns) }
+                }
+            } catch (_: RejectedExecutionException) {
+                Log.w(TAG, "mDNS resolve queue saturated; dropping $name")
+            }
+        }
+
+        override fun serviceResolved(event: ServiceEvent) {
+            event.info?.let { learnAdbSerial(it, event.dns) }
+        }
+
+        override fun serviceRemoved(event: ServiceEvent) {
+            if (browsing && jmdns === event.dns) ownAdbSerial.forget(event.name)
+        }
+    }
+
+    private fun learnAdbSerial(info: ServiceInfo, expectedDns: JmDNS) {
+        if (!browsing || jmdns !== expectedDns) return
+        val own = listOfNotNull(boundIp, secondaryBoundIp).mapNotNull {
+            runCatching { InetAddress.getByName(it.substringBefore('%')).address }.getOrNull()
+        }
+        val resolved = info.inetAddresses.orEmpty().map { it.address }
+        if (resolved.none { address -> own.any { it.contentEquals(address) } }) return
+        ownAdbSerial.learn(info.name ?: return)
     }
 
     /** Fold a resolved mDNS record into the roster (needs a resolved IPv4 to be navigable). */
@@ -263,6 +301,10 @@ class MdnsAdvertiser(
                     // A stable token lets Panel Assistant distinguish the mutable mDNS instance/name from
                     // a panel identity without advertising Settings.Secure.ANDROID_ID on the LAN.
                     discoveryId()?.let { put("did", it) }
+                    // The serial heard from this panel's own adbd before this registration. One learned later
+                    // reaches the health line at once and this record at the next registration: replacing a
+                    // registered record's text (ServiceInfo.setText) stopped JmDNS answering for it on a Portal.
+                    ownAdbSerial.current?.let { put("adb", it) }
                 }
                 val info = ServiceInfo.create(
                     Config.MDNS_SERVICE_TYPE,
@@ -285,6 +327,7 @@ class MdnsAdvertiser(
                 // longer after a whole-fleet restart.
                 browsing = true
                 runCatching { dns.addServiceListener(Config.MDNS_SERVICE_TYPE, peerListener) }
+                runCatching { dns.addServiceListener(OwnAdbSerial.SERVICE_TYPE, adbListener) }
                 // Periodic re-browse: dns.list resolves each service fully (incl. TXT), so this refreshes names
                 // and fills any TXT missed during a congested (whole-fleet-restart) window. Merges with the
                 // don't-downgrade rule in record(), so it only closes gaps and never flaps a good name.
@@ -584,6 +627,7 @@ class MdnsAdvertiser(
         val activeDns = jmdns
         runCatching { activeDns?.setDelegate(null) }
         runCatching { activeDns?.removeServiceListener(Config.MDNS_SERVICE_TYPE, peerListener) }
+        runCatching { activeDns?.removeServiceListener(OwnAdbSerial.SERVICE_TYPE, adbListener) }
         runCatching { activeDns?.unregisterAllServices() }
         if (activeDns != null && runCatching { activeDns.close() }.isFailure) {
             return false

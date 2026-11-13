@@ -71,6 +71,23 @@ class AdbControllerPolicyTest {
         assertEquals("unknown", networkAdbDiagnostic(persisted = false, active = null))
     }
 
+    @Test fun `diagnostics say that Panel Assistant keeps ADB off and when the owner's switch works`() {
+        // The saved intent and Android's USB debugging setting say nothing about adbd while the lease holds.
+        assertEquals("off (managed by Panel Assistant)", networkAdbDiagnostic(persisted = true, active = false, managed = true))
+        assertEquals("off (managed by Panel Assistant)", networkAdbDiagnostic(persisted = false, active = null, managed = true))
+        assertEquals(
+            "off (managed by Panel Assistant; no Home Assistant connection, the Network ADB switch works in 61 s)",
+            networkAdbDiagnostic(persisted = false, active = false, managed = true, ownerSwitchWaitMs = 60_001),
+        )
+        assertEquals(
+            "off (managed by Panel Assistant; no Home Assistant connection, so the Network ADB switch works)",
+            networkAdbDiagnostic(persisted = false, active = false, managed = true, ownerSwitchWaitMs = 0),
+        )
+        assertEquals("off", networkAdbDiagnostic(persisted = false, active = false, managed = false, ownerSwitchWaitMs = 0))
+        assertEquals("on in Android settings; ADB is stopped (managed by Panel Assistant)", usbDebuggingDiagnostic("on", managed = true))
+        assertEquals("on", usbDebuggingDiagnostic("on", managed = false))
+    }
+
     @Test fun `listener proof fails closed on unreadable truncated or malformed inventory`() {
         assertNull(parseTcpListenerInventory(null))
         assertNull(parseTcpListenerInventory(""))

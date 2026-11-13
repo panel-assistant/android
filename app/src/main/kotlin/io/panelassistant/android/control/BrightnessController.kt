@@ -244,11 +244,17 @@ class BrightnessController internal constructor(
      *
      * On (default, for mains-powered panels): the prior timeout is saved once, then set to "never". Off:
      * the saved firmware default is restored (60 s if none was captured).
+     *
+     * This is the transition, for an owner or Home Assistant change and the power-safety repair. Startup
+     * uses [applyPreventIdleDimAtStart], which writes only until the first application has succeeded.
      */
     internal fun applyPreventIdleDim(on: Boolean, config: Config): ScreenTimeoutApplyResult = try {
         screenTimeout.apply(on, config.savedScreenOffTimeout, ConfigDisplacedScreenTimeout(config)) {
             config.savedScreenOffTimeout = it
         }.also { result ->
+            // Off clears it; on records whether "never" took, so an application that failed is tried again
+            // at the next start.
+            config.preventIdleDimApplied = on && result.effective
             if (result.effective && result.writeAccepted) {
                 Log.d(TAG, "prevent idle dim ${if (on) "ON" else "OFF"}: screen_off_timeout -> ${result.observedMs}")
             } else if (result.effective) {
@@ -274,6 +280,20 @@ class BrightnessController internal constructor(
             observedMs = -1,
             writeAccepted = false,
         )
+    }
+
+    /**
+     * Startup: apply "never" once, when the setting is on and the app has not yet applied it (the first run
+     * with the default on, or an ON that was stored but never actuated). Android keeps SCREEN_OFF_TIMEOUT
+     * across reboots, so once applied the start leaves it alone, and a timeout the owner later changes in
+     * Android stays as they set it. Off writes nothing: its restore happened when it was turned off.
+     *
+     * An interrupted screen-timeout sleep is not this method's business: [ScreenController] puts its
+     * displaced timeout back when it is constructed, before this runs.
+     */
+    internal fun applyPreventIdleDimAtStart(config: Config): ScreenTimeoutApplyResult? {
+        if (!config.preventIdleDim || config.preventIdleDimApplied) return null
+        return applyPreventIdleDim(true, config)
     }
 
     fun screenOffTimeoutMs(): Int = runCatching { screenTimeout.current() }.getOrDefault(-1)

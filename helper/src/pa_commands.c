@@ -101,20 +101,29 @@ static int pa_parse(const char *args, char first[160], char second[160]) {
     return n < 0 ? 0 : n;
 }
 
+// A run with no socket of its own, for [package] under one budget; NULL when memory is short.
+static pa_run *pa_alloc(const char *package, unsigned budget_ms) {
+    pa_run *r = calloc(1, sizeof *r);
+    if (r && !(r->dump = malloc(PA_DUMP_MAX))) {
+        free(r);
+        r = NULL;
+    }
+    if (!r) return NULL;
+    r->package = package;
+    r->deadline = pa_now_ms() + budget_ms;
+    r->lock_fd = -1;
+    r->sdk = -1;
+    return r;
+}
+
 static pa_run *pa_begin(conn_ctx *ctx, unsigned budget_ms) {
     const helper_app_package *app = helper_app_package_for(ctx->caller);
-    pa_run *r = app ? calloc(1, sizeof *r) : NULL;
-    if (r) r->dump = malloc(PA_DUMP_MAX);
-    if (!r || !r->dump) {
-        if (r) free(r);
+    pa_run *r = app ? pa_alloc(app->package, budget_ms) : NULL;
+    if (!r) {
         reply(ctx->fd, "ERR failed\n");
         return NULL;
     }
     r->ctx = ctx;
-    r->package = app->package;
-    r->deadline = pa_now_ms() + budget_ms;
-    r->lock_fd = -1;
-    r->sdk = -1;
     pa_current = r;
     return r;
 }
@@ -299,16 +308,21 @@ static int pa_home_is_dashboard(const char *home, int launch) {
 // --- app ops ---------------------------------------------------------------------------------------
 
 static const char *const PA_OP_MODES[] = { "allow", "default", "deny", "ignore", "foreground", "errored", NULL };
-static const char *const PA_OP_NOT_ALLOWED[] = { "default", "deny", "ignore", "foreground", "errored", NULL };
+// Only an op nobody has set is allowed; an explicit mode, such as the owner's deny, is kept.
+static const char *const PA_OP_NOT_ALLOWED[] = { "default", NULL };
 
-// appops get, with Android 14's two-line answer for an unset op folded to `<op>: <mode>`.
+// appops get, with Android 14's two-line answer for an unset op folded to `<op>: allow` when its
+// default allows and to `<op>: default` otherwise: nobody chose that default for this app.
 static int pa_op_read(pa_run *r, const char *op, char *mode, size_t cap) {
     const char *const argv[] = { "appops", "get", r->package, op, NULL };
     int status = pa_capture(r, argv, mode, cap);
     for (const char *const *m = PA_OP_MODES; *m; m++) {
         char two_line[64];
         snprintf(two_line, sizeof two_line, "No operations.\nDefault mode: %s", *m);
-        if (strcmp(mode, two_line) == 0) { snprintf(mode, cap, "%s: %s", op, *m); break; }
+        if (strcmp(mode, two_line) == 0) {
+            snprintf(mode, cap, "%s: %s", op, strcmp(*m, "allow") == 0 ? "allow" : "default");
+            break;
+        }
     }
     return status;
 }
@@ -338,7 +352,7 @@ static const char *pa_op_line_mode(const char *op, const char *line, size_t len,
     return NULL;
 }
 
-// Proven non-allowed: a non-empty answer whose every line is a non-allowed mode or `No operations.`.
+// Proven unset: a non-empty answer whose every line is `<op>: default` or `No operations.`.
 static int pa_op_proven_not_allowed(const char *op, const char *mode) {
     if (!*mode) return 0;
     for (const char *p = mode; *p; ) {
@@ -357,6 +371,17 @@ static const char *pa_op_word(const char *op, const char *mode, int status) {
     if (status != 0 || strchr(mode, '\n')) return "unknown";
     const char *word = pa_op_line_mode(op, mode, strlen(mode), PA_OP_MODES);
     return word ? word : "unknown";
+}
+
+// Set [op] to allow only when Android proves nobody has set it; an explicit mode, such as the owner's
+// deny, is kept. 0 when the op is allowed afterwards (already, or by this write), else -1.
+static int pa_op_repair(pa_run *r, const char *op) {
+    char mode[PA_LINE];
+    int status = pa_op_read(r, op, mode, sizeof mode);
+    if (strcmp(pa_op_word(op, mode, status), "allow") == 0) return 0;
+    if (status != 0 || !pa_op_proven_not_allowed(op, mode)) return -1;
+    const char *const set[] = { "appops", "set", r->package, op, "allow", NULL };
+    return pa_exec(r, set) == 0 ? 0 : -1;
 }
 
 // --- runtime permissions ---------------------------------------------------------------------------
@@ -380,11 +405,13 @@ static int pa_grant_line(const char *line, size_t len, const char *permission, c
     return p == end;
 }
 
-// Every line of `dumpsys package` naming `<perm>: granted=` must say [state]. 0 lines proves nothing.
+// Every line of `dumpsys package` naming `<perm>: granted=` must say [state]. 0 lines proves nothing;
+// [lines] is -1 when the dump itself failed.
 static int pa_runtime_all(pa_run *r, const char *permission, const char *state, int *lines) {
     const char *const argv[] = { "dumpsys", "package", r->package, NULL };
-    *lines = 0;
+    *lines = -1;
     if (pa_capture(r, argv, r->dump, PA_DUMP_MAX) != 0) return 0;
+    *lines = 0;
     char needle[160];
     snprintf(needle, sizeof needle, "%s: granted=", permission);
     int all = 1;
@@ -405,14 +432,83 @@ static int pa_runtime_all(pa_run *r, const char *permission, const char *state, 
     return *lines > 0 && all;
 }
 
-// Grant only when every line proves the grant missing, then report what Android kept.
+// A flag recording a decision the grant must keep: the owner's answer (USER_SET, USER_FIXED) or a
+// device policy's (POLICY_FIXED). Android's own USER_SENSITIVE_WHEN_* defaults are not a decision.
+static const char *const PA_DECISION_FLAGS[] = { "USER_SET", "USER_FIXED", "POLICY_FIXED", NULL };
+
+// Whether a `<perm>: granted=…, flags=[…]` line carries a decision flag as a whole token.
+static int pa_line_decided(const char *line, size_t len) {
+    const char *end = line + len;
+    const char *p = line;
+    while (p + 7 <= end && strncmp(p, "flags=[", 7) != 0) p++;
+    if (p + 7 > end) return 0;
+    for (p += 7; p < end && *p != ']'; ) {
+        if (*p == ' ' || *p == '|') { p++; continue; }
+        const char *token = p;
+        while (p < end && *p != ' ' && *p != '|' && *p != ']') p++;
+        for (const char *const *f = PA_DECISION_FLAGS; *f; f++)
+            if ((size_t)(p - token) == strlen(*f) && strncmp(token, *f, (size_t)(p - token)) == 0) return 1;
+    }
+    return 0;
+}
+
+// Whether any line of the last dump naming `<perm>: granted=` records a decision.
+static int pa_runtime_decided(pa_run *r, const char *permission) {
+    char needle[160];
+    snprintf(needle, sizeof needle, "%s: granted=", permission);
+    size_t needle_len = strlen(needle);
+    for (const char *p = r->dump; *p; ) {
+        const char *end = strchr(p, '\n');
+        size_t len = end ? (size_t)(end - p) : strlen(p);
+        for (const char *q = p; q + needle_len <= p + len; q++)
+            if (strncmp(q, needle, needle_len) == 0) {
+                if (pa_line_decided(p, len)) return 1;
+                break;
+            }
+        if (!end) break;
+        p = end + 1;
+    }
+    return 0;
+}
+
+// Whether the last dump is this package's own: a `Package [<pkg>]` line.
+static int pa_dump_is_package(pa_run *r) {
+    char header[176];
+    snprintf(header, sizeof header, "Package [%s]", r->package);
+    return strstr(r->dump, header) != NULL;
+}
+
+// Grant only when every line proves the grant missing and nobody decided it; a denial the owner or a
+// policy chose is kept and reported as denied. Android 9 and older print no line at all for a
+// permission never granted and never flagged, and a decision always sets a flag, so a successful dump
+// of this package with no line for the permission is undecided too. Then report what Android kept.
 static const char *pa_runtime_repair(pa_run *r, const char *permission) {
     int lines;
-    if (pa_runtime_all(r, permission, "false", &lines)) {
+    int missing = pa_runtime_all(r, permission, "false", &lines);
+    if (missing || (lines == 0 && pa_dump_is_package(r))) {
+        if (pa_runtime_decided(r, permission)) return "denied";
         const char *const grant[] = { "pm", "grant", r->package, permission, NULL };
         (void)pa_exec(r, grant);
     }
     return pa_runtime_all(r, permission, "true", &lines) ? "granted" : "unknown";
+}
+
+// --- the app's own startup repair (GRANT) ----------------------------------------------------------
+
+int pa_grant_runtime_permission(const char *package, const char *permission) {
+    pa_run *r = pa_alloc(package, PA_FRAMEWORK_TIMEOUT_MS);
+    if (!r) return -1;
+    int granted = strcmp(pa_runtime_repair(r, permission), "granted") == 0;
+    pa_end(r);
+    return granted ? 0 : -1;
+}
+
+int pa_grant_app_op(const char *package, const char *op) {
+    pa_run *r = pa_alloc(package, PA_FRAMEWORK_TIMEOUT_MS);
+    if (!r) return -1;
+    int allowed = pa_op_repair(r, op);
+    pa_end(r);
+    return allowed;
 }
 
 // --- accessibility ---------------------------------------------------------------------------------
@@ -554,15 +650,9 @@ void cmd_pa_repair(conn_ctx *ctx, const char *args) {
         }
     }
 
-    // (3) App ops: allow only an op Android proves is not allowed.
-    for (size_t i = 0; i < sizeof PA_APP_OPS / sizeof PA_APP_OPS[0]; i++) {
-        char mode[PA_LINE];
-        int status = pa_op_read(r, PA_APP_OPS[i], mode, sizeof mode);
-        if (status == 0 && pa_op_proven_not_allowed(PA_APP_OPS[i], mode)) {
-            const char *const set[] = { "appops", "set", r->package, PA_APP_OPS[i], "allow", NULL };
-            (void)pa_exec(r, set);
-        }
-    }
+    // (3) App ops: allow only an op Android proves nobody has set.
+    for (size_t i = 0; i < sizeof PA_APP_OPS / sizeof PA_APP_OPS[0]; i++)
+        (void)pa_op_repair(r, PA_APP_OPS[i]);
 
     char observed[PA_LINE];
     int observed_status = pa_settings_get(r, "secure", "enabled_accessibility_services", observed, sizeof observed);

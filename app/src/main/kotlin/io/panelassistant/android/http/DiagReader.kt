@@ -407,8 +407,15 @@ object DiagReader {
         if (updates.isNotEmpty()) {
             appendLine("[updates] " + updates.joinToString(" | ") { "${it.label}: ${it.currentVersion} → ${it.latestVersion}" })
         }
+        appendLine(updateCheckLine(UpdateChecker.lastScheduled))
         }
     }
+
+    /** The daily Companion release lookup's last attempt, so a firewalled owner can see what the panel tried. */
+    internal fun updateCheckLine(attempt: UpdateChecker.ScheduledAttempt?): String =
+        if (attempt == null) "[update-check] scheduled Companion release lookup: not run yet"
+        else "[update-check] scheduled Companion release lookup at " +
+            "${java.time.Instant.ofEpochSecond(attempt.atMs / 1000)}: ${attempt.result}"
 
     /** Which profile the panel matched, so a report from an unknown panel shows a generic fallback. */
     internal fun profileLine(profile: DeviceProfile): String =

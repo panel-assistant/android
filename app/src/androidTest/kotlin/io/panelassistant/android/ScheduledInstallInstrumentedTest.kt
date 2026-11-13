@@ -76,7 +76,8 @@ class ScheduledInstallInstrumentedTest {
             InstallProgress.observer = progressObserver
             // Nothing invokes UpdateChecker directly: this must be the service's initial 30s tick.
             assertTrue("the scheduled catalogue check never completed", completedCheck.await(45, TimeUnit.SECONDS))
-            assertTrue("the Companion catalogue was not requested", network.catalogues.any { it.contains("/home-assistant/android/") })
+            // The emulator has no Companion app, so the scheduled check must not ask GitHub at all.
+            assertTrue("catalogue requested with no Companion installed: ${network.catalogues}", network.catalogues.isEmpty())
             // onChecked fires before the old install steps. Keep observing after it so a zero count
             // cannot pass simply because the assertion raced those steps.
             val installStarted = admittedInstall.await(5, TimeUnit.SECONDS)

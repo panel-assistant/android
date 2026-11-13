@@ -301,17 +301,15 @@ class PaneldServer internal constructor(
      * A direct ON while Panel Assistant manages network ADB is refused rather than journalled: the app cannot
      * apply it (AdbController.set), so a queued ON would read as pending for good and could open port 5555
      * later without a new action from the owner. Restores and imports keep the hardened check only.
+     * Once the panel has been without its session for long enough the ON is let through here, and the
+     * direct config POST gives the lease back as its last step before applying it (DirectConfigPost).
      */
     private suspend fun rejectDirectNetworkAdb(call: OpCall, requested: String?): Boolean {
         if (rejectHardenedNetworkAdb(call, requested)) return true
-        if (!io.panelassistant.android.control.ManagedNetworkAdb.managed ||
-            SettingValue.parseBool(requested.orEmpty()) != true
-        ) return false
-        call.respondText(
-            """{"ok":false,"error":"network-adb-managed-by-panel-assistant","message":"Panel Assistant manages network ADB on this panel."}""",
-            ContentType.Application.Json,
-            HttpStatusCode.Conflict,
-        )
+        val refusal = io.panelassistant.android.control.directNetworkAdbOnRefusalJson(
+            SettingValue.parseBool(requested.orEmpty()) == true,
+        ) ?: return false
+        call.respondText(refusal, ContentType.Application.Json, HttpStatusCode.Conflict)
         return true
     }
 
@@ -491,7 +489,7 @@ class PaneldServer internal constructor(
                 assetRoutes(asset, bundleAssets::bytes, panelFontBundled)
                 // Tabbed multi-page shell. `/` stays the existing dashboard (now with a tab bar); the
                 // other tabs are dedicated pages that consume /api/v1.
-                configurePageRoute(::requestStrings, { pages }) { strings -> configurePageHandler().body(strings) }
+                configurePageRoute(::requestStrings, { pages }) { strings, embedded -> configurePageHandler().body(strings, embedded) }
                 setupPageRoute(::requestStrings, { pages }, ::buildToken)
                 profilesPageRoute(::requestStrings, { pages })
                 installPageRoute(::requestStrings, { pages }) { strings -> installPageHandler().body(strings) }
@@ -890,12 +888,21 @@ class PaneldServer internal constructor(
         if (op == "webview.install") {
             val requestId = args.opt("request_id") as? String
             val hash = args.opt("artifact_sha256") as? String
+            // Home Assistant's copy of the pin (protocol section 20.5). It carries only the bytes the hash
+            // already pins, so hardened approval stays bound to the operation, request and hash alone.
+            val blob = args.opt("blob")?.takeUnless { it == JSONObject.NULL }?.let { raw ->
+                val reference = io.panelassistant.android.panelassistant.PanelAssistantBlobs.reference(raw as? JSONObject, Long.MAX_VALUE)
+                io.panelassistant.android.util.WebViewUpdate.Blob(
+                    (raw as? JSONObject)?.opt("sha256") as? String ?: "", reference?.size,
+                    reference?.let { { file -> io.panelassistant.android.panelassistant.PanelAssistantBlobs(auth).download(it, file) } },
+                )
+            }
             val refusal = authorizeSessionRequest(
                 config.hardenedSecurityEnabled, io.panelassistant.android.security.SensitiveOperation.APK_INSTALL,
                 "$op\u0000${requestId.orEmpty()}\u0000${hash.orEmpty()}", "Update System WebView", LocalApprovalBroker.instance, onPending,
             )
             if (refusal != null) return PanelAssistantManageReply(PanelAssistantTransportProtocol.OUTCOME_REFUSED, refusal, null)
-            val answer = withContext(Dispatchers.IO) { webViewUpdate.install(requestId, hash) }
+            val answer = withContext(Dispatchers.IO) { webViewUpdate.install(requestId, hash, blob) }
             // The owner's own reason stays in the body; the reply code comes from the one status table.
             val mapped = manageReplyFor(answer.status, answer.body, ContentType.Application.Json.toString(), emptyList())
             return PanelAssistantManageReply(mapped.outcome, mapped.code, answer.body)

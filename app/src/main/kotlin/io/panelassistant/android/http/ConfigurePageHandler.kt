@@ -20,10 +20,11 @@ internal class ConfigurePageHandler(
     private val powerSafetyAdvisory: (PrivilegedRouteObservation) -> PowerSafetyAdvisory,
     private val haSignInNeededForEffectiveDashboard: () -> Boolean,
 ) {
-    fun body(strings: AppStrings): String =
+    /** [embedded]: rendered for the sidebar's embed link, whose document carries no panel address. */
+    fun body(strings: AppStrings, embedded: Boolean = false): String =
         configureBody(
             strings, sensors.hasProximity(), configureSetupBanners(strings),
-            LocalAdminEndpoint.externalUrl(localIpv4(), localIpv6(), config.httpPort),
+            if (embedded) null else LocalAdminEndpoint.externalUrl(localIpv4(), localIpv6(), config.httpPort),
         )
 
     private fun configureSetupBanners(strings: AppStrings): String {

@@ -302,9 +302,13 @@ internal abstract class PanelRuntimeRig {
                 setConfigured = config::setSilenceBootChime,
                 stateStore = object : BootChimeStateStore {
                     private var state: BootChimeState? = null
+                    private var silenced = false
                     override fun load(): BootChimeState? = state
                     override fun save(state: BootChimeState): Boolean { this.state = state; return true }
-                    override fun clear(): Boolean { state = null; return true }
+                    override fun clear(): Boolean { state = null; silenced = false; return true }
+                    override fun silenced() = silenced
+                    override fun markSilenced(): Boolean { silenced = true; return true }
+                    override fun clearSilenced(): Boolean { silenced = false; return true }
                 },
                 hardware = bootChimeHardware,
             )
@@ -316,6 +320,9 @@ internal abstract class PanelRuntimeRig {
                     override fun load(): BootChimeState? = null
                     override fun save(state: BootChimeState) = true
                     override fun clear() = true
+                    override fun silenced() = false
+                    override fun markSilenced() = true
+                    override fun clearSilenced() = true
                 },
                 hardware = object : BootChimeHardware {
                     override fun capture(): BootChimeState? = null

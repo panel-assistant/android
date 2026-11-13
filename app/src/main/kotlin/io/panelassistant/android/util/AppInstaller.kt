@@ -710,12 +710,17 @@ object AppInstaller {
      * Bounded three ways, none of which trusts the peer: at most five redirect hops, a whole-operation
      * [DOWNLOAD_TOTAL_TIMEOUT_MS] deadline that a slow drip cannot outlast, and [maxBytes] enforced by
      * [copyBeforeDeadline] on bytes actually read — a lying or absent `Content-Length` cannot widen it.
+     *
+     * [cause] hears why a non-[DownloadResult.Succeeded] result happened, in the System WebView
+     * transaction's terms (`not_found`, `http_<status>`, `unresolved`, `unreachable`, `timed_out`,
+     * `too_large`, `insecure_redirect`, `failed`), so a firewalled panel can say what stopped it.
      */
     internal fun download(
         url: String,
         dest: File,
         maxBytes: Long,
         abort: DownloadAbort? = null,
+        cause: (String) -> Unit = {},
         openConnection: (URL) -> HttpURLConnection = { it.openConnection() as HttpURLConnection },
     ): DownloadResult {
         val deadline = MonotonicDeadline(DOWNLOAD_TOTAL_TIMEOUT_MS)
@@ -724,13 +729,17 @@ object AppInstaller {
         val origin = runCatching { URL(url) }.getOrNull()?.takeIf { it.protocol.equals("https", true) }
             ?: run {
                 Log.w(TAG, "refusing non-HTTPS or unparseable URL")
+                cause("failed")
                 return DownloadResult.Failed
             }
         var current: URL = origin
+        // A socket failure before a hop's status line is a connect failure; after it, a broken transfer.
+        var responded = false
         return try {
             repeat(5) {
+                responded = false
                 val remainingMs = deadline.remainingMs()
-                if (remainingMs <= 0L) return DownloadResult.TimedOut
+                if (remainingMs <= 0L) { cause("timed_out"); return DownloadResult.TimedOut }
                 val conn = openConnection(current)
                 conn.instanceFollowRedirects = false
                 conn.connectTimeout = minOf(15_000L, remainingMs).coerceAtLeast(1L).toInt()
@@ -740,14 +749,16 @@ object AppInstaller {
                 // connection can free a thread already blocked in read(). Attaching also reports an
                 // abort that arrived earlier, so no separate pre-check is needed — and a separate one
                 // would make this line impossible to prove, by answering before it is ever consulted.
-                if (abort != null && !abort.attach(conn)) return DownloadResult.Aborted
+                if (abort != null && !abort.attach(conn)) { cause("failed"); return DownloadResult.Aborted }
                 try {
-                    when (conn.responseCode) {
+                    val status = conn.responseCode
+                    responded = true
+                    when (status) {
                         in 300..399 -> {
                             conn.closeBody()
-                            val loc = conn.getHeaderField("Location") ?: return DownloadResult.Failed
+                            val loc = conn.getHeaderField("Location") ?: run { cause("failed"); return DownloadResult.Failed }
                             val next = httpsRedirect(current, loc)
-                                ?: run { Log.w(TAG, "refusing non-HTTPS redirect"); return DownloadResult.Failed }
+                                ?: run { Log.w(TAG, "refusing non-HTTPS redirect"); cause("insecure_redirect"); return DownloadResult.Failed }
                             current = next
                         }
                         200 -> {
@@ -755,6 +766,7 @@ object AppInstaller {
                             if (declared > maxBytes) {
                                 Log.w(TAG, "refusing oversized APK response: $declared bytes")
                                 conn.closeBody()
+                                cause("too_large")
                                 return DownloadResult.TooLarge
                             }
                             conn.inputStream.use { input ->
@@ -762,10 +774,13 @@ object AppInstaller {
                                     copyBeforeDeadline(input, output, maxBytes, deadline::remainingMs)
                                 }
                             }
-                            return if (dest.length() > 0) DownloadResult.Succeeded else DownloadResult.Failed
+                            if (dest.length() > 0) return DownloadResult.Succeeded
+                            cause("failed")
+                            return DownloadResult.Failed
                         }
                         else -> {
                             conn.closeBody()
+                            cause(statusCause(status))
                             return DownloadResult.Failed
                         }
                     }
@@ -774,12 +789,31 @@ object AppInstaller {
                     conn.disconnect()
                 }
             }
+            cause("failed")
             DownloadResult.Failed
         } catch (error: Exception) {
             // A closed connection surfaces as an ordinary IO failure; the owner's intent decides what it
             // actually was, so a cancel is never reported to the operator as a broken link.
-            if (abort?.isAborted == true) DownloadResult.Aborted else downloadFailure(error)
+            if (abort?.isAborted == true) { cause("failed"); DownloadResult.Aborted }
+            else { cause(failureCause(error, responded)); downloadFailure(error) }
         }
+    }
+
+    /** A final HTTP status that is not a success or a followed redirect. */
+    internal fun statusCause(status: Int): String = when (status) {
+        404 -> "not_found"
+        in 100..599 -> "http_$status"
+        else -> "failed"
+    }
+
+    /** Why a transfer threw: name resolution, connecting, a stall, the byte ceiling, or anything else. */
+    internal fun failureCause(error: Exception, responded: Boolean): String = when (error) {
+        is ByteLimitExceeded -> "too_large"
+        is java.net.SocketTimeoutException -> "timed_out"
+        is java.net.UnknownHostException -> "unresolved"
+        // Connection refused, no route and network down are all socket failures before a status line.
+        is java.net.SocketException -> if (responded) "failed" else "unreachable"
+        else -> "failed"
     }
 
     /**

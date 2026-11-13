@@ -4,6 +4,7 @@ import io.panelassistant.android.HaAuthOwner
 import io.panelassistant.android.sensors.HaApiSession
 import io.panelassistant.android.sensors.HaApiSessionProvider
 import io.panelassistant.android.sensors.HaAuthenticationException
+import io.panelassistant.android.util.HaTransportEvidence
 import io.panelassistant.android.sensors.HaLifecycle
 import io.panelassistant.android.sensors.HaLifecycleCoordinator
 import io.panelassistant.android.sensors.HaLifecycleRuntime
@@ -693,6 +694,31 @@ class PanelAssistantTransportOwnerTest {
         moved.owner.close()
     }
 
+    @Test fun `a held credential without a route to Home Assistant reports a network refusal on the fast schedule`() = runTest {
+        val unreachable = harness()
+        unreachable.session = {
+            HaApiSession(
+                "https://ha.example", null,
+                transientDetail = "Home Assistant connection unavailable",
+                transientEvidence = HaTransportEvidence.UNKNOWN,
+            )
+        }
+        unreachable.owner.replaceDemand(DEMAND)
+        runCurrent()
+        assertFalse(unreachable.owner.status.slowRetry)
+        assertEquals(PanelAssistantTransportOwner.REFUSAL_ROUTE_UNAVAILABLE, unreachable.owner.status.refusal)
+        assertEquals(0, unreachable.connector.times.size)
+        unreachable.owner.close()
+
+        val missing = harness()
+        missing.session = { HaApiSession("https://ha.example", null) }
+        missing.owner.replaceDemand(DEMAND)
+        runCurrent()
+        assertFalse(missing.owner.status.slowRetry)
+        assertEquals(PanelAssistantTransportOwner.REFUSAL_CREDENTIAL_UNAVAILABLE, missing.owner.status.refusal)
+        missing.owner.close()
+    }
+
     @Test fun `a panel connects within seconds after prolonged identity or account confirmation`() = runTest {
         for (code in listOf("unknown_panel", "panel_user_mismatch")) {
             var confirmed = false
@@ -1170,6 +1196,44 @@ class PanelAssistantTransportOwnerTest {
             assertEquals(offered.toString(), "local_adb" in offered, "local_adb_commands_v1" in offered)
         }
         assertTrue("local_adb_commands_v1" in offeredWith(rootKnownUnusable = false, endpointAnswers = false))
+    }
+
+    @Test fun theEndOfAnAcceptedSessionStartsTheCountTowardsTheOwnersNetworkAdbSwitch() = runTest {
+        val endpoint = object : LocalAdbEndpoint {
+            var status = LocalAdbState(false, false)
+            override fun state() = status
+            override fun arm(nonce: String): Boolean { status = LocalAdbState(true, false); return true }
+            override fun beat(nonce: String) = true
+            override fun recover(nonce: String, submit: (() -> Unit) -> Boolean): Boolean? = true
+            override fun shell(command: ByteArray, timeoutMs: Int, submit: (() -> Unit) -> Boolean): JSONObject? = null
+        }
+        var now = 40_000L
+        val runtime = LocalAdbRuntime(
+            backgroundScope, endpoint, { false }, { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), { it() },
+            monotonicMs = { now },
+        )
+        val management = object : PanelAssistantManagement by FakeManagement() {
+            override val localAdb: PanelAssistantLocalAdb = runtime
+        }
+        val connection = FakeConnection(Ha.accepting(capabilities = listOf("management", "local_adb")))
+        val harness = harness(connection, management = management)
+        try {
+            harness.owner.replaceDemand(DEMAND)
+            runCurrent()
+            assertEquals(LocalAdbState(true, false), endpoint.status)
+            assertNull("no count while the session is up", runtime.waitMs())
+
+            // No session_closed event: Home Assistant's side simply goes away, as behind a new firewall rule.
+            connection.inbound.close()
+            runCurrent()
+            assertEquals(io.panelassistant.android.control.ManagedNetworkAdb.OWNER_SWITCH_AFTER_MS, runtime.waitMs())
+            now += 90_000
+            assertEquals(io.panelassistant.android.control.ManagedNetworkAdb.OWNER_SWITCH_AFTER_MS - 90_000, runtime.waitMs())
+        } finally {
+            harness.owner.close()
+            io.panelassistant.android.control.ManagedNetworkAdb.managed = false
+            io.panelassistant.android.control.ManagedNetworkAdb.recoveryHold = false
+        }
     }
 
     @Test fun aRelayedCommandRunsAsItsUserThroughTheSidebarDoorAndNeverThroughPanelAssistantsOwnCommands() = runTest {

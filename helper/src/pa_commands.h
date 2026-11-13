@@ -22,6 +22,14 @@ void cmd_pa_restore(conn_ctx *ctx, const char *args);
 void cmd_pa_observe(conn_ctx *ctx, const char *args);
 void cmd_pa_handback(conn_ctx *ctx, const char *args);
 
+// The owner-decision rules PA_REPAIR applies, for GRANT (sysctl.c) to apply to the app's own package,
+// so the app's startup repair and Panel Assistant's repair cannot drift apart. A runtime permission is
+// granted only when every `dumpsys package` line proves it denied and none records a decision
+// (USER_SET, USER_FIXED or POLICY_FIXED); an app op is set to allow only when Android proves it unset.
+// Each returns 0 when the grant holds afterwards and -1 when it was kept, unreadable or failed.
+int pa_grant_runtime_permission(const char *package, const char *permission);
+int pa_grant_app_op(const char *package, const char *op);
+
 #ifdef HAPANELD_TEST
 extern const char *pa_test_boot_id_path; // OBSERVE recovery reads this in place of the kernel boot id
 #endif

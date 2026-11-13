@@ -314,6 +314,11 @@ UNCHANGED_TARGET_EXCEPTIONS = {
     ("pl", "shell.runtime.duration_seconds"): "{count} s",
 }
 TARGET_LITERAL_EXCEPTIONS = {
+    ("uk", "configure.voice.tuning.last_heard"): ("Assist",),
+    ("uk", "configure.voice.tuning.last_heard_nothing"): ("Assist",),
+    ("zh-Hans", "configure.voice.tuning.last_heard"): ("Assist",),
+    ("zh-Hans", "configure.voice.tuning.last_heard_nothing"): ("Assist",),
+
     ("uk", "install.warning.no_renderer.install_companion"): ("Companion",),
     ("uk", "install.presentation.restore_companion_helper_required"): ("Companion",),
     ("uk", "install.presentation.companion_unsupported_package"): ("Companion",),

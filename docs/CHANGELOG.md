@@ -2,6 +2,8 @@
 
 The full notes for every release and pre-release, from 1.0.0 on, are on [panel-assistant.io](https://panel-assistant.io/go/release-notes). Each section here is a short summary with a link to them; earlier sections are the full notes as they were released.
 
+## v1.0.3
+
 ## v1.0.2 - 2026-11-11
 
 A small update with fixes found in the first days of 1.0.1: proximity learning finishes without another touch, a tap now retries a screen wake that failed, and a WebView that went back to an older version no longer keeps restarting the panel app, along with fixes for the on-panel sign-in and microphone tuning. Pairs with Panel Assistant 1.0.2, which offers each panel the update.

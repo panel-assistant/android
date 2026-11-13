@@ -68,13 +68,17 @@ internal class LocalAdbRuntime(
     private val rootKnownUnusable: () -> Boolean = { false },
     private val daemon: Daemon = HelperClient,
     private val leaseDiagnostics: LocalAdbLeaseDiagnostics = LocalAdbLeaseDiagnostics(),
-) : PanelAssistantLocalAdb {
+    private val monotonicMs: () -> Long = { System.nanoTime() / 1_000_000 },
+) : PanelAssistantLocalAdb, ManagedNetworkAdb.OwnerSwitch {
     private val generation = AtomicLong()
     private val effects = Mutex()
     private val shells = Mutex()
     @Volatile private var nonce = ""
     @Volatile private var granted = false
     @Volatile private var compatibleHistory = false
+    // When the last accepted session ended; null while one is up, and before the first.
+    @Volatile private var sessionEndedAt: Long? = null
+    @Volatile private var sessionToken = ""
 
     // A structural su refusal need not hide a compatible running ordinary helper. This short read-only
     // capability check runs per PA hello; the eventual action independently admits its carrying socket.
@@ -84,6 +88,10 @@ internal class LocalAdbRuntime(
         val (current, fresh, retainExistingLease) = RemoteDebugSecurityTransitionGate.withLock {
             val current = generation.incrementAndGet()
             this.granted = granted
+            sessionToken = token
+            sessionEndedAt = null
+            // Whatever hold the helper is in from here on is this session's, not an earlier owner's press.
+            ManagedNetworkAdb.releasedToOwner = false
             val retain = !granted && compatibleHistory && nonce.isNotEmpty()
             if (granted) compatibleHistory = true
             val fresh = if (retain) nonce else MessageDigest.getInstance("SHA-256").digest(UUID.randomUUID().toString().toByteArray()).joinToString("") { "%02x".format(it) }
@@ -161,6 +169,58 @@ internal class LocalAdbRuntime(
         }
     }
 
+    override fun sessionEnded(token: String) {
+        // The end of a session a newer one has already replaced says nothing about the newer one.
+        RemoteDebugSecurityTransitionGate.withLock {
+            if (token == sessionToken && sessionEndedAt == null) sessionEndedAt = monotonicMs()
+        }
+    }
+
+    /**
+     * The lease is renewed for as long as this process runs, session or no session, so a panel never
+     * becomes easier to reach because something cut its path to Home Assistant. The owner standing at the
+     * panel's own settings page is another matter: once no session has been held for
+     * [ManagedNetworkAdb.OWNER_SWITCH_AFTER_MS] the Network ADB switch may give the lease back. Hardened mode keeps it.
+     */
+    override fun waitMs(): Long? {
+        val ended = sessionEndedAt ?: return null
+        if (hardened()) return null
+        return (ManagedNetworkAdb.OWNER_SWITCH_AFTER_MS - (monotonicMs() - ended)).coerceAtLeast(0)
+    }
+
+    /**
+     * Asks the helper to reopen ADB and, once it has, ends this lease's renewals; the next accepted session
+     * arms a new lease. Runs on the caller's thread and takes the effects queue before the transition gate,
+     * as every lease effect does, so a caller must not already hold the gate. The answer is the helper's own
+     * state after the attempt, never the reply alone: a lost reply to a reopening that happened is a
+     * release, and a helper that still holds the lease goes on being renewed as if nothing was asked.
+     * Only the lease that was asked about is ended. A session accepted while the helper was answering has
+     * its own generation, which is left alone: its arm is next in the effects queue and closes ADB again,
+     * so that press is not a release.
+     */
+    override fun release(): Boolean = kotlinx.coroutines.runBlocking { effects.withLock {
+        var asked: Long? = null
+        val answer = runCatching {
+            endpoint.recover(nonce) { write ->
+                RemoteDebugSecurityTransitionGate.withLock {
+                    if (waitMs() != 0L) false else transition { asked = generation.get(); write(); true }
+                }
+            }
+        }.getOrNull()
+        val leased = asked ?: return@withLock false
+        val state = runCatching { endpoint.state() }.getOrNull()
+        val reopened = if (state != null) !state.managed else answer == true
+        // No renewal can have run meanwhile: each one needs the effects queue held here. A new session
+        // changes the generation under the same gate, so it and this retirement cannot interleave.
+        val released = reopened && RemoteDebugSecurityTransitionGate.withLock {
+            (generation.get() == leased).also { mine ->
+                if (mine) { generation.incrementAndGet(); ManagedNetworkAdb.releasedToOwner = true }
+            }
+        }
+        runCatching { publish() }
+        released
+    } }
+
     /** Main recovery becomes available only after the canonical helper passes capability admission. */
     private fun currentDaemon(): LocalAdbState? {
         var state = endpoint.state()
@@ -176,6 +236,7 @@ internal class LocalAdbRuntime(
     private fun publish(): LocalAdbState? = endpoint.state().also {
         ManagedNetworkAdb.managed = it?.managed == true
         ManagedNetworkAdb.recoveryHold = it?.recoveryHold == true
+        if (it?.recoveryHold != true) ManagedNetworkAdb.releasedToOwner = false
     }
 
     override suspend fun request(op: String, args: JSONObject, admit: () -> Boolean, onPending: () -> Unit): PanelAssistantManageReply {
@@ -347,6 +408,7 @@ internal class LocalAdbRuntime(
                     }
                 } == true
             }, rootKnownUnusable = { Su.rootKnownUnusable() }, daemon = daemon, leaseDiagnostics = leaseDiagnostics)
+                .also { ManagedNetworkAdb.ownerSwitch = it }
         }
     }
 }

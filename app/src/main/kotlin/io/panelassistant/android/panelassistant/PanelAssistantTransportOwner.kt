@@ -5,6 +5,7 @@ import io.panelassistant.android.HaAuthOwner
 import io.panelassistant.android.haOriginChanges
 import io.panelassistant.android.sensors.HaApiSessionProvider
 import io.panelassistant.android.sensors.HaAuthenticationException
+import io.panelassistant.android.util.HaTransportFault
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
@@ -340,6 +341,11 @@ internal class PanelAssistantTransportOwner(
                 val token = session.accessToken
                 when {
                     token == null && session.rejected -> Retry.Slow(REFUSAL_CREDENTIAL_REJECTED)
+                    // The credential is held but Home Assistant was not reachable: no route proved
+                    // itself, or the token refresh failed in transport. Both carry typed evidence.
+                    token == null && session.transientEvidence.fault != HaTransportFault.NONE ->
+                        Retry.Fast(REFUSAL_ROUTE_UNAVAILABLE)
+                    // No credential is configured, or none could be judged yet.
                     token == null -> Retry.Fast(REFUSAL_CREDENTIAL_UNAVAILABLE)
                     // The credential moved while it was being resolved. The service replaces the
                     // demand for the new credential; until then this generation does not use it.
@@ -434,6 +440,7 @@ internal class PanelAssistantTransportOwner(
                                     streaming?.close()
                                     commanding?.close()
                                     reporting?.close()
+                                    management?.localAdb?.sessionEnded(outcome.session.token)
                                     // Every way an accepted session ends reopens the window: a Core
                                     // restart is a bare socket close, never a session_closed event.
                                     warmUntil = monotonicMillis() + warmupWindowMs
@@ -797,6 +804,7 @@ internal class PanelAssistantTransportOwner(
         const val REFUSAL_AUTH_INVALID = "auth_invalid"
         const val REFUSAL_CREDENTIAL_REJECTED = "credential_rejected"
         const val REFUSAL_CREDENTIAL_UNAVAILABLE = "credential_unavailable"
+        const val REFUSAL_ROUTE_UNAVAILABLE = "route_unavailable"
         const val REFUSAL_SESSION_CLOSED = "session_closed"
         const val REFUSAL_SESSION_SUPERSEDED = "session_superseded"
         const val REFUSAL_TRANSPORT = "transport_failure"

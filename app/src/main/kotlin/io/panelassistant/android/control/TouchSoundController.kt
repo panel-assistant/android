@@ -8,6 +8,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.util.Log
+import io.panelassistant.android.Config
 import io.panelassistant.android.persistence.AppState
 import java.io.File
 import kotlin.math.PI
@@ -67,20 +68,22 @@ class TouchSoundController(context: Context, clickGain: Float) {
     fun set(on: Boolean): Boolean = apply(on).applied
 
     /**
-     * Make the hardware match a durable intent at startup, without performing a transition.
+     * Bring touch sound up at startup for a durable intent, without performing a transition.
+     *
+     * The app's own click (overlay and SoundPool) always follows [on]: it is app-owned and lives only in
+     * this process. The platform `SOUND_EFFECTS_ENABLED` flag is written only when [settle] is set, until
+     * one write has succeeded for the persisted intent; see [settleTouchSoundAtStart].
      *
      * [apply] is a transition, and turning touch sound off there restores whatever `SOUND_EFFECTS_ENABLED`
      * held before ha-paneld first enabled it, which is the right thing the moment a user switches it off.
-     * A reassertion is not that: the captured prior belongs to a transition that already happened, and
-     * replaying it every boot would let a stale capture contradict the very intent it is meant to enforce
-     * (a panel whose pre-ha-paneld flag was on would restore the click it was told to silence). So an
-     * intended OFF is asserted directly and the restore memory is left for a real transition.
+     * Startup is not that: the captured prior belongs to a transition that already happened, so an adopted
+     * OFF is asserted directly and the restore memory is left for a real transition.
      */
     @Synchronized
-    internal fun reassert(on: Boolean): ControlApplyOutcome {
+    internal fun reassert(on: Boolean, settle: Boolean): ControlApplyOutcome {
         return try {
             if (on) {
-                val enabled = statePolicy.enable()
+                val enabled = statePolicy.settleAtStart(true, settle)
                 if (!enabled.applied) {
                     Log.w(TAG, "touch sound reassert on refused: prior state could not be captured durably")
                     return enabled
@@ -89,13 +92,13 @@ class TouchSoundController(context: Context, clickGain: Float) {
                 enableOverlay()
             } else {
                 disableOverlay()
-                val disabled = statePolicy.assertDisabled()
+                val disabled = statePolicy.settleAtStart(false, settle)
                 if (!disabled.applied) {
                     Log.w(TAG, "touch sound reassert off failed; the panel may still be audible")
                     return disabled
                 }
             }
-            Log.i(TAG, "touch sound reasserted -> ${if (on) "on" else "off"}")
+            Log.i(TAG, "touch sound at start -> ${if (on) "on" else "off"}${if (settle) " (platform flag settled)" else ""}")
             ControlApplyOutcome.APPLIED
         } catch (error: Exception) {
             Log.w(TAG, "touch sound reassert failed: ${error.message}")
@@ -258,6 +261,51 @@ internal fun resolveTouchSoundIntent(
     else -> TouchSoundResolution(registryDefault, TouchSoundOrigin.DEFAULT)
 }
 
+/**
+ * Touch sound at service start: settle this panel's intent exactly once, then settle the platform flag
+ * until one write has succeeded for it. Returns the intent, which is all a reporting surface may use.
+ *
+ * Reporting has to be a pure function of durable intent. The platform `SOUND_EFFECTS_ENABLED` flag is
+ * writable by firmware and by any other app holding `WRITE_SETTINGS`, so a reported value that followed it
+ * drifted with no user action; the next unrelated Configure save then posted a value that no longer
+ * matched, `DirectConfigMutationPlan` counted touch sound as changed, and the live-setting journal queued
+ * an apply for a key nobody touched. So an unresolved panel is adopted here, from its own actuation record
+ * first and from a single reading of the flag second, and the answer is committed. A failed commit changes
+ * nothing durable: the same evidence resolves again next start.
+ *
+ * Intent and hardware are recorded separately. The intent is committed before the flag is written, so
+ * whether the flag took is [Config.touchSoundSettled]: cleared before an adopted intent is committed, set
+ * only when [reassert] succeeds with the flag write. A start whose write failed leaves it clear, and the
+ * next start writes the flag again, one attempt per start, while the reported intent stays as it is. Once
+ * settled, startup writes nothing: Android keeps the flag across reboots and an owner may change it.
+ */
+internal fun settleTouchSoundAtStart(
+    config: Config,
+    recordedState: Boolean?,
+    observedHardware: Boolean?,
+    registryDefault: Boolean,
+    reassert: (on: Boolean, settle: Boolean) -> ControlApplyOutcome,
+): TouchSoundResolution {
+    val resolution = resolveTouchSoundIntent(config.touchSoundIntent, recordedState, observedHardware, registryDefault)
+    if (resolution.needsAdoption) {
+        // Unsettled first, so a crash between the two commits can never read as a settled flag.
+        if (config.commitTouchSoundSettled(false) && config.commitTouchSound(resolution.enabled)) {
+            Log.i(TOUCH_SOUND_START_TAG, "adopted touch sound intent ${resolution.enabled} (${resolution.origin})")
+        } else {
+            Log.w(TOUCH_SOUND_START_TAG, "could not adopt touch sound intent (${resolution.origin}); retrying next start")
+        }
+    }
+    val settle = resolution.needsAdoption || !config.touchSoundSettled
+    if (!reassert(resolution.enabled, settle).applied) {
+        Log.w(TOUCH_SOUND_START_TAG, "touch sound could not be settled at startup; intent remains ${resolution.enabled}, retrying next start")
+    } else if (settle && !config.commitTouchSoundSettled(true)) {
+        Log.w(TOUCH_SOUND_START_TAG, "could not record the settled touch sound flag; the next start writes it again")
+    }
+    return resolution
+}
+
+private const val TOUCH_SOUND_START_TAG = "ha-paneld/touchsound"
+
 internal data class TouchSoundState(
     val effectsSetting: Int?,
 )
@@ -307,6 +355,18 @@ internal class TouchSoundStatePolicy(
         val restored = if (prior != null) hardware.restore(prior) else hardware.disableConservatively()
         if (!restored.applied) return restored
         return if (store.saveDisabledAndClearPrior()) ControlApplyOutcome.APPLIED else ControlApplyOutcome.FAILED
+    }
+
+    /**
+     * Startup. Android keeps `SOUND_EFFECTS_ENABLED` across reboots, so the platform flag is written only
+     * while [settle] (the flag has not yet been settled for the persisted intent). Once settled, the flag
+     * changes only on a transition from the owner or Home Assistant, and a value the owner later sets in
+     * Android is left as they set it.
+     */
+    fun settleAtStart(on: Boolean, settle: Boolean): ControlApplyOutcome = when {
+        !settle -> ControlApplyOutcome.APPLIED
+        on -> enable()
+        else -> assertDisabled()
     }
 
     /** Assert a durable OFF intent against the hardware. Unlike [disable] this never restores a captured

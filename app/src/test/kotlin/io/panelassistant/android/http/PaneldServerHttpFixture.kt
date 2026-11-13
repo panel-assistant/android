@@ -125,7 +125,7 @@ internal class PaneldServerHttpFixture(
                 override fun readReceipt(): org.json.JSONObject? = null
                 override fun writeReceipt(receipt: org.json.JSONObject) = error("Unexpected WebView mutation")
                 override fun deleteReceipt() = error("Unexpected WebView mutation")
-                override fun download(spec: io.panelassistant.android.device.WebViewSpec, destination: File): Boolean = error("Unexpected WebView download")
+                override fun download(spec: io.panelassistant.android.device.WebViewSpec, destination: File): String? = error("Unexpected WebView download")
                 override fun installedMatches(spec: io.panelassistant.android.device.WebViewSpec): Boolean = false
                 override suspend fun install(file: File, beforeSubmit: () -> io.panelassistant.android.util.InstallOutcome.Failure?): io.panelassistant.android.util.InstallOutcome = error("Unexpected WebView installation")
             })

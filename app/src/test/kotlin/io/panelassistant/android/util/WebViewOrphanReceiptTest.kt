@@ -42,8 +42,8 @@ class WebViewOrphanReceiptTest {
             override fun readReceipt() = if (receiptFile.exists()) JSONObject(receiptFile.readText()) else null
             override fun writeReceipt(receipt: JSONObject) { receiptFile.writeText(receipt.toString()) }
             override fun deleteReceipt() { receiptFile.delete() }
-            override fun download(spec: WebViewSpec, destination: File): Boolean {
-                downloads++; beforeDownload(); destination.writeBytes(bytes); return true
+            override fun download(spec: WebViewSpec, destination: File): String? {
+                downloads++; beforeDownload(); destination.writeBytes(bytes); return null
             }
             override fun installedMatches(spec: WebViewSpec): Boolean { readbacks++; return installed }
             override suspend fun install(file: File, beforeSubmit: () -> InstallOutcome.Failure?): InstallOutcome {
