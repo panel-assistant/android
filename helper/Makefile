@@ -172,7 +172,7 @@ replacement-shard-check:
 # --wrap=read also injects short reads and errors for fixed governor nodes.
 # --wrap=open/ioctl lets tests provide a fake evdev node and capture requested exclusive grabs while
 # preserving the existing ledjni ioctl assertions; --wrap=write forces deterministic stream edge cases.
-$(BUILD)/unit: $(CORE_SRCS) $(STUB) test/unit.c | $(BUILD)
+$(BUILD)/unit: $(CORE_SRCS) $(STUB) test/unit.c test/unit_pa_commands.c | $(BUILD)
 	$(SHARED_CC) $(TEST_CFLAGS) -DHAPANELD_TEST $(UNIT_TMP) -I$(SRC_DIR) $(CORE_SRCS) $(STUB) test/unit.c $(LDLIBS) -Wl,--wrap=open -Wl,--wrap=ioctl -Wl,--wrap=write -Wl,--wrap=read -Wl,--wrap=__read_chk -o $@
 
 # The typed-command allowlist as JSON, compared with test/pa-typed-allowlist.json by value.
