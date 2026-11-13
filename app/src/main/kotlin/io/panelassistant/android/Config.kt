@@ -977,8 +977,8 @@ class Config private constructor(
     private fun settleMarker(key: String): Boolean = prefs.getBoolean(key, key in startupSettleFallback)
 
     /**
-     * One-shot, before [migrateLiveStore]: decide once whether this panel's start-time hardware settings
-     * have already been applied.
+     * One-shot, run first by [migrateLiveStore]: decide once whether this panel's start-time hardware
+     * settings have already been applied.
      *
      * Earlier versions re-applied the screen timeout, the boot-chime silence and the touch-sound flag at
      * every start, so on an installation upgraded from one of them each enabled setting has already been
@@ -987,7 +987,9 @@ class Config private constructor(
      * every marker unset, so its first start applies the defaults once.
      *
      * `config_schema` is the evidence: [migrateLiveStore] writes it at every released version's first
-     * start, and nothing else writes it. Run before [migrateLiveStore], which writes it here too. Each
+     * start, and nothing else writes it. So this runs inside [migrateLiveStore], ahead of its write, for
+     * every caller: the dashboard activity can migrate the store before the service does (Android 8.1
+     * starts the HOME activity first), and a fresh panel must not read its own first write as an upgrade. Each
      * marker is written explicitly, true or false, so a marker is never absent once this has run, and a
      * failed first application in this version stays distinguishable from an upgrade. A failed commit
      * leaves the migration to run again at the next start, and this process reads the upgrade answer.
@@ -1617,6 +1619,8 @@ class Config private constructor(
     }
 
     fun migrateLiveStore(): Boolean = synchronized(CONFIG_LOCK) {
+        // Reads config_schema as upgrade evidence, so ahead of every write of it below.
+        migrateStartupSettleMarkers()
         rerootDashboardEntityOwners()
         canonicalizeStoredHomeDashboard()
         val from = storedSchema

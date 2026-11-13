@@ -11,9 +11,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The service start as production runs it, over durable stores that survive a restart: the start-time
- * migration in [io.panelassistant.android.PaneldService.initializeOnStartupLane], then the live-store
- * migration, then [io.panelassistant.android.ServiceDisplay.startAdaptive]'s idle-dim step and
+ * The service start as production runs it, over durable stores that survive a restart: the live-store
+ * migration in [io.panelassistant.android.PaneldService.initializeOnStartupLane] (which first runs the
+ * start-time settle migration), then [io.panelassistant.android.ServiceDisplay.startAdaptive]'s idle-dim step and
  * [io.panelassistant.android.ServiceSystemControls.reassertFeedback]'s touch-sound and boot-chime steps.
  * Each [start] builds fresh controllers and a fresh [Config] over the same preferences, as a restart does.
  */
@@ -34,7 +34,6 @@ internal class StartupSettleCallerTest : PanelRuntimeRig() {
 
     private fun start(): Config {
         val config = newConfig(configPrefs, context.contentResolver)
-        config.migrateStartupSettleMarkers()
         config.migrateLiveStore()
 
         BrightnessController(
@@ -117,6 +116,18 @@ internal class StartupSettleCallerTest : PanelRuntimeRig() {
         touchFlag = 0
         start()
         assertEquals("later owner changes in Android stay", emptyList<String>(), writes)
+    }
+
+    /**
+     * After an install or update Android 8.1 starts the dashboard (HOME) activity before the service, and
+     * its startup migrates the live store, writing `config_schema`. A fresh panel must still read as fresh.
+     */
+    @Test fun `a fresh panel whose dashboard migrated the store first still applies each default once`() {
+        newConfig(configPrefs, context.contentResolver).migrateLiveStore() // DashboardActivity.prepareStartupConfig
+
+        start()
+
+        assertEquals(listOf("timeout:$NEVER_SCREEN_TIMEOUT_MS", "touch:enable", "chime:silence"), writes)
     }
 
     @Test fun `a failed first touch-sound adoption is written again at the next start, until it succeeds`() {
