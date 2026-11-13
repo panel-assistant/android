@@ -12,6 +12,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -206,7 +207,10 @@ class LocalAdbLeaseDiagnosticsTest {
     }
 
     @Test fun waitingForManagementEffectsDelaysOneBeatWithoutInventingASkippedTick() = runTest {
-        val timer = StandardTestDispatcher(testScheduler)
+        // The renewal delay runs on its own scheduler that only this test advances. On runTest's scheduler,
+        // the next renewal registered from a pool thread was auto-advanced while the body awaited the request.
+        val timerScheduler = TestCoroutineScheduler()
+        val timer = StandardTestDispatcher(timerScheduler)
         val executor = Executors.newFixedThreadPool(2)
         val dispatched = CountDownLatch(1)
         val ready = CountDownLatch(1)
@@ -234,7 +238,7 @@ class LocalAdbLeaseDiagnosticsTest {
             val request = async(start = CoroutineStart.UNDISPATCHED) { runtime.request("adb.prepare", JSONObject(), { true }) }
             assertTrue(entered.await(5, TimeUnit.SECONDS))
             waitingForBeat = true; now.set(30_000)
-            advanceTimeBy(30_000); runCurrent()
+            timerScheduler.advanceTimeBy(30_000); timerScheduler.runCurrent()
             assertTrue("tick must reach the occupied effects queue", dispatched.await(5, TimeUnit.SECONDS))
             assertEquals(listOf("arm"), endpoint.commands)
             now.set(42_000); release.countDown()
