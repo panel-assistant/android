@@ -405,11 +405,13 @@ static int pa_grant_line(const char *line, size_t len, const char *permission, c
     return p == end;
 }
 
-// Every line of `dumpsys package` naming `<perm>: granted=` must say [state]. 0 lines proves nothing.
+// Every line of `dumpsys package` naming `<perm>: granted=` must say [state]. 0 lines proves nothing;
+// [lines] is -1 when the dump itself failed.
 static int pa_runtime_all(pa_run *r, const char *permission, const char *state, int *lines) {
     const char *const argv[] = { "dumpsys", "package", r->package, NULL };
-    *lines = 0;
+    *lines = -1;
     if (pa_capture(r, argv, r->dump, PA_DUMP_MAX) != 0) return 0;
+    *lines = 0;
     char needle[160];
     snprintf(needle, sizeof needle, "%s: granted=", permission);
     int all = 1;
@@ -469,11 +471,21 @@ static int pa_runtime_decided(pa_run *r, const char *permission) {
     return 0;
 }
 
+// Whether the last dump is this package's own: a `Package [<pkg>]` line.
+static int pa_dump_is_package(pa_run *r) {
+    char header[176];
+    snprintf(header, sizeof header, "Package [%s]", r->package);
+    return strstr(r->dump, header) != NULL;
+}
+
 // Grant only when every line proves the grant missing and nobody decided it; a denial the owner or a
-// policy chose is kept and reported as denied. Then report what Android kept.
+// policy chose is kept and reported as denied. Android 9 and older print no line at all for a
+// permission never granted and never flagged, and a decision always sets a flag, so a successful dump
+// of this package with no line for the permission is undecided too. Then report what Android kept.
 static const char *pa_runtime_repair(pa_run *r, const char *permission) {
     int lines;
-    if (pa_runtime_all(r, permission, "false", &lines)) {
+    int missing = pa_runtime_all(r, permission, "false", &lines);
+    if (missing || (lines == 0 && pa_dump_is_package(r))) {
         if (pa_runtime_decided(r, permission)) return "denied";
         const char *const grant[] = { "pm", "grant", r->package, permission, NULL };
         (void)pa_exec(r, grant);

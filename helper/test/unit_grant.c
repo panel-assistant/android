@@ -114,7 +114,13 @@ static void test_grant_keeps_owner_permissions(void) {
     static const struct { const char *dump; int status; const char *why; } unreadable[] = {
         { NULL, 0, "no dump at all" },
         { "        android.permission.CAMERA: granted=false\n", 1, "a dump that exits nonzero" },
-        { "    requested permissions:\n      android.permission.CAMERA\n", 0, "a dump with no grant line" },
+        { "    requested permissions:\n      android.permission.CAMERA\n", 0, "a dump with no grant line and no Package header" },
+        { "  Package [com.other.app] (1a2b3c):\n    requested permissions:\n      android.permission.CAMERA\n", 0,
+          "another package's dump with no grant line" },
+        { "  Package [" SUCCESSOR_ID "] (1a2b3c):\n    requested permissions:\n      android.permission.CAMERA\n", 1,
+          "a dump with no grant line that exits nonzero" },
+        { "  Package [" SUCCESSOR_ID ".other] (1a2b3c):\n    requested permissions:\n      android.permission.CAMERA\n", 0,
+          "a dump of a package whose id only starts with the app's" },
         { "        android.permission.CAMERA: granted=false\n        android.permission.CAMERA: granted=true\n", 0, "users that disagree" },
         { "        android.permission.CAMERA: granted=false, flags=[ USER_SENSITIVE_WHEN_GRANTED", 0, "a truncated line" },
     };
@@ -125,6 +131,47 @@ static void test_grant_keeps_owner_permissions(void) {
         CHECK(strcmp(out, "ERR\n") == 0 && grant_dump_reads() >= 1 && sysexec_stub_count_argv_prefix(GRANT_ANY_PM_GRANT) == 0,
               "GRANT CAMERA grants nothing on %s (got '%s')\n", unreadable[i].why, out);
     }
+}
+
+// Android 9 and older print no line for a runtime permission never granted and never flagged; a
+// decision always sets a flag, so a successful dump of this package with no line for it is undecided.
+#define GRANT_PACKAGE_HEADER "  Package [" SUCCESSOR_ID "] (1a2b3c):\n    requested permissions:\n"
+
+static void test_grant_unlisted_permission_on_old_android(void) {
+    char out[MAX_LINE + 2];
+    for (size_t p = 0; p < sizeof GRANT_RUNTIME / sizeof GRANT_RUNTIME[0]; p++) {
+        char before[512], after[512];
+        const char *const grant[] = { "pm", "grant", SUCCESSOR_ID, GRANT_RUNTIME[p].permission, NULL };
+        snprintf(before, sizeof before, GRANT_PACKAGE_HEADER "      %s\n    install permissions:\n"
+                 "      android.permission.INTERNET: granted=true\n", GRANT_RUNTIME[p].permission);
+        snprintf(after, sizeof after, GRANT_PACKAGE_HEADER "    runtime permissions:\n      %s: granted=true\n",
+                 GRANT_RUNTIME[p].permission);
+        sysexec_stub_reset();
+        grant_stub_dump(before, after);
+        grant_request(GRANT_RUNTIME[p].capability, out, sizeof out);
+        CHECK(ran_argv("/system/bin/pm", grant) == 1 && sysexec_stub_count_argv_prefix(GRANT_ANY_PM_GRANT) == 1,
+              "GRANT %s grants a permission the app's own dump does not list\n", GRANT_RUNTIME[p].capability);
+        CHECK(strcmp(out, "OK\n") == 0, "GRANT %s answers OK for an unlisted permission read back granted (got '%s')\n",
+              GRANT_RUNTIME[p].capability, out);
+    }
+
+    // The header does not outrank a line: a decided line in the app's own dump is still kept.
+    sysexec_stub_reset();
+    grant_stub_dump(GRANT_PACKAGE_HEADER "    runtime permissions:\n"
+                    "      android.permission.CAMERA: granted=false, flags=[ USER_FIXED ]\n",
+                    GRANT_PACKAGE_HEADER "    runtime permissions:\n      android.permission.CAMERA: granted=true\n");
+    grant_request("CAMERA", out, sizeof out);
+    CHECK(strcmp(out, "ERR\n") == 0 && grant_dump_reads() >= 1 && sysexec_stub_count_argv_prefix(GRANT_ANY_PM_GRANT) == 0,
+          "GRANT CAMERA keeps a decided line in the app's own dump (got '%s')\n", out);
+
+    // PA_REPAIR shares the rule.
+    sysexec_stub_reset();
+    pa_stub_repair_choices(GRANT_PACKAGE_HEADER "      android.permission.RECORD_AUDIO\n", "WRITE_SETTINGS: allow\n");
+    char pa_out[8192];
+    dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "PA_REPAIR 1 0", pa_out, sizeof pa_out);
+    const char *const grant_microphone[] = { "pm", "grant", SUCCESSOR_ID, "android.permission.RECORD_AUDIO", NULL };
+    CHECK(ran_argv("/system/bin/pm", grant_microphone) == 1,
+          "PA_REPAIR grants a microphone permission the app's own dump does not list\n");
 }
 
 static void test_grant_keeps_owner_app_ops(void) {

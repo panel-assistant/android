@@ -2663,6 +2663,7 @@ int main(int argc, char **argv) {
     test_grant_accessibility();
     test_pa_commands();
     test_grant_keeps_owner_permissions();
+    test_grant_unlisted_permission_on_old_android();
     test_grant_keeps_owner_app_ops();
 
     if (failures) { printf("UNIT FAILED: %d assertion(s)\n", failures); return 1; }
