@@ -76,7 +76,12 @@ jobs:
               hosted) reason="CI_ANDROID_RUNNER is hosted" ;;
               self-hosted) choice=self-hosted; reason="CI_ANDROID_RUNNER is self-hosted" ;;
               auto)
-                if [ -z "$RUNNER_STATUS_TOKEN" ]; then
+                # With Blacksmith on, the Android build always runs there: its split jobs finish before the
+                # project runner's single build (2026-11-11, main pushes since the CI audit: CI median 314 s
+                # on Blacksmith against 394 s on ms01; 2026-11-08: 2.7 against 4.8 min for the build).
+                if [ -n "${blacksmith:-}" ]; then
+                  reason="Blacksmith is on, and its split Android jobs finish before the project runner's single build"
+                elif [ -z "$RUNNER_STATUS_TOKEN" ]; then
                   reason="no RUNNER_ADMIN_TOKEN secret, so runner availability cannot be checked"
                   echo "::warning::$reason"
                 else
@@ -84,13 +89,9 @@ jobs:
                       -H "Authorization: Bearer $RUNNER_STATUS_TOKEN" -H 'Accept: application/vnd.github+json' \
                       "https://api.github.com/repos/$REPOSITORY/actions/runners?per_page=100" || true)"
                   status="${status:-000}"
-                  # With Blacksmith on, the project runner is used only while one of its runners is idle: it is
-                  # the fastest for this one build, but a busy one would queue it, and Blacksmith never queues.
-                  if [ "$status" = 200 ] && online="$(jq --argjson idle "${blacksmith:-0}" '[.runners[] | select(.status == "online" and ([.labels[].name] | index("ms01-i9")) and ($idle == 0 or .busy == false))] | length' runners.json)"; then
+                  if [ "$status" = 200 ] && online="$(jq '[.runners[] | select(.status == "online" and ([.labels[].name] | index("ms01-i9")))] | length' runners.json)"; then
                     if [ "$online" -gt 0 ]; then
-                      choice=self-hosted; reason="$online project runner(s) online${blacksmith:+ and idle}"
-                    elif [ -n "${blacksmith:-}" ]; then
-                      reason="no project runner is idle, so the Android build runs on Blacksmith"
+                      choice=self-hosted; reason="$online project runner(s) online"
                     else
                       reason="no project runner is online"
                     fi
