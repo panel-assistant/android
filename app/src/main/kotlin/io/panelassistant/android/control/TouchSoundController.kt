@@ -67,20 +67,22 @@ class TouchSoundController(context: Context, clickGain: Float) {
     fun set(on: Boolean): Boolean = apply(on).applied
 
     /**
-     * Make the hardware match a durable intent at startup, without performing a transition.
+     * Bring touch sound up at startup for a durable intent, without performing a transition.
+     *
+     * The app's own click (overlay and SoundPool) always follows [on]: it is app-owned and lives only in
+     * this process. The platform `SOUND_EFFECTS_ENABLED` flag is written only while [adopting], the
+     * once-only settling of a panel that had no persisted intent yet; see [TouchSoundStatePolicy.settleAtStart].
      *
      * [apply] is a transition, and turning touch sound off there restores whatever `SOUND_EFFECTS_ENABLED`
      * held before ha-paneld first enabled it, which is the right thing the moment a user switches it off.
-     * A reassertion is not that: the captured prior belongs to a transition that already happened, and
-     * replaying it every boot would let a stale capture contradict the very intent it is meant to enforce
-     * (a panel whose pre-ha-paneld flag was on would restore the click it was told to silence). So an
-     * intended OFF is asserted directly and the restore memory is left for a real transition.
+     * Startup is not that: the captured prior belongs to a transition that already happened, so an adopted
+     * OFF is asserted directly and the restore memory is left for a real transition.
      */
     @Synchronized
-    internal fun reassert(on: Boolean): ControlApplyOutcome {
+    internal fun reassert(on: Boolean, adopting: Boolean): ControlApplyOutcome {
         return try {
             if (on) {
-                val enabled = statePolicy.enable()
+                val enabled = statePolicy.settleAtStart(true, adopting)
                 if (!enabled.applied) {
                     Log.w(TAG, "touch sound reassert on refused: prior state could not be captured durably")
                     return enabled
@@ -89,13 +91,13 @@ class TouchSoundController(context: Context, clickGain: Float) {
                 enableOverlay()
             } else {
                 disableOverlay()
-                val disabled = statePolicy.assertDisabled()
+                val disabled = statePolicy.settleAtStart(false, adopting)
                 if (!disabled.applied) {
                     Log.w(TAG, "touch sound reassert off failed; the panel may still be audible")
                     return disabled
                 }
             }
-            Log.i(TAG, "touch sound reasserted -> ${if (on) "on" else "off"}")
+            Log.i(TAG, "touch sound at start -> ${if (on) "on" else "off"}${if (adopting) " (platform flag adopted)" else ""}")
             ControlApplyOutcome.APPLIED
         } catch (error: Exception) {
             Log.w(TAG, "touch sound reassert failed: ${error.message}")
@@ -307,6 +309,18 @@ internal class TouchSoundStatePolicy(
         val restored = if (prior != null) hardware.restore(prior) else hardware.disableConservatively()
         if (!restored.applied) return restored
         return if (store.saveDisabledAndClearPrior()) ControlApplyOutcome.APPLIED else ControlApplyOutcome.FAILED
+    }
+
+    /**
+     * Startup. Android keeps `SOUND_EFFECTS_ENABLED` across reboots, so the platform flag is written only
+     * while [adopting] (a panel settling its intent for the first time). Once the intent is persisted the
+     * flag changes only on a transition from the owner or Home Assistant, and a value the owner later sets
+     * in Android is left as they set it.
+     */
+    fun settleAtStart(on: Boolean, adopting: Boolean): ControlApplyOutcome = when {
+        !adopting -> ControlApplyOutcome.APPLIED
+        on -> enable()
+        else -> assertDisabled()
     }
 
     /** Assert a durable OFF intent against the hardware. Unlike [disable] this never restores a captured

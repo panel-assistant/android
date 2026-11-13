@@ -20,6 +20,11 @@ import io.panelassistant.android.util.HelperClient
  * also keeps live stream values, so both are snapshotted before the first silence and restored on
  * disable. A legacy installation without a snapshot is left at its current volume when disabled:
  * inventing a "reasonable" louder volume is less safe than preserving silence.
+ *
+ * Silencing is a transition, not a startup assertion. Android keeps these volumes across reboots, so once
+ * a silence has succeeded it is recorded and startup leaves the volumes alone: a ring volume the owner
+ * later raises in Android stays raised. Startup silences only while no success has been recorded (the
+ * first run with the default on, or an earlier silence that failed).
  */
 class BootChimeController internal constructor(
     private val configured: () -> Boolean,
@@ -55,15 +60,13 @@ class BootChimeController internal constructor(
         if (on) {
             if (!ensureSnapshot()) return ControlApplyOutcome.FAILED
             setConfigured(true)
-            val silenced = hardware.silence()
-            if (silenced.applied) Log.i(TAG, "boot chime silenced")
-            else Log.w(TAG, "silence failed through app and root settings paths")
-            return silenced
+            return silenceAndRecord()
         }
 
         val prior = stateStore.load()
         if (prior == null) {
             // Old versions did not record the prior volume. Do not resurrect sound with a guessed level.
+            if (!stateStore.clearSilenced()) Log.w(TAG, "could not clear the boot-chime silenced record")
             setConfigured(false)
             Log.i(TAG, "boot chime control disabled; no legacy volume snapshot to restore")
             return ControlApplyOutcome.APPLIED
@@ -82,8 +85,9 @@ class BootChimeController internal constructor(
         return ControlApplyOutcome.APPLIED
     }
 
+    /** Startup: complete a silence that has not yet succeeded on this panel; otherwise write nothing. */
     fun applyPersisted() {
-        if (configured()) {
+        if (configured() && !stateStore.silenced()) {
             // Service startup already owns an off-main serialized lifecycle lane. Keeping this work on
             // that lane avoids a detached generation that could silence audio after a successor restores it.
             applyPersistedOffMain()
@@ -94,9 +98,20 @@ class BootChimeController internal constructor(
     private fun applyPersistedOffMain() {
         // The setting may have been turned off after the worker was submitted. Serializing with [set]
         // guarantees an in-flight silence happens before its exact restore, never after it.
-        if (!configured() || !ensureSnapshot()) return
-        if (hardware.silence().applied) Log.i(TAG, "boot chime silenced")
-        else Log.w(TAG, "silence failed through app and root settings paths")
+        if (!configured() || stateStore.silenced() || !ensureSnapshot()) return
+        silenceAndRecord()
+    }
+
+    private fun silenceAndRecord(): ControlApplyOutcome {
+        val silenced = hardware.silence()
+        if (!silenced.applied) {
+            Log.w(TAG, "silence failed through app and root settings paths")
+            return silenced
+        }
+        Log.i(TAG, "boot chime silenced")
+        // A failed record only means the next start silences once more; the transition itself succeeded.
+        if (!stateStore.markSilenced()) Log.w(TAG, "could not record the boot-chime silence; the next start repeats it")
+        return silenced
     }
 
     private fun ensureSnapshot(): Boolean {
@@ -129,7 +144,14 @@ internal data class BootChimeState(
 internal interface BootChimeStateStore {
     fun load(): BootChimeState?
     fun save(state: BootChimeState): Boolean
+
+    /** Remove the snapshot and the silenced record together. */
     fun clear(): Boolean
+
+    /** Whether a silence has succeeded since the last restore, so startup must not repeat it. */
+    fun silenced(): Boolean
+    fun markSilenced(): Boolean
+    fun clearSilenced(): Boolean
 }
 
 internal interface BootChimeHardware {
@@ -167,7 +189,14 @@ private class AndroidBootChimeStateStore(
         .putBoolean(KEY_PRESENT, true)
         .commit()
 
+    override fun silenced(): Boolean = preferences.getBoolean(KEY_SILENCED, false)
+
+    override fun markSilenced(): Boolean = preferences.edit().putBoolean(KEY_SILENCED, true).commit()
+
+    override fun clearSilenced(): Boolean = preferences.edit().remove(KEY_SILENCED).commit()
+
     override fun clear(): Boolean = preferences.edit()
+        .remove(KEY_SILENCED)
         .remove(KEY_PRESENT)
         .remove(KEY_RING_SPEAKER).remove("$KEY_RING_SPEAKER.null")
         .remove(KEY_RING).remove("$KEY_RING.null")
@@ -186,6 +215,7 @@ private class AndroidBootChimeStateStore(
         else putInt(key, value).remove("$key.null")
 
     companion object {
+        private const val KEY_SILENCED = "boot_chime.silenced"
         private const val KEY_PRESENT = "boot_chime.prior.present"
         private const val KEY_RING_SPEAKER = "boot_chime.prior.ring_speaker"
         private const val KEY_RING = "boot_chime.prior.ring"

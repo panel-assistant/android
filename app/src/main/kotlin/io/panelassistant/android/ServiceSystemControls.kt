@@ -20,6 +20,7 @@ import io.panelassistant.android.control.RelayController
 import io.panelassistant.android.control.SystemController
 import io.panelassistant.android.control.TameController
 import io.panelassistant.android.control.TouchSoundController
+import io.panelassistant.android.control.TouchSoundResolution
 import io.panelassistant.android.control.VolumeController
 import io.panelassistant.android.control.WatchdogController
 import io.panelassistant.android.control.ZigbeeController
@@ -269,13 +270,14 @@ internal class ServiceSystemControls(
     }
 
     fun reassertFeedback() {
-        // Resolve touch-sound intent before the HTTP server can accept a save, then reassert it in
-        // both directions so the panel matches what it reports. Touch sound never changes stream
-        // volume; an ON reassertion also loads the owned click sample for this process.
-        val touchSoundIntent = resolveTouchSoundIntentOnce()
-        if (!touchSound.reassert(touchSoundIntent).applied) {
-            Log.w(TAG, "touch sound could not be reasserted at startup; intent remains $touchSoundIntent")
+        // Resolve touch-sound intent before the HTTP server can accept a save. The app's own click follows
+        // it now; the Android flag is written only while the intent is first being adopted, because Android
+        // keeps it across reboots. Touch sound never changes stream volume.
+        val intent = resolveTouchSoundIntentOnce()
+        if (!touchSound.reassert(intent.enabled, intent.needsAdoption).applied) {
+            Log.w(TAG, "touch sound could not be settled at startup; intent remains ${intent.enabled}")
         }
+        // Silences only until the first silence has succeeded; a volume the owner raises later stays raised.
         bootChime.applyPersisted()
     }
 
@@ -394,7 +396,7 @@ internal class ServiceSystemControls(
      * key, [resolveTouchSoundIntent] short-circuits on it, and later drift can move the hardware but never
      * the setting. A failed commit changes nothing durable: the same evidence resolves again next boot.
      */
-    private fun resolveTouchSoundIntentOnce(): Boolean {
+    private fun resolveTouchSoundIntentOnce(): TouchSoundResolution {
         val resolution = resolveTouchSoundIntent(
             persistedIntent = config().touchSoundIntent,
             controllerRecord = touchSound.recordedState(),
@@ -408,7 +410,7 @@ internal class ServiceSystemControls(
                 Log.w(TAG, "could not adopt touch sound intent (${resolution.origin}); retrying next boot")
             }
         }
-        return resolution.enabled
+        return resolution
     }
 
     /** Borrow the last management proof and the existing never-blank cadence. One failed periodic

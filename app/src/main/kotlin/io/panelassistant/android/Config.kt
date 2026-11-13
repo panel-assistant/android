@@ -945,6 +945,16 @@ class Config private constructor(
             prefs.edit().putInt("saved_screen_off_timeout", v).apply()
         }
 
+    // Whether prevent_idle_dim's "never" timeout has been applied on this panel, so startup leaves
+    // SCREEN_OFF_TIMEOUT alone afterwards. Android keeps the value across reboots, and an owner may change
+    // it in Android settings; only a transition (or the first run with the default on) writes it.
+    // Cleared when turning the setting off restores the saved timeout.
+    var preventIdleDimApplied: Boolean
+        get() = prefs.getBoolean("prevent_idle_dim_applied", false)
+        set(v) {
+            prefs.edit().putBoolean("prevent_idle_dim_applied", v).commit()
+        }
+
     // The screen-off timeout (ms) the screen-timeout screen-off route displaced while the panel sleeps;
     // restored on wake and at the next service start. -1 = nothing displaced. Not [savedScreenOffTimeout]:
     // that one is the firmware default from before prevent-idle-dim raised it.
