@@ -42,6 +42,7 @@ class BootChimeController internal constructor(
         setConfigured = config::setSilenceBootChime,
         stateStore = AndroidBootChimeStateStore(
             AppState.preferences(context, "controller-state"),
+            config,
         ),
         hardware = AndroidBootChimeHardware(context.applicationContext, root, daemon),
     )
@@ -160,8 +161,14 @@ internal interface BootChimeHardware {
     fun restore(state: BootChimeState): ControlApplyOutcome
 }
 
-private class AndroidBootChimeStateStore(
+/**
+ * The volume snapshot lives in controller state; the silenced record lives in [Config] beside the other
+ * start-time settle markers, so the upgrade migration ([Config.migrateStartupSettleMarkers]) can set it
+ * for an installation whose earlier version silenced at every start.
+ */
+internal class AndroidBootChimeStateStore(
     private val preferences: SharedPreferences,
+    private val config: Config,
 ) : BootChimeStateStore {
     override fun load(): BootChimeState? {
         if (!preferences.getBoolean(KEY_PRESENT, false)) return null
@@ -189,14 +196,13 @@ private class AndroidBootChimeStateStore(
         .putBoolean(KEY_PRESENT, true)
         .commit()
 
-    override fun silenced(): Boolean = preferences.getBoolean(KEY_SILENCED, false)
+    override fun silenced(): Boolean = config.bootChimeSilenced
 
-    override fun markSilenced(): Boolean = preferences.edit().putBoolean(KEY_SILENCED, true).commit()
+    override fun markSilenced(): Boolean = config.commitBootChimeSilenced(true)
 
-    override fun clearSilenced(): Boolean = preferences.edit().remove(KEY_SILENCED).commit()
+    override fun clearSilenced(): Boolean = config.commitBootChimeSilenced(false)
 
-    override fun clear(): Boolean = preferences.edit()
-        .remove(KEY_SILENCED)
+    override fun clear(): Boolean = clearSilenced() && preferences.edit()
         .remove(KEY_PRESENT)
         .remove(KEY_RING_SPEAKER).remove("$KEY_RING_SPEAKER.null")
         .remove(KEY_RING).remove("$KEY_RING.null")
@@ -215,7 +221,6 @@ private class AndroidBootChimeStateStore(
         else putInt(key, value).remove("$key.null")
 
     companion object {
-        private const val KEY_SILENCED = "boot_chime.silenced"
         private const val KEY_PRESENT = "boot_chime.prior.present"
         private const val KEY_RING_SPEAKER = "boot_chime.prior.ring_speaker"
         private const val KEY_RING = "boot_chime.prior.ring"

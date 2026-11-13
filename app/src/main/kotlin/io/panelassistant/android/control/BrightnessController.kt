@@ -252,9 +252,9 @@ class BrightnessController internal constructor(
         screenTimeout.apply(on, config.savedScreenOffTimeout, ConfigDisplacedScreenTimeout(config)) {
             config.savedScreenOffTimeout = it
         }.also { result ->
-            // Recorded only on success, so a first application that failed is tried again at the next start.
-            if (!on) config.preventIdleDimApplied = false
-            else if (result.effective) config.preventIdleDimApplied = true
+            // Off clears it; on records whether "never" took, so an application that failed is tried again
+            // at the next start.
+            config.preventIdleDimApplied = on && result.effective
             if (result.effective && result.writeAccepted) {
                 Log.d(TAG, "prevent idle dim ${if (on) "ON" else "OFF"}: screen_off_timeout -> ${result.observedMs}")
             } else if (result.effective) {

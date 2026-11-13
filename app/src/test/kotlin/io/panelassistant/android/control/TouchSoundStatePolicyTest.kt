@@ -121,7 +121,7 @@ class TouchSoundStatePolicyTest {
         val policy = TouchSoundStatePolicy(store, FakeHardware(TouchSoundState(1), events))
         events.clear()
 
-        assertEquals(ControlApplyOutcome.APPLIED, policy.settleAtStart(on = false, adopting = false))
+        assertEquals(ControlApplyOutcome.APPLIED, policy.settleAtStart(on = false, settle = false))
 
         assertEquals(emptyList<String>(), events)
     }

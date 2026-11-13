@@ -20,12 +20,11 @@ import io.panelassistant.android.control.RelayController
 import io.panelassistant.android.control.SystemController
 import io.panelassistant.android.control.TameController
 import io.panelassistant.android.control.TouchSoundController
-import io.panelassistant.android.control.TouchSoundResolution
 import io.panelassistant.android.control.VolumeController
 import io.panelassistant.android.control.WatchdogController
 import io.panelassistant.android.control.ZigbeeController
 import io.panelassistant.android.control.ZigbeeHealthMonitor
-import io.panelassistant.android.control.resolveTouchSoundIntent
+import io.panelassistant.android.control.settleTouchSoundAtStart
 import io.panelassistant.android.config.SettingsRegistry
 import io.panelassistant.android.config.defaultBool
 import io.panelassistant.android.device.DeviceProfile
@@ -271,12 +270,15 @@ internal class ServiceSystemControls(
 
     fun reassertFeedback() {
         // Resolve touch-sound intent before the HTTP server can accept a save. The app's own click follows
-        // it now; the Android flag is written only while the intent is first being adopted, because Android
-        // keeps it across reboots. Touch sound never changes stream volume.
-        val intent = resolveTouchSoundIntentOnce()
-        if (!touchSound.reassert(intent.enabled, intent.needsAdoption).applied) {
-            Log.w(TAG, "touch sound could not be settled at startup; intent remains ${intent.enabled}")
-        }
+        // it now; the Android flag is written only until it has been settled once for that intent, because
+        // Android keeps it across reboots. Touch sound never changes stream volume.
+        settleTouchSoundAtStart(
+            config = config(),
+            recordedState = touchSound.recordedState(),
+            observedHardware = touchSound.observedPlatformState(),
+            registryDefault = requireNotNull(SettingsRegistry.spec("touch_sound")).defaultBool(),
+            reassert = touchSound::reassert,
+        )
         // Silences only until the first silence has succeeded; a volume the owner raises later stays raised.
         bootChime.applyPersisted()
     }
@@ -380,38 +382,6 @@ internal class ServiceSystemControls(
 
     /** The system controller once built, for readers that may run before construction. */
     fun systemOrNull(): SystemController? = if (::system.isInitialized) system else null
-
-    /**
-     * Settle this panel's touch-sound intent exactly once, and return it.
-     *
-     * Reporting has to be a pure function of durable intent. The platform `SOUND_EFFECTS_ENABLED` flag is
-     * writable by firmware and by any other app holding `WRITE_SETTINGS`, so a reported value that
-     * followed it drifted with no user action; the next unrelated Configure save then posted a value that
-     * no longer matched, `DirectConfigMutationPlan` counted touch sound as changed, and the live-setting
-     * journal queued an apply for a key nobody touched — permanently visible on a panel that cannot write
-     * the flag at all.
-     *
-     * So an unresolved panel is adopted here, from its own actuation record first and from a single
-     * reading of the flag second, and the answer is committed. From then on configuration `contains` the
-     * key, [resolveTouchSoundIntent] short-circuits on it, and later drift can move the hardware but never
-     * the setting. A failed commit changes nothing durable: the same evidence resolves again next boot.
-     */
-    private fun resolveTouchSoundIntentOnce(): TouchSoundResolution {
-        val resolution = resolveTouchSoundIntent(
-            persistedIntent = config().touchSoundIntent,
-            controllerRecord = touchSound.recordedState(),
-            observedHardware = touchSound.observedPlatformState(),
-            registryDefault = requireNotNull(SettingsRegistry.spec("touch_sound")).defaultBool(),
-        )
-        if (resolution.needsAdoption) {
-            if (config().commitTouchSound(resolution.enabled)) {
-                Log.i(TAG, "adopted touch sound intent ${resolution.enabled} (${resolution.origin})")
-            } else {
-                Log.w(TAG, "could not adopt touch sound intent (${resolution.origin}); retrying next boot")
-            }
-        }
-        return resolution
-    }
 
     /** Borrow the last management proof and the existing never-blank cadence. One failed periodic
      * mutation stays suppressed until the next explicit config generation; startup/config apply already
