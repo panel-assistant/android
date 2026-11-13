@@ -15,23 +15,9 @@ internal fun releaseReady(locale: String, key: String, translated: TargetString)
     TranslationState.MACHINE_CROSS_CHECKED, TranslationState.COMMUNITY_CORRECTED -> true
     TranslationState.MACHINE_DRAFT -> locale in AppLocale.EARLY_ACCESS_LOCALES
     TranslationState.ENGLISH_FALLBACK ->
-        (locale to key) in APPROVED_PROFILES_ENGLISH_FALLBACKS || key.startsWith(DEFERRED_VOICE_TUNING_PREFIX) ||
-            key in DEFERRED_PROXIMITY_OPTIONAL_KEYS ||
-            DEFERRED_VOICE_CAPTURE_PATTERN.matches(key) ||
+        (locale to key) in APPROVED_PROFILES_ENGLISH_FALLBACKS ||
             EarlyAccessReviewHold.holds(locale, key, translated)
 }
-
-// The Voice card's microphone tuning ships in English until its separate translation pass; remove this once the
-// translations land.
-internal const val DEFERRED_VOICE_TUNING_PREFIX = "configure.voice.tuning."
-
-// The microphone capture route settings (rate, channels, channel mix) ship in English until the same translation
-// pass; remove this once their translations land.
-internal val DEFERRED_VOICE_CAPTURE_PATTERN = Regex("""(settings|configure\.enum)\.voice_capture_(rate|channels|downmix)\..+""")
-
-// The proximity card's "optional" wording ships in English until its translation pass; remove each key as its
-// translations land.
-internal val DEFERRED_PROXIMITY_OPTIONAL_KEYS = setOf("configure.proximity.setup.required")
 
 class ReleaseReadinessContractTest {
     // Source-text reason: loads the shipped i18n catalogues as input data.

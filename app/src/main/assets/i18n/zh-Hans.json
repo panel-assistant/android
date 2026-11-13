@@ -1730,8 +1730,8 @@
     },
     "configure.proximity.setup.required": {
       "sourceHash": "971684a549196212c949dbd0bfff1671dcd4cac05c51f873413aae1ecc0450e6",
-      "state": "english-fallback",
-      "text": "Proximity is not set up. It is optional; touch always wakes the panel."
+      "state": "machine-cross-checked",
+      "text": "接近功能尚未设置。此功能是可选的；触摸始终会唤醒面板。"
     },
     "configure.proximity.setup.reset": {
       "sourceHash": "8ce491fb3c0b3e323b74408d14bc079e230a7b02841006762c14803f7114f38b",
@@ -2149,284 +2149,284 @@
       "text": "首选管道"
     },
     "configure.voice.tuning.cancel": {
-      "text": "Cancel",
+      "text": "取消",
       "sourceHash": "19766ed6ccb2f4a32778eed80d1928d2c87a18d7c275ccb163ec6709d3eb2e27",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.cancelled": {
-      "text": "Cancelled. The settings are as they were.",
+      "text": "已取消。设置已恢复原样。",
       "sourceHash": "a9d6b965359b47a782f9cbbfdc34fb1f3e47b8d5a42963250b12a6463c1d6bc8",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.last_heard": {
-      "text": "Assist heard: {text}",
+      "text": "Assist 听到：{text}",
       "sourceHash": "7f85cfe2dc02c58acdbec97deb6abe6370bb9ae4687d83d2a0354e38ba9621d0",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.last_heard_nothing": {
-      "text": "Assist heard nothing it could transcribe.",
+      "text": "Assist 未听到可转写的内容。",
       "sourceHash": "5e4641e03e5f2b95d707fda53e530d2e93666ae8250bddd3e868552d7df4497e",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.last_none": {
-      "text": "No command heard since voice was turned on.",
+      "text": "自开启语音以来尚未听到命令。",
       "sourceHash": "0a2be9fb4aca5487ad24403d4e8f897eef26c3fd3f7e19fd058f9745aac65e45",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.last_reply": {
-      "text": "Replied: {text}",
+      "text": "回复：{text}",
       "sourceHash": "101a52cfaf868a2a7ea7a044444267cd9a6b0a7d8aa44d11e11210f213c8875a",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.last_title": {
-      "text": "Last command",
+      "text": "上一条命令",
       "sourceHash": "c5c9f9eb955483bf0220b6c094232f31225e163d534e53182c775e6e21611b52",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.last_woke": {
-      "text": "Woke at {score}.",
+      "text": "以 {score} 分唤醒。",
       "sourceHash": "f948f7664ff95b45956734c4c8c9dc6f01cf17d62067e69dd1d7cac8212e1b70",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.level_clipped": {
-      "text": "Clipped {count} times: the microphone is overloaded.",
+      "text": "削波 {count} 次：麦克风已过载。",
       "sourceHash": "14a48c93acb2c3cb5f1295002e9d6b15acd713de630c8134beac59660fa27c4f",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.level_idle": {
-      "text": "The level shows while it is measured; measuring keeps the microphone open beside the wake word.",
+      "text": "测量时会显示电平；测量会保持麦克风打开，与唤醒词检测同时运行。",
       "sourceHash": "d62fc74ddc63bc5af6ef69f6cc1e4b33e9c228c411873e8fb30bb5aa0f3b7f74",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.level_show": {
-      "text": "Show the microphone level",
+      "text": "显示麦克风电平",
       "sourceHash": "52a8a0ca49e53fddc21e04bb2c999c4b9ea373adb99622150ca9bd92eba86168",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.level_stop": {
-      "text": "Stop the level",
+      "text": "停止电平测量",
       "sourceHash": "4ce3728ad020a5226eb78e5fbf4337c0608d3501cf731943156e71355c49cf3d",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.level_value": {
-      "text": "Level {rms} dBFS, peak {peak} dBFS, room {floor} dBFS",
+      "text": "电平 {rms} dBFS，峰值 {peak} dBFS，房间 {floor} dBFS",
       "sourceHash": "742576a41d30df8f996a844d24645b0b1adbdab27792a261083be78d836741b3",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.measuring": {
-      "text": "Measuring… {seconds} s",
+      "text": "正在测量… {seconds} 秒",
       "sourceHash": "fb8da4b35f038b1a50773ffddcf4061a93ab596df3f91cc50ff84930fae0a07d",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.next": {
-      "text": "Next",
+      "text": "下一步",
       "sourceHash": "1ff57a29d7c9d11bdf61c1b80f2b289b44c1ea844824d4b94a0d52b6ba5fc858",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.refused": {
-      "text": "The panel did not accept that: {reason}",
+      "text": "面板未接受此操作：{reason}",
       "sourceHash": "daf356cb5cf63cb4a65b9a84b8f0d6c87b8b7e0102055f49e450bf6baf98ce71",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.result_action_done": {
-      "text": "Result: done.",
+      "text": "结果：已完成。",
       "sourceHash": "611fc22ec612f0b971c0521c193feb75bcf9e576f8754f1bfe12cb5a61dc03d1",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.result_error": {
-      "text": "Result: failed ({code}).",
+      "text": "结果：失败（{code}）。",
       "sourceHash": "fe6cc7ba9931e297e283fb29f777066823aea408e730de3c6a02a1a67d4c7e88",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.result_no_intent_match": {
-      "text": "Result: not understood.",
+      "text": "结果：未理解。",
       "sourceHash": "879f1dcdfc38e4d3864eabae32688c606323000623714c68d04cfc1fe19c2c6f",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.result_no_reply": {
-      "text": "Result: no reply.",
+      "text": "结果：无回复。",
       "sourceHash": "64a73ea60ad227e7dd4b4920cd304c05645d4c85436f946ddc663c53f4eac13d",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.result_query_answer": {
-      "text": "Result: answered.",
+      "text": "结果：已回答问题。",
       "sourceHash": "ef65419712a49623121f57723a96349bc7074079b074c69cf9ff8de3d3d511df",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.result_replied": {
-      "text": "Result: replied.",
+      "text": "结果：已回复。",
       "sourceHash": "9db90d170e8531f420ce5b0efa6a6ad8aeed64b473ddbc3dfc22e057b407df11",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.review": {
-      "text": "Suggested settings",
+      "text": "建议设置",
       "sourceHash": "e968c53639ad0fd3a36af57be146c40f598db84ba917cd2e9ed63bb0dd9ceccc",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.review_far": {
-      "text": "The wake word stayed well short of its cutoff. Move the panel or try another audio source; gain does not reach the wake word.",
+      "text": "唤醒词得分远低于阈值。请移动面板或尝试其他音频源；增益不会作用于唤醒词检测。",
       "sourceHash": "0c147070d32d765a6e3e2ce0904026392f665ff26f7cdc6af80867e5e4e885b2",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.review_gain": {
-      "text": "Microphone gain: {value} dB",
+      "text": "麦克风增益：{value} dB",
       "sourceHash": "53c01141f3cbff88c8940ff2e2c79b0bdd957d924629c4a90284981a18bfa9a8",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.review_good_gain": {
-      "text": "Your voice reached {peak} dBFS, which needs no change.",
+      "text": "您的声音达到 {peak} dBFS，无需更改。",
       "sourceHash": "b75b0c22e0ac09eb1897a39f31473c4e499cdcb5c6f3b57e81b89d271e76e534",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.review_high": {
-      "text": "The wake word came close to its cutoff without firing every time, so the panel can wake more readily.",
+      "text": "唤醒词得分接近阈值，但并非每次都触发，因此让面板更容易唤醒。",
       "sourceHash": "9d83757d14dc007f12cd181d2f2d6022f6080045a019e9e4dff08dd82027d442",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.review_loud_gain": {
-      "text": "Your voice clipped or came close; the gain is lowered.",
+      "text": "您的声音发生削波或接近削波；因此降低增益。",
       "sourceHash": "ba094f0c93cef42ab69cb0e827b7c99e0f8d571f66fe8772d28159a176e7e86e",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.review_low": {
-      "text": "The panel woke while the room was quiet, so it asks for a clearer match.",
+      "text": "房间安静时面板发生了唤醒，因此改为要求更明确的匹配。",
       "sourceHash": "af858707ad31af788572faabb786c10be37c331362888a3fa430865ede7404b2",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.review_ok": {
-      "text": "The wake word fired reliably.",
+      "text": "唤醒词触发稳定可靠。",
       "sourceHash": "0725fa9b253bdd2b6e4b83ea576347d5f903839e21259ee434d3e388974f3fa1",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.review_quiet_gain": {
-      "text": "Your voice reached {peak} dBFS; the gain lifts the command towards -20 dBFS.",
+      "text": "您的声音达到 {peak} dBFS；增益会将命令音量提升至接近 -20 dBFS。",
       "sourceHash": "0467aab7595217eb71b5aa0f6191ad3175f608bdf83329d016ae9e9303a39d84",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.review_sensitivity": {
-      "text": "Wake word sensitivity: {value}",
+      "text": "唤醒词灵敏度：{value}",
       "sourceHash": "4eb950ccacc1e72f001d4e076c1ddf25d34265e99472d2b1b2da668b09f8dc77",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.review_source": {
-      "text": "Heard best with {value}",
+      "text": "使用 {value} 时听得最好",
       "sourceHash": "72603789df53fc08c6f8a8abb442a37e4c2ba07b63a5913a5e6ea2a5e1d27ec1",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.save": {
-      "text": "Save",
+      "text": "保存",
       "sourceHash": "1509f561f2416598629b886ad7d3c05a7e221e4e0675c84bbff4ee6d9e03913d",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.saved": {
-      "text": "Saved.",
+      "text": "已保存。",
       "sourceHash": "fca046ccd586c67f7fe0b3c12c29873a8abf9376f7cd514fc6272ec03b2de0b3",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.skip": {
-      "text": "Skip",
+      "text": "跳过",
       "sourceHash": "28d03596d24eeb4eab2d6fe21ca1cb95be7cb1fa6f92933db05e2cc4f4cdfa06",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.source_not_opened": {
-      "text": "{source}: the panel could not use this setting, so it was not compared",
+      "text": "{source}：面板无法使用此设置，因此未纳入比较",
       "sourceHash": "85bb22785da080062319ba092802f5e9f0575a972247982a20de557089f9a679",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.source_result": {
-      "text": "{source}: heard {fired} of 3, best score {peak}",
+      "text": "{source}：听到 {fired} 次，共 3 次，最高分 {peak}",
       "sourceHash": "569c0264430d3554d376791682dfb0f4f372bae7eb4913b90909f52ddf98bff7",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.source_try": {
-      "text": "Try this setting",
+      "text": "尝试此设置",
       "sourceHash": "a099f3c83467f5fcaeca9e4e8077866997e9e9bd8645cdca43a180b01f397c64",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.start": {
-      "text": "Tune the microphone",
+      "text": "调校麦克风",
       "sourceHash": "8d814f479857e8a598d1b3a78038b83e189695d119b1f86d4354454b5183e03f",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.step_quiet": {
-      "text": "Step 1 of 4: the room",
+      "text": "第 1 步，共 4 步：房间",
       "sourceHash": "c0ba54951829465a0b190300f33b0caa4d52b96eea7df55fbb03b5a226b8609e",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.step_quiet_text": {
-      "text": "Stay quiet for a few seconds so the panel can hear the room.",
+      "text": "请保持安静几秒钟，让面板听取房间声音。",
       "sourceHash": "7fcb22970779a56beed3fa82ba706a94b69433f9d5a93d338da945abd9b64aa3",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.step_source": {
-      "text": "Step 4 of 4: compare settings (optional)",
+      "text": "第 4 步，共 4 步：比较设置（可选）",
       "sourceHash": "e831930b358329581dd0083a2d7a707c5e4e657c007c7ec8334575ee84006f82",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.step_source_text": {
-      "text": "Try an audio source or capture setting, then say the wake word three times again. The others go back as they were.",
+      "text": "尝试一种音频源或录音设置，然后再说三次唤醒词。其他设置会恢复原样。",
       "sourceHash": "8e2b230e1717a14fa9d59677d299f5a2699955896ccbcf52b3ed436f45e47d6d",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.step_speak": {
-      "text": "Step 2 of 4: your voice",
+      "text": "第 2 步，共 4 步：您的声音",
       "sourceHash": "dcd211986743fb82304cac595adc5026b2c3ba5db39d971046dc383dca3d15f6",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.step_speak_text": {
-      "text": "From where you usually stand, speak normally for a few seconds, as if giving a command.",
+      "text": "请站在平时的位置，用正常音量说话几秒钟，就像发出命令一样。",
       "sourceHash": "12282faf4911662a0fe82abd3a7d13edd697f7c9bfd265c1577c4790f704afc5",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.step_wake": {
-      "text": "Step 3 of 4: the wake word",
+      "text": "第 3 步，共 4 步：唤醒词",
       "sourceHash": "2a4565114e5e43d49237c2d88c3b2acf5c63ec2ffe82fce626cd4543279bcab5",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.step_wake_progress": {
-      "text": "Heard {fired} of 3. Best score {peak}, needs {cutoff}.",
+      "text": "已听到 {fired} 次，共需 3 次。最高分 {peak}，需要 {cutoff}。",
       "sourceHash": "aebf0e8c982a357bd61a3442cad4da4c03a439f5d65af8b2e78198908753ed87",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.step_wake_text": {
-      "text": "Go to the far side of the room and say {wake_word} three times, pausing between each.",
+      "text": "请走到房间远端，说三次 {wake_word}，每次之间稍作停顿。",
       "sourceHash": "eeecd2de49684a98de6f5ea948275c5c14b8a82f7791c1d3cab74938788265fd",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.title": {
-      "text": "Microphone tuning",
+      "text": "麦克风调校",
       "sourceHash": "638873145d7801932a520590c4fbb735bb9c1c46d330fa43ca8e960aa90522b4",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.wake_done": {
-      "text": "Best score {peak}, needed {cutoff}; heard {fired} times.",
+      "text": "最高分 {peak}，所需分数 {cutoff}；听到 {fired} 次。",
       "sourceHash": "085b78523ecc99ef3015ee6f1091988db0b42748d6f8e941330c3f392232af67",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.wake_note": {
-      "text": "While the test runs, the panel counts the wake word instead of answering it.",
+      "text": "测试期间，面板会统计唤醒词次数，而不会响应唤醒词。",
       "sourceHash": "658688632ea9260bfc99c6db706af7adb2c2d32e2fb6065aba6c56e5943b1b8e",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.wake_running": {
-      "text": "Say the wake word. Best score {peak}, needs {cutoff}; heard {fired} times; {seconds} s left.",
+      "text": "请说出唤醒词。最高分 {peak}，需要 {cutoff}；已听到 {fired} 次；剩余 {seconds} 秒。",
       "sourceHash": "952b2032681cafd571dea5f73f60fb68e9235026d80c2274f8e7e7136fc16b46",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.wake_stop": {
-      "text": "Stop the test",
+      "text": "停止测试",
       "sourceHash": "1317e849e8d38e3a61635ef65ce32237a69e6c3e959c9122efe425155690a071",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.wake_test": {
-      "text": "Test the wake word",
+      "text": "测试唤醒词",
       "sourceHash": "3c7d169c2e1ecea2e9621a62e34df39f1a94b1edb9426a6fced1bd7fa37681f1",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.wake_waiting": {
-      "text": "Say the wake word. Waiting for a score; {seconds} s left.",
+      "text": "请说出唤醒词。正在等待评分；剩余 {seconds} 秒。",
       "sourceHash": "be2bc602f2bb7382e5109e60fac5ab321addf511619a8a1175cf4f6091284d7f",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.zigbee.already_joined": {
       "sourceHash": "0db7f81371f05fcfbc9a6507fd43e5666ee10bad28d337a85635d78d7264fc63",
@@ -12604,109 +12604,109 @@
       "state": "machine-cross-checked"
     },
     "configure.enum.voice_capture_channels.1": {
-      "text": "One (mono)",
+      "text": "单声道（一个）",
       "sourceHash": "6bbb429f6d77d7924b1095de57536157ddfaacd1db2f74049bd5d966b0a5bc3b",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.enum.voice_capture_channels.2": {
-      "text": "Two (stereo)",
+      "text": "立体声（两个）",
       "sourceHash": "3a838f23cef16365a4793327d296a42b3e1f1b64a01d7a524c419cee46d3da1e",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.enum.voice_capture_channels.auto": {
-      "text": "Automatic",
+      "text": "自动",
       "sourceHash": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.enum.voice_capture_downmix.auto": {
-      "text": "Automatic",
+      "text": "自动",
       "sourceHash": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.enum.voice_capture_downmix.average": {
-      "text": "Average",
+      "text": "平均",
       "sourceHash": "b38ae2c5b84529e8027b43a69c8ce9426a3cb081dae97b77bdcd2fdc5a9df742",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.enum.voice_capture_downmix.dominance": {
-      "text": "Dominance",
+      "text": "主导",
       "sourceHash": "2f13fcedc4b21aec5214e6185409c4f2bb2fa72fbd0dafbe81bf45f1daa1eb95",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.enum.voice_capture_downmix.left": {
-      "text": "Left",
+      "text": "左声道",
       "sourceHash": "58eb9032e3bb83f0e39d644ebc87ca254117b95bf458483bec7379bea0b419d0",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.enum.voice_capture_downmix.right": {
-      "text": "Right",
+      "text": "右声道",
       "sourceHash": "883361d5d682a1574410961ce51450b6e036a779c9f098dec71e28aec832bfa6",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.enum.voice_capture_rate.16000": {
       "text": "16 kHz",
       "sourceHash": "bcdf763f5f68bb67a6c229d8862c59fc10145831035203c3d422cc924c736c54",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.enum.voice_capture_rate.44100": {
       "text": "44.1 kHz",
       "sourceHash": "21b2f3f1b4bb28c1938ffedf1abb080ac0df6d1ea2172521984cf8b12e369362",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.enum.voice_capture_rate.48000": {
       "text": "48 kHz",
       "sourceHash": "0f1a7608b8d0399d74119634986f13a1533bba8ea185c8f1bca840300a94f2f5",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.enum.voice_capture_rate.auto": {
-      "text": "Automatic",
+      "text": "自动",
       "sourceHash": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "settings.voice_capture_channels.help": {
-      "text": "How many channels the panel asks Android to record. Two channels are mixed down to one as the downmix setting says.\n\n**Automatic** uses the profile's channel count, or one.",
+      "text": "面板请求 Android 录制的声道数。录制两个声道时，按声道混合设置将其合并为一个。\n\n**自动**使用配置档案中的声道数，未指定时使用一个。",
       "sourceHash": "d01331c3100fe0609b1f95f704798a1db54ab37e64085f29c2473c42c204fa26",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "settings.voice_capture_channels.label": {
-      "text": "Capture channels",
+      "text": "录音声道",
       "sourceHash": "9f47091894ecf486c884e98231b26c2df2c14217585d0f763997156591ac6dea",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "settings.voice_capture_channels.summary": {
-      "text": "Record one channel or two.",
+      "text": "录制一个或两个声道。",
       "sourceHash": "762bab95033676e35d71ea502ae15f478271595190c27e8a53aad8ac37bab2a3",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "settings.voice_capture_downmix.help": {
-      "text": "Applies only when two channels are recorded.\n\n- **Dominance** takes a channel on its own when it is at least four times louder than the other, and averages them otherwise, so a dead channel does not halve the signal.\n- **Average** always mixes the two equally.\n- **Left** or **Right** keeps one channel.\n\n**Automatic** uses the profile's choice, or dominance.",
+      "text": "仅在录制两个声道时生效。\n\n- **主导**：当一个声道的响度至少是另一个的四倍时，仅采用该声道；否则取两者平均值，避免无信号声道使信号减半。\n- **平均**：始终等量混合两个声道。\n- **左声道**或**右声道**：保留一个声道。\n\n**自动**使用配置档案中的选择，未指定时使用主导模式。",
       "sourceHash": "a23d53ca4275f78b65d919c92e7fc99448d43348eaba227790611e73cf0aef15",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "settings.voice_capture_downmix.label": {
-      "text": "Channel mix",
+      "text": "声道混合",
       "sourceHash": "a41238fdd1ee783c882408a745a347db670e8583faea64745b60fc88a346f43f",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "settings.voice_capture_downmix.summary": {
-      "text": "How two recorded channels become one.",
+      "text": "将两个录音声道合并为一个的方式。",
       "sourceHash": "acd2f6e971931ac891ade90cc1d6a66838779b6adaa50f69d55d45cf567cc322",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "settings.voice_capture_rate.help": {
-      "text": "The rate the panel asks Android to record at. Audio is converted to 16 kHz before the wake word and Assist hear it.\n\n**Automatic** uses the rate the panel's profile declares, or 16 kHz. If Android refuses a rate, the panel falls back to 16 kHz mono rather than going deaf.",
+      "text": "面板请求 Android 使用的录音采样率。音频先转换为 16 kHz，再交给唤醒词检测器和 Assist。\n\n**自动**使用面板配置档案声明的采样率，未指定时使用 16 kHz。如果 Android 拒绝某个采样率，面板会回退到 16 kHz 单声道，以继续收音。",
       "sourceHash": "7cc50a1993f880176e6e0821e3e5686ef047c65ce1b3ee5000c7108c5b9afe03",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "settings.voice_capture_rate.label": {
-      "text": "Capture rate",
+      "text": "录音采样率",
       "sourceHash": "e73b8dec7d8808a3236570e2f91d1886de40faff74dd2d7623a2655d1e3d94c0",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "settings.voice_capture_rate.summary": {
-      "text": "Sample rate the microphone is opened at.",
+      "text": "打开麦克风时使用的采样率。",
       "sourceHash": "ddeaab442a03d6c16a7808ed57f5f1fdf5490efc0fec43acaa57fcdf2271c369",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     }
   }
 }

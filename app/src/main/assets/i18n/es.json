@@ -1755,8 +1755,8 @@
     },
     "configure.proximity.setup.required": {
       "sourceHash": "971684a549196212c949dbd0bfff1671dcd4cac05c51f873413aae1ecc0450e6",
-      "state": "english-fallback",
-      "text": "Proximity is not set up. It is optional; touch always wakes the panel."
+      "state": "machine-cross-checked",
+      "text": "La proximidad no está configurada. Es opcional; tocar el panel siempre lo despierta."
     },
     "configure.proximity.setup.reset": {
       "sourceHash": "8ce491fb3c0b3e323b74408d14bc079e230a7b02841006762c14803f7114f38b",
@@ -2174,284 +2174,284 @@
       "text": "Canalización preferida"
     },
     "configure.voice.tuning.cancel": {
-      "text": "Cancel",
+      "text": "Cancelar",
       "sourceHash": "19766ed6ccb2f4a32778eed80d1928d2c87a18d7c275ccb163ec6709d3eb2e27",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.cancelled": {
-      "text": "Cancelled. The settings are as they were.",
+      "text": "Cancelado. Se han restaurado los ajustes anteriores.",
       "sourceHash": "a9d6b965359b47a782f9cbbfdc34fb1f3e47b8d5a42963250b12a6463c1d6bc8",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.last_heard": {
-      "text": "Assist heard: {text}",
+      "text": "Assist oyó: {text}",
       "sourceHash": "7f85cfe2dc02c58acdbec97deb6abe6370bb9ae4687d83d2a0354e38ba9621d0",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.last_heard_nothing": {
-      "text": "Assist heard nothing it could transcribe.",
+      "text": "Assist no oyó nada que pudiera transcribir.",
       "sourceHash": "5e4641e03e5f2b95d707fda53e530d2e93666ae8250bddd3e868552d7df4497e",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.last_none": {
-      "text": "No command heard since voice was turned on.",
+      "text": "No se ha oído ninguna orden desde que se activó la voz.",
       "sourceHash": "0a2be9fb4aca5487ad24403d4e8f897eef26c3fd3f7e19fd058f9745aac65e45",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.last_reply": {
-      "text": "Replied: {text}",
+      "text": "Respondió: {text}",
       "sourceHash": "101a52cfaf868a2a7ea7a044444267cd9a6b0a7d8aa44d11e11210f213c8875a",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.last_title": {
-      "text": "Last command",
+      "text": "Última orden",
       "sourceHash": "c5c9f9eb955483bf0220b6c094232f31225e163d534e53182c775e6e21611b52",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.last_woke": {
-      "text": "Woke at {score}.",
+      "text": "Se activó con {score}.",
       "sourceHash": "f948f7664ff95b45956734c4c8c9dc6f01cf17d62067e69dd1d7cac8212e1b70",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.level_clipped": {
-      "text": "Clipped {count} times: the microphone is overloaded.",
+      "text": "Saturación {count} veces: el micrófono está sobrecargado.",
       "sourceHash": "14a48c93acb2c3cb5f1295002e9d6b15acd713de630c8134beac59660fa27c4f",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.level_idle": {
-      "text": "The level shows while it is measured; measuring keeps the microphone open beside the wake word.",
+      "text": "El nivel se muestra durante la medición; medir mantiene abierto el micrófono junto al detector de la palabra de activación.",
       "sourceHash": "d62fc74ddc63bc5af6ef69f6cc1e4b33e9c228c411873e8fb30bb5aa0f3b7f74",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.level_show": {
-      "text": "Show the microphone level",
+      "text": "Mostrar el nivel del micrófono",
       "sourceHash": "52a8a0ca49e53fddc21e04bb2c999c4b9ea373adb99622150ca9bd92eba86168",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.level_stop": {
-      "text": "Stop the level",
+      "text": "Detener el nivel",
       "sourceHash": "4ce3728ad020a5226eb78e5fbf4337c0608d3501cf731943156e71355c49cf3d",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.level_value": {
-      "text": "Level {rms} dBFS, peak {peak} dBFS, room {floor} dBFS",
+      "text": "Nivel {rms} dBFS, pico {peak} dBFS, sala {floor} dBFS",
       "sourceHash": "742576a41d30df8f996a844d24645b0b1adbdab27792a261083be78d836741b3",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.measuring": {
-      "text": "Measuring… {seconds} s",
+      "text": "Midiendo… {seconds} s",
       "sourceHash": "fb8da4b35f038b1a50773ffddcf4061a93ab596df3f91cc50ff84930fae0a07d",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.next": {
-      "text": "Next",
+      "text": "Siguiente",
       "sourceHash": "1ff57a29d7c9d11bdf61c1b80f2b289b44c1ea844824d4b94a0d52b6ba5fc858",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.refused": {
-      "text": "The panel did not accept that: {reason}",
+      "text": "El panel no lo aceptó: {reason}",
       "sourceHash": "daf356cb5cf63cb4a65b9a84b8f0d6c87b8b7e0102055f49e450bf6baf98ce71",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.result_action_done": {
-      "text": "Result: done.",
+      "text": "Resultado: realizado.",
       "sourceHash": "611fc22ec612f0b971c0521c193feb75bcf9e576f8754f1bfe12cb5a61dc03d1",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.result_error": {
-      "text": "Result: failed ({code}).",
+      "text": "Resultado: error ({code}).",
       "sourceHash": "fe6cc7ba9931e297e283fb29f777066823aea408e730de3c6a02a1a67d4c7e88",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.result_no_intent_match": {
-      "text": "Result: not understood.",
+      "text": "Resultado: no se entendió.",
       "sourceHash": "879f1dcdfc38e4d3864eabae32688c606323000623714c68d04cfc1fe19c2c6f",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.result_no_reply": {
-      "text": "Result: no reply.",
+      "text": "Resultado: sin respuesta.",
       "sourceHash": "64a73ea60ad227e7dd4b4920cd304c05645d4c85436f946ddc663c53f4eac13d",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.result_query_answer": {
-      "text": "Result: answered.",
+      "text": "Resultado: consulta respondida.",
       "sourceHash": "ef65419712a49623121f57723a96349bc7074079b074c69cf9ff8de3d3d511df",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.result_replied": {
-      "text": "Result: replied.",
+      "text": "Resultado: respuesta enviada.",
       "sourceHash": "9db90d170e8531f420ce5b0efa6a6ad8aeed64b473ddbc3dfc22e057b407df11",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.review": {
-      "text": "Suggested settings",
+      "text": "Ajustes sugeridos",
       "sourceHash": "e968c53639ad0fd3a36af57be146c40f598db84ba917cd2e9ed63bb0dd9ceccc",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.review_far": {
-      "text": "The wake word stayed well short of its cutoff. Move the panel or try another audio source; gain does not reach the wake word.",
+      "text": "La palabra de activación quedó muy por debajo del umbral. Mueve el panel o prueba otra fuente de audio; la ganancia no afecta a la palabra de activación.",
       "sourceHash": "0c147070d32d765a6e3e2ce0904026392f665ff26f7cdc6af80867e5e4e885b2",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.review_gain": {
-      "text": "Microphone gain: {value} dB",
+      "text": "Ganancia del micrófono: {value} dB",
       "sourceHash": "53c01141f3cbff88c8940ff2e2c79b0bdd957d924629c4a90284981a18bfa9a8",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.review_good_gain": {
-      "text": "Your voice reached {peak} dBFS, which needs no change.",
+      "text": "Tu voz alcanzó {peak} dBFS, lo que no requiere cambios.",
       "sourceHash": "b75b0c22e0ac09eb1897a39f31473c4e499cdcb5c6f3b57e81b89d271e76e534",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.review_high": {
-      "text": "The wake word came close to its cutoff without firing every time, so the panel can wake more readily.",
+      "text": "La palabra de activación se acercó al umbral sin activarse siempre, así que el panel puede activarse con mayor facilidad.",
       "sourceHash": "9d83757d14dc007f12cd181d2f2d6022f6080045a019e9e4dff08dd82027d442",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.review_loud_gain": {
-      "text": "Your voice clipped or came close; the gain is lowered.",
+      "text": "Tu voz se saturó o casi; se reduce la ganancia.",
       "sourceHash": "ba094f0c93cef42ab69cb0e827b7c99e0f8d571f66fe8772d28159a176e7e86e",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.review_low": {
-      "text": "The panel woke while the room was quiet, so it asks for a clearer match.",
+      "text": "El panel se activó mientras la sala estaba en silencio, así que exige una coincidencia más clara.",
       "sourceHash": "af858707ad31af788572faabb786c10be37c331362888a3fa430865ede7404b2",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.review_ok": {
-      "text": "The wake word fired reliably.",
+      "text": "La palabra de activación funcionó de forma fiable.",
       "sourceHash": "0725fa9b253bdd2b6e4b83ea576347d5f903839e21259ee434d3e388974f3fa1",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.review_quiet_gain": {
-      "text": "Your voice reached {peak} dBFS; the gain lifts the command towards -20 dBFS.",
+      "text": "Tu voz alcanzó {peak} dBFS; la ganancia eleva la orden hacia -20 dBFS.",
       "sourceHash": "0467aab7595217eb71b5aa0f6191ad3175f608bdf83329d016ae9e9303a39d84",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.review_sensitivity": {
-      "text": "Wake word sensitivity: {value}",
+      "text": "Sensibilidad de la palabra de activación: {value}",
       "sourceHash": "4eb950ccacc1e72f001d4e076c1ddf25d34265e99472d2b1b2da668b09f8dc77",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.review_source": {
-      "text": "Heard best with {value}",
+      "text": "Mejor detección con {value}",
       "sourceHash": "72603789df53fc08c6f8a8abb442a37e4c2ba07b63a5913a5e6ea2a5e1d27ec1",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.save": {
-      "text": "Save",
+      "text": "Guardar",
       "sourceHash": "1509f561f2416598629b886ad7d3c05a7e221e4e0675c84bbff4ee6d9e03913d",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.saved": {
-      "text": "Saved.",
+      "text": "Guardado.",
       "sourceHash": "fca046ccd586c67f7fe0b3c12c29873a8abf9376f7cd514fc6272ec03b2de0b3",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.skip": {
-      "text": "Skip",
+      "text": "Omitir",
       "sourceHash": "28d03596d24eeb4eab2d6fe21ca1cb95be7cb1fa6f92933db05e2cc4f4cdfa06",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.source_not_opened": {
-      "text": "{source}: the panel could not use this setting, so it was not compared",
+      "text": "{source}: el panel no pudo usar este ajuste, por lo que no se comparó",
       "sourceHash": "85bb22785da080062319ba092802f5e9f0575a972247982a20de557089f9a679",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.source_result": {
-      "text": "{source}: heard {fired} of 3, best score {peak}",
+      "text": "{source}: detectada {fired} de 3 veces, mejor puntuación {peak}",
       "sourceHash": "569c0264430d3554d376791682dfb0f4f372bae7eb4913b90909f52ddf98bff7",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.source_try": {
-      "text": "Try this setting",
+      "text": "Probar este ajuste",
       "sourceHash": "a099f3c83467f5fcaeca9e4e8077866997e9e9bd8645cdca43a180b01f397c64",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.start": {
-      "text": "Tune the microphone",
+      "text": "Ajustar el micrófono",
       "sourceHash": "8d814f479857e8a598d1b3a78038b83e189695d119b1f86d4354454b5183e03f",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.step_quiet": {
-      "text": "Step 1 of 4: the room",
+      "text": "Paso 1 de 4: la sala",
       "sourceHash": "c0ba54951829465a0b190300f33b0caa4d52b96eea7df55fbb03b5a226b8609e",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.step_quiet_text": {
-      "text": "Stay quiet for a few seconds so the panel can hear the room.",
+      "text": "Guarda silencio unos segundos para que el panel oiga la sala.",
       "sourceHash": "7fcb22970779a56beed3fa82ba706a94b69433f9d5a93d338da945abd9b64aa3",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.step_source": {
-      "text": "Step 4 of 4: compare settings (optional)",
+      "text": "Paso 4 de 4: comparar ajustes (opcional)",
       "sourceHash": "e831930b358329581dd0083a2d7a707c5e4e657c007c7ec8334575ee84006f82",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.step_source_text": {
-      "text": "Try an audio source or capture setting, then say the wake word three times again. The others go back as they were.",
+      "text": "Prueba una fuente de audio o un ajuste de captura y vuelve a decir la palabra de activación tres veces. Los demás se restauran.",
       "sourceHash": "8e2b230e1717a14fa9d59677d299f5a2699955896ccbcf52b3ed436f45e47d6d",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.step_speak": {
-      "text": "Step 2 of 4: your voice",
+      "text": "Paso 2 de 4: tu voz",
       "sourceHash": "dcd211986743fb82304cac595adc5026b2c3ba5db39d971046dc383dca3d15f6",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.step_speak_text": {
-      "text": "From where you usually stand, speak normally for a few seconds, as if giving a command.",
+      "text": "Desde donde sueles estar, habla con normalidad unos segundos, como si dieras una orden.",
       "sourceHash": "12282faf4911662a0fe82abd3a7d13edd697f7c9bfd265c1577c4790f704afc5",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.step_wake": {
-      "text": "Step 3 of 4: the wake word",
+      "text": "Paso 3 de 4: palabra de activación",
       "sourceHash": "2a4565114e5e43d49237c2d88c3b2acf5c63ec2ffe82fce626cd4543279bcab5",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.step_wake_progress": {
-      "text": "Heard {fired} of 3. Best score {peak}, needs {cutoff}.",
+      "text": "Detectada {fired} de 3 veces. Mejor puntuación {peak}, requiere {cutoff}.",
       "sourceHash": "aebf0e8c982a357bd61a3442cad4da4c03a439f5d65af8b2e78198908753ed87",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.step_wake_text": {
-      "text": "Go to the far side of the room and say {wake_word} three times, pausing between each.",
+      "text": "Ve al otro extremo de la sala y di {wake_word} tres veces, con una pausa entre ellas.",
       "sourceHash": "eeecd2de49684a98de6f5ea948275c5c14b8a82f7791c1d3cab74938788265fd",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.title": {
-      "text": "Microphone tuning",
+      "text": "Ajuste del micrófono",
       "sourceHash": "638873145d7801932a520590c4fbb735bb9c1c46d330fa43ca8e960aa90522b4",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.wake_done": {
-      "text": "Best score {peak}, needed {cutoff}; heard {fired} times.",
+      "text": "Mejor puntuación {peak}, requería {cutoff}; detectada {fired} veces.",
       "sourceHash": "085b78523ecc99ef3015ee6f1091988db0b42748d6f8e941330c3f392232af67",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.wake_note": {
-      "text": "While the test runs, the panel counts the wake word instead of answering it.",
+      "text": "Durante la prueba, el panel cuenta las detecciones de la palabra de activación en lugar de responder.",
       "sourceHash": "658688632ea9260bfc99c6db706af7adb2c2d32e2fb6065aba6c56e5943b1b8e",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.wake_running": {
-      "text": "Say the wake word. Best score {peak}, needs {cutoff}; heard {fired} times; {seconds} s left.",
+      "text": "Di la palabra de activación. Mejor puntuación {peak}, requiere {cutoff}; detectada {fired} veces; quedan {seconds} s.",
       "sourceHash": "952b2032681cafd571dea5f73f60fb68e9235026d80c2274f8e7e7136fc16b46",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.wake_stop": {
-      "text": "Stop the test",
+      "text": "Detener la prueba",
       "sourceHash": "1317e849e8d38e3a61635ef65ce32237a69e6c3e959c9122efe425155690a071",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.wake_test": {
-      "text": "Test the wake word",
+      "text": "Probar la palabra de activación",
       "sourceHash": "3c7d169c2e1ecea2e9621a62e34df39f1a94b1edb9426a6fced1bd7fa37681f1",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.voice.tuning.wake_waiting": {
-      "text": "Say the wake word. Waiting for a score; {seconds} s left.",
+      "text": "Di la palabra de activación. Esperando puntuación; quedan {seconds} s.",
       "sourceHash": "be2bc602f2bb7382e5109e60fac5ab321addf511619a8a1175cf4f6091284d7f",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.zigbee.already_joined": {
       "sourceHash": "0db7f81371f05fcfbc9a6507fd43e5666ee10bad28d337a85635d78d7264fc63",
@@ -12604,109 +12604,109 @@
       "state": "machine-cross-checked"
     },
     "configure.enum.voice_capture_channels.1": {
-      "text": "One (mono)",
+      "text": "Uno (mono)",
       "sourceHash": "6bbb429f6d77d7924b1095de57536157ddfaacd1db2f74049bd5d966b0a5bc3b",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.enum.voice_capture_channels.2": {
-      "text": "Two (stereo)",
+      "text": "Dos (estéreo)",
       "sourceHash": "3a838f23cef16365a4793327d296a42b3e1f1b64a01d7a524c419cee46d3da1e",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.enum.voice_capture_channels.auto": {
-      "text": "Automatic",
+      "text": "Automático",
       "sourceHash": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.enum.voice_capture_downmix.auto": {
-      "text": "Automatic",
+      "text": "Automático",
       "sourceHash": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.enum.voice_capture_downmix.average": {
-      "text": "Average",
+      "text": "Promedio",
       "sourceHash": "b38ae2c5b84529e8027b43a69c8ce9426a3cb081dae97b77bdcd2fdc5a9df742",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.enum.voice_capture_downmix.dominance": {
-      "text": "Dominance",
+      "text": "Dominancia",
       "sourceHash": "2f13fcedc4b21aec5214e6185409c4f2bb2fa72fbd0dafbe81bf45f1daa1eb95",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.enum.voice_capture_downmix.left": {
-      "text": "Left",
+      "text": "Izquierdo",
       "sourceHash": "58eb9032e3bb83f0e39d644ebc87ca254117b95bf458483bec7379bea0b419d0",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.enum.voice_capture_downmix.right": {
-      "text": "Right",
+      "text": "Derecho",
       "sourceHash": "883361d5d682a1574410961ce51450b6e036a779c9f098dec71e28aec832bfa6",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.enum.voice_capture_rate.16000": {
       "text": "16 kHz",
       "sourceHash": "bcdf763f5f68bb67a6c229d8862c59fc10145831035203c3d422cc924c736c54",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.enum.voice_capture_rate.44100": {
       "text": "44.1 kHz",
       "sourceHash": "21b2f3f1b4bb28c1938ffedf1abb080ac0df6d1ea2172521984cf8b12e369362",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.enum.voice_capture_rate.48000": {
       "text": "48 kHz",
       "sourceHash": "0f1a7608b8d0399d74119634986f13a1533bba8ea185c8f1bca840300a94f2f5",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "configure.enum.voice_capture_rate.auto": {
-      "text": "Automatic",
+      "text": "Automático",
       "sourceHash": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "settings.voice_capture_channels.help": {
-      "text": "How many channels the panel asks Android to record. Two channels are mixed down to one as the downmix setting says.\n\n**Automatic** uses the profile's channel count, or one.",
+      "text": "Cuántos canales solicita el panel a Android que grabe. Dos canales se mezclan en uno según el ajuste de mezcla.\n\n**Automático** usa el número de canales del perfil, o uno.",
       "sourceHash": "d01331c3100fe0609b1f95f704798a1db54ab37e64085f29c2473c42c204fa26",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "settings.voice_capture_channels.label": {
-      "text": "Capture channels",
+      "text": "Canales de captura",
       "sourceHash": "9f47091894ecf486c884e98231b26c2df2c14217585d0f763997156591ac6dea",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "settings.voice_capture_channels.summary": {
-      "text": "Record one channel or two.",
+      "text": "Grabar uno o dos canales.",
       "sourceHash": "762bab95033676e35d71ea502ae15f478271595190c27e8a53aad8ac37bab2a3",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "settings.voice_capture_downmix.help": {
-      "text": "Applies only when two channels are recorded.\n\n- **Dominance** takes a channel on its own when it is at least four times louder than the other, and averages them otherwise, so a dead channel does not halve the signal.\n- **Average** always mixes the two equally.\n- **Left** or **Right** keeps one channel.\n\n**Automatic** uses the profile's choice, or dominance.",
+      "text": "Solo se aplica al grabar dos canales.\n\n- **Dominancia** usa solo un canal si es al menos cuatro veces más fuerte que el otro; si no, calcula el promedio, para que un canal sin señal no reduzca la señal a la mitad.\n- **Promedio** mezcla siempre ambos por igual.\n- **Izquierdo** o **Derecho** conserva un canal.\n\n**Automático** usa la opción del perfil, o dominancia.",
       "sourceHash": "a23d53ca4275f78b65d919c92e7fc99448d43348eaba227790611e73cf0aef15",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "settings.voice_capture_downmix.label": {
-      "text": "Channel mix",
+      "text": "Mezcla de canales",
       "sourceHash": "a41238fdd1ee783c882408a745a347db670e8583faea64745b60fc88a346f43f",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "settings.voice_capture_downmix.summary": {
-      "text": "How two recorded channels become one.",
+      "text": "Cómo se combinan dos canales grabados en uno.",
       "sourceHash": "acd2f6e971931ac891ade90cc1d6a66838779b6adaa50f69d55d45cf567cc322",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "settings.voice_capture_rate.help": {
-      "text": "The rate the panel asks Android to record at. Audio is converted to 16 kHz before the wake word and Assist hear it.\n\n**Automatic** uses the rate the panel's profile declares, or 16 kHz. If Android refuses a rate, the panel falls back to 16 kHz mono rather than going deaf.",
+      "text": "La frecuencia de grabación que el panel solicita a Android. El audio se convierte a 16 kHz antes de llegar al detector de la palabra de activación y a Assist.\n\n**Automático** usa la frecuencia del perfil del panel, o 16 kHz. Si Android rechaza una frecuencia, el panel vuelve a 16 kHz mono para seguir oyendo.",
       "sourceHash": "7cc50a1993f880176e6e0821e3e5686ef047c65ce1b3ee5000c7108c5b9afe03",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "settings.voice_capture_rate.label": {
-      "text": "Capture rate",
+      "text": "Frecuencia de captura",
       "sourceHash": "e73b8dec7d8808a3236570e2f91d1886de40faff74dd2d7623a2655d1e3d94c0",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     },
     "settings.voice_capture_rate.summary": {
-      "text": "Sample rate the microphone is opened at.",
+      "text": "Frecuencia de muestreo con la que se abre el micrófono.",
       "sourceHash": "ddeaab442a03d6c16a7808ed57f5f1fdf5490efc0fec43acaa57fcdf2271c369",
-      "state": "english-fallback"
+      "state": "machine-cross-checked"
     }
   }
 }
