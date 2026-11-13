@@ -28,7 +28,8 @@ void cmd_installstream(conn_ctx *ctx, const char *args); // INSTALLSTREAM <bytes
 void cmd_installstreamupgrade(conn_ctx *ctx, const char *args); // INSTALLSTREAMUPGRADE <bytes> ordinary replacement; never downgrade
 void cmd_installgc(conn_ctx *ctx, const char *args);  // INSTALLGC <apk-path> legacy cleanup acknowledgement
 // GRANT accepts ONLY the app's own package id, so the app can repair its own grants without a root
-// shell and nothing else gains a privileged package surface.
+// shell and nothing else gains a privileged package surface. A permission or app op the owner or a
+// device policy decided is kept and answered ERR; only an undecided one is granted.
 void cmd_grant(conn_ctx *ctx, const char *args);      // GRANT <pkg> NOTIFICATIONS|MICROPHONE|CAMERA|WRITESETTINGS|OVERLAY|BATTERY|ACCESSIBILITY
 
 #endif

@@ -2,6 +2,7 @@
 #include "companion.h"
 #include "guard_maintenance.h"
 #include "identity.h"
+#include "pa_commands.h"
 #include "sysexec.h"
 #include "util.h"
 
@@ -653,6 +654,12 @@ void cmd_overlay(conn_ctx *ctx, const char *args) {
 // the verb is safe to expose at all. It does not take a free-form permission, appop or setting name
 // either — the capability argument selects from a fixed table, so the request can choose WHICH of a
 // known set of grants to apply and nothing else.
+//
+// The app sends it at every service start for each grant Android reports missing, so it must never
+// undo the owner's choice. A runtime permission or app op goes through Panel Assistant's own repair
+// rules (pa_commands.h): a denial the owner or a device policy recorded, or an app op anyone set, is
+// kept and answered ERR, so the app logs it as not repaired; an unreadable state is never a reason to
+// grant.
 
 // The grants the provisioner applies over ADB, which the app must instead obtain for itself.
 // Each entry names the exact actuator and arguments; nothing about a request reaches the command line
@@ -749,14 +756,10 @@ static int apply_grant(const char *pkg, const char *capability) {
     for (size_t i = 0; i < sizeof GRANTS / sizeof GRANTS[0]; i++) {
         if (strcmp(capability, GRANTS[i].capability) != 0) continue;
         switch (GRANTS[i].kind) {
-            case GRANT_PERMISSION: {
-                const char *const argv[] = { "pm", "grant", pkg, GRANTS[i].name, NULL };
-                return command_ok(sysexec_run_argv_timeout("/system/bin/pm", argv, 1, HAPANELD_FRAMEWORK_TIMEOUT_MS, NULL)) ? 0 : -1;
-            }
-            case GRANT_APPOP: {
-                const char *const argv[] = { "appops", "set", pkg, GRANTS[i].name, "allow", NULL };
-                return command_ok(sysexec_run_argv_timeout("/system/bin/appops", argv, 1, HAPANELD_FRAMEWORK_TIMEOUT_MS, NULL)) ? 0 : -1;
-            }
+            case GRANT_PERMISSION:
+                return pa_grant_runtime_permission(pkg, GRANTS[i].name);
+            case GRANT_APPOP:
+                return pa_grant_app_op(pkg, GRANTS[i].name);
             case GRANT_BATTERY:
                 return grant_battery(pkg);
             case GRANT_ACCESSIBILITY:

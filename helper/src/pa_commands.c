@@ -101,20 +101,29 @@ static int pa_parse(const char *args, char first[160], char second[160]) {
     return n < 0 ? 0 : n;
 }
 
+// A run with no socket of its own, for [package] under one budget; NULL when memory is short.
+static pa_run *pa_alloc(const char *package, unsigned budget_ms) {
+    pa_run *r = calloc(1, sizeof *r);
+    if (r && !(r->dump = malloc(PA_DUMP_MAX))) {
+        free(r);
+        r = NULL;
+    }
+    if (!r) return NULL;
+    r->package = package;
+    r->deadline = pa_now_ms() + budget_ms;
+    r->lock_fd = -1;
+    r->sdk = -1;
+    return r;
+}
+
 static pa_run *pa_begin(conn_ctx *ctx, unsigned budget_ms) {
     const helper_app_package *app = helper_app_package_for(ctx->caller);
-    pa_run *r = app ? calloc(1, sizeof *r) : NULL;
-    if (r) r->dump = malloc(PA_DUMP_MAX);
-    if (!r || !r->dump) {
-        if (r) free(r);
+    pa_run *r = app ? pa_alloc(app->package, budget_ms) : NULL;
+    if (!r) {
         reply(ctx->fd, "ERR failed\n");
         return NULL;
     }
     r->ctx = ctx;
-    r->package = app->package;
-    r->deadline = pa_now_ms() + budget_ms;
-    r->lock_fd = -1;
-    r->sdk = -1;
     pa_current = r;
     return r;
 }
@@ -364,6 +373,17 @@ static const char *pa_op_word(const char *op, const char *mode, int status) {
     return word ? word : "unknown";
 }
 
+// Set [op] to allow only when Android proves nobody has set it; an explicit mode, such as the owner's
+// deny, is kept. 0 when the op is allowed afterwards (already, or by this write), else -1.
+static int pa_op_repair(pa_run *r, const char *op) {
+    char mode[PA_LINE];
+    int status = pa_op_read(r, op, mode, sizeof mode);
+    if (strcmp(pa_op_word(op, mode, status), "allow") == 0) return 0;
+    if (status != 0 || !pa_op_proven_not_allowed(op, mode)) return -1;
+    const char *const set[] = { "appops", "set", r->package, op, "allow", NULL };
+    return pa_exec(r, set) == 0 ? 0 : -1;
+}
+
 // --- runtime permissions ---------------------------------------------------------------------------
 
 // `^\s*<perm>: granted=<state>(, flags=\[[ A-Z0-9_|]*\])?\s*$`
@@ -459,6 +479,24 @@ static const char *pa_runtime_repair(pa_run *r, const char *permission) {
         (void)pa_exec(r, grant);
     }
     return pa_runtime_all(r, permission, "true", &lines) ? "granted" : "unknown";
+}
+
+// --- the app's own startup repair (GRANT) ----------------------------------------------------------
+
+int pa_grant_runtime_permission(const char *package, const char *permission) {
+    pa_run *r = pa_alloc(package, PA_FRAMEWORK_TIMEOUT_MS);
+    if (!r) return -1;
+    int granted = strcmp(pa_runtime_repair(r, permission), "granted") == 0;
+    pa_end(r);
+    return granted ? 0 : -1;
+}
+
+int pa_grant_app_op(const char *package, const char *op) {
+    pa_run *r = pa_alloc(package, PA_FRAMEWORK_TIMEOUT_MS);
+    if (!r) return -1;
+    int allowed = pa_op_repair(r, op);
+    pa_end(r);
+    return allowed;
 }
 
 // --- accessibility ---------------------------------------------------------------------------------
@@ -601,14 +639,8 @@ void cmd_pa_repair(conn_ctx *ctx, const char *args) {
     }
 
     // (3) App ops: allow only an op Android proves nobody has set.
-    for (size_t i = 0; i < sizeof PA_APP_OPS / sizeof PA_APP_OPS[0]; i++) {
-        char mode[PA_LINE];
-        int status = pa_op_read(r, PA_APP_OPS[i], mode, sizeof mode);
-        if (status == 0 && pa_op_proven_not_allowed(PA_APP_OPS[i], mode)) {
-            const char *const set[] = { "appops", "set", r->package, PA_APP_OPS[i], "allow", NULL };
-            (void)pa_exec(r, set);
-        }
-    }
+    for (size_t i = 0; i < sizeof PA_APP_OPS / sizeof PA_APP_OPS[0]; i++)
+        (void)pa_op_repair(r, PA_APP_OPS[i]);
 
     char observed[PA_LINE];
     int observed_status = pa_settings_get(r, "secure", "enabled_accessibility_services", observed, sizeof observed);

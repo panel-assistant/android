@@ -2424,29 +2424,42 @@ static void test_grant_verb(void) {
     const char *const battery_modern[] = { "cmd", "deviceidle", "whitelist", "+" SUCCESSOR_ID, NULL };
     const char *const battery_legacy[] = { "dumpsys", "deviceidle", "whitelist", "+" SUCCESSOR_ID, NULL };
 
+    // Each permission or op below is undecided (denied with no decision flag, or unset), the one state
+    // GRANT repairs; the owner-decision cases are in unit_grant.c.
+#define GRANT_UNDECIDED(perm) \
+    sysexec_stub_add_popen_times("dumpsys package " SUCCESSOR_ID, "        " perm ": granted=false\n", 0, 1); \
+    sysexec_stub_add_popen("dumpsys package " SUCCESSOR_ID, "        " perm ": granted=true\n", 0)
     sysexec_stub_reset();
+    GRANT_UNDECIDED("android.permission.POST_NOTIFICATIONS");
     dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "GRANT " SUCCESSOR_ID " NOTIFICATIONS", out, sizeof out);
     CHECK(strcmp(out, "OK\n") == 0, "GRANT NOTIFICATIONS succeeds (got '%s')\n", out);
     CHECK(ran_argv("/system/bin/pm", notifications) == 1, "GRANT NOTIFICATIONS runs the exact pm grant\n");
 
     sysexec_stub_reset();
+    GRANT_UNDECIDED("android.permission.RECORD_AUDIO");
     dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "GRANT " SUCCESSOR_ID " MICROPHONE", out, sizeof out);
     CHECK(ran_argv("/system/bin/pm", microphone) == 1, "GRANT MICROPHONE runs the exact pm grant\n");
 
     sysexec_stub_reset();
+    GRANT_UNDECIDED("android.permission.CAMERA");
     dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "GRANT " SUCCESSOR_ID " CAMERA", out, sizeof out);
     CHECK(strcmp(out, "OK\n") == 0, "GRANT CAMERA succeeds (got '%s')\n", out);
     CHECK(ran_argv("/system/bin/pm", camera) == 1, "GRANT CAMERA runs the exact pm grant\n");
     sysexec_stub_reset();
+    sysexec_stub_add_popen("dumpsys package " SUCCESSOR_ID, "        android.permission.CAMERA: granted=false\n", 0);
     sysexec_stub_fail_run("pm grant " SUCCESSOR_ID " android.permission.CAMERA", 256);
     dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "GRANT " SUCCESSOR_ID " CAMERA", out, sizeof out);
-    CHECK(strcmp(out, "ERR\n") == 0, "GRANT CAMERA reports a failed pm grant (got '%s')\n", out);
+    CHECK(strcmp(out, "ERR\n") == 0 && ran_argv("/system/bin/pm", camera) == 1,
+          "GRANT CAMERA reports a failed pm grant (got '%s')\n", out);
+#undef GRANT_UNDECIDED
 
     sysexec_stub_reset();
+    sysexec_stub_add_popen("appops get " SUCCESSOR_ID " WRITE_SETTINGS", "WRITE_SETTINGS: default\n", 0);
     dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "GRANT " SUCCESSOR_ID " WRITESETTINGS", out, sizeof out);
     CHECK(ran_argv("/system/bin/appops", write_settings) == 1, "GRANT WRITESETTINGS runs the exact appop\n");
 
     sysexec_stub_reset();
+    sysexec_stub_add_popen("appops get " SUCCESSOR_ID " SYSTEM_ALERT_WINDOW", "SYSTEM_ALERT_WINDOW: default\n", 0);
     dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "GRANT " SUCCESSOR_ID " OVERLAY", out, sizeof out);
     CHECK(ran_argv("/system/bin/appops", overlay) == 1, "GRANT OVERLAY runs the exact appop\n");
 
@@ -2592,6 +2605,7 @@ static void test_grant_accessibility(void) {
 }
 
 #include "unit_pa_commands.c"
+#include "unit_grant.c"
 
 
 int main(int argc, char **argv) {
@@ -2648,6 +2662,8 @@ int main(int argc, char **argv) {
     test_grant_verb();
     test_grant_accessibility();
     test_pa_commands();
+    test_grant_keeps_owner_permissions();
+    test_grant_keeps_owner_app_ops();
 
     if (failures) { printf("UNIT FAILED: %d assertion(s)\n", failures); return 1; }
     printf("UNIT OK\n");
