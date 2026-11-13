@@ -2,7 +2,11 @@
 
 The full notes for every release and pre-release, from 1.0.0 on, are on [panel-assistant.io](https://panel-assistant.io/go/release-notes). Each section here is a short summary with a link to them; earlier sections are the full notes as they were released.
 
-## v1.0.3
+## v1.0.3 - 2026-11-13
+
+An update for panels on a separate network, such as a VLAN or an IoT network: the panel says which address it cannot reach, its Network ADB switch gives you a way back when it loses Home Assistant, and it can take its WebView update from Home Assistant when it has no internet. Pairs with Panel Assistant 1.0.3, which offers each panel the update.
+
+[Full release notes](https://panel-assistant.io/go/release-notes?v=1.0.3&component=panel-app)
 
 ## v1.0.2 - 2026-11-11
 
