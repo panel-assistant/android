@@ -299,16 +299,21 @@ static int pa_home_is_dashboard(const char *home, int launch) {
 // --- app ops ---------------------------------------------------------------------------------------
 
 static const char *const PA_OP_MODES[] = { "allow", "default", "deny", "ignore", "foreground", "errored", NULL };
-static const char *const PA_OP_NOT_ALLOWED[] = { "default", "deny", "ignore", "foreground", "errored", NULL };
+// Only an op nobody has set is allowed; an explicit mode, such as the owner's deny, is kept.
+static const char *const PA_OP_NOT_ALLOWED[] = { "default", NULL };
 
-// appops get, with Android 14's two-line answer for an unset op folded to `<op>: <mode>`.
+// appops get, with Android 14's two-line answer for an unset op folded to `<op>: allow` when its
+// default allows and to `<op>: default` otherwise: nobody chose that default for this app.
 static int pa_op_read(pa_run *r, const char *op, char *mode, size_t cap) {
     const char *const argv[] = { "appops", "get", r->package, op, NULL };
     int status = pa_capture(r, argv, mode, cap);
     for (const char *const *m = PA_OP_MODES; *m; m++) {
         char two_line[64];
         snprintf(two_line, sizeof two_line, "No operations.\nDefault mode: %s", *m);
-        if (strcmp(mode, two_line) == 0) { snprintf(mode, cap, "%s: %s", op, *m); break; }
+        if (strcmp(mode, two_line) == 0) {
+            snprintf(mode, cap, "%s: %s", op, strcmp(*m, "allow") == 0 ? "allow" : "default");
+            break;
+        }
     }
     return status;
 }
@@ -338,7 +343,7 @@ static const char *pa_op_line_mode(const char *op, const char *line, size_t len,
     return NULL;
 }
 
-// Proven non-allowed: a non-empty answer whose every line is a non-allowed mode or `No operations.`.
+// Proven unset: a non-empty answer whose every line is `<op>: default` or `No operations.`.
 static int pa_op_proven_not_allowed(const char *op, const char *mode) {
     if (!*mode) return 0;
     for (const char *p = mode; *p; ) {
@@ -405,10 +410,51 @@ static int pa_runtime_all(pa_run *r, const char *permission, const char *state, 
     return *lines > 0 && all;
 }
 
-// Grant only when every line proves the grant missing, then report what Android kept.
+// A flag recording a decision the grant must keep: the owner's answer (USER_SET, USER_FIXED) or a
+// device policy's (POLICY_FIXED). Android's own USER_SENSITIVE_WHEN_* defaults are not a decision.
+static const char *const PA_DECISION_FLAGS[] = { "USER_SET", "USER_FIXED", "POLICY_FIXED", NULL };
+
+// Whether a `<perm>: granted=…, flags=[…]` line carries a decision flag as a whole token.
+static int pa_line_decided(const char *line, size_t len) {
+    const char *end = line + len;
+    const char *p = line;
+    while (p + 7 <= end && strncmp(p, "flags=[", 7) != 0) p++;
+    if (p + 7 > end) return 0;
+    for (p += 7; p < end && *p != ']'; ) {
+        if (*p == ' ' || *p == '|') { p++; continue; }
+        const char *token = p;
+        while (p < end && *p != ' ' && *p != '|' && *p != ']') p++;
+        for (const char *const *f = PA_DECISION_FLAGS; *f; f++)
+            if ((size_t)(p - token) == strlen(*f) && strncmp(token, *f, (size_t)(p - token)) == 0) return 1;
+    }
+    return 0;
+}
+
+// Whether any line of the last dump naming `<perm>: granted=` records a decision.
+static int pa_runtime_decided(pa_run *r, const char *permission) {
+    char needle[160];
+    snprintf(needle, sizeof needle, "%s: granted=", permission);
+    size_t needle_len = strlen(needle);
+    for (const char *p = r->dump; *p; ) {
+        const char *end = strchr(p, '\n');
+        size_t len = end ? (size_t)(end - p) : strlen(p);
+        for (const char *q = p; q + needle_len <= p + len; q++)
+            if (strncmp(q, needle, needle_len) == 0) {
+                if (pa_line_decided(p, len)) return 1;
+                break;
+            }
+        if (!end) break;
+        p = end + 1;
+    }
+    return 0;
+}
+
+// Grant only when every line proves the grant missing and nobody decided it; a denial the owner or a
+// policy chose is kept and reported as denied. Then report what Android kept.
 static const char *pa_runtime_repair(pa_run *r, const char *permission) {
     int lines;
     if (pa_runtime_all(r, permission, "false", &lines)) {
+        if (pa_runtime_decided(r, permission)) return "denied";
         const char *const grant[] = { "pm", "grant", r->package, permission, NULL };
         (void)pa_exec(r, grant);
     }
@@ -554,7 +600,7 @@ void cmd_pa_repair(conn_ctx *ctx, const char *args) {
         }
     }
 
-    // (3) App ops: allow only an op Android proves is not allowed.
+    // (3) App ops: allow only an op Android proves nobody has set.
     for (size_t i = 0; i < sizeof PA_APP_OPS / sizeof PA_APP_OPS[0]; i++) {
         char mode[PA_LINE];
         int status = pa_op_read(r, PA_APP_OPS[i], mode, sizeof mode);

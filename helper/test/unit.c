@@ -2769,13 +2769,13 @@ static void test_pa_repair(void) {
     sysexec_stub_add_popen_times("appops get " SUCCESSOR_ID " WRITE_SETTINGS", "No operations.\nDefault mode: default\n", 0, 1);
     sysexec_stub_add_popen("appops get " SUCCESSOR_ID " WRITE_SETTINGS", "WRITE_SETTINGS: allow\n", 0);
     sysexec_stub_add_popen("appops get " SUCCESSOR_ID " SYSTEM_ALERT_WINDOW", "SYSTEM_ALERT_WINDOW: allow; time=+1d2h ago\n", 0);
-    sysexec_stub_add_popen_times("appops get " SUCCESSOR_ID " REQUEST_INSTALL_PACKAGES", "REQUEST_INSTALL_PACKAGES: deny; rejectTime=+3m ago\n", 0, 1);
+    sysexec_stub_add_popen_times("appops get " SUCCESSOR_ID " REQUEST_INSTALL_PACKAGES", "REQUEST_INSTALL_PACKAGES: default; rejectTime=+3m ago\n", 0, 1);
     sysexec_stub_add_popen("appops get " SUCCESSOR_ID " REQUEST_INSTALL_PACKAGES", "REQUEST_INSTALL_PACKAGES: allow\n", 0);
     sysexec_stub_add_popen("pm list features", "feature:android.hardware.microphone\nfeature:android.hardware.wifi\n", 0);
     sysexec_stub_add_popen_times("dumpsys package " SUCCESSOR_ID,
-        "    android.permission.POST_NOTIFICATIONS: granted=false, flags=[ USER_SET ]\n"
+        "    android.permission.POST_NOTIFICATIONS: granted=false\n"
         "    android.permission.CAMERA: granted=false\n"
-        "    android.permission.RECORD_AUDIO: granted=false, flags=[ USER_SET ]\n", 0, 1);
+        "        android.permission.RECORD_AUDIO: granted=false, flags=[ USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]\n", 0, 1);
     sysexec_stub_add_popen("dumpsys package " SUCCESSOR_ID,
         "    android.permission.CAMERA: granted=false\n"
         "    android.permission.RECORD_AUDIO: granted=true\n", 0);
@@ -2790,13 +2790,13 @@ static void test_pa_repair(void) {
     const char *const allow_overlay[] = { "appops", "set", SUCCESSOR_ID, "SYSTEM_ALERT_WINDOW", "allow", NULL };
     const char *const allow_installs[] = { "appops", "set", SUCCESSOR_ID, "REQUEST_INSTALL_PACKAGES", "allow", NULL };
     CHECK(ran_argv("/system/bin/appops", allow_settings) == 1, "PA_REPAIR allows an op Android 14 reports as two default lines\n");
-    CHECK(ran_argv("/system/bin/appops", allow_installs) == 1, "PA_REPAIR allows an op proven denied\n");
+    CHECK(ran_argv("/system/bin/appops", allow_installs) == 1, "PA_REPAIR allows an op that reads default\n");
     CHECK(ran_argv("/system/bin/appops", allow_overlay) == 0, "PA_REPAIR leaves an op that already reads allow\n");
     const char *const grant_camera[] = { "pm", "grant", SUCCESSOR_ID, "android.permission.CAMERA", NULL };
     const char *const grant_microphone[] = { "pm", "grant", SUCCESSOR_ID, "android.permission.RECORD_AUDIO", NULL };
     const char *const grant_notifications[] = { "pm", "grant", SUCCESSOR_ID, "android.permission.POST_NOTIFICATIONS", NULL };
     CHECK(ran_argv("/system/bin/pm", grant_camera) == 0, "PA_REPAIR never grants CAMERA when the feature is absent\n");
-    CHECK(ran_argv("/system/bin/pm", grant_microphone) == 1, "PA_REPAIR grants RECORD_AUDIO when the feature is listed and denied\n");
+    CHECK(ran_argv("/system/bin/pm", grant_microphone) == 1, "PA_REPAIR grants RECORD_AUDIO when the feature is listed and denied by nobody\n");
     CHECK(ran_argv("/system/bin/pm", grant_notifications) == 0, "PA_REPAIR never grants notifications below SDK 33\n");
     CHECK(pa_field_is(out, "accessibility", "granted") && pa_field_is(out, "accessibility_enabled", "1"),
           "PA_REPAIR reports the accessibility readback\n");
@@ -2879,6 +2879,123 @@ static void test_pa_repair(void) {
     const char *const any_put[] = { "settings", "put", "secure", "enabled_accessibility_services", PA_ACCESSIBILITY_NEW, NULL };
     CHECK(ran_argv("/system/bin/settings", any_put) == 0, "a list that already holds the service is not written\n");
     CHECK(ran_argv("/system/bin/settings", enable) == 0, "accessibility that already reads 1 is not written\n");
+}
+
+// PA_REPAIR on SDK 33 with camera and microphone listed, so only the decision checks stand between a
+// denial and `pm grant`/`appops set`. The dump lines are the real Android 11 shape.
+static void pa_stub_repair_choices(const char *dump, const char *op_answer) {
+    pa_stub_repair_base("33\n");
+    sysexec_stub_add_popen("settings get secure enabled_accessibility_services", PA_ACCESSIBILITY_NEW "\n", 0);
+    sysexec_stub_add_popen("settings get secure accessibility_enabled", "1\n", 0);
+    sysexec_stub_add_popen("appops get " SUCCESSOR_ID " WRITE_SETTINGS", op_answer, 0);
+    sysexec_stub_add_popen("appops get " SUCCESSOR_ID " SYSTEM_ALERT_WINDOW", "SYSTEM_ALERT_WINDOW: allow\n", 0);
+    sysexec_stub_add_popen("appops get " SUCCESSOR_ID " REQUEST_INSTALL_PACKAGES", "REQUEST_INSTALL_PACKAGES: allow\n", 0);
+    sysexec_stub_add_popen("pm list features", "feature:android.hardware.camera.any\nfeature:android.hardware.microphone\n", 0);
+    sysexec_stub_add_popen("dumpsys package " SUCCESSOR_ID, dump, 0);
+}
+
+static void test_pa_repair_keeps_owner_choices(void) {
+    char out[8192];
+    const char *const grant_camera[] = { "pm", "grant", SUCCESSOR_ID, "android.permission.CAMERA", NULL };
+    const char *const grant_microphone[] = { "pm", "grant", SUCCESSOR_ID, "android.permission.RECORD_AUDIO", NULL };
+    const char *const grant_notifications[] = { "pm", "grant", SUCCESSOR_ID, "android.permission.POST_NOTIFICATIONS", NULL };
+    const char *const allow_settings[] = { "appops", "set", SUCCESSOR_ID, "WRITE_SETTINGS", "allow", NULL };
+
+    // A denial the owner or a policy chose is kept: no pm grant, and the reply says denied.
+    static const struct { const char *flags; const char *why; } decided[] = {
+        { "[ USER_SET|USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]", "the owner's Deny in Settings" },
+        { "[ USER_FIXED ]", "the owner's Don't ask again" },
+        { "[ POLICY_FIXED ]", "a device policy" },
+        { "[ USER_SENSITIVE_WHEN_GRANTED|USER_FIXED]", "USER_FIXED last in the list" },
+    };
+    for (size_t i = 0; i < sizeof decided / sizeof decided[0]; i++) {
+        char dump[1024];
+        snprintf(dump, sizeof dump,
+            "    android.permission.POST_NOTIFICATIONS: granted=false, flags=%s\n"
+            "        android.permission.CAMERA: granted=false, flags=%s\n"
+            "        android.permission.RECORD_AUDIO: granted=false, flags=%s\n",
+            decided[i].flags, decided[i].flags, decided[i].flags);
+        sysexec_stub_reset();
+        pa_stub_repair_choices(dump, "WRITE_SETTINGS: allow\n");
+        dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "PA_REPAIR 1 0", out, sizeof out);
+        CHECK(ran_argv("/system/bin/pm", grant_microphone) == 0 && ran_argv("/system/bin/pm", grant_camera) == 0 &&
+              ran_argv("/system/bin/pm", grant_notifications) == 0,
+              "PA_REPAIR keeps a runtime denial flagged by %s\n", decided[i].why);
+        CHECK(pa_field_is(out, "microphone", "denied") && pa_field_is(out, "camera", "denied") &&
+              pa_field_is(out, "notifications", "denied"),
+              "PA_REPAIR reports a runtime denial flagged by %s as denied (got '%s')\n", decided[i].why, out);
+    }
+
+    // Two users' lines: one decided denial is enough to keep the permission off.
+    sysexec_stub_reset();
+    pa_stub_repair_choices(
+        "        android.permission.RECORD_AUDIO: granted=false, flags=[ USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]\n"
+        "        android.permission.RECORD_AUDIO: granted=false, flags=[ USER_SET|USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]\n",
+        "WRITE_SETTINGS: allow\n");
+    dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "PA_REPAIR 1 0", out, sizeof out);
+    CHECK(ran_argv("/system/bin/pm", grant_microphone) == 0 && pa_field_is(out, "microphone", "denied"),
+          "PA_REPAIR keeps a denial any user's line records as decided (got '%s')\n", out);
+
+    // Android's own sensitivity flags, or a flag merely spelled like a decision, decide nothing: granted.
+    static const struct { const char *flags; const char *why; } undecided[] = {
+        { ", flags=[ USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]", "only sensitivity flags" },
+        { "", "no flags" },
+        { ", flags=[ USER_SETTLED|POLICY_FIXED_X ]", "near-miss flag names" },
+    };
+    for (size_t i = 0; i < sizeof undecided / sizeof undecided[0]; i++) {
+        char dump[1024];
+        snprintf(dump, sizeof dump, "        android.permission.RECORD_AUDIO: granted=false%s\n", undecided[i].flags);
+        sysexec_stub_reset();
+        pa_stub_repair_choices(dump, "WRITE_SETTINGS: allow\n");
+        dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "PA_REPAIR 1 0", out, sizeof out);
+        CHECK(ran_argv("/system/bin/pm", grant_microphone) == 1,
+              "PA_REPAIR grants a runtime denial with %s\n", undecided[i].why);
+        CHECK(pa_field_is(out, "microphone", "unknown"),
+              "PA_REPAIR reads an undecided denial back, never as denied (%s, got '%s')\n", undecided[i].why, out);
+    }
+
+    // An unreadable dump is unknown: nothing granted, nothing reported denied.
+    sysexec_stub_reset();
+    pa_stub_repair_choices("", "WRITE_SETTINGS: allow\n");
+    dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "PA_REPAIR 1 0", out, sizeof out);
+    CHECK(ran_argv("/system/bin/pm", grant_microphone) == 0 && pa_field_is(out, "microphone", "unknown"),
+          "PA_REPAIR leaves an unreadable runtime grant unknown (got '%s')\n", out);
+
+    // An explicit app-op mode is the owner's choice: kept, and reported as Android prints it.
+    static const struct { const char *answer; const char *word; } kept[] = {
+        { "WRITE_SETTINGS: deny; rejectTime=+3m ago\n", "deny" },
+        { "WRITE_SETTINGS: ignore\n", "ignore" },
+        { "WRITE_SETTINGS: errored\n", "errored" },
+        { "WRITE_SETTINGS: foreground\n", "foreground" },
+    };
+    for (size_t i = 0; i < sizeof kept / sizeof kept[0]; i++) {
+        sysexec_stub_reset();
+        pa_stub_repair_choices("        android.permission.RECORD_AUDIO: granted=true\n", kept[i].answer);
+        dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "PA_REPAIR 1 0", out, sizeof out);
+        CHECK(ran_argv("/system/bin/appops", allow_settings) == 0, "PA_REPAIR keeps an op the owner set to %s\n", kept[i].word);
+        CHECK(pa_field_is(out, "op.WRITE_SETTINGS", kept[i].word),
+              "PA_REPAIR reports an op kept at %s (got '%s')\n", kept[i].word, out);
+    }
+
+    // Unset (`No operations.`, Android 14's two lines, whatever default they name) or default: allowed.
+    static const char *const unset[] = {
+        "WRITE_SETTINGS: default\n", "No operations.\n", "No operations.\nDefault mode: default\n",
+        "No operations.\nDefault mode: deny\n",
+    };
+    for (size_t i = 0; i < sizeof unset / sizeof unset[0]; i++) {
+        sysexec_stub_reset();
+        pa_stub_repair_choices("        android.permission.RECORD_AUDIO: granted=true\n", unset[i]);
+        dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "PA_REPAIR 1 0", out, sizeof out);
+        CHECK(ran_argv("/system/bin/appops", allow_settings) == 1, "PA_REPAIR allows an op nobody set ('%s')\n", unset[i]);
+    }
+    // An unset op whose default denies reads back as default, never as the owner's deny.
+    CHECK(pa_field_is(out, "op.WRITE_SETTINGS", "default"),
+          "PA_REPAIR reports Android 14's unset deny default as default (got '%s')\n", out);
+    sysexec_stub_reset();
+    pa_stub_repair_choices("        android.permission.RECORD_AUDIO: granted=true\n", "No operations.\nDefault mode: allow\n");
+    dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "PA_REPAIR 1 0", out, sizeof out);
+    CHECK(ran_argv("/system/bin/appops", allow_settings) == 0 && pa_field_is(out, "op.WRITE_SETTINGS", "allow"),
+          "PA_REPAIR leaves and reports an unset op whose default allows (got '%s')\n", out);
 }
 
 static const char PA_XML_GOOD[] =
@@ -3487,6 +3604,7 @@ static void test_pa_commands(void) {
     test_pa_admission_and_grammar();
     test_pa_identity();
     test_pa_repair();
+    test_pa_repair_keeps_owner_choices();
     test_pa_home_chooser();
     test_pa_home_lock();
     test_pa_records();
