@@ -16,7 +16,9 @@ import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import io.panelassistant.android.control.LedEffectController
+import io.panelassistant.android.control.OwnOverlayPermission
 import io.panelassistant.android.control.Su
+import io.panelassistant.android.platform.RootShell
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -183,6 +185,10 @@ class CameraIndicator(
     private val holdAfterCloseMs: Long = HOLD_AFTER_CLOSE_MS,
     /** Monotonic clock for the attenuation schedule; injected so the schedule is testable without waiting. */
     private val clock: () -> Long = { SystemClock.elapsedRealtime() },
+    private val root: RootShell = Su,
+    private val overlayHeld: () -> Boolean = {
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(context)
+    },
 ) {
     private val lensOffsetPx = CameraIndicatorGeometry.lensOffsetOrDefault(cameraLensOffsetPx)
     private val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -360,15 +366,10 @@ class CameraIndicator(
         Thread({ runCatching(action).onFailure { Log.w(TAG, "LED work failed: ${it.javaClass.simpleName}") } }, "camera-light-led").start()
     }
 
-    private fun ensureOverlayPermission(): Boolean {
-        if (canDraw()) return true
-        // The navbar grants itself the same way on rooted panels; without root this stays false.
-        Su.run("appops set ${context.packageName} SYSTEM_ALERT_WINDOW allow")
-        return canDraw()
-    }
-
-    private fun canDraw(): Boolean =
-        Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(context)
+    // The navbar grants itself the same way on rooted panels, only while the op is unset; without root,
+    // or when the owner turned it off, this stays false.
+    private fun ensureOverlayPermission(): Boolean =
+        OwnOverlayPermission.ensure(context.packageName, root, overlayHeld, TAG)
 
     private fun overlayType(): Int =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY

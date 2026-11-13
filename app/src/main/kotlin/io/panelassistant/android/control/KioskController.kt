@@ -48,6 +48,9 @@ class KioskController(
     private val config: Config,
     private val persistentPolicyEligible: Boolean,
     private val root: RootShell = Su,
+    private val overlayHeld: () -> Boolean = {
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(context.applicationContext)
+    },
 ) {
     private val ctx = context.applicationContext
     private val wm = ctx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -193,12 +196,10 @@ class KioskController(
         }
     }
 
-    /** Ensure SYSTEM_ALERT_WINDOW (root-granted; already held for the navbar/touch-sound, granted here
-     *  defensively in case this is the first overlay on the panel). */
+    /** Ensure SYSTEM_ALERT_WINDOW (root-granted while unset; already held for the navbar/touch-sound,
+     *  granted here defensively in case this is the first overlay on the panel). An owner's deny is kept. */
     private fun ensureOverlayPerm() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(ctx)) {
-            root.run("appops set ${ctx.packageName} SYSTEM_ALERT_WINDOW allow")
-        }
+        OwnOverlayPermission.ensure(ctx.packageName, root, overlayHeld, TAG)
     }
 
     @Suppress("ClickableViewAccessibility")
