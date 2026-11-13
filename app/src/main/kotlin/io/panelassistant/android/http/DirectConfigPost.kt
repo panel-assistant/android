@@ -311,7 +311,16 @@ internal class DirectConfigPost(
                     }
                     mutationPlan = planDirectConfigMutation(
                         posted = postedValues,
-                        before = directMutationValues(),
+                        before = directMutationValues().let { before ->
+                            // An ON the door let through while Panel Assistant manages network ADB is the
+                            // owner's press (PaneldServer refuses it otherwise). ADB is off, so compare it with
+                            // off: an ON queued while the lease held (a restore, say) would otherwise make the
+                            // press a no-op that never asks for the lease back. An OFF still meets that
+                            // queued ON, and clears it.
+                            if (io.panelassistant.android.control.ManagedNetworkAdb.managed &&
+                                SettingValue.parseBool(postedValues["network_adb"].orEmpty()) == true
+                            ) before + ("network_adb" to "false") else before
+                        },
                     )
                     expectedReadBack = directConfigExpectedReadBack(config, postedValues)
                     if (mutationPlan.isNoOp) return@synchronizedTransaction true
