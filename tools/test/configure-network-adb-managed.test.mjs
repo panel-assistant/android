@@ -146,6 +146,8 @@ for (const engine of engines) {
     const h = await open(engine, t, false);
     const row = h.p.locator('#cfg-network_adb');
     const toggle = row.locator('[role=switch]');
+    // The pending line renders after the switch; wait for it rather than read the row mid-render.
+    await row.locator(`text=${PENDING_TEXT}`).waitFor({ timeout: 5000 });
     assert.equal(await toggle.getAttribute('aria-disabled'), 'false');
     assert.doesNotMatch(await row.innerText(), /Panel Assistant manages ADB/);
     // Without management a queued ON is a real pending value and says so.
