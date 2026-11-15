@@ -28,7 +28,7 @@ class DashboardRendererCrashCoverTest {
         override fun rendererPriorityAtExit() = 0
     }
 
-    @Test fun aRendererCrashUnderTheReconnectingCoverClearsItSoTheRebuiltWebViewCanShowItAgain() = DashboardRendererRig().use { rig ->
+    @Test fun aRendererCrashUnderTheReconnectingCoverClearsItSoTheRebuiltWebViewCanShowItAgain() = DashboardRendererRig(setupQuestion = true).use { rig -> // the rebuild reaches the entity hold, which this rig paints
         val gate = rig.get("rendererGate") as RendererGenerationGate
         val generation = rig.get("rendererGeneration") as Long
         val oldWeb = DashboardRendererRig.allocate(WebView::class.java)

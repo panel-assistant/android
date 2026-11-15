@@ -69,7 +69,17 @@ internal class DashboardRendererRig(
         questionPainter = { actions -> if (setupQuestion) question = actions else error("no setup question expected") },
     )
 
+    /** The activity's own lifecycle registry, resumed as on a panel showing the dashboard; tests move it. */
+    val lifecycle: androidx.lifecycle.LifecycleRegistry = androidx.lifecycle.LifecycleRegistry.createUnsafe(activity)
+
     init {
+        var type: Class<*>? = DashboardActivity::class.java
+        while (type != null) {
+            type.declaredFields.filter { androidx.lifecycle.LifecycleRegistry::class.java.isAssignableFrom(it.type) }
+                .forEach { it.isAccessible = true; it.set(activity, lifecycle) }
+            type = type.superclass
+        }
+        lifecycle.currentState = androidx.lifecycle.Lifecycle.State.RESUMED
         set("main", main)
         set("activityScope", activityScope)
         set("rendererGate", gate)

@@ -611,6 +611,30 @@ class DashboardActivity : AppCompatActivity() {
     private fun allowRebuild(): Boolean =
         BuiltinDashboard.consumeRebuildBudget(SystemClock.elapsedRealtime())
 
+    /** Rebuild the dashboard after its renderer died, or wait for the activity's next start when it is
+     *  stopped. A rebuild while another app is in front, or the screen is off, blocked the main thread for
+     *  about 8 s on the bench X2i and raised an ANR dialog over that app (2026-10-03). The crash budget is
+     *  spent only when the rebuild runs, so a deferred crash costs one attempt at the start that runs it.
+     *  Any other path that rebuilds first (a relaunch intent, a setting change) leaves nothing to do. */
+    private fun rebuildAfterCrash() {
+        if (destroyed) return
+        if (!lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) {
+            Log.i(TAG, "renderer gone while the dashboard is stopped; rebuilding when it next starts")
+            lifecycle.addObserver(object : androidx.lifecycle.DefaultLifecycleObserver {
+                override fun onStart(owner: androidx.lifecycle.LifecycleOwner) {
+                    owner.lifecycle.removeObserver(this)
+                    rebuildAfterCrash()
+                }
+            })
+            return
+        }
+        if (web != null) return
+        if (allowRebuild()) {
+            BuiltinDashboard.recordRendererReload(SystemClock.elapsedRealtime()) // involuntary crash rebuild
+            buildAndLoad(activityConfig)
+        } else { Log.e(TAG, "renderer crash-looping — falling back to admin launcher"); fallbackToLauncher() }
+    }
+
     /** A singleTask relaunch reaching the live renderer means one of three things, disambiguated here:
      *  a **navigate** ([BuiltinDashboard.navPath] set — one-shot, consumed), an explicit **reload**
      *  ([BuiltinDashboard.consumeReloadRequest] — set by reloadDashboard / a credential change), or a
@@ -2168,12 +2192,7 @@ class DashboardActivity : AppCompatActivity() {
                     runCatching { customViewCallback?.onCustomViewHidden() }
                     customView = null
                     customViewCallback = null
-                    runOnUiThread {
-                        if (allowRebuild()) {
-                            BuiltinDashboard.recordRendererReload(SystemClock.elapsedRealtime()) // involuntary crash rebuild
-                            buildAndLoad(activityConfig)
-                        } else { Log.e(TAG, "renderer crash-looping — falling back to admin launcher"); fallbackToLauncher() }
-                    }
+                    rebuildAfterCrash()
                 }
                 return true
             }
