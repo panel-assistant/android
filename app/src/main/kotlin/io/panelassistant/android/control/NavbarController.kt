@@ -94,6 +94,8 @@ class NavbarController(
     private val overlayHeld: () -> Boolean = { Settings.canDrawOverlays(context) },
     private val overscanRoot: RootShell = Su,
     private val overlayRoot: RootShell = Su,
+    // How a physical mode change reaches the main thread; a JVM test runs it inline to see the windows added.
+    private val postModeToMain: ((Runnable) -> Boolean)? = null,
 ) {
     private val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val main = Handler(Looper.getMainLooper())
@@ -401,11 +403,12 @@ class NavbarController(
     private fun postOnMain(action: () -> Boolean): Boolean {
         val completion = CompletableFuture<Boolean>()
         val valid = java.util.concurrent.atomic.AtomicBoolean(true)
-        val admitted = main.post {
+        val task = Runnable {
             if (valid.compareAndSet(true, false)) {
                 completion.complete(runCatching(action).getOrDefault(false))
             }
         }
+        val admitted = postModeToMain?.invoke(task) ?: main.post(task)
         if (!admitted) completion.complete(false)
         return try {
             completion.get(MAIN_ACK_TIMEOUT_MS, TimeUnit.MILLISECONDS)
@@ -729,11 +732,19 @@ class NavbarController(
             WindowManager.LayoutParams.MATCH_PARENT,
             dp(STRIP_HEIGHT_DP),
             overlayType(),
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            0,
             PixelFormat.TRANSLUCENT,
-        ).apply { gravity = Gravity.BOTTOM }
+        ).apply {
+            gravity = Gravity.BOTTOM
+            // A window that is not focusable is ordered above the input method unless it also carries
+            // FLAG_ALT_FOCUSABLE_IM. Without it the strip sat over the keyboard's bottom row in every app
+            // (android #211; a Sonoff NSPanel on Android 8.1: strip layer 121005, keyboard 22005) and re-injected
+            // each key tap through root, late and out of order. With it the keyboard covers the strip.
+            flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+        }
         // Consume the whole gesture (return true for all events) so the dashboard WebView doesn't
         // receive partial swipes — returning false on MOVE previously let an off-screen-origin swipe-up
         // scroll the dashboard while also revealing the bar. Touches above the strip still pass through
