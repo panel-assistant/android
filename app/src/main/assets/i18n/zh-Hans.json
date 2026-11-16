@@ -12692,6 +12692,41 @@
       "text": "打开麦克风时使用的采样率。",
       "sourceHash": "ddeaab442a03d6c16a7808ed57f5f1fdf5490efc0fec43acaa57fcdf2271c369",
       "state": "machine-cross-checked"
+    },
+    "configure.adb_keep_off.hardened": {
+      "text": "Hardened mode keeps ADB off. Switch to Relaxed mode at the panel to change this.",
+      "sourceHash": "f704d983d727c746f0c4b8ac8c894eadfca06968c6ea6e48c63640b09d9d7389",
+      "state": "english-fallback"
+    },
+    "configure.network_adb.external": {
+      "text": "ADB is open on this panel: its own system opened it. Anyone on your network can use it without a password. Keep ADB off below closes it.",
+      "sourceHash": "3669c6c188b598c1cb00dd5c27c7061ba1dbf393555e1b6f507a49e579e0e7bf",
+      "state": "english-fallback"
+    },
+    "configure.network_adb.hardened": {
+      "text": "Hardened mode keeps ADB off. Switch to Relaxed mode at the panel to turn on Network ADB.",
+      "sourceHash": "d7f1c233561f6c39879253427c1d0830b804c38bba2f48d5e92a9d348d89c605",
+      "state": "english-fallback"
+    },
+    "configure.network_adb.kept_off": {
+      "text": "ADB is off because Keep ADB off is on. Turning this on switches that option off and opens ADB.",
+      "sourceHash": "0ff229384af39de9c65c39bbfa15d4c251b392c7aed96b9aee054277f1a75083",
+      "state": "english-fallback"
+    },
+    "settings.adb_keep_off.help": {
+      "text": "**Why turn this on:** ADB on this panel lets anyone on your network control it fully, with no password or key. Panel Assistant does its own work over its connection to Home Assistant, so it does not need ADB here.\n\n**What it does:** Panel Assistant stops ADB, over the network and over USB, and keeps it stopped. After a restart ADB is open until the panel connects to Home Assistant again.\n\n**What stops working:** anything else that uses ADB on this panel, such as your own scripts or automations. Turning on Network ADB switches this off.",
+      "sourceHash": "4b806c3077e7fc8ae255df5983f7831c900972f445cc80890952be09064cd598",
+      "state": "english-fallback"
+    },
+    "settings.adb_keep_off.label": {
+      "text": "Keep ADB off",
+      "sourceHash": "9247975568c67aee1c2da39e47bcc85ed4e48bdc7f0370a735deccf95c5b3ec0",
+      "state": "english-fallback"
+    },
+    "settings.adb_keep_off.summary": {
+      "text": "More secure. Stops ADB, which Panel Assistant does not need on this panel.",
+      "sourceHash": "4e59d4bd6dc574a5cc9ac8eeb6028aaa613ce95785dd063e0a08e83ea575c986",
+      "state": "english-fallback"
     }
   }
 }
