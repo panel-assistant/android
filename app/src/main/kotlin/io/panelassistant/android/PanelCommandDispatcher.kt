@@ -717,7 +717,8 @@ internal class PanelCommandDispatcher(
     // value decides, since a Network ADB ON in the same request may have switched it off since. ON records
     // whether ADB was open, arms the lease and ends a Network ADB intent this app kept (only the saved intent
     // while the lease holds; without a session to arm it the controller closes ADB itself, best effort). OFF
-    // has the lease give ADB back and, where ADB was closed before, closes it again.
+    // has the lease give ADB back and, where ADB was closed before, closes it again; a close that cannot happen
+    // yet stays pending until it does (finishPendingAdbRestore).
     override fun handleAdbKeepOff(on: Boolean) {
         val managed = io.panelassistant.android.control.ManagedNetworkAdb
         val keep = config.adbKeepOff
@@ -726,10 +727,7 @@ internal class PanelCommandDispatcher(
         if (keep && config.networkAdbEnabled) {
             if (managed.managed) config.setNetworkAdbEnabled(false) else runCatching { adb.set(false) }
         }
-        if (!keep && !config.adbOpenBeforeKeepOff) {
-            if (!managed.managed) runCatching { adb.set(false) }
-            config.setAdbOpenBeforeKeepOff(true)
-        }
+        if (!keep) io.panelassistant.android.control.finishPendingAdbRestore(config, adb)
         core.reconcile("network_adb")
     }
 

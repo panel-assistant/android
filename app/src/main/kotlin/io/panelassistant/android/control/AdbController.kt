@@ -450,6 +450,21 @@ internal fun adbReopenedByHelper(config: Config) {
     if (!config.hardenedSecurityEnabled && !config.networkAdbEnabled) config.setNetworkAdbEnabled(true)
 }
 
+/**
+ * Keep ADB off has been switched off on a panel whose ADB was closed before it: once the lease has given ADB
+ * back (which reopens port 5555), close it again. The record stays pending until the close is proved, so a
+ * give-back the helper refused now and makes at a later renewal is still closed then. True when nothing is
+ * pending afterwards. Blocks on the controller's settle proof; never call it holding a lease lock.
+ */
+internal fun finishPendingAdbRestore(config: Config, adb: AdbController): Boolean {
+    if (config.adbKeepOff || config.adbOpenBeforeKeepOff) return true
+    if (ManagedNetworkAdb.managed) return false
+    adbReopenedByHelper(config)
+    if (!config.networkAdbEnabled) return false
+    val closed = runCatching { adb.set(false) }.getOrNull() == ControlApplyOutcome.APPLIED && !config.networkAdbEnabled
+    return closed && config.setAdbOpenBeforeKeepOff(true)
+}
+
 /** Android's USB debugging setting says nothing about adbd while the Keep ADB off lease keeps it stopped. */
 internal fun usbDebuggingDiagnostic(setting: String, managed: Boolean = ManagedNetworkAdb.managed): String =
     if (managed) "$setting in Android settings; ADB is stopped (Keep ADB off)" else setting

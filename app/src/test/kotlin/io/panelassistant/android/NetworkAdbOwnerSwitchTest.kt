@@ -7,6 +7,7 @@ import io.panelassistant.android.panelassistant.LocalAdbRuntime
 import io.panelassistant.android.panelassistant.PanelAssistantCommandResult
 import io.panelassistant.android.testsupport.PanelRuntimeRig
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -161,6 +162,22 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
         assertFalse(rig.config.networkAdbEnabled)
     }
 
+    @Test fun aGiveBackTheHelperRefusesKeepsTheRestorePendingUntilALaterRenewalClosesAdb() = panel(firmwareOpen = false) { rig, helper, _ ->
+        assertEquals(LiveSettingRequestOutcome.APPLIED, setting(rig, "adb_keep_off", "true"))
+        helper.refuseRecovery = true
+        setting(rig, "adb_keep_off", "false")
+        assertTrue("the lease still holds: the helper refused", ManagedNetworkAdb.managed)
+        assertFalse(helper.listening)
+        assertFalse("the restore is still owed", rig.config.adbOpenBeforeKeepOff)
+        helper.refuseRecovery = false
+        // The next renewal gives ADB back, which opens port 5555; the owed restore then closes it again.
+        advanceTimeBy(31_000)
+        runCurrent()
+        awaitReal("ADB is closed again, as it was before Keep ADB off") { !helper.listening && !rig.config.networkAdbEnabled }
+        assertFalse(ManagedNetworkAdb.managed)
+        assertTrue("nothing is owed any more", rig.config.adbOpenBeforeKeepOff)
+    }
+
     @Test fun switchingKeepAdbOffOffGivesAdbBackOpenWhereItWasOpen() = panel(firmwareOpen = true) { rig, helper, _ ->
         assertEquals(LiveSettingRequestOutcome.APPLIED, setting(rig, "adb_keep_off", "true"))
         assertEquals(LiveSettingRequestOutcome.APPLIED, setting(rig, "adb_keep_off", "false"))
@@ -242,6 +259,9 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
             backgroundScope, helper, { hardened }, { JSONObject() }, { false },
             StandardTestDispatcher(testScheduler), keepOff = { rig.config.adbKeepOff },
             onReopened = { adbReopenedByHelper(rig.config) },
+            afterPublish = io.panelassistant.android.panelassistant.pendingAdbRestoreTrigger(rig.config, { rig.adb }) { work ->
+                backgroundScope.launch(StandardTestDispatcher(testScheduler)) { work() }
+            },
         )
         // Production installs the runtime as the lease owner where it is created, with the same reopen rule.
         ManagedNetworkAdb.owner = runtime

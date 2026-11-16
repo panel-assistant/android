@@ -81,6 +81,8 @@ internal class LocalAdbRuntime(
     // The helper has reopened ADB on port 5555 (a give-back, or a recovery Panel Assistant asked for): the
     // Network ADB switch must then read on, so its OFF can close what this app's helper opened.
     private val onReopened: () -> Unit = {},
+    // Every published helper state, after the lease flags are set: a pending Keep ADB off restore runs from here.
+    private val afterPublish: (LocalAdbState?) -> Unit = {},
 ) : PanelAssistantLocalAdb, ManagedNetworkAdb.Owner {
     private val generation = AtomicLong()
     private val effects = Mutex()
@@ -258,6 +260,7 @@ internal class LocalAdbRuntime(
     private fun publish(): LocalAdbState? = endpoint.state().also {
         ManagedNetworkAdb.managed = it?.managed == true
         ManagedNetworkAdb.recoveryHold = it?.recoveryHold == true
+        runCatching { afterPublish(it) }
     }
 
     override suspend fun request(op: String, args: JSONObject, admit: () -> Boolean, onPending: () -> Unit): PanelAssistantManageReply {
@@ -434,8 +437,31 @@ internal class LocalAdbRuntime(
                 } == true
             }, rootKnownUnusable = { Su.rootKnownUnusable() }, daemon = daemon, leaseDiagnostics = leaseDiagnostics,
                 keepOff = { config.adbKeepOff },
-                onReopened = { io.panelassistant.android.control.adbReopenedByHelper(config) })
+                onReopened = { io.panelassistant.android.control.adbReopenedByHelper(config) },
+                afterPublish = pendingAdbRestoreTrigger(config, { io.panelassistant.android.control.AdbController(context, config) }) { work ->
+                    scope.launch(dispatcher) { work() }
+                })
                 .also { ManagedNetworkAdb.owner = it }
+        }
+    }
+}
+
+/**
+ * After each published state, finish a pending Keep ADB off restore once the lease no longer holds ADB, on a
+ * worker of its own (the close waits on the controller's settle proof, which must not hold the lease's effects
+ * queue). One attempt at a time; each renewal tries again until the restore is done.
+ */
+internal fun pendingAdbRestoreTrigger(
+    config: Config,
+    controller: () -> io.panelassistant.android.control.AdbController,
+    launch: (suspend () -> Unit) -> Unit,
+): (LocalAdbState?) -> Unit {
+    val running = java.util.concurrent.atomic.AtomicBoolean()
+    return { state ->
+        if (state != null && !state.managed && !config.adbKeepOff && !config.adbOpenBeforeKeepOff && running.compareAndSet(false, true)) {
+            launch {
+                try { io.panelassistant.android.control.finishPendingAdbRestore(config, controller()) } finally { running.set(false) }
+            }
         }
     }
 }
