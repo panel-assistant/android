@@ -227,6 +227,9 @@ internal abstract class PanelRuntimeRig {
         bootChimeHardware: BootChimeHardware? = null,
         /** Root for the network ADB controller; null leaves it allocated and unusable, as no network_adb command is sent. */
         adbRoot: RootShell? = null,
+        /** Whether ADB listens, as the root helper reads it for the network ADB controller; null leaves the
+         *  controller with the JVM's unreadable properties, so no OFF can be proved. */
+        adbListening: (() -> Boolean)? = null,
         wifiOutages: () -> WifiOutageCounts? = { WifiOutageCounts(last24h = 3) },
         /** The helper the system controller sends reload and reboot to; a test reads what it was sent. */
         systemDaemon: FakeDaemon = FakeDaemon(
@@ -366,8 +369,17 @@ internal abstract class PanelRuntimeRig {
             fakeProfile(), cpuShell, FakeDaemon(), io.panelassistant.android.metrics.PanelMetrics(metrics),
         )
         // Only its best-effort reconnect reassertion runs, on a worker that logs and discards failure.
-        val adb = adbRoot?.let {
-            AdbController(config, io.panelassistant.android.control.NetworkAdbDisableTransitionMarker(File(tmp, "network-adb-disable.v1")), it)
+        val adb = adbRoot?.let { root ->
+            val marker = io.panelassistant.android.control.NetworkAdbDisableTransitionMarker(File(tmp, "network-adb-disable.v1"))
+            if (adbListening == null) AdbController(config, marker, root)
+            else AdbController(
+                config, marker, root,
+                daemon = object : io.panelassistant.android.platform.Daemon by io.panelassistant.android.control.FakeDaemon() {
+                    override fun adbState() = io.panelassistant.android.platform.HelperAdbState(adbListening(), adbListening())
+                },
+                directPropertyRead = { null }, directListenerRead = { null },
+                monotonicMs = { System.nanoTime() / 1_000_000 },
+            )
         } ?: allocate(AdbController::class.java)
         val volume = VolumeController(context)
         val core = io.panelassistant.android.PanelStateCore(

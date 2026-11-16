@@ -43,6 +43,7 @@ class AdbController internal constructor(
     private val daemon: Daemon = HelperClient,
     private val directPropertyRead: (String) -> String? = ::readSystemPropertyDirect,
     private val directListenerRead: (String) -> String? = ::readTcpListenerInventoryDirect,
+    private val monotonicMs: () -> Long = SystemClock::elapsedRealtime,
 ) {
     constructor(context: Context, config: Config) : this(
         config = config,
@@ -83,7 +84,7 @@ class AdbController internal constructor(
     /** Every settled sample acquires fresh helper observations; no management cache can prove OFF. */
     fun proveInactive(): Boolean = proveSettledNetworkAdbInactive(
         sample = ::activeState,
-        monotonicMs = SystemClock::elapsedRealtime,
+        monotonicMs = monotonicMs,
         waitMs = ::waitForNetworkAdb,
     )
 
@@ -222,7 +223,7 @@ class AdbController internal constructor(
         val active = activeState()
         return when {
             ManagedNetworkAdb.managed -> if (config.hardenedSecurityEnabled) "off (Hardened mode)" else "off (Keep ADB off)"
-            ManagedNetworkAdb.recoveryHold -> "active (recovery)"
+            ManagedNetworkAdb.recoveryHold && ManagedNetworkAdb.panelAssistantHold -> "active (recovery)"
             disableMarker.isPending() -> "disabling (recovery pending)"
             config.networkAdbEnabled -> "persistent (Panel Assistant)"
             active == true -> "active (external — not Panel Assistant)"
@@ -437,6 +438,16 @@ internal fun completeHardenedNetworkAdbAdmission(
 internal fun openForNetworkAdbOn(config: Config): Boolean {
     if (config.adbKeepOff && !config.setAdbKeepOff(false)) return false
     return ManagedNetworkAdb.releaseForOwner()
+}
+
+/**
+ * The root helper has reopened ADB on port 5555 (a lease given back, or a recovery Panel Assistant asked for),
+ * and the lease it ended had already made that port persist across restarts. The Network ADB switch then reads
+ * on, which is what the panel now does, and its OFF closes what this app's helper opened: a switch reading off
+ * over an open port could never close it.
+ */
+internal fun adbReopenedByHelper(config: Config) {
+    if (!config.hardenedSecurityEnabled && !config.networkAdbEnabled) config.setNetworkAdbEnabled(true)
 }
 
 /** Android's USB debugging setting says nothing about adbd while the Keep ADB off lease keeps it stopped. */

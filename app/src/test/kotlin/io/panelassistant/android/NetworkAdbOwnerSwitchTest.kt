@@ -2,6 +2,7 @@ package io.panelassistant.android
 
 import io.panelassistant.android.control.FakeRootShell
 import io.panelassistant.android.control.ManagedNetworkAdb
+import io.panelassistant.android.control.adbReopenedByHelper
 import io.panelassistant.android.panelassistant.LocalAdbRuntime
 import io.panelassistant.android.panelassistant.PanelAssistantCommandResult
 import io.panelassistant.android.testsupport.PanelRuntimeRig
@@ -60,7 +61,7 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
         assertTrue(helper.listening)
         assertEquals(1, helper.recovers)
         assertFalse(ManagedNetworkAdb.managed)
-        assertFalse(rig.config.networkAdbEnabled)
+        assertTrue("ADB was open before, so it is back open and the switch says so", rig.config.networkAdbEnabled)
         advanceTimeBy(5 * 60_000L)
         assertTrue(helper.listening)
         assertEquals(1, helper.arms)
@@ -140,6 +141,74 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
         assertEquals("{\"managed\":true,\"owner_switch_wait_s\":0}", ManagedNetworkAdb.statusJson())
     }
 
+    @Test fun aPanelAnEarlierVersionClosedShowsNetworkAdbOnOnceItIsBackAndItsOffClosesIt() =
+        panel(before = { it.holdLeftByEarlierVersion() }) { rig, helper, _ ->
+            assertTrue("the give-back reopened ADB", helper.listening)
+            assertTrue("the switch reads what the panel now does", rig.config.networkAdbEnabled)
+            assertEquals(PanelAssistantCommandResult.Applied, submitNative(rig, "network_adb", "off"))
+            assertFalse("the owner's OFF closes what this app's helper opened", helper.listening)
+            assertFalse(rig.config.networkAdbEnabled)
+        }
+
+    @Test fun switchingKeepAdbOffOffGivesAdbBackClosedWhereItWasClosed() = panel(firmwareOpen = false) { rig, helper, _ ->
+        assertFalse(helper.listening)
+        assertEquals(LiveSettingRequestOutcome.APPLIED, setting(rig, "adb_keep_off", "true"))
+        assertTrue(ManagedNetworkAdb.managed)
+        // Closing ADB again waits out the controller's settle proof, so the request may answer before it ends.
+        assertTrue(setting(rig, "adb_keep_off", "false") in setOf(LiveSettingRequestOutcome.APPLIED, LiveSettingRequestOutcome.DEFERRED))
+        assertFalse(ManagedNetworkAdb.managed)
+        awaitReal("ADB is closed again, as it was before Keep ADB off") { !helper.listening && !rig.config.networkAdbEnabled }
+        assertFalse(rig.config.networkAdbEnabled)
+    }
+
+    @Test fun switchingKeepAdbOffOffGivesAdbBackOpenWhereItWasOpen() = panel(firmwareOpen = true) { rig, helper, _ ->
+        assertEquals(LiveSettingRequestOutcome.APPLIED, setting(rig, "adb_keep_off", "true"))
+        assertEquals(LiveSettingRequestOutcome.APPLIED, setting(rig, "adb_keep_off", "false"))
+        assertTrue(helper.listening)
+        assertTrue("the switch says so, and its OFF would close it", rig.config.networkAdbEnabled)
+    }
+
+    @Test fun keepAdbOffWithoutASessionStillEndsNetworkAdbTheAppKept() = panel(firmwareOpen = false, session = false) { rig, helper, _ ->
+        assertEquals(LiveSettingRequestOutcome.APPLIED, setting(rig, "network_adb", "true"))
+        assertTrue(helper.listening)
+        assertTrue(setting(rig, "adb_keep_off", "true") in setOf(LiveSettingRequestOutcome.APPLIED, LiveSettingRequestOutcome.DEFERRED))
+        awaitReal("no session to arm a lease, so the controller closed it") { !helper.listening && !rig.config.networkAdbEnabled }
+        assertFalse("the two choices never stand together", rig.config.networkAdbEnabled)
+        assertTrue(rig.config.adbKeepOff)
+        assertFalse(ManagedNetworkAdb.managed)
+    }
+
+    @Test fun aKeepAdbOffHandlerTheOwnersNetworkAdbOnOvertookLeavesThatOnStanding() = panel { rig, helper, _ ->
+        assertEquals(LiveSettingRequestOutcome.APPLIED, setting(rig, "network_adb", "true"))
+        assertFalse(rig.config.adbKeepOff)
+        // A Keep ADB off ON queued before that press runs after it: the stored choice decides, not the queued value.
+        rig.commands.handleAdbKeepOff(true)
+        assertTrue(rig.config.networkAdbEnabled)
+        assertTrue(helper.listening)
+        assertFalse(ManagedNetworkAdb.managed)
+    }
+
+    @Test fun aRecoveryHoldEndsWithTheSessionThatAskedForIt() = panel(firmwareOpen = false) { rig, helper, runtime ->
+        assertEquals("applied", runtime.request("adb.recover", JSONObject(), { true }).outcome)
+        assertTrue(helper.listening)
+        assertTrue("the switch reads on while the recovery keeps ADB open", rig.config.networkAdbEnabled)
+        assertTrue(ManagedNetworkAdb.ownsRuntime())
+        // Panel Assistant goes away without a removal.
+        runtime.sessionEnded("panel-assistant")
+        assertFalse(ManagedNetworkAdb.ownsRuntime())
+        assertEquals(PanelAssistantCommandResult.Applied, submitNative(rig, "network_adb", "off"))
+        assertFalse("the owner can close it", helper.listening)
+    }
+
+    /** Waits in real time: the controller's settle proof sleeps on the command worker, outside test time. */
+    private fun awaitReal(what: String, condition: () -> Boolean) {
+        val deadline = System.nanoTime() + 20_000_000_000L
+        while (!condition()) {
+            assertTrue(what, System.nanoTime() < deadline)
+            Thread.sleep(50)
+        }
+    }
+
     private fun setting(rig: Rig, key: String, value: String): LiveSettingRequestOutcome =
         requestLiveSetting(
             LiveSettingAuthority(setOf(key), bootIdentity = { "test-boot" }), rig.config, { rig.commands }, key, value,
@@ -153,22 +222,34 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
         body(rig, helper, runtime)
     }
 
-    /** A panel whose firmware opens ADB, with a granted Panel Assistant session up throughout. */
-    private fun panel(hardened: Boolean = false, body: suspend TestScope.(Rig, AdbLeftAsThePanelHasItTest.Helper, LocalAdbRuntime) -> Unit) = runTest {
-        val helper = AdbLeftAsThePanelHasItTest.Helper(firmwareOpen = true)
+    /** A panel (whose firmware opens ADB unless [firmwareOpen] is false) with a granted Panel Assistant session
+     *  up throughout, unless [session] is false. [before] sets the helper up before the session. */
+    private fun panel(
+        hardened: Boolean = false,
+        firmwareOpen: Boolean = true,
+        session: Boolean = true,
+        before: (AdbLeftAsThePanelHasItTest.Helper) -> Unit = {},
+        body: suspend TestScope.(Rig, AdbLeftAsThePanelHasItTest.Helper, LocalAdbRuntime) -> Unit,
+    ) = runTest {
+        val helper = AdbLeftAsThePanelHasItTest.Helper(firmwareOpen)
+        before(helper)
         val root = FakeRootShell(available = true, runResult = true, onRun = { command ->
             if (command.contains("setprop persist.adb.tcp.port 5555")) helper.listening = true
+            if (command.contains("setprop persist.adb.tcp.port \"\"")) helper.listening = false
         })
-        val rig = rig(adbRoot = root, configure = { assertTrue(it.setSecurityMode(Config.SecurityMode.RELAXED)) })
+        val rig = rig(adbRoot = root, adbListening = { helper.listening }, configure = { assertTrue(it.setSecurityMode(Config.SecurityMode.RELAXED)) })
         val runtime = LocalAdbRuntime(
             backgroundScope, helper, { hardened }, { JSONObject() }, { false },
             StandardTestDispatcher(testScheduler), keepOff = { rig.config.adbKeepOff },
+            onReopened = { adbReopenedByHelper(rig.config) },
         )
-        // Production installs the runtime as the lease owner where it is created.
+        // Production installs the runtime as the lease owner where it is created, with the same reopen rule.
         ManagedNetworkAdb.owner = runtime
         try {
-            runtime.session("panel-assistant", true)
-            runCurrent()
+            if (session) {
+                runtime.session("panel-assistant", true)
+                runCurrent()
+            }
             body(rig, helper, runtime)
         } finally {
             rig.close()

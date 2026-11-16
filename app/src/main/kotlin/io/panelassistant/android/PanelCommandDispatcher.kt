@@ -713,15 +713,24 @@ internal class PanelCommandDispatcher(
         core.reconcile("network_adb")
     }
 
-    // Keep ADB off, the owner's opt-in. The generic live-setting path has already stored the value. The lease
-    // arms (ON) or gives ADB back (OFF) now. An ON then ends a Network ADB intent this app kept: with the lease
-    // armed that only clears the saved intent, and without a session to arm it the controller closes ADB.
+    // Keep ADB off, the owner's opt-in. The generic live-setting path has already stored the value; the stored
+    // value decides, since a Network ADB ON in the same request may have switched it off since. ON records
+    // whether ADB was open, arms the lease and ends a Network ADB intent this app kept (only the saved intent
+    // while the lease holds; without a session to arm it the controller closes ADB itself, best effort). OFF
+    // has the lease give ADB back and, where ADB was closed before, closes it again.
     override fun handleAdbKeepOff(on: Boolean) {
-        io.panelassistant.android.control.ManagedNetworkAdb.owner?.reconcile()
-        if (on && config.networkAdbEnabled) {
-            requireControlApplied("network_adb", adb.set(false)) { "network adb transition failed" }
-            core.reconcile("network_adb")
+        val managed = io.panelassistant.android.control.ManagedNetworkAdb
+        val keep = config.adbKeepOff
+        if (keep && on && !managed.managed) config.setAdbOpenBeforeKeepOff(adb.activeState() != false)
+        managed.owner?.reconcile()
+        if (keep && config.networkAdbEnabled) {
+            if (managed.managed) config.setNetworkAdbEnabled(false) else runCatching { adb.set(false) }
         }
+        if (!keep && !config.adbOpenBeforeKeepOff) {
+            if (!managed.managed) runCatching { adb.set(false) }
+            config.setAdbOpenBeforeKeepOff(true)
+        }
+        core.reconcile("network_adb")
     }
 
     /** A sensitive command's one-shot panel approval binds to the approval key of the origin that sent it;

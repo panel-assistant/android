@@ -23,7 +23,7 @@ internal fun releaseReady(locale: String, key: String, translated: TargetString)
 
 /** English records the Keep ADB off change added; the translation pass that reviews them removes this set. */
 private val KEEP_ADB_OFF_PENDING_TRANSLATION = setOf(
-    "configure.adb_keep_off.hardened", "configure.network_adb.external", "configure.network_adb.hardened",
+    "configure.adb_keep_off.hardened", "configure.adb_keep_off.waiting", "configure.network_adb.external", "configure.network_adb.hardened",
     "configure.network_adb.kept_off", "settings.adb_keep_off.help", "settings.adb_keep_off.label",
     "settings.adb_keep_off.summary",
 )

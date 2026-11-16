@@ -36,9 +36,13 @@
     var adbHeld = f.key === "network_adb" && cfg.networkAdbManaged === true;
     var adbManaged = adbHeld && cfg.networkAdbOwnerSwitch !== "available";
     var keepOffHardened = f.key === "adb_keep_off" && cfg.hardenedMode === true;
+    var keepOffChosen = cfg.values.adb_keep_off === "true";
     var adbNoteText = adbHeld ? (adbManaged ?
           cfg.i18nText("configure.network_adb.hardened", "Hardened mode keeps ADB off. Switch to Relaxed mode at the panel to turn on Network ADB.")
-        : cfg.i18nText("configure.network_adb.kept_off", "ADB is off because Keep ADB off is on. Turning this on switches that option off and opens ADB."))
+        : keepOffChosen ? cfg.i18nText("configure.network_adb.kept_off", "ADB is off because Keep ADB off is on. Turning this on switches that option off and opens ADB.")
+        : null)
+      : f.key === "adb_keep_off" && keepOffChosen && cfg.hardenedMode !== true ?
+        cfg.i18nText("configure.adb_keep_off.waiting", "Keep ADB off is on. ADB closes when the panel connects to Home Assistant.")
       : f.key === "network_adb" && cfg.networkAdbExternal === true && cfg.values.network_adb !== "true" ?
         cfg.i18nText("configure.network_adb.external", "ADB is open on this panel: its own system opened it. Anyone on your network can use it without a password. Keep ADB off below closes it.")
       : keepOffHardened ? cfg.i18nText("configure.adb_keep_off.hardened", "Hardened mode keeps ADB off. Switch to Relaxed mode at the panel to change this.")

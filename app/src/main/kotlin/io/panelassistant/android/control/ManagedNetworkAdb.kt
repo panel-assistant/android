@@ -11,7 +11,7 @@ internal object ManagedNetworkAdb {
     /** The helper reopened ADB for a recovery or a removal and refuses to close it again in that session. */
     @Volatile var recoveryHold = false
     /** That hold is one Panel Assistant asked for in its current session (a removal or a repair), not one an
-     *  owner's own Network ADB press or a Keep ADB off change left behind. Cleared by the next granted session. */
+     *  owner's own Network ADB press or a Keep ADB off change left behind. Ends with that session. */
     @Volatile var panelAssistantHold = false
     /** The lease owner; absent until a lease runtime exists. */
     @Volatile var owner: Owner? = null

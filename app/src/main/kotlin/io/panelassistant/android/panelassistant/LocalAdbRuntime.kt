@@ -78,6 +78,9 @@ internal class LocalAdbRuntime(
     private val monotonicMs: () -> Long = { System.nanoTime() / 1_000_000 },
     // The owner's Keep ADB off setting ([create] reads it). Off, as on a panel whose owner never chose it.
     private val keepOff: () -> Boolean = { false },
+    // The helper has reopened ADB on port 5555 (a give-back, or a recovery Panel Assistant asked for): the
+    // Network ADB switch must then read on, so its OFF can close what this app's helper opened.
+    private val onReopened: () -> Unit = {},
 ) : PanelAssistantLocalAdb, ManagedNetworkAdb.Owner {
     private val generation = AtomicLong()
     private val effects = Mutex()
@@ -205,11 +208,19 @@ internal class LocalAdbRuntime(
         }
         val after = runCatching { endpoint.state() }.getOrNull()
         val reopened = if (after != null) !after.managed else answer == true
-        if (reopened) ManagedNetworkAdb.panelAssistantHold = false
+        if (reopened) {
+            ManagedNetworkAdb.panelAssistantHold = false
+            runCatching(onReopened)
+        }
         return reopened
     }
 
     override fun hardened(): Boolean = hardened.invoke()
+
+    /** Panel Assistant's recovery hold lasts only for the session that asked for it. */
+    override fun sessionEnded(token: String) {
+        ManagedNetworkAdb.panelAssistantHold = false
+    }
 
     /** The owner's Network ADB press, after Keep ADB off has been switched off: ADB reopens now. Takes the
      *  effects queue before the transition gate, as every lease effect does. */
@@ -317,6 +328,7 @@ internal class LocalAdbRuntime(
                                     when (endpoint.recover(requestNonce, submit)) {
                                         true -> {
                                             ManagedNetworkAdb.panelAssistantHold = true
+                                            runCatching(onReopened)
                                             publish(); PanelAssistantManageReply("applied", null, JSONObject().put("enabled", true))
                                         }
                                         false -> PanelAssistantManageReply("failed", "local_adb_unavailable", null)
@@ -421,7 +433,8 @@ internal class LocalAdbRuntime(
                     }
                 } == true
             }, rootKnownUnusable = { Su.rootKnownUnusable() }, daemon = daemon, leaseDiagnostics = leaseDiagnostics,
-                keepOff = { config.adbKeepOff })
+                keepOff = { config.adbKeepOff },
+                onReopened = { io.panelassistant.android.control.adbReopenedByHelper(config) })
                 .also { ManagedNetworkAdb.owner = it }
         }
     }

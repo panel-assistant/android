@@ -146,6 +146,22 @@ for (const engine of engines) {
     assert.equal(h.posts[0].adb_keep_off, 'true');
   });
 
+  engineTest(`${engine.name}: Keep ADB off chosen before the panel has its session says when ADB closes`, async (t) => {
+    const h = await open(engine, t, { settings: { adb_keep_off: true } });
+    const keep = h.p.locator('#cfg-adb_keep_off');
+    assert.equal(await keep.locator('[role=switch]').getAttribute('aria-checked'), 'true');
+    assert.equal(await keep.locator('[role=switch]').getAttribute('aria-disabled'), 'false');
+    assert.match(await keep.innerText(), /Keep ADB off is on\. ADB closes when the panel connects to Home Assistant\./);
+    assert.doesNotMatch(await h.p.locator('#cfg-network_adb').innerText(), /Keep ADB off is on/);
+  });
+
+  engineTest(`${engine.name}: a lease an earlier version left is never blamed on Keep ADB off`, async (t) => {
+    const h = await open(engine, t, { managed: true, ownerSwitch: 'available' });
+    const row = h.p.locator('#cfg-network_adb');
+    assert.equal(await row.locator('[role=switch]').getAttribute('aria-disabled'), 'false');
+    assert.doesNotMatch(await row.innerText(), /Keep ADB off is on|Hardened mode/);
+  });
+
   engineTest(`${engine.name}: with nothing held Network ADB stays an ordinary switch`, async (t) => {
     const h = await open(engine, t, { applyPending: { network_adb: 'true' } });
     const row = h.p.locator('#cfg-network_adb');

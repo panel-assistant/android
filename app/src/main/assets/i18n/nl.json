@@ -12727,6 +12727,11 @@
    "text": "More secure. Stops ADB, which Panel Assistant does not need on this panel.",
    "sourceHash": "4e59d4bd6dc574a5cc9ac8eeb6028aaa613ce95785dd063e0a08e83ea575c986",
    "state": "english-fallback"
+  },
+  "configure.adb_keep_off.waiting": {
+   "text": "Keep ADB off is on. ADB closes when the panel connects to Home Assistant.",
+   "sourceHash": "76c5109c004ee295ef3e8e2cbb64680b385ca8b237c73ba1201045ea5f50ae1c",
+   "state": "english-fallback"
   }
  }
 }

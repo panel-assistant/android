@@ -211,6 +211,22 @@
       "softMaxChars": 100,
       "hardMaxChars": 133
     },
+    "configure.adb_keep_off.waiting": {
+      "text": "Keep ADB off is on. ADB closes when the panel connects to Home Assistant.",
+      "sourceHash": "76c5109c004ee295ef3e8e2cbb64680b385ca8b237c73ba1201045ea5f50ae1c",
+      "surface": "configure",
+      "context": "Configure > System > Keep ADB off: shown under the switch while the option is on but the panel has no Home Assistant connection yet, so ADB is not closed yet.",
+      "risk": "consequential",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [
+        "Keep ADB off",
+        "ADB",
+        "Home Assistant"
+      ],
+      "softMaxChars": 91,
+      "hardMaxChars": 121
+    },
     "configure.advanced.hide": {
       "text": "Hide advanced settings",
       "sourceHash": "82557c7e15d55184ae10aa64a264e4f03235e662d398d48b1fd3f1d24a515911",
