@@ -114,16 +114,17 @@ internal class LocalAdbRuntime(
             var leaseOperation = "state"
             try { effects.withLock {
                 if (generation.get() != current) return@withLock
-                // The first session after this build is installed gives back a lease an earlier version armed by
-                // itself, once. Later, only the owner ends a lease (Network ADB on, Keep ADB off off).
-                val migration = migrationDue()
+                // The first session after this build is installed in which the helper answers gives back a lease an
+                // earlier version armed by itself, once. Later, only the owner ends a lease (Network ADB on, Keep
+                // ADB off off, Relaxed mode).
                 if (!granted) {
                     // A session that does not grant local ADB cannot arm; a lease the owner wants kept is kept.
-                    if (migration) giveBackLocked { generation.get() == current }
+                    if (endpoint.state() != null && migrationDue() && !keep()) giveBackLocked { generation.get() == current }
                     publish()
                     return@withLock
                 }
                 val state = currentDaemon()
+                val migration = state != null && migrationDue()
                 if (generation.get() == current && state != null && !keep()) {
                     if (migration) giveBackLocked { generation.get() == current }
                     publish()

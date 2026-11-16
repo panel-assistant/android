@@ -459,6 +459,14 @@ internal fun adbReopenedByHelper(config: Config) {
 }
 
 /**
+ * The owner has switched the panel back to Relaxed mode, at the panel: a lease Hardened mode held that Keep ADB
+ * off does not want ends now, so nothing ends it later in the background. True when nothing holds ADB off
+ * afterwards that the owner does not want. Blocks briefly on the helper; must not hold the transition gate.
+ */
+internal fun endLeaseOnRelaxed(config: Config): Boolean =
+    config.hardenedSecurityEnabled || config.adbKeepOff || ManagedNetworkAdb.releaseForOwner()
+
+/**
  * The settings page's door for the two ADB choices, straight before either is applied: the only place, with a
  * Home Assistant press while it runs (PanelCommandDispatcher.handleNetAdb), where an owner's request ends the
  * lease. False refuses the request there, so nothing is queued to end a lease later.

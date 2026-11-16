@@ -732,7 +732,7 @@ class Config private constructor(
     val adbKeepOff: Boolean
         get() = boolPref("adb_keep_off")
     fun setAdbKeepOff(on: Boolean): Boolean = synchronized(CONFIG_LOCK) {
-        durableCommit { putBoolean("adb_keep_off", on) }
+        durableCommit { putBoolean("adb_keep_off", on) }.also { if (it && on) adbKeepOffOnEpoch.incrementAndGet() }
     }
 
     /** True once per install: the first Panel Assistant session gives back a lease an earlier version armed by
@@ -1474,6 +1474,7 @@ class Config private constructor(
             if (autoSleepChanged) putLong(AUTO_SLEEP_GENERATION_PREF, nextAutoSleepGenerationLocked())
         }
         if (committed && spec.key == "wake_on_wave") wakeOnWaveEpoch.incrementAndGet()
+        if (committed && spec.key == "adb_keep_off" && value == "true") adbKeepOffOnEpoch.incrementAndGet()
         committed
     }
 
@@ -1759,6 +1760,9 @@ class Config private constructor(
         internal val CONFIG_LOCK = Any()
         internal const val SECURITY_MODE_PREF = "device_local_hardened_security"
         internal const val ADB_LEASE_MIGRATION_PREF = "device_local_adb_lease_given_back_v1"
+        /** Counts every store of Keep ADB off on, process-wide: a Home Assistant Network ADB ON admitted before
+         *  the latest one loses to it (PanelCommandDispatcher.handleNetAdb). */
+        internal val adbKeepOffOnEpoch = java.util.concurrent.atomic.AtomicLong()
         /** The minted device identity. `device_local_` and unregistered: never exported, never restored. */
         internal const val DEVICE_UID_PREF = "device_local_device_uid_v1"
         private const val DEVICE_UID_BYTES = 16

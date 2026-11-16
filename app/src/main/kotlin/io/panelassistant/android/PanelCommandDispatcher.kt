@@ -184,6 +184,8 @@ internal class PanelCommandDispatcher(
 
     /** The origin of the dispatch running on this thread; its approval key is the approval principal. */
     private val currentOrigin = ThreadLocal<CommandOrigin?>()
+    /** The Keep ADB off epoch when the running native command was admitted. */
+    private val admittedKeepOffEpoch = ThreadLocal<Long?>()
 
     /** Whether [channel] takes commands here, and how they queue: state conflates by channel, actions never. */
     fun kind(channel: String): Kind? = when {
@@ -218,6 +220,7 @@ internal class PanelCommandDispatcher(
             null -> return finish(PanelAssistantCommandResult.Refused(PanelAssistantCommandProcessor.CODE_UNKNOWN_CHANNEL))
             Kind.ACTION, Kind.LATEST -> Unit
         }
+        val keepOffEpoch = Config.adbKeepOffOnEpoch.get()
         val run = {
             val refusal = command.admit()
             if (refusal != null) {
@@ -227,7 +230,12 @@ internal class PanelCommandDispatcher(
             ) {
                 finish(PanelAssistantCommandResult.Failed(PanelAssistantCommandProcessor.CODE_HARDWARE_UNAVAILABLE))
             } else {
-                finish(panelAssistantCommandResult(consume(command.channel, command.value, origin.withRequestId(command.requestId ?: origin.requestId))))
+                admittedKeepOffEpoch.set(keepOffEpoch)
+                try {
+                    finish(panelAssistantCommandResult(consume(command.channel, command.value, origin.withRequestId(command.requestId ?: origin.requestId))))
+                } finally {
+                    admittedKeepOffEpoch.remove()
+                }
             }
         }
         val onSkipped = { execution: CommandQueue.Execution ->
@@ -708,6 +716,15 @@ internal class PanelCommandDispatcher(
         // page at its door. A replayed, restored or imported ON reaches this handler with no origin and never asks
         // the helper to reopen ADB; while a lease holds it stays refused (AdbController.set), so it can never undo
         // a choice the owner made after it. Native commands are never journalled.
+        // An ON never outranks a Keep ADB off the owner chose after it: an unattended ON (replay, restore,
+        // import) waits while Keep ADB off is on, published lease or not (a replay at startup runs before any
+        // session), and a Home Assistant ON loses to a Keep ADB off stored after the ON was admitted.
+        if (on && config.adbKeepOff) {
+            val admitted = admittedKeepOffEpoch.get()
+            if (currentOrigin.get() == null || admitted == null || admitted != Config.adbKeepOffOnEpoch.get()) {
+                requireControlApplied("network_adb", ControlApplyOutcome.FAILED) { "Keep ADB off outranks this Network ADB ON" }
+            }
+        }
         if (on && currentOrigin.get() != null && !openForNetworkAdbOn(config)) {
             requireControlApplied("network_adb", ControlApplyOutcome.FAILED) { "network adb lease release failed" }
         }
