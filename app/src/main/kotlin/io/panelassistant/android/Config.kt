@@ -735,13 +735,6 @@ class Config private constructor(
         durableCommit { putBoolean("adb_keep_off", on) }
     }
 
-    /** Whether network ADB was open when the owner turned Keep ADB off on, so turning it off gives ADB back as it
-     *  was. Device-local, outside the registry; unknown (never recorded, as on a panel an earlier version
-     *  closed by itself) reads as open. */
-    val adbOpenBeforeKeepOff: Boolean get() = prefs.getBoolean(ADB_OPEN_BEFORE_KEEP_OFF_PREF, true)
-    fun setAdbOpenBeforeKeepOff(open: Boolean): Boolean = synchronized(CONFIG_LOCK) {
-        durableCommit { putBoolean(ADB_OPEN_BEFORE_KEEP_OFF_PREF, open) }
-    }
 
     // The last catalog targets (UpdateChecker.persistableTargets), kept only so a restart reports them.
     val softwareUpdateTargets: Pair<String, String> get() =
@@ -1758,7 +1751,6 @@ class Config private constructor(
          * must be process-wide as well. */
         internal val CONFIG_LOCK = Any()
         internal const val SECURITY_MODE_PREF = "device_local_hardened_security"
-        internal const val ADB_OPEN_BEFORE_KEEP_OFF_PREF = "device_local_adb_open_before_keep_off"
         /** The minted device identity. `device_local_` and unregistered: never exported, never restored. */
         internal const val DEVICE_UID_PREF = "device_local_device_uid_v1"
         private const val DEVICE_UID_BYTES = 16

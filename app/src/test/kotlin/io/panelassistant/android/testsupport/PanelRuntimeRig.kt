@@ -150,8 +150,6 @@ internal abstract class PanelRuntimeRig {
         val screen: ScreenController,
         /** The root shell the CPU governor writes go through; a test sets its runResult false to refuse them. */
         val cpuShell: FakeRootShell,
-        /** The network ADB controller the dispatcher uses (inert unless the rig was given an ADB root). */
-        val adb: AdbController,
     ) {
         /** The service's start order: the state core's startup step. */
         fun start() {
@@ -460,7 +458,7 @@ internal abstract class PanelRuntimeRig {
         )
         return Rig(
             tmp, config, sysfs, core, commands, storage, storageReads, updateSources, autoSleepConfigChanges,
-            context.audio, metrics, screen, cpuShell, adb,
+            context.audio, metrics, screen, cpuShell,
         )
     }
 
