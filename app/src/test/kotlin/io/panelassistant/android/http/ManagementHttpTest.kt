@@ -54,11 +54,12 @@ class ManagementHttpTest {
         }
     }
 
-    @Test fun statusSaysWhetherPanelAssistantKeepsAdbOffAndWhenTheOwnersSwitchWorks() {
+    @Test fun statusSaysWhetherKeepAdbOffHoldsAdbAndWhetherTheOwnersSwitchOpensItNow() {
         val adb = io.panelassistant.android.control.ManagedNetworkAdb
-        fun ownerSwitch(waitMs: Long?) = object : io.panelassistant.android.control.ManagedNetworkAdb.OwnerSwitch {
-            override fun waitMs() = waitMs
+        fun owner(hardened: Boolean) = object : io.panelassistant.android.control.ManagedNetworkAdb.Owner {
+            override fun hardened() = hardened
             override fun release() = false
+            override fun reconcile() {}
         }
         PaneldServerHttpFixture().use { fixture ->
             fixture.useManagementStatus { error("Passive status read must not refresh storage") }
@@ -68,18 +69,16 @@ class ManagementHttpTest {
                 try {
                     read().let { assertFalse(it.getBoolean("managed")); assertTrue(it.isNull("owner_switch_wait_s")) }
                     adb.managed = true
-                    adb.ownerSwitch = ownerSwitch(null)
-                    read().let { assertTrue(it.getBoolean("managed")); assertTrue(it.isNull("owner_switch_wait_s")) }
-                    adb.ownerSwitch = ownerSwitch(120_001)
-                    assertEquals(121, read().getInt("owner_switch_wait_s"))
-                    adb.ownerSwitch = ownerSwitch(0)
+                    adb.owner = owner(hardened = false)
                     read().let { assertTrue(it.getBoolean("managed")); assertEquals(0, it.getInt("owner_switch_wait_s")) }
-                    // Nothing managed: the wait says nothing, whatever the lease owner would answer.
+                    adb.owner = owner(hardened = true)
+                    read().let { assertTrue(it.getBoolean("managed")); assertTrue(it.isNull("owner_switch_wait_s")) }
+                    // Nothing held: the switch has nothing to wait for.
                     adb.managed = false
                     assertTrue(read().isNull("owner_switch_wait_s"))
                 } finally {
                     adb.managed = false
-                    adb.ownerSwitch = null
+                    adb.owner = null
                 }
             }
         }

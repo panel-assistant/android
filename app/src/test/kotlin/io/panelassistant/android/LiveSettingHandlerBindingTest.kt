@@ -27,6 +27,7 @@ class LiveSettingHandlerBindingTest {
         override fun handleTouchSound(on: Boolean) = record("handleTouchSound", on)
         override fun handleVoiceEnabled(on: Boolean) = record("handleVoiceEnabled", on)
         override fun handleNetAdb(on: Boolean) = record("handleNetAdb", on)
+        override fun handleAdbKeepOff(on: Boolean) = record("handleAdbKeepOff", on)
         override fun handleZigbee(on: Boolean) = record("handleZigbee", on)
         override fun handleAutoBrightnessMaximum(percent: Int) = record("handleAutoBrightnessMaximum", percent)
         override fun handleAutoBrightnessMinimum(percent: Int) = record("handleAutoBrightnessMinimum", percent)
@@ -77,6 +78,7 @@ class LiveSettingHandlerBindingTest {
             Case("touch_sound", "false", expected = invocation("handleTouchSound", false)),
             Case("voice_enabled", "true", expected = invocation("handleVoiceEnabled", true)),
             Case("network_adb", "true", expected = invocation("handleNetAdb", true)),
+            Case("adb_keep_off", "true", expected = invocation("handleAdbKeepOff", true)),
             Case("zigbee_router", "true", expected = invocation("handleZigbee", true)),
             Case(
                 "auto_brightness_minimum_percent",
@@ -208,6 +210,7 @@ class LiveSettingHandlerBindingTest {
         val expectedRejected = setOf(
             // The voice assistant is a Home Assistant satellite, never an external command switch.
             "voice_enabled",
+            "adb_keep_off",
             "auto_brightness_minimum_percent",
             "auto_brightness_maximum_percent",
             "auto_brightness_response_percent",

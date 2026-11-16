@@ -297,21 +297,10 @@ class PaneldServer internal constructor(
         return true
     }
 
-    /**
-     * A direct ON while Panel Assistant manages network ADB is refused rather than journalled: the app cannot
-     * apply it (AdbController.set), so a queued ON would read as pending for good and could open port 5555
-     * later without a new action from the owner. Restores and imports keep the hardened check only.
-     * Once the panel has been without its session for long enough the ON is let through here, and the
-     * direct config POST gives the lease back as its last step before applying it (DirectConfigPost).
-     */
-    private suspend fun rejectDirectNetworkAdb(call: OpCall, requested: String?): Boolean {
-        if (rejectHardenedNetworkAdb(call, requested)) return true
-        val refusal = io.panelassistant.android.control.directNetworkAdbOnRefusalJson(
-            SettingValue.parseBool(requested.orEmpty()) == true,
-        ) ?: return false
-        call.respondText(refusal, ContentType.Application.Json, HttpStatusCode.Conflict)
-        return true
-    }
+    /** A direct Network ADB ON is refused only in Hardened mode. The owner's switch otherwise always works: the
+     *  ON switches Keep ADB off off and the lease gives ADB back before it is applied (openForNetworkAdbOn). */
+    private suspend fun rejectDirectNetworkAdb(call: OpCall, requested: String?): Boolean =
+        rejectHardenedNetworkAdb(call, requested)
 
 
 
@@ -996,6 +985,7 @@ class PaneldServer internal constructor(
         proximityJson = { sensors.proximityJson() },
         powerSafetyJson = { PowerSafetyPresentation.json(pageHealth.powerSafetyAdvisory(managementObservations.snapStaleOk().privilege, { profile.appCanSu }, powerSafety)) },
         haAreaCatalogJson = { haArea.haAreaCatalogJson() },
+        networkAdbExternal = { managementObservations.snapStaleOk().networkAdbExternal },
     )
 
 

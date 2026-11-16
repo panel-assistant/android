@@ -1,7 +1,7 @@
-// While Panel Assistant keeps network ADB off, the app cannot turn it on, so the Configure row must not offer
-// an ON that can only wait. The real Configure scripts read a projection that says ADB is managed (with a
-// desired ON left queued by an older version) and must show the switch off and disabled, say why, and never
-// show the "pending" line. Without management the same row stays an ordinary switch.
+// The Network ADB and Keep ADB off rows explain the state of ADB and never block the owner. The real Configure
+// scripts read a projection of each state: Keep ADB off holding ADB (the switch still works and says what one
+// press does), Hardened mode holding it (both rows say so and cannot change), ADB the firmware opened (the row
+// names it and points at Keep ADB off), and nothing held (an ordinary switch, with its pending line).
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
@@ -32,17 +32,19 @@ function page() {
 const SCHEMA = [
   { key: 'network_adb', label: 'Network ADB', group: 'System', type: 'BOOL', tier: 'BASIC', available: true,
     summary: 'Security risk. Keep ADB listening on port 5555 across boots.' },
+  { key: 'adb_keep_off', label: 'Keep ADB off', group: 'System', type: 'BOOL', tier: 'BASIC', available: true,
+    summary: 'More secure. Stops ADB, which Panel Assistant does not need on this panel.' },
 ];
 
-async function harness(managed, ownerSwitch) {
+async function harness(projection) {
   const state = {
-    settings: { network_adb: false },
+    settings: { network_adb: false, adb_keep_off: false, ...(projection.settings || {}) },
     ha_expose: {}, ha_auth: { configured: false }, renderer_pending: [],
-    // A desired ON an older version queued while Panel Assistant already managed ADB. The panel's own
-    // projection drops it while ADB is managed; the plain managed case keeps it to prove the page does too.
-    apply_pending: ownerSwitch === undefined ? { network_adb: 'true' } : {}, apply_stalled: [],
-    ...(managed === undefined ? {} : { network_adb_managed: managed }),
-    ...(ownerSwitch === undefined ? {} : { network_adb_owner_switch: ownerSwitch, network_adb_owner_switch_after_min: 5 }),
+    apply_pending: projection.applyPending || {}, apply_stalled: [],
+    network_adb_managed: projection.managed === true,
+    network_adb_owner_switch: projection.ownerSwitch ?? null,
+    network_adb_external: projection.external === true,
+    hardened_mode: projection.hardened === true,
   };
   const posts = [];
   const server = createServer(async (request, response) => {
@@ -56,10 +58,7 @@ async function harness(managed, ownerSwitch) {
       let raw = '';
       for await (const chunk of request) raw += chunk;
       posts.push(Object.fromEntries(new URLSearchParams(raw)));
-      // The panel lets the owner's switch through once it has been without its session long enough.
-      if (ownerSwitch === 'available') return send({ ok: true });
-      response.statusCode = 409;
-      return send({ ok: false, error: 'network-adb-managed-by-panel-assistant', message: 'Panel Assistant manages network ADB on this panel.' });
+      return send({ ok: true });
     }
     if (path === '/api/v1/config' || path === '/api/v1/config/values') return send(state);
     if (path === '/api/v1/apps') return send({ apps: [] });
@@ -77,80 +76,85 @@ const engines = [
   { name: 'webkit', type: webkit, launch: {}, available: existsSync(webkit.executablePath()) },
 ];
 
-async function open(engine, t, managed, ownerSwitch) {
-  const h = await harness(managed, ownerSwitch);
+async function open(engine, t, projection) {
+  const h = await harness(projection);
   const browser = await engine.type.launch(engine.launch);
   t.after(async () => { await browser.close(); await new Promise((resolve) => h.server.close(resolve)); });
   const p = await browser.newPage({ viewport: { width: 390, height: 844 } });
   await p.goto(h.url);
   await p.locator('#cfg-network_adb [role=switch]').waitFor();
+  // Let the half-second values follow-up arrive, so a later render cannot change what is read.
+  await p.waitForTimeout(800);
   return { ...h, p };
 }
 
 for (const engine of engines) {
   const engineTest = engine.available ? test : test.skip;
 
-  engineTest(`${engine.name}: a managed Network ADB row reads off, is disabled, says why and never says pending`, async (t) => {
-    const h = await open(engine, t, true);
+  engineTest(`${engine.name}: while Keep ADB off holds ADB the Network ADB switch still works and says what one press does`, async (t) => {
+    const h = await open(engine, t, { managed: true, ownerSwitch: 'available', settings: { adb_keep_off: true },
+      // A desired ON an older version queued while its lease held ADB.
+      applyPending: {} });
     const row = h.p.locator('#cfg-network_adb');
     const toggle = row.locator('[role=switch]');
-    // Let the half-second values follow-up arrive, so a later render cannot bring the pending line back.
-    await h.p.waitForTimeout(800);
-    assert.equal(await toggle.getAttribute('aria-checked'), 'false', 'the switch reads off');
-    assert.equal(await toggle.getAttribute('aria-disabled'), 'true', 'the switch is disabled');
-    const text = await row.innerText();
-    assert.match(text, /Panel Assistant manages ADB on this panel/, 'the row names who manages ADB');
-    assert.match(text, /Removing the panel from Panel Assistant turns ADB back on/, 'the row says how ADB comes back');
-    assert.doesNotMatch(text, /hardware application is pending/, 'the row never says the ON is pending');
-    const described = (await toggle.getAttribute('aria-describedby') || '').split(/\s+/);
-    assert.ok(described.includes('cfg-network_adb-managed'), 'the switch is described by the managed line');
-    await toggle.click({ force: true });
-    await toggle.press('Enter');
-    await h.p.waitForTimeout(300);
-    assert.deepEqual(h.posts, [], 'a press sends nothing');
-    assert.equal(await toggle.getAttribute('aria-checked'), 'false', 'a press leaves it off');
-    assert.equal(await row.locator(`text=${PENDING_TEXT}`).count(), 0);
-  });
-
-  engineTest(`${engine.name}: a managed row on a panel that has just lost its connection stays disabled and says when the switch works`, async (t) => {
-    const h = await open(engine, t, true, 'waiting');
-    const row = h.p.locator('#cfg-network_adb');
-    const toggle = row.locator('[role=switch]');
-    await h.p.waitForTimeout(800);
-    assert.equal(await toggle.getAttribute('aria-disabled'), 'true', 'the switch is still disabled');
-    const text = await row.innerText();
-    assert.match(text, /lost its Home Assistant connection; this switch works after 5 minutes without it/);
-    assert.doesNotMatch(text, /Removing the panel from Panel Assistant/, 'removal needs the connection this panel has lost');
-    await toggle.click({ force: true });
-    await h.p.waitForTimeout(300);
-    assert.deepEqual(h.posts, [], 'a press sends nothing yet');
-  });
-
-  engineTest(`${engine.name}: once the panel has been without its connection long enough the switch works and says what it does`, async (t) => {
-    const h = await open(engine, t, true, 'available');
-    const row = h.p.locator('#cfg-network_adb');
-    const toggle = row.locator('[role=switch]');
-    await h.p.waitForTimeout(800);
     assert.equal(await toggle.getAttribute('aria-disabled'), 'false', 'the switch is enabled');
-    assert.equal(await toggle.getAttribute('aria-checked'), 'false', 'and reads off: ADB is still closed');
+    assert.equal(await toggle.getAttribute('aria-checked'), 'false', 'and reads off: ADB is held off');
     const text = await row.innerText();
-    assert.match(text, /Turning this on takes ADB back from Panel Assistant until the panel connects again/);
-    assert.doesNotMatch(text, /keeps it off/);
+    assert.match(text, /ADB is off because Keep ADB off is on\. Turning this on switches that option off and opens ADB\./);
+    assert.doesNotMatch(text, /lost its Home Assistant connection|minutes|manages ADB/, 'no waiting time and no takeover');
+    const described = (await toggle.getAttribute('aria-describedby') || '').split(/\s+/);
+    assert.ok(described.includes('cfg-network_adb-managed'), 'the switch is described by the note');
     await toggle.click();
     await h.p.waitForTimeout(400);
     assert.equal(h.posts.length, 1, 'one press sends one request');
     assert.equal(h.posts[0].network_adb, 'true');
   });
 
-  engineTest(`${engine.name}: an unmanaged Network ADB row stays an ordinary switch`, async (t) => {
-    const h = await open(engine, t, false);
+  engineTest(`${engine.name}: in Hardened mode both rows say Hardened mode keeps ADB off and neither can be changed here`, async (t) => {
+    const h = await open(engine, t, { managed: true, ownerSwitch: null, hardened: true,
+      applyPending: { network_adb: 'true' } });
+    const adb = h.p.locator('#cfg-network_adb');
+    const adbToggle = adb.locator('[role=switch]');
+    assert.equal(await adbToggle.getAttribute('aria-disabled'), 'true');
+    assert.equal(await adbToggle.getAttribute('aria-checked'), 'false');
+    assert.match(await adb.innerText(), /Hardened mode keeps ADB off\. Switch to Relaxed mode at the panel to turn on Network ADB\./);
+    assert.doesNotMatch(await adb.innerText(), /hardware application is pending/, 'a queued ON never reads as pending');
+    const keep = h.p.locator('#cfg-adb_keep_off');
+    const keepToggle = keep.locator('[role=switch]');
+    assert.equal(await keepToggle.getAttribute('aria-disabled'), 'true');
+    assert.equal(await keepToggle.getAttribute('aria-checked'), 'true', 'Hardened mode keeps it on');
+    assert.match(await keep.innerText(), /Hardened mode keeps ADB off\. Switch to Relaxed mode at the panel to change this\./);
+    await adbToggle.click({ force: true });
+    await keepToggle.click({ force: true });
+    await adbToggle.press('Enter');
+    await h.p.waitForTimeout(300);
+    assert.deepEqual(h.posts, [], 'a press sends nothing');
+  });
+
+  engineTest(`${engine.name}: ADB the firmware opened is named under Network ADB, with the option that closes it`, async (t) => {
+    const h = await open(engine, t, { external: true });
+    const row = h.p.locator('#cfg-network_adb');
+    const toggle = row.locator('[role=switch]');
+    assert.equal(await toggle.getAttribute('aria-disabled'), 'false');
+    assert.equal(await toggle.getAttribute('aria-checked'), 'false', 'the app keeps nothing open');
+    assert.match(await row.innerText(), /ADB is open on this panel: its own system opened it\. Anyone on your network can use it without a password\. Keep ADB off below closes it\./);
+    const keepToggle = h.p.locator('#cfg-adb_keep_off [role=switch]');
+    assert.equal(await keepToggle.getAttribute('aria-disabled'), 'false');
+    await keepToggle.click();
+    await h.p.waitForTimeout(400);
+    assert.equal(h.posts.length, 1);
+    assert.equal(h.posts[0].adb_keep_off, 'true');
+  });
+
+  engineTest(`${engine.name}: with nothing held Network ADB stays an ordinary switch`, async (t) => {
+    const h = await open(engine, t, { applyPending: { network_adb: 'true' } });
     const row = h.p.locator('#cfg-network_adb');
     const toggle = row.locator('[role=switch]');
     // The pending line renders after the switch; wait for it rather than read the row mid-render.
     await row.locator(`text=${PENDING_TEXT}`).waitFor({ timeout: 5000 });
     assert.equal(await toggle.getAttribute('aria-disabled'), 'false');
-    assert.doesNotMatch(await row.innerText(), /Panel Assistant manages ADB/);
-    // Without management a queued ON is a real pending value and says so.
+    assert.doesNotMatch(await row.innerText(), /Keep ADB off is on|Hardened mode|its own system opened it/);
     assert.match(await row.innerText(), /hardware application is pending/);
+    assert.doesNotMatch(await h.p.locator('#cfg-adb_keep_off').innerText(), /Hardened mode/);
   });
 }

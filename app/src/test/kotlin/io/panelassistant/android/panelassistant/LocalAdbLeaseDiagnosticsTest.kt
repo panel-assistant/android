@@ -56,7 +56,7 @@ class LocalAdbLeaseDiagnosticsTest {
         val lines = mutableListOf<String>()
         val diagnostics = LocalAdbLeaseDiagnostics({ scope.testScheduler.currentTime }, lines::add)
         val runtime = LocalAdbRuntime(scope.backgroundScope, endpoint, { false }, { JSONObject() }, { false },
-            StandardTestDispatcher(scope.testScheduler), { it() }, healthy = { healthy }, leaseDiagnostics = diagnostics)
+            StandardTestDispatcher(scope.testScheduler), { it() }, healthy = { healthy }, leaseDiagnostics = diagnostics, keepOff = { true })
         fun events(kind: String) = lines.map(::fields).filter { it["event"] == kind }
     }
 
@@ -169,7 +169,7 @@ class LocalAdbLeaseDiagnosticsTest {
         val endpoint = Endpoint()
         var healthy = false
         val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, { false },
-            StandardTestDispatcher(testScheduler), { it() }, healthy = { healthy }, leaseDiagnostics = diagnostics)
+            StandardTestDispatcher(testScheduler), { it() }, healthy = { healthy }, leaseDiagnostics = diagnostics, keepOff = { true })
         runtime.session("pa", true); runCurrent()
         healthy = true; uptime = 30_000; elapsed = 330_000
         advanceTimeBy(30_000); runCurrent()
@@ -195,7 +195,7 @@ class LocalAdbLeaseDiagnosticsTest {
             val endpoint = Endpoint()
             val diagnostics = LocalAdbLeaseDiagnostics({ if (brokenClock) error("clock") else testScheduler.currentTime }, { error("sink") })
             val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject().put("ok", true) }, { false },
-                StandardTestDispatcher(testScheduler), { it() }, leaseDiagnostics = diagnostics)
+                StandardTestDispatcher(testScheduler), { it() }, leaseDiagnostics = diagnostics, keepOff = { true })
             runtime.session("pa", true); runCurrent()
             advanceTimeBy(30_000); runCurrent()
             val reply = runtime.request("adb.prepare", JSONObject(), { true })
@@ -232,7 +232,7 @@ class LocalAdbLeaseDiagnosticsTest {
         val endpoint = Endpoint()
         val runtime = LocalAdbRuntime(runtimeScope, endpoint, { false }, {
             entered.countDown(); check(release.await(5, TimeUnit.SECONDS)); JSONObject()
-        }, { false }, dispatcher, { it() }, leaseDiagnostics = diagnostics)
+        }, { false }, dispatcher, { it() }, leaseDiagnostics = diagnostics, keepOff = { true })
         try {
             runtime.session("pa", true); assertTrue(ready.await(5, TimeUnit.SECONDS))
             val request = async(start = CoroutineStart.UNDISPATCHED) { runtime.request("adb.prepare", JSONObject(), { true }) }

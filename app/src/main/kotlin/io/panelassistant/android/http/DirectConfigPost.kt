@@ -460,11 +460,11 @@ internal class DirectConfigPost(
                                 is Validation.Bad -> return@dispatchDirectConfigLiveSettings
                             }
                         } else raw.trim()
-                        // The owner's press of Network ADB on a panel that has lost its session: every
-                        // admission above has passed, so this is where Panel Assistant's lease is given
-                        // back. An ON that cannot have it is rejected before anything is queued.
+                        // The owner's press of Network ADB while Keep ADB off holds ADB: every admission
+                        // above has passed, so this is where the lease is given back. An ON that cannot have
+                        // it is rejected before anything is queued.
                         if (key == "network_adb" && value == "true" &&
-                            !io.panelassistant.android.control.takeNetworkAdbBackForOwner()
+                            !io.panelassistant.android.control.openForNetworkAdbOn(config)
                         ) {
                             liveRejected += key
                             return@dispatchDirectConfigLiveSettings

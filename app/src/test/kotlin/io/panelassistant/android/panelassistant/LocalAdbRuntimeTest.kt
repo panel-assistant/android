@@ -58,7 +58,7 @@ class LocalAdbRuntimeTest {
         val runtime = LocalAdbRuntime(backgroundScope, RootLocalAdbEndpoint(wire.client), { false }, { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), { action ->
             inTransition = true
             try { action() } finally { inTransition = false }
-        })
+        }, keepOff = { true })
         wire.phase = { assertFalse("identity admission must leave session transitions available", inTransition) }
         wire.beforeOperation = { assertFalse("transport preparation must leave session transitions available", inTransition) }
         wire.afterWrite = {
@@ -76,7 +76,7 @@ class LocalAdbRuntimeTest {
     @Test fun theMainTransportRechecksSessionAuthorityAfterItsIdentityAndBeforePayloadSubmission() = runTest {
         val wire = io.panelassistant.android.util.MainRecoveryWireFixture()
         val endpoint = RootLocalAdbEndpoint(wire.client)
-        val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), { it() })
+        val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), { it() }, keepOff = { true })
         runtime.session("initial", true); runCurrent()
         wire.requests.clear()
         wire.beforeOperation = { header -> if (header.startsWith("SHELL ")) runtime.session("replacement", false) }
@@ -95,7 +95,7 @@ class LocalAdbRuntimeTest {
             assertTrue("replacement must still observe the stale owner", endpoint.status!!.managed)
             endpoint.status = LocalAdbState(false, false)
             true
-        }, StandardTestDispatcher(testScheduler), { it() })
+        }, StandardTestDispatcher(testScheduler), { it() }, keepOff = { true })
         runtime.session("granted", true); runCurrent()
         assertEquals(1, bootstraps)
         assertEquals(listOf("arm"), endpoint.effects)
@@ -109,7 +109,7 @@ class LocalAdbRuntimeTest {
         var bootstraps = 0
         val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, {
             bootstraps++; false
-        }, StandardTestDispatcher(testScheduler), { it() })
+        }, StandardTestDispatcher(testScheduler), { it() }, keepOff = { true })
         runtime.session("granted", true); runCurrent()
         assertEquals(0, bootstraps)
         assertEquals(listOf("arm"), endpoint.effects)
@@ -124,7 +124,7 @@ class LocalAdbRuntimeTest {
             bootstraps++
             if (bootstraps > 2) endpoint.status = LocalAdbState(false, false)
             bootstraps > 2
-        }, StandardTestDispatcher(testScheduler), { it() })
+        }, StandardTestDispatcher(testScheduler), { it() }, keepOff = { true })
         runtime.session("granted", true); runCurrent()
         assertEquals(1, bootstraps)
         assertTrue(endpoint.effects.isEmpty())
@@ -143,7 +143,7 @@ class LocalAdbRuntimeTest {
         var bootstraps = 0
         val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, {
             bootstraps++; endpoint.status = LocalAdbState(false, false); false
-        }, StandardTestDispatcher(testScheduler), { it() })
+        }, StandardTestDispatcher(testScheduler), { it() }, keepOff = { true })
         runtime.session("granted", true); runCurrent()
         assertEquals(1, bootstraps)
         assertEquals(listOf("arm"), endpoint.effects)
@@ -157,7 +157,7 @@ class LocalAdbRuntimeTest {
             var bootstraps = 0
             val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, {
                 bootstraps++; true
-            }, StandardTestDispatcher(testScheduler), { it() })
+            }, StandardTestDispatcher(testScheduler), { it() }, keepOff = { true })
             runtime.session("granted", true); runCurrent()
             advanceTimeBy(30_001); runCurrent()
             assertEquals(2, bootstraps)
@@ -171,7 +171,7 @@ class LocalAdbRuntimeTest {
         var bootstraps = 0
         val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, {
             preparations++; JSONObject().put("path", "prepared-asset")
-        }, { bootstraps++; false }, StandardTestDispatcher(testScheduler), { it() })
+        }, { bootstraps++; false }, StandardTestDispatcher(testScheduler), { it() }, keepOff = { true })
         runtime.session("granted", true); runCurrent()
         val answer = runtime.request("adb.prepare", JSONObject(), { true })
         assertEquals("applied", answer.outcome)
@@ -182,7 +182,7 @@ class LocalAdbRuntimeTest {
 
     @Test fun readyPreservesTheLegacyShapeUnlessBuildIdentityIsExplicitlyRequested() = runTest {
         val endpoint = Endpoint().apply { status = LocalAdbState(true, true, buildId = "0".repeat(64)) }
-        val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), { it() })
+        val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), { it() }, keepOff = { true })
         runtime.session("granted", true); runCurrent()
         val legacyKeys = setOf("ready", "managed", "recovery_hold", "security_unverified")
         for (args in listOf(JSONObject(), JSONObject().put("include_build_id", false))) {
@@ -208,7 +208,7 @@ class LocalAdbRuntimeTest {
 
     @Test fun optedInReadyReportsNoBuildWhenNoDaemonIsAvailable() = runTest {
         val endpoint = Endpoint().apply { status = null }
-        val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), { it() })
+        val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), { it() }, keepOff = { true })
         runtime.session("granted", true); runCurrent()
         val legacy = runtime.request("adb.ready", JSONObject(), { true }).result as JSONObject
         assertFalse(legacy.has("build_id"))
@@ -220,11 +220,25 @@ class LocalAdbRuntimeTest {
         assertTrue(endpoint.effects.isEmpty())
     }
 
-    @Test fun capabilityRollbackReopensInsteadOfRenewingManagedClosure() = runTest {
+    @Test fun capabilityRollbackKeepsTheOwnersKeepAdbOffLeaseAndRenewsIt() = runTest {
         val endpoint = Endpoint()
-        val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), { it() })
+        val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), { it() }, keepOff = { true })
         runtime.session("new-pa", true); runCurrent()
         assertEquals(listOf("arm"), endpoint.effects)
+        runtime.session("old-pa", false); runCurrent()
+        assertEquals("the owner chose Keep ADB off, not Panel Assistant", listOf("arm"), endpoint.effects)
+        advanceTimeBy(30_001); runCurrent()
+        assertEquals(listOf("arm", "beat"), endpoint.effects)
+        assertEquals(LocalAdbState(true, false), endpoint.status)
+    }
+
+    @Test fun capabilityRollbackWithoutKeepAdbOffReopensInsteadOfRenewing() = runTest {
+        val endpoint = Endpoint()
+        var keepOff = true
+        val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), { it() }, keepOff = { keepOff })
+        runtime.session("new-pa", true); runCurrent()
+        assertEquals(listOf("arm"), endpoint.effects)
+        keepOff = false
         runtime.session("old-pa", false); runCurrent()
         assertEquals(listOf("arm", "recover"), endpoint.effects)
         assertEquals(LocalAdbState(false, true), endpoint.status)
@@ -233,7 +247,7 @@ class LocalAdbRuntimeTest {
     @Test fun aHardenedCompatibilityRollbackKeepsHealthMonitoringWithoutGrantingMaintenance() = runTest {
         val endpoint = Endpoint()
         var bootstrap = 0
-        val runtime = LocalAdbRuntime(backgroundScope, endpoint, { true }, { JSONObject() }, { bootstrap++; false }, StandardTestDispatcher(testScheduler), { it() })
+        val runtime = LocalAdbRuntime(backgroundScope, endpoint, { true }, { JSONObject() }, { bootstrap++; false }, StandardTestDispatcher(testScheduler), { it() }, keepOff = { true })
         runtime.session("initial-old-pa", false); runCurrent()
         assertTrue(endpoint.effects.isEmpty())
         assertEquals(0, bootstrap)
@@ -251,7 +265,7 @@ class LocalAdbRuntimeTest {
     @Test fun anUnresponsiveUiStopsRenewalEvenWhileTheProcessAndSessionRemainAlive() = runTest {
         val endpoint = Endpoint()
         var uiHealthy = true
-        val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), { it() }, healthy = { uiHealthy })
+        val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), { it() }, healthy = { uiHealthy }, keepOff = { true })
         runtime.session("pa", true); runCurrent()
         assertEquals(listOf("arm"), endpoint.effects)
         uiHealthy = false
@@ -271,7 +285,7 @@ class LocalAdbRuntimeTest {
             if (bootstraps == 1) error("temporary bootstrap failure")
             endpoint.status = LocalAdbState(false, false)
             true
-        }, StandardTestDispatcher(testScheduler), { it() })
+        }, StandardTestDispatcher(testScheduler), { it() }, keepOff = { true })
         runtime.session("pa", true); runCurrent()
         endpoint.status = null
         advanceTimeBy(30_001); runCurrent()
@@ -284,7 +298,7 @@ class LocalAdbRuntimeTest {
 
     @Test fun expiredFinalAdmissionNeverExecutesOrRetriesTheScript() = runTest {
         val endpoint = Endpoint()
-        val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), { it() })
+        val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), { it() }, keepOff = { true })
         runtime.session("pa", true); runCurrent(); endpoint.effects.clear()
         var checks = 0
         val result = runtime.request("adb.shell", JSONObject().put("command", "printf hello").put("timeout_ms", 1000), admit = { ++checks == 1 })
@@ -296,7 +310,7 @@ class LocalAdbRuntimeTest {
 
     @Test fun shellPreservesNonzeroStatusAndExecutesExactlyOnce() = runTest {
         val endpoint = Endpoint()
-        val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), { it() })
+        val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), { it() }, keepOff = { true })
         runtime.session("pa", true); runCurrent(); endpoint.effects.clear()
         val result = runtime.request("adb.shell", JSONObject().put("command", "printf ok; exit 7").put("timeout_ms", 800), admit = { true })
         assertEquals("applied", result.outcome)
@@ -312,7 +326,7 @@ class LocalAdbRuntimeTest {
         var hardened = false
         var approvals = 0
         val runtime = LocalAdbRuntime(backgroundScope, endpoint, { hardened }, { JSONObject() }, { false },
-            StandardTestDispatcher(testScheduler), { it() }, authorize = { _, _, _ -> approvals++; io.panelassistant.android.http.DeferredSessionApproval("approval_denied") })
+            StandardTestDispatcher(testScheduler), { it() }, authorize = { _, _, _ -> approvals++; io.panelassistant.android.http.DeferredSessionApproval("approval_denied") }, keepOff = { true })
         runtime.session("pa", true); runCurrent(); endpoint.effects.clear()
         val answer = async(UnconfinedTestDispatcher(testScheduler)) { runtime.request(op, maintenanceArgs(op), { true }) }
         assertFalse(answer.isCompleted)
@@ -353,7 +367,7 @@ class LocalAdbRuntimeTest {
             }
         }
         val runtime = LocalAdbRuntime(scope, endpoint, { hardened }, { JSONObject() }, { false }, dispatcher, { it() },
-            authorize = { _, _, _ -> approvals++; io.panelassistant.android.http.DeferredSessionApproval("approval_denied") })
+            authorize = { _, _, _ -> approvals++; io.panelassistant.android.http.DeferredSessionApproval("approval_denied") }, keepOff = { true })
         try {
             runtime.session("pa", true)
             val initial = async { runtime.request("adb.ready", JSONObject(), { true }) }
@@ -418,7 +432,7 @@ class LocalAdbRuntimeTest {
                 io.panelassistant.android.http.awaitSessionApproval(
                     io.panelassistant.android.security.SensitiveOperation.LOCAL_ADB_MAINTENANCE,
                     payload, "Panel maintenance", broker, pending, pollMs = 1, admitted = admitted)
-            })
+            }, keepOff = { true })
         runtime.session("pa", true); runCurrent(); endpoint.effects.clear()
         val answer = async { runtime.request(op, maintenanceArgs(op), { true }) }
         runCurrent()
@@ -441,7 +455,7 @@ class LocalAdbRuntimeTest {
                 io.panelassistant.android.http.awaitSessionApproval(
                     io.panelassistant.android.security.SensitiveOperation.LOCAL_ADB_MAINTENANCE,
                     payload, "Panel maintenance", broker, pending, pollMs = 1, admitted = admitted)
-            })
+            }, keepOff = { true })
         runtime.session("pa", true); runCurrent(); endpoint.effects.clear()
         val answer = async { runtime.request("adb.shell", maintenanceArgs("adb.shell"), { true }) }
         runCurrent(); assertEquals(1, broker.pending().size)
@@ -471,7 +485,7 @@ class LocalAdbRuntimeTest {
                 io.panelassistant.android.http.awaitSessionApproval(
                     io.panelassistant.android.security.SensitiveOperation.LOCAL_ADB_MAINTENANCE,
                     payload, "Panel maintenance", broker, pending, pollMs = 1, admitted = admitted)
-            })
+            }, keepOff = { true })
         runtime.session("pa", true); runCurrent(); endpoint.effects.clear()
         requests = PanelAssistantManagementRequests(backgroundScope,
             PanelAssistantManagement.of({ error("snapshot") }, { _, _ -> null }, localAdb = runtime),
@@ -530,7 +544,7 @@ class LocalAdbRuntimeTest {
                 io.panelassistant.android.http.awaitSessionApproval(
                     io.panelassistant.android.security.SensitiveOperation.LOCAL_ADB_MAINTENANCE,
                     payload, "Panel maintenance", broker, pending, pollMs = 1, admitted = admitted)
-            })
+            }, keepOff = { true })
         val requests = PanelAssistantManagementRequests(backgroundScope,
             PanelAssistantManagement.of({ error("snapshot") }, { _, _ -> null }, localAdb = runtime),
             PanelAssistantSession(5, "pa", listOf("management", "local_adb"), "1"), { testScheduler.currentTime })
@@ -581,7 +595,7 @@ class LocalAdbRuntimeTest {
             io.panelassistant.android.http.awaitSessionApproval(
                 io.panelassistant.android.security.SensitiveOperation.LOCAL_ADB_MAINTENANCE,
                 payload, "Panel maintenance", broker, onPending, pollMs = 1, admitted = admitted)
-        })
+        }, keepOff = { true })
         runtime.session("pa", true); runCurrent(); endpoint.effects.clear()
         val answer = async {
             runtime.request("adb.shell", JSONObject().put("command", "id").put("timeout_ms", 1000), { admitted }, { pending++ })
@@ -615,7 +629,7 @@ class LocalAdbRuntimeTest {
             io.panelassistant.android.http.awaitSessionApproval(
                 io.panelassistant.android.security.SensitiveOperation.LOCAL_ADB_MAINTENANCE,
                 payload, "Panel maintenance", broker, pending, pollMs = 1, admitted = admitted)
-        })
+        }, keepOff = { true })
         runtime.session("current", true); runCurrent(); endpoint.effects.clear()
         val requests = PanelAssistantManagementRequests(backgroundScope,
             PanelAssistantManagement.of({ error("snapshot") }, { _, _ -> null }, localAdb = runtime),
@@ -674,7 +688,7 @@ class LocalAdbRuntimeTest {
         val endpoint = Endpoint()
         var approvals = 0
         val runtime = LocalAdbRuntime(backgroundScope, endpoint, { true }, { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), { it() },
-            authorize = { _, _, _ -> approvals++; io.panelassistant.android.http.DeferredSessionApproval(consume = { true }) })
+            authorize = { _, _, _ -> approvals++; io.panelassistant.android.http.DeferredSessionApproval(consume = { true }) }, keepOff = { true })
         runtime.session("pa", true); runCurrent(); endpoint.effects.clear()
         val invalid = listOf(
             JSONObject(),
@@ -710,7 +724,7 @@ class LocalAdbRuntimeTest {
         val endpoint = Endpoint()
         var approvals = 0
         val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), { it() },
-            authorize = { _, _, _ -> approvals++; io.panelassistant.android.http.DeferredSessionApproval("approval_denied") })
+            authorize = { _, _, _ -> approvals++; io.panelassistant.android.http.DeferredSessionApproval("approval_denied") }, keepOff = { true })
         runtime.session("pa", true); runCurrent(); endpoint.effects.clear()
         val reply = runtime.request("adb.cmd", commandArgs("PA_REPAIR", "1", "0"), { true })
         assertEquals("applied", reply.outcome)
@@ -724,7 +738,7 @@ class LocalAdbRuntimeTest {
 
     @Test fun aHelperRefusalCarriesItsCodeAndBusyIsARetryableFailure() = runTest {
         val endpoint = Endpoint()
-        val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), { it() })
+        val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), { it() }, keepOff = { true })
         runtime.session("pa", true); runCurrent()
         endpoint.commandReply = LocalAdbCommandReply.Refused("home-unsafe")
         val refused = runtime.request("adb.cmd", commandArgs("PA_HANDBACK", "vendor"), { true })
@@ -752,7 +766,7 @@ class LocalAdbRuntimeTest {
                 io.panelassistant.android.http.awaitSessionApproval(
                     io.panelassistant.android.security.SensitiveOperation.LOCAL_ADB_MAINTENANCE,
                     payload, "Panel maintenance", broker, pending, pollMs = 1, admitted = admitted)
-            })
+            }, keepOff = { true })
         runtime.session("pa", true); runCurrent(); endpoint.effects.clear()
         val first = async { runtime.request("adb.cmd", commandArgs("PA_REPAIR", "1", "0"), { true }) }
         runCurrent()
@@ -811,7 +825,7 @@ class LocalAdbRuntimeTest {
 
     @Test fun shellValidationIsUnchangedByTypedCommands() = runTest {
         val endpoint = Endpoint()
-        val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), { it() })
+        val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), { it() }, keepOff = { true })
         runtime.session("pa", true); runCurrent(); endpoint.effects.clear()
         listOf(
             JSONObject().put("timeout_ms", 100),

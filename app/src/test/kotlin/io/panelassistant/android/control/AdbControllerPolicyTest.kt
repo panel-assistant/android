@@ -71,20 +71,13 @@ class AdbControllerPolicyTest {
         assertEquals("unknown", networkAdbDiagnostic(persisted = false, active = null))
     }
 
-    @Test fun `diagnostics say that Panel Assistant keeps ADB off and when the owner's switch works`() {
+    @Test fun `diagnostics say what keeps ADB off and that the owner's switch opens it`() {
         // The saved intent and Android's USB debugging setting say nothing about adbd while the lease holds.
-        assertEquals("off (managed by Panel Assistant)", networkAdbDiagnostic(persisted = true, active = false, managed = true))
-        assertEquals("off (managed by Panel Assistant)", networkAdbDiagnostic(persisted = false, active = null, managed = true))
-        assertEquals(
-            "off (managed by Panel Assistant; no Home Assistant connection, the Network ADB switch works in 61 s)",
-            networkAdbDiagnostic(persisted = false, active = false, managed = true, ownerSwitchWaitMs = 60_001),
-        )
-        assertEquals(
-            "off (managed by Panel Assistant; no Home Assistant connection, so the Network ADB switch works)",
-            networkAdbDiagnostic(persisted = false, active = false, managed = true, ownerSwitchWaitMs = 0),
-        )
-        assertEquals("off", networkAdbDiagnostic(persisted = false, active = false, managed = false, ownerSwitchWaitMs = 0))
-        assertEquals("on in Android settings; ADB is stopped (managed by Panel Assistant)", usbDebuggingDiagnostic("on", managed = true))
+        assertEquals("off (Keep ADB off; the Network ADB switch opens it)", networkAdbDiagnostic(persisted = true, active = false, managed = true))
+        assertEquals("off (Keep ADB off; the Network ADB switch opens it)", networkAdbDiagnostic(persisted = false, active = null, managed = true))
+        assertEquals("off (Hardened mode)", networkAdbDiagnostic(persisted = false, active = false, managed = true, hardened = true))
+        assertEquals("off", networkAdbDiagnostic(persisted = false, active = false, managed = false, hardened = true))
+        assertEquals("on in Android settings; ADB is stopped (Keep ADB off)", usbDebuggingDiagnostic("on", managed = true))
         assertEquals("on", usbDebuggingDiagnostic("on", managed = false))
     }
 

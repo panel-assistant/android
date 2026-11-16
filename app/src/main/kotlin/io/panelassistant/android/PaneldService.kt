@@ -1399,6 +1399,7 @@ class PaneldService : Service() {
             capabilities = capabilitiesSnapshot(privilege, controllers),
             capabilityRows = diagnostic.rows,
             wifiChronic = wifiOutageChronic(wifi),
+            networkAdbExternal = !controllers.networkAdbPersisted && controllers.networkAdbActive == true,
         )
     }
 
@@ -1452,7 +1453,7 @@ class PaneldService : Service() {
             "Network ADB" to networkAdbDiagnostic(
                 controllers.networkAdbPersisted, controllers.networkAdbActive,
                 io.panelassistant.android.control.ManagedNetworkAdb.managed,
-                io.panelassistant.android.control.ManagedNetworkAdb.ownerSwitchWaitMs(),
+                config.hardenedSecurityEnabled,
             ),
             "USB debugging" to io.panelassistant.android.control.usbDebuggingDiagnostic(controls.usbDebugging.statusText()),
             "Log shipping" to logShipper.statusText(),

@@ -1308,21 +1308,6 @@
       "state": "machine-cross-checked",
       "text": "Cargando…"
     },
-    "configure.network_adb.managed": {
-      "text": "Panel Assistant gestiona ADB en este panel y lo mantiene desactivado. Al quitar el panel de Panel Assistant, ADB se vuelve a activar.",
-      "sourceHash": "1a7a2f8db70c54fc9bacab8eae1395b666d9ceb583101692b453e1d55e40ed55",
-      "state": "machine-cross-checked"
-    },
-    "configure.network_adb.managed_available": {
-      "text": "Este panel ha perdido la conexión con Home Assistant. Activar esta opción recupera el control de ADB de Panel Assistant hasta que el panel vuelva a conectarse.",
-      "sourceHash": "02aa42624aabbe764eabac336e498e416d11ac459c0a901f3df357ac6c6513ab",
-      "state": "machine-cross-checked"
-    },
-    "configure.network_adb.managed_waiting": {
-      "text": "Panel Assistant gestiona ADB en este panel y lo mantiene desactivado. El panel ha perdido la conexión con Home Assistant; este interruptor funciona tras {minutes} minutos sin ella.",
-      "sourceHash": "3629d98dc5c57aadc5d95eff248532aab6eed586ffbc512d4264538ec84f3ae9",
-      "state": "machine-cross-checked"
-    },
     "configure.oauth.browser_recommended": {
       "sourceHash": "cf970982eab16b244e4b741429787443be4627c11c694862e71bd2b3981661b5",
       "state": "machine-cross-checked",

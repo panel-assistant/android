@@ -16,4 +16,6 @@ internal class ManagementSnapshot(
     val wifiChronic: Boolean,
     /** Android may install this app's own update with a tap on the panel ([io.panelassistant.android.util.ConfirmedSelfInstaller]). */
     val confirmedSelfUpdate: Boolean = false,
+    /** See [ManagementProjection.networkAdbExternal]. */
+    val networkAdbExternal: Boolean = false,
 )

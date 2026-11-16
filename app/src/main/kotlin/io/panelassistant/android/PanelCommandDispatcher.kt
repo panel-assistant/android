@@ -12,6 +12,7 @@ import io.panelassistant.android.control.AutoBrightnessController
 import io.panelassistant.android.control.BootChimeController
 import io.panelassistant.android.control.BrightnessController
 import io.panelassistant.android.control.BuiltinDashboard
+import io.panelassistant.android.control.ControlApplyOutcome
 import io.panelassistant.android.control.CpuController
 import io.panelassistant.android.control.DeviceCredentialRebootRefusalException
 import io.panelassistant.android.control.LedCommandPolicy
@@ -19,6 +20,7 @@ import io.panelassistant.android.control.NavbarController
 import io.panelassistant.android.control.NavbarModeApplyOutcome
 import io.panelassistant.android.control.NavbarModeApplyStatus
 import io.panelassistant.android.control.NavigateController
+import io.panelassistant.android.control.openForNetworkAdbOn
 import io.panelassistant.android.control.PowerSafetyMutationPolicy
 import io.panelassistant.android.control.RelayController
 import io.panelassistant.android.control.ScreenController
@@ -702,8 +704,24 @@ internal class PanelCommandDispatcher(
         if (on && config.hardenedSecurityEnabled) {
             throw HardenedModeRefusalException("network ADB cannot be enabled while Hardened mode is active")
         }
+        // The owner's switch always works: an ON, from whatever door, switches Keep ADB off off and has the
+        // helper's lease give ADB back before the ON is applied, so no renewal closes it again.
+        if (on && !openForNetworkAdbOn(config)) {
+            requireControlApplied("network_adb", ControlApplyOutcome.FAILED) { "network adb lease release failed" }
+        }
         requireControlApplied("network_adb", adb.set(on)) { "network adb transition failed" }
         core.reconcile("network_adb")
+    }
+
+    // Keep ADB off, the owner's opt-in. The generic live-setting path has already stored the value. The lease
+    // arms (ON) or gives ADB back (OFF) now. An ON then ends a Network ADB intent this app kept: with the lease
+    // armed that only clears the saved intent, and without a session to arm it the controller closes ADB.
+    override fun handleAdbKeepOff(on: Boolean) {
+        io.panelassistant.android.control.ManagedNetworkAdb.owner?.reconcile()
+        if (on && config.networkAdbEnabled) {
+            requireControlApplied("network_adb", adb.set(false)) { "network adb transition failed" }
+            core.reconcile("network_adb")
+        }
     }
 
     /** A sensitive command's one-shot panel approval binds to the approval key of the origin that sent it;
@@ -1032,6 +1050,7 @@ internal enum class LiveSettingEffectOwner(val settingKey: String) {
     TOUCH_SOUND("touch_sound"),
     VOICE("voice_enabled"),
     NETWORK_ADB("network_adb"),
+    ADB_KEEP_OFF("adb_keep_off"),
     ZIGBEE("zigbee_router"),
     AUTO_BRIGHTNESS_MINIMUM("auto_brightness_minimum_percent"),
     AUTO_BRIGHTNESS_MAXIMUM("auto_brightness_maximum_percent"),
@@ -1126,6 +1145,7 @@ internal interface LiveSettingHandlers {
     fun handleTouchSound(on: Boolean)
     fun handleVoiceEnabled(on: Boolean)
     fun handleNetAdb(on: Boolean)
+    fun handleAdbKeepOff(on: Boolean)
     fun handleZigbee(on: Boolean)
     fun handleAutoBrightnessMaximum(percent: Int)
     fun handleAutoBrightnessMinimum(percent: Int)
@@ -1197,6 +1217,7 @@ internal fun dispatchLiveSetting(
         LiveSettingEffectOwner.TOUCH_SOUND -> handlers.handleTouchSound(on())
         LiveSettingEffectOwner.VOICE -> handlers.handleVoiceEnabled(on())
         LiveSettingEffectOwner.NETWORK_ADB -> handlers.handleNetAdb(on())
+        LiveSettingEffectOwner.ADB_KEEP_OFF -> handlers.handleAdbKeepOff(on())
         LiveSettingEffectOwner.ZIGBEE -> handlers.handleZigbee(on())
         LiveSettingEffectOwner.AUTO_BRIGHTNESS_MINIMUM -> handlers.handleAutoBrightnessMinimum(integer())
         LiveSettingEffectOwner.AUTO_BRIGHTNESS_MAXIMUM -> handlers.handleAutoBrightnessMaximum(integer())

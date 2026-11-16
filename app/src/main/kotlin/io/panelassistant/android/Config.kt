@@ -727,6 +727,14 @@ class Config private constructor(
         durableCommit { putBoolean("network_adb", on) }
     }
 
+    /** The owner's Keep ADB off choice: the helper's lease holds ADB off while it is on. Panel Assistant
+     *  never closes ADB otherwise. Turning Network ADB on switches it off (the owner's switch always works). */
+    val adbKeepOff: Boolean
+        get() = boolPref("adb_keep_off")
+    fun setAdbKeepOff(on: Boolean): Boolean = synchronized(CONFIG_LOCK) {
+        durableCommit { putBoolean("adb_keep_off", on) }
+    }
+
     // The last catalog targets (UpdateChecker.persistableTargets), kept only so a restart reports them.
     val softwareUpdateTargets: Pair<String, String> get() =
         (prefs.getString("update_target_paneld", "") ?: "") to (prefs.getString("update_target_companion", "") ?: "")

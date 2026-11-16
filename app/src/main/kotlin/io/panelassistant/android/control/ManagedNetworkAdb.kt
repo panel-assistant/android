@@ -1,34 +1,42 @@
 package io.panelassistant.android.control
 
-/** Effective ownership by the authenticated local channel; saved manual intent remains separate. */
+/**
+ * Whether the helper's lease holds ADB off on this panel. The lease runs only because the owner chose it:
+ * the Keep ADB off setting, or Hardened mode. Panel Assistant never closes ADB on its own; its work goes
+ * over its own connection. Saved manual intent (the Network ADB switch) remains separate.
+ */
 internal object ManagedNetworkAdb {
-    /** How long a panel is without its session before its owner's Network ADB switch works again. */
-    const val OWNER_SWITCH_AFTER_MS = 5 * 60_000L
-
+    /** The helper reports the lease holding ADB off. */
     @Volatile var managed = false
+    /** The helper reopened ADB for a recovery or a removal and refuses to close it again in that session. */
     @Volatile var recoveryHold = false
-    /** The lease owner's answer to the owner's own Network ADB switch; absent until a lease runtime exists. */
-    @Volatile var ownerSwitch: OwnerSwitch? = null
-    /** The hold a lease leaves once its owner has taken it back: the owner's, not Panel Assistant's. */
-    @Volatile var releasedToOwner = false
-    fun ownsRuntime(): Boolean = managed || (recoveryHold && !releasedToOwner)
+    /** That hold is one Panel Assistant asked for in its current session (a removal or a repair), not one an
+     *  owner's own Network ADB press or a Keep ADB off change left behind. Cleared by the next granted session. */
+    @Volatile var panelAssistantHold = false
+    /** The lease owner; absent until a lease runtime exists. */
+    @Volatile var owner: Owner? = null
+    /** The app leaves ADB to the helper: the lease holds it off, or Panel Assistant's recovery holds it open. */
+    fun ownsRuntime(): Boolean = managed || (recoveryHold && panelAssistantHold)
 
-    /** Milliseconds until the owner may turn Network ADB on although the lease keeps it off: 0 means now;
-     *  null means never while things stand (a session is up, Hardened mode, or nothing is managed). */
-    fun ownerSwitchWaitMs(): Long? = if (managed) ownerSwitch?.waitMs() else null
+    /** The owner's Network ADB switch opens ADB now: nothing holds it off, or only Keep ADB off does.
+     *  Hardened mode keeps it off until the owner switches to Relaxed mode. */
+    fun ownerSwitchWorks(): Boolean = !managed || owner?.hardened() != true
 
-    /** Gives the held lease back so ADB reopens; false leaves everything as it was. */
-    fun releaseToOwner(): Boolean = managed && ownerSwitch?.release() == true
+    /** Gives the lease back so ADB reopens, straight away; false leaves everything as it was. Blocks briefly on
+     *  the helper, so a caller must not hold the transition gate. */
+    fun releaseForOwner(): Boolean = !managed || (ownerSwitchWorks() && owner?.release() == true)
 
-    /** `"network_adb":{…}` for the status document and the Configure page: what holds ADB off, and when
-     *  the owner's own switch works. */
-    fun statusJson(): String {
-        val wait = ownerSwitchWaitMs()
-        return "{\"managed\":$managed,\"owner_switch_wait_s\":${wait?.let { (it + 999) / 1000 } ?: "null"}}"
-    }
+    /** `"network_adb":{…}` for the status document: whether the lease holds ADB off, and whether the owner's
+     *  own switch opens it now (0) or not at all while things stand (null, Hardened mode). */
+    fun statusJson(): String =
+        "{\"managed\":$managed,\"owner_switch_wait_s\":${if (managed && ownerSwitchWorks()) "0" else "null"}}"
 
-    interface OwnerSwitch {
-        fun waitMs(): Long?
+    interface Owner {
+        /** Hardened mode keeps the lease whatever Keep ADB off says. */
+        fun hardened(): Boolean
+        /** Ends a held lease now so ADB reopens; true once the helper no longer holds it. */
         fun release(): Boolean
+        /** Brings the lease in line with the owner's setting now rather than at the next renewal. */
+        fun reconcile()
     }
 }

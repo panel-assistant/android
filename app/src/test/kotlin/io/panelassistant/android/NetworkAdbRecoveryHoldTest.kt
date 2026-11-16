@@ -42,8 +42,7 @@ internal class NetworkAdbRecoveryHoldTest : PanelRuntimeRig() {
         })
         val runtime = LocalAdbRuntime(
             backgroundScope, endpoint, { rig.config.hardenedSecurityEnabled },
-            { JSONObject() }, { false }, StandardTestDispatcher(testScheduler),
-        )
+            { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), keepOff = { true })
         try {
             assertEquals(savedIntent, rig.config.networkAdbEnabled)
             runtime.session("compatible-panel-assistant", true)
@@ -73,13 +72,13 @@ internal class NetworkAdbRecoveryHoldTest : PanelRuntimeRig() {
             }
             assertOffPreservesCustody(rig, root, endpoint, recovery = recover)
 
-            // An accepted replacement session without local_adb retains recovery in Convenience.
-            // This models capability loss, not a transport disconnect.
+            // An accepted replacement session without local_adb keeps what the helper holds: the owner's
+            // Keep ADB off lease, or Panel Assistant's recovery. This models capability loss, not a disconnect.
             runtime.session("", false)
             runCurrent()
-            assertEquals(LocalAdbState(false, true), endpoint.state())
-            assertTrue(ManagedNetworkAdb.recoveryHold)
-            assertOffPreservesCustody(rig, root, endpoint, recovery = true)
+            assertEquals(LocalAdbState(!recover, recover), endpoint.state())
+            assertEquals(recover, ManagedNetworkAdb.recoveryHold)
+            assertOffPreservesCustody(rig, root, endpoint, recovery = recover)
 
             runtime.session("compatible-again", true)
             runCurrent()
