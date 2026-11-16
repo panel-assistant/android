@@ -222,7 +222,11 @@ class AdbController internal constructor(
     fun statusText(): String {
         val active = activeState()
         return when {
-            ManagedNetworkAdb.managed -> if (config.hardenedSecurityEnabled) "off (Hardened mode)" else "off (Keep ADB off)"
+            ManagedNetworkAdb.managed -> when {
+                config.hardenedSecurityEnabled -> "off (Hardened mode)"
+                config.adbKeepOff -> "off (Keep ADB off)"
+                else -> "off (held; the Network ADB switch opens it)"
+            }
             ManagedNetworkAdb.recoveryHold && ManagedNetworkAdb.panelAssistantHold -> "active (recovery)"
             disableMarker.isPending() -> "disabling (recovery pending)"
             config.networkAdbEnabled -> "persistent (Panel Assistant)"
@@ -452,6 +456,17 @@ internal fun openForNetworkAdbOn(config: Config): Boolean {
  */
 internal fun adbReopenedByHelper(config: Config) {
     if (!config.hardenedSecurityEnabled && !config.networkAdbEnabled) config.setNetworkAdbEnabled(true)
+}
+
+/**
+ * The settings page's door for the two ADB choices, straight before either is applied: the only place, with a
+ * Home Assistant press while it runs (PanelCommandDispatcher.handleNetAdb), where an owner's request ends the
+ * lease. False refuses the request there, so nothing is queued to end a lease later.
+ */
+internal fun liveOwnerDoor(config: Config, key: String, value: String): Boolean = when {
+    key == "network_adb" && value == "true" -> openForNetworkAdbOn(config)
+    key == "adb_keep_off" && value == "false" -> openForKeepAdbOffOff(config)
+    else -> true
 }
 
 /**

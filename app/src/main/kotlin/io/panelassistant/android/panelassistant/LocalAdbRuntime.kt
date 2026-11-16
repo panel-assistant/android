@@ -78,8 +78,8 @@ internal class LocalAdbRuntime(
     private val monotonicMs: () -> Long = { System.nanoTime() / 1_000_000 },
     // The owner's Keep ADB off setting ([create] reads it). Off, as on a panel whose owner never chose it.
     private val keepOff: () -> Boolean = { false },
-    // The helper has reopened ADB on port 5555 (a give-back, or a recovery Panel Assistant asked for): the
-    // Network ADB switch must then read on, so its OFF can close what this app's helper opened.
+    // A give-back (an owner's live press, or the one migration) has reopened ADB on port 5555: the Network ADB
+    // switch must then read on, so its OFF can close what this app's helper opened.
     private val onReopened: () -> Unit = {},
     // True at the first session after this build is installed, and never again (create() keeps it durably).
     private val migrationDue: () -> Boolean = { true },
@@ -237,15 +237,14 @@ internal class LocalAdbRuntime(
         released
     } }
 
-    /** The owner changed Keep ADB off: arm now, or give ADB back now. False only when the lease still holds
-     *  although the owner no longer wants it (the helper refused), so the caller can keep the setting true. */
-    override fun reconcile(): Boolean = kotlinx.coroutines.runBlocking { effects.withLock {
-        val (current, fresh) = RemoteDebugSecurityTransitionGate.withLock { generation.get() to nonce }
-        val settled = if (!keep()) runCatching { giveBackLocked { true } }.getOrDefault(false)
-            else { if (fresh.isNotEmpty()) runCatching { reconcileLocked(current, fresh) {} }; true }
-        runCatching { publish() }
-        settled
-    } }
+    /** The owner turned Keep ADB off on: arm now rather than at the next renewal. Never ends a lease. */
+    override fun reconcile() {
+        kotlinx.coroutines.runBlocking { effects.withLock {
+            val (current, fresh) = RemoteDebugSecurityTransitionGate.withLock { generation.get() to nonce }
+            if (fresh.isNotEmpty() && keep()) runCatching { reconcileLocked(current, fresh) {} }
+            runCatching { publish() }
+        } }
+    }
 
     private fun newNonce(): String =
         MessageDigest.getInstance("SHA-256").digest(UUID.randomUUID().toString().toByteArray()).joinToString("") { "%02x".format(it) }
@@ -334,8 +333,8 @@ internal class LocalAdbRuntime(
                                 } else {
                                     when (endpoint.recover(requestNonce, submit)) {
                                         true -> {
+                                            // Panel Assistant's own recovery (a removal) changes no owner setting.
                                             ManagedNetworkAdb.panelAssistantHold = true
-                                            runCatching(onReopened)
                                             publish(); PanelAssistantManageReply("applied", null, JSONObject().put("enabled", true))
                                         }
                                         false -> PanelAssistantManageReply("failed", "local_adb_unavailable", null)

@@ -704,31 +704,35 @@ internal class PanelCommandDispatcher(
         if (on && config.hardenedSecurityEnabled) {
             throw HardenedModeRefusalException("network ADB cannot be enabled while Hardened mode is active")
         }
-        // The owner's switch always works: an ON, from whatever door, switches Keep ADB off off and has the
-        // helper's lease give ADB back before the ON is applied, so no renewal closes it again.
-        if (on && !openForNetworkAdbOn(config)) {
+        // Only a live press ends a lease: Home Assistant's own command here (it carries its origin), the settings
+        // page at its door. A replayed, restored or imported ON reaches this handler with no origin and never asks
+        // the helper to reopen ADB; while a lease holds it stays refused (AdbController.set), so it can never undo
+        // a choice the owner made after it. Native commands are never journalled.
+        if (on && currentOrigin.get() != null && !openForNetworkAdbOn(config)) {
             requireControlApplied("network_adb", ControlApplyOutcome.FAILED) { "network adb lease release failed" }
         }
         requireControlApplied("network_adb", adb.set(on)) { "network adb transition failed" }
         core.reconcile("network_adb")
     }
 
-    // Keep ADB off, the owner's opt-in. The generic live-setting path has already stored the value; the stored
-    // value decides, since a Network ADB ON in the same request may have switched it off since. The lease arms
-    // (ON) or gives ADB back (OFF) now, synchronously; a give-back reopens port 5555 and the Network ADB switch
-    // then reads on, so its OFF closes it. A give-back the helper refuses leaves Keep ADB off on, so the setting
-    // never says off while the lease still holds (the settings page refuses that OFF at its door). An ON also ends a Network ADB intent
-    // this app kept: only the saved intent while the lease holds; without a session to arm it the controller
-    // closes ADB itself, best effort.
+    // Keep ADB off, the owner's opt-in. The generic live-setting path has already stored the value, and the
+    // stored value decides. This handler never asks the helper to reopen ADB: it is also reached by journal
+    // replay, restore and import, and a give-back run there could undo a choice the owner made since. The
+    // settings page gives the lease back at its door (liveOwnerDoor) before an OFF gets here.
+    // ON: retires a queued Network ADB ON, arms the lease now, and ends a Network ADB intent this app kept (only
+    // the saved intent while the lease holds; without a session to arm it the controller closes ADB, best effort).
+    // OFF that reaches here with the lease still holding (no door gave it back): the setting goes back on, as the
+    // panel still is; never a failure, which would be journalled and replayed.
     override fun handleAdbKeepOff(on: Boolean) {
         val managed = io.panelassistant.android.control.ManagedNetworkAdb
-        val keep = config.adbKeepOff
-        val settled = managed.owner?.reconcile() ?: true
-        // Never a failure: a failed live setting is journalled and replayed later, and a give-back replayed after
-        // the owner's next choice would reopen ADB behind it. The setting reads on again, as the panel still is.
-        if (!keep && !settled) config.setAdbKeepOff(true)
-        if (keep && config.networkAdbEnabled) {
-            if (managed.managed) config.setNetworkAdbEnabled(false) else runCatching { adb.set(false) }
+        if (config.adbKeepOff) {
+            onExternalSettingApplied("network_adb")
+            managed.owner?.reconcile()
+            if (config.networkAdbEnabled) {
+                if (managed.managed) config.setNetworkAdbEnabled(false) else runCatching { adb.set(false) }
+            }
+        } else if (managed.managed && !config.hardenedSecurityEnabled) {
+            config.setAdbKeepOff(true)
         }
         core.reconcile("network_adb")
     }

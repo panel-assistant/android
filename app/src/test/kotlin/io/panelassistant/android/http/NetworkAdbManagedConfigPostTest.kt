@@ -43,7 +43,7 @@ class NetworkAdbManagedConfigPostTest {
             if (gives) { ManagedNetworkAdb.managed = false; onRelease() }
             return gives
         }
-        override fun reconcile() = true
+        override fun reconcile() {}
     }
 
     @Test fun `a Configure ON while Keep ADB off holds ADB opens it at once with the session up`() =

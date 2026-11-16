@@ -3,6 +3,7 @@ package io.panelassistant.android
 import io.panelassistant.android.control.FakeRootShell
 import io.panelassistant.android.control.ManagedNetworkAdb
 import io.panelassistant.android.control.adbReopenedByHelper
+import io.panelassistant.android.control.liveOwnerDoor
 import io.panelassistant.android.panelassistant.LocalAdbRuntime
 import io.panelassistant.android.panelassistant.PanelAssistantCommandResult
 import io.panelassistant.android.testsupport.PanelRuntimeRig
@@ -234,13 +235,76 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
     @Test fun aRecoveryHoldEndsWithTheSessionThatAskedForIt() = panel(firmwareOpen = false) { rig, helper, runtime ->
         assertEquals("applied", runtime.request("adb.recover", JSONObject(), { true }).outcome)
         assertTrue(helper.listening)
-        assertTrue("the switch reads on while the recovery keeps ADB open", rig.config.networkAdbEnabled)
+        assertFalse("Panel Assistant's own recovery changes no owner setting", rig.config.networkAdbEnabled)
         assertTrue(ManagedNetworkAdb.ownsRuntime())
-        // Panel Assistant goes away without a removal.
+        // Panel Assistant goes away without a removal: the owner's switch works again.
         runtime.sessionEnded("panel-assistant")
         assertFalse(ManagedNetworkAdb.ownsRuntime())
-        assertEquals(PanelAssistantCommandResult.Applied, submitNative(rig, "network_adb", "off"))
-        assertFalse("the owner can close it", helper.listening)
+        assertEquals(LiveSettingRequestOutcome.APPLIED, setting(rig, "network_adb", "true"))
+        assertTrue(setting(rig, "network_adb", "false") in setOf(LiveSettingRequestOutcome.APPLIED, LiveSettingRequestOutcome.DEFERRED))
+        awaitReal("the owner can close it") { !helper.listening }
+    }
+
+    // The invariant every composition hold broke: once the owner has made a choice, nothing that runs later
+    // without an owner at a door ends the lease (reopening port 5555) or changes either ADB setting.
+    private enum class LastChoice { KEEP_OFF, KEEP_OFF_THEN_NETWORK_ON, REFUSED_NETWORK_ON, REFUSED_KEEP_OFF_OFF, REFUSED_OFF_THEN_NETWORK_OFF, QUEUED_ON_WHILE_HELD }
+    private enum class Trigger { RENEWALS, GRANTED_SESSION, UNGRANTED_SESSION, SESSION_ENDED, JOURNAL_REPLAY, RESTORE_NETWORK_ON, RESTORE_KEEP_OFF_OFF }
+
+    private suspend fun TestScope.choose(choice: LastChoice, rig: Rig, helper: AdbLeftAsThePanelHasItTest.Helper) {
+        assertEquals(LiveSettingRequestOutcome.APPLIED, setting(rig, "adb_keep_off", "true"))
+        when (choice) {
+            LastChoice.KEEP_OFF -> Unit
+            LastChoice.KEEP_OFF_THEN_NETWORK_ON -> assertEquals(LiveSettingRequestOutcome.APPLIED, setting(rig, "network_adb", "true"))
+            LastChoice.REFUSED_NETWORK_ON -> { helper.refuseRecovery = true; setting(rig, "network_adb", "true") }
+            LastChoice.REFUSED_KEEP_OFF_OFF -> { helper.refuseRecovery = true; setting(rig, "adb_keep_off", "false") }
+            LastChoice.REFUSED_OFF_THEN_NETWORK_OFF -> {
+                helper.refuseRecovery = true
+                setting(rig, "adb_keep_off", "false")
+                assertEquals(PanelAssistantCommandResult.Applied, submitNative(rig, "network_adb", "off"))
+            }
+            // An ON that reached the journal while the lease held (a restore, say), then the owner's Keep ADB off.
+            LastChoice.QUEUED_ON_WHILE_HELD -> {
+                unattended(rig, "network_adb", "true")
+                assertEquals(LiveSettingRequestOutcome.APPLIED, setting(rig, "adb_keep_off", "true"))
+            }
+        }
+        helper.refuseRecovery = false
+        runCurrent()
+    }
+
+    private suspend fun TestScope.fire(trigger: Trigger, rig: Rig, runtime: LocalAdbRuntime) {
+        when (trigger) {
+            Trigger.RENEWALS -> advanceTimeBy(5 * 60_000L)
+            Trigger.GRANTED_SESSION -> { runtime.session("again", true); runCurrent(); advanceTimeBy(35_000) }
+            Trigger.UNGRANTED_SESSION -> { runtime.session("older", false); runCurrent(); advanceTimeBy(35_000) }
+            Trigger.SESSION_ENDED -> { runtime.sessionEnded("panel-assistant"); advanceTimeBy(35_000) }
+            Trigger.JOURNAL_REPLAY -> replay(rig)
+            Trigger.RESTORE_NETWORK_ON -> unattended(rig, "network_adb", "true")
+            Trigger.RESTORE_KEEP_OFF_OFF -> unattended(rig, "adb_keep_off", "false")
+        }
+        runCurrent()
+    }
+
+    @Test fun nothingThatRunsWithoutTheOwnerEndsTheLeaseOrChangesAnAdbSetting() {
+        val broken = mutableListOf<String>()
+        for (choice in LastChoice.entries) for (trigger in Trigger.entries) {
+            panel(firmwareOpen = false) { rig, helper, runtime ->
+                choose(choice, rig, helper)
+                val before = listOf(helper.recovers, helper.listening, rig.config.adbKeepOff, rig.config.networkAdbEnabled)
+                fire(trigger, rig, runtime)
+                val after = listOf(helper.recovers, helper.listening, rig.config.adbKeepOff, rig.config.networkAdbEnabled)
+                if (before != after) broken += "$choice then $trigger: [recovers, listening, keepOff, networkAdb] $before -> $after"
+            }
+        }
+        assertEquals(emptyList<String>(), broken)
+    }
+
+    @Test fun keepAdbOffOnRetiresANetworkAdbOnQueuedWhileTheLeaseHeld() = keptOff { rig, helper, _ ->
+        unattended(rig, "network_adb", "true")
+        assertEquals("a restored ON waits while the lease holds", mapOf("network_adb" to "true"), authority.pendingSnapshot())
+        assertEquals(LiveSettingRequestOutcome.APPLIED, setting(rig, "adb_keep_off", "true"))
+        assertTrue("the owner's later Keep ADB off retires it", authority.pendingSnapshot().isEmpty())
+        assertFalse(helper.listening)
     }
 
     /** Waits in real time: the controller's settle proof sleeps on the command worker, outside test time. */
@@ -252,11 +316,24 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
         }
     }
 
+    /** The first session after install consumes the one migration, as Config.takeAdbLeaseMigration does. */
+    private var migrationDue = true
+
+    /** The panel's live-setting journal, shared by every request in one test, as the service keeps one. */
+    private lateinit var authority: LiveSettingAuthority
+
+    /** The owner's press on the settings page: its door (the production [liveOwnerDoor]), then the request. */
     private fun setting(rig: Rig, key: String, value: String): LiveSettingRequestOutcome =
-        requestLiveSetting(
-            LiveSettingAuthority(setOf(key), bootIdentity = { "test-boot" }), rig.config, { rig.commands }, key, value,
-            unlockKiosk = { true }, refreshAutoSleep = {},
-        )
+        if (!liveOwnerDoor(rig.config, key, value)) LiveSettingRequestOutcome.REJECTED else unattended(rig, key, value)
+
+    /** The same request with no owner at a door: a journal replay, a restore or an import. */
+    private fun unattended(rig: Rig, key: String, value: String): LiveSettingRequestOutcome =
+        requestLiveSetting(authority, rig.config, { rig.commands }, key, value, unlockKiosk = { true }, refreshAutoSleep = {})
+
+    /** Replays the journal as the service does at start and after a reconfigure. */
+    private fun replay(rig: Rig) = authority.replay { key, value, previous ->
+        applyLiveSetting(rig.config, rig.commands, key, value, previous) {}.initial
+    }
 
     private fun keptOff(body: suspend TestScope.(Rig, AdbLeftAsThePanelHasItTest.Helper, LocalAdbRuntime) -> Unit) = panel { rig, helper, runtime ->
         assertEquals(LiveSettingRequestOutcome.APPLIED, setting(rig, "adb_keep_off", "true"))
@@ -274,17 +351,22 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
         before: (AdbLeftAsThePanelHasItTest.Helper) -> Unit = {},
         body: suspend TestScope.(Rig, AdbLeftAsThePanelHasItTest.Helper, LocalAdbRuntime) -> Unit,
     ) = runTest {
+        migrationDue = true
         val helper = AdbLeftAsThePanelHasItTest.Helper(firmwareOpen)
         before(helper)
         val root = FakeRootShell(available = true, runResult = true, onRun = { command ->
             if (command.contains("setprop persist.adb.tcp.port 5555")) helper.listening = true
             if (command.contains("setprop persist.adb.tcp.port \"\"")) helper.listening = false
         })
-        val rig = rig(adbRoot = root, adbListening = { helper.listening }, configure = { assertTrue(it.setSecurityMode(Config.SecurityMode.RELAXED)) })
+        authority = LiveSettingAuthority(setOf("network_adb", "adb_keep_off"), bootIdentity = { "test-boot" })
+        // As the service wires it: a command that supersedes a setting retires its queued HTTP value.
+        val rig = rig(adbRoot = root, adbListening = { helper.listening }, onExternalSettingApplied = { authority.discard(it) },
+            configure = { assertTrue(it.setSecurityMode(Config.SecurityMode.RELAXED)) })
         val runtime = LocalAdbRuntime(
             backgroundScope, helper, { hardened }, { JSONObject() }, { false },
             StandardTestDispatcher(testScheduler), keepOff = { rig.config.adbKeepOff },
             onReopened = { adbReopenedByHelper(rig.config) },
+            migrationDue = { migrationDue.also { migrationDue = false } },
         )
         // Production installs the runtime as the lease owner where it is created, with the same reopen rule.
         ManagedNetworkAdb.owner = runtime

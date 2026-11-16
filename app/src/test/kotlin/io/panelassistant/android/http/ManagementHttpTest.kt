@@ -59,7 +59,7 @@ class ManagementHttpTest {
         fun owner(hardened: Boolean) = object : io.panelassistant.android.control.ManagedNetworkAdb.Owner {
             override fun hardened() = hardened
             override fun release() = false
-            override fun reconcile() = true
+            override fun reconcile() {}
         }
         PaneldServerHttpFixture().use { fixture ->
             fixture.useManagementStatus { error("Passive status read must not refresh storage") }
