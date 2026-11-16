@@ -3,13 +3,19 @@ package io.panelassistant.android.logship
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.IOException
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class LogCaptureNoiseTest {
     private fun await(check: () -> Boolean) {
         val deadline = System.nanoTime() + 5_000_000_000L
@@ -99,6 +105,58 @@ class LogCaptureNoiseTest {
             assertTrue(attempts.get() > warnings.size)
             assertEquals(1, warnings.count { !it.contains("repeated") })
             assertEquals(1, got.count { it.contains("permissive=1") })
+        } finally { sub.close(); cap.close() }
+    }
+
+    @Test fun aSourceThatNeverStartsReportsItsRetriesAsTheyDoubleAndReportsItsFinalCount() = runTest {
+        val warnings = mutableListOf<String>()
+        var attempts = 0
+        val cap = LogCapture(backgroundScope, emptyList(), { emptyList() },
+            lineStream = { attempts++; throw IOException("helper LOGCAT unavailable") },
+            restartBaseMs = 10, restartMaxMs = 10, noiseSummaryIntervalMs = 10,
+            warningLogger = warnings::add, captureContext = StandardTestDispatcher(testScheduler))
+        val sub = cap.subscribe { }
+        try {
+            advanceTimeBy(640)
+            runCurrent()
+            assertEquals(65, attempts)
+            assertEquals(
+                listOf("capture restart: helper LOGCAT unavailable") +
+                    listOf(1, 2, 4, 8, 16, 32, 64).map { "capture restart: helper LOGCAT unavailable (repeated $it times)" },
+                warnings,
+            )
+            advanceTimeBy(30)
+            runCurrent()
+            assertEquals(68, attempts)
+        } finally { sub.close(); cap.close() }
+        assertEquals("capture restart: helper LOGCAT unavailable (repeated 67 times)", warnings.last())
+        assertEquals(9, warnings.size)
+    }
+
+    @Test fun aFailureAfterRecoveryIsLoggedAtOnce() = runTest {
+        val warnings = mutableListOf<String>()
+        var attempts = 0
+        val cap = LogCapture(backgroundScope, emptyList(), { emptyList() },
+            lineStream = { emit ->
+                if (++attempts == 5) emit("11-07 00:00:00.000 123 123 I Example: streaming")
+                throw IOException("helper offline")
+            }, restartBaseMs = 10, restartMaxMs = 10, noiseSummaryIntervalMs = 10,
+            warningLogger = warnings::add, captureContext = StandardTestDispatcher(testScheduler))
+        val got = mutableListOf<String>()
+        val sub = cap.subscribe(got::add)
+        try {
+            advanceTimeBy(40)
+            runCurrent()
+            assertEquals(5, attempts)
+            assertEquals(listOf("11-07 00:00:00.000 123 123 I Example: streaming"), got)
+            assertEquals(
+                listOf("capture restart: helper offline",
+                    "capture restart: helper offline (repeated 1 times)",
+                    "capture restart: helper offline (repeated 2 times)",
+                    "capture restart: helper offline (repeated 3 times)",
+                    "capture restart: helper offline"),
+                warnings,
+            )
         } finally { sub.close(); cap.close() }
     }
 

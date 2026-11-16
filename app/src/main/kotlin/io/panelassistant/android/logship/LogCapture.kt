@@ -25,6 +25,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
+import kotlin.coroutines.CoroutineContext
 import kotlin.math.min
 
 /** One redacted native log event, retaining the device's event time and Android priority. */
@@ -82,6 +83,8 @@ class LogCapture(
     private val knownNoise: () -> Set<String> = { emptySet() },
     private val noiseSummaryIntervalMs: Long = 60_000L,
     private val warningLogger: (String) -> Unit = { Log.w(TAG, it); Unit },
+    /** Where the capture loop runs; defaults to IO for blocking log sources. */
+    private val captureContext: CoroutineContext = Dispatchers.IO,
 ) {
     init {
         require(maxViewers > 0) { "maxViewers must be positive" }
@@ -97,6 +100,7 @@ class LogCapture(
     private val noise = LogNoise(::renderRecord)
     private var restartWarning: String? = null
     private var restartRepeats = 0L
+    private var restartReported = 0L
     private var dumpFlight: DumpFlight? = null
     private var dumpProcess: Process? = null
     private val dumpLaunchGate = BoundedLaunchGate()
@@ -391,7 +395,7 @@ class LogCapture(
         val r = Run()
         run = r
         val producer = lineStream
-        r.job = scope.launch(Dispatchers.IO) {
+        r.job = scope.launch(captureContext) {
             val summaries = launch {
                 while (isActive) {
                     delay(noiseSummaryIntervalMs)
@@ -402,6 +406,7 @@ class LogCapture(
                 var failures = 0
                 while (isActive) {
                     val emittedBefore = emitted.get()
+                    var failure: String? = null
                     try {
                         val records = if (longLogcatRecords) LongLogcatRecords { emit(r, redact(it)) } else null
                         if (producer != null) {
@@ -427,10 +432,14 @@ class LogCapture(
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
-                        warnRestart(r, "capture restart: ${e.message}")
+                        failure = "capture restart: ${e.message}"
                     }
-                    // A pass that produced output was healthy; one that failed or ended silently repeats.
-                    if (emitted.get() != emittedBefore) failures = 0
+                    // Output ends the previous outage, even when the source fails again on this pass.
+                    if (emitted.get() != emittedBefore) {
+                        failures = 0
+                        restartRecovered(r)
+                    }
+                    failure?.let { warnRestart(r, it) }
                     val wait = min(restartBaseMs shl min(failures, 20), restartMaxMs)
                     failures++
                     if (isActive) delay(wait)
@@ -445,7 +454,7 @@ class LogCapture(
         run?.cancel()
         run = null
         noise.flush()
-        flushRestartWarning()
+        flushRestartWarning(final = true)
         restartWarning = null
         synchronized(ring) { ring.clear(); rawRing.clear() }
     }
@@ -526,15 +535,28 @@ class LogCapture(
     private fun warnRestart(source: Run, message: String) = synchronized(this) {
         if (closed || run !== source) return@synchronized
         if (restartWarning == message) restartRepeats++ else {
-            flushRestartWarning()
+            flushRestartWarning(final = true)
             restartWarning = message
             warningLogger(message)
         }
     }
 
-    private fun flushRestartWarning() {
-        if (restartRepeats > 0) warningLogger("$restartWarning (repeated $restartRepeats times)")
-        restartRepeats = 0
+    private fun restartRecovered(source: Run) = synchronized(this) {
+        if (closed || run !== source || restartWarning == null) return@synchronized
+        flushRestartWarning(final = true)
+        restartWarning = null
+    }
+
+    /** Report at most when the count doubles, with the final total before moving to a new outage. */
+    private fun flushRestartWarning(final: Boolean = false) {
+        if (restartRepeats > restartReported && (final || restartRepeats >= 2 * restartReported)) {
+            warningLogger("$restartWarning (repeated $restartRepeats times)")
+            restartReported = restartRepeats
+        }
+        if (final) {
+            restartRepeats = 0
+            restartReported = 0
+        }
     }
 
     private fun renderRecord(record: LogCaptureRecord): String {
