@@ -2,6 +2,7 @@ package io.panelassistant.android.control
 
 import io.panelassistant.android.util.PanelAssistantDevice
 import java.io.File
+import java.nio.file.AccessDeniedException
 import java.nio.file.Files
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -19,8 +20,10 @@ class NetworkMacsTest {
         return root
     }
 
-    private fun hardwareBlock(root: File) = JSONObject(
-        PanelAssistantDevice.hardwareJson("fw", "11", null, "0123456789abcdef", NetworkMacs(root).read()),
+    private fun hardwareBlock(root: File) = hardwareBlock(NetworkMacs(root))
+
+    private fun hardwareBlock(macs: NetworkMacs) = JSONObject(
+        PanelAssistantDevice.hardwareJson("fw", "11", null, "0123456789abcdef", macs.read()),
     )
 
     /** A Shelly Wall Display's own wlan0, the address the Shelly integration registers. */
@@ -49,6 +52,26 @@ class NetworkMacsTest {
         )
         assertEquals(emptyList<String>(), NetworkMacs(root).read())
         assertFalse(hardwareBlock(root).has("network_macs"))
+    }
+
+    @Test fun aPermissionDenialIsNotRepeatedOnLaterStatuses() {
+        var listings = 0
+        val macs = NetworkMacs(File("/sys/class/net")) { root ->
+            listings++
+            throw AccessDeniedException(root.path)
+        }
+        repeat(3) { assertFalse(hardwareBlock(macs).has("network_macs")) }
+        assertEquals(1, listings)
+    }
+
+    @Test fun aMissingInterfaceDirectoryCanRecoverAndReportLaterInterfaces() {
+        val root = File(sysfs(), "net")
+        val macs = NetworkMacs(root)
+        assertFalse(hardwareBlock(macs).has("network_macs"))
+        File(root, "wlan0").apply { mkdirs() }.resolve("address").writeText("00:1a:2b:3c:4d:5e\n")
+        assertEquals("00:1a:2b:3c:4d:5e", hardwareBlock(macs).getJSONArray("network_macs").getString(0))
+        File(root, "eth0").apply { mkdirs() }.resolve("address").writeText("00:1a:2b:3c:4d:5d\n")
+        assertEquals(2, hardwareBlock(macs).getJSONArray("network_macs").length())
     }
 
     @Test fun aPanelThatCannotListItsInterfacesSendsNone() {
