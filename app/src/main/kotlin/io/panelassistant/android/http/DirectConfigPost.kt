@@ -463,8 +463,10 @@ internal class DirectConfigPost(
                         // The owner's press of Network ADB while Keep ADB off holds ADB: every admission
                         // above has passed, so this is where the lease is given back. An ON that cannot have
                         // it is rejected before anything is queued.
-                        if (key == "network_adb" && value == "true" &&
-                            !io.panelassistant.android.control.openForNetworkAdbOn(config)
+                        if ((key == "network_adb" && value == "true" &&
+                                !io.panelassistant.android.control.openForNetworkAdbOn(config)) ||
+                            (key == "adb_keep_off" && value == "false" &&
+                                !io.panelassistant.android.control.openForKeepAdbOffOff(config))
                         ) {
                             liveRejected += key
                             return@dispatchDirectConfigLiveSettings

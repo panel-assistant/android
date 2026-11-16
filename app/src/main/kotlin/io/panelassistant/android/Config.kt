@@ -735,6 +735,13 @@ class Config private constructor(
         durableCommit { putBoolean("adb_keep_off", on) }
     }
 
+    /** True once per install: the first Panel Assistant session gives back a lease an earlier version armed by
+     *  itself. Device-local and unregistered, so a restore never repeats it. */
+    fun takeAdbLeaseMigration(): Boolean = synchronized(CONFIG_LOCK) {
+        if (prefs.getBoolean(ADB_LEASE_MIGRATION_PREF, false)) false
+        else durableCommit { putBoolean(ADB_LEASE_MIGRATION_PREF, true) }
+    }
+
 
     // The last catalog targets (UpdateChecker.persistableTargets), kept only so a restart reports them.
     val softwareUpdateTargets: Pair<String, String> get() =
@@ -1751,6 +1758,7 @@ class Config private constructor(
          * must be process-wide as well. */
         internal val CONFIG_LOCK = Any()
         internal const val SECURITY_MODE_PREF = "device_local_hardened_security"
+        internal const val ADB_LEASE_MIGRATION_PREF = "device_local_adb_lease_given_back_v1"
         /** The minted device identity. `device_local_` and unregistered: never exported, never restored. */
         internal const val DEVICE_UID_PREF = "device_local_device_uid_v1"
         private const val DEVICE_UID_BYTES = 16

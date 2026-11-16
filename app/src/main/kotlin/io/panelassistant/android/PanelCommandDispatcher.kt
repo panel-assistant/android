@@ -715,13 +715,18 @@ internal class PanelCommandDispatcher(
 
     // Keep ADB off, the owner's opt-in. The generic live-setting path has already stored the value; the stored
     // value decides, since a Network ADB ON in the same request may have switched it off since. The lease arms
-    // (ON) or gives ADB back (OFF) now; a give-back reopens port 5555 and the Network ADB switch then reads on,
-    // so its OFF closes it. An ON also ends a Network ADB intent this app kept: only the saved intent while the
-    // lease holds, and without a session to arm it the controller closes ADB itself, best effort.
+    // (ON) or gives ADB back (OFF) now, synchronously; a give-back reopens port 5555 and the Network ADB switch
+    // then reads on, so its OFF closes it. A give-back the helper refuses leaves Keep ADB off on, so the setting
+    // never says off while the lease still holds (the settings page refuses that OFF at its door). An ON also ends a Network ADB intent
+    // this app kept: only the saved intent while the lease holds; without a session to arm it the controller
+    // closes ADB itself, best effort.
     override fun handleAdbKeepOff(on: Boolean) {
         val managed = io.panelassistant.android.control.ManagedNetworkAdb
         val keep = config.adbKeepOff
-        managed.owner?.reconcile()
+        val settled = managed.owner?.reconcile() ?: true
+        // Never a failure: a failed live setting is journalled and replayed later, and a give-back replayed after
+        // the owner's next choice would reopen ADB behind it. The setting reads on again, as the panel still is.
+        if (!keep && !settled) config.setAdbKeepOff(true)
         if (keep && config.networkAdbEnabled) {
             if (managed.managed) config.setNetworkAdbEnabled(false) else runCatching { adb.set(false) }
         }

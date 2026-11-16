@@ -90,18 +90,23 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
         assertFalse(rig.config.networkAdbEnabled)
     }
 
-    @Test fun aGiveBackTheHelperRefusesLeavesTheOnUnappliedAndTheNextRenewalTriesAgain() = keptOff { rig, helper, _ ->
+    @Test fun aGiveBackTheHelperRefusesLeavesTheOnUnappliedAndNothingReopensAdbLater() = keptOff { rig, helper, runtime ->
         helper.refuseRecovery = true
         assertNotEquals(LiveSettingRequestOutcome.APPLIED, setting(rig, "network_adb", "true"))
         assertFalse(helper.listening)
         assertFalse(rig.config.networkAdbEnabled)
-        assertFalse("the owner asked for ADB, so the option stays off", rig.config.adbKeepOff)
+        assertTrue("the lease still holds, so Keep ADB off still says so", rig.config.adbKeepOff)
         helper.refuseRecovery = false
-        advanceTimeBy(31_000)
-        assertTrue("the next renewal gives the lease back instead of renewing it", helper.listening)
-        assertFalse(ManagedNetworkAdb.managed)
+        // A new session ends no lease the owner still wants.
+        runtime.session("reconnected", true)
+        runCurrent()
+        advanceTimeBy(5 * 60_000L)
+        runCurrent()
+        assertFalse("renewals only renew: nothing gives ADB back behind the owner", helper.listening)
+        assertTrue(ManagedNetworkAdb.managed)
+        assertEquals("the owner's next press works", LiveSettingRequestOutcome.APPLIED, setting(rig, "network_adb", "true"))
+        assertTrue(helper.listening)
     }
-
     @Test fun aRecoveryPanelAssistantAsksForKeepsAdbOpenAgainstKeepAdbOff() = keptOff { rig, helper, runtime ->
         assertEquals("applied", runtime.request("adb.recover", JSONObject(), { true }).outcome)
         assertTrue(helper.listening)
@@ -172,20 +177,33 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
         assertFalse(rig.config.adbKeepOff)
     }
 
-    @Test fun aGiveBackTheHelperRefusesOnKeepAdbOffOffHappensAtTheNextRenewalAndTheSwitchSaysSo() = panel(firmwareOpen = false) { rig, helper, _ ->
+    @Test fun aKeepAdbOffOffTheHelperRefusesLeavesTheOptionOnAndIsNeverRetried() = panel(firmwareOpen = false) { rig, helper, _ ->
         assertEquals(LiveSettingRequestOutcome.APPLIED, setting(rig, "adb_keep_off", "true"))
         helper.refuseRecovery = true
         setting(rig, "adb_keep_off", "false")
         assertTrue("the lease still holds: the helper refused", ManagedNetworkAdb.managed)
+        assertTrue("so the setting still says what the panel does", rig.config.adbKeepOff)
+        assertFalse(helper.listening)
+        helper.refuseRecovery = false
+        advanceTimeBy(5 * 60_000L)
+        runCurrent()
+        assertFalse("no later renewal or replay reopens it", helper.listening)
+        assertTrue(rig.config.adbKeepOff)
+        assertFalse(rig.config.networkAdbEnabled)
+    }
+
+    @Test fun anExplicitNetworkAdbOffAfterARefusedGiveBackKeepsAdbClosed() = keptOff { rig, helper, _ ->
+        helper.refuseRecovery = true
+        setting(rig, "adb_keep_off", "false")
+        assertTrue(ManagedNetworkAdb.managed)
+        assertEquals(PanelAssistantCommandResult.Applied, submitNative(rig, "network_adb", "off"))
         assertFalse(helper.listening)
         helper.refuseRecovery = false
         advanceTimeBy(31_000)
         runCurrent()
-        assertFalse(ManagedNetworkAdb.managed)
-        assertTrue(helper.listening)
-        assertTrue("the switch reads on, so the owner can close it", rig.config.networkAdbEnabled)
+        assertFalse("an explicit later OFF keeps the port closed", helper.listening)
+        assertFalse("and the switch off", rig.config.networkAdbEnabled)
     }
-
     @Test fun switchingKeepAdbOffOffGivesAdbBackOpenWhereItWasOpen() = panel(firmwareOpen = true) { rig, helper, _ ->
         assertEquals(LiveSettingRequestOutcome.APPLIED, setting(rig, "adb_keep_off", "true"))
         assertEquals(LiveSettingRequestOutcome.APPLIED, setting(rig, "adb_keep_off", "false"))

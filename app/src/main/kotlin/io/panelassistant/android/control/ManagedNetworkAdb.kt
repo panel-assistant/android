@@ -36,7 +36,8 @@ internal object ManagedNetworkAdb {
         fun hardened(): Boolean
         /** Ends a held lease now so ADB reopens; true once the helper no longer holds it. */
         fun release(): Boolean
-        /** Brings the lease in line with the owner's setting now rather than at the next renewal. */
-        fun reconcile()
+        /** Brings the lease in line with the owner's Keep ADB off now; false when a lease the owner no longer
+         *  wants still holds (the helper refused to end it). */
+        fun reconcile(): Boolean
     }
 }

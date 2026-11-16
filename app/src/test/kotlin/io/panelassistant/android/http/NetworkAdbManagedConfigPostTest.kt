@@ -43,7 +43,7 @@ class NetworkAdbManagedConfigPostTest {
             if (gives) { ManagedNetworkAdb.managed = false; onRelease() }
             return gives
         }
-        override fun reconcile() {}
+        override fun reconcile() = true
     }
 
     @Test fun `a Configure ON while Keep ADB off holds ADB opens it at once with the session up`() =
@@ -97,6 +97,38 @@ class NetworkAdbManagedConfigPostTest {
                 assertEquals("network-adb-incompatible-with-hardened-mode", JSONObject(text).getString("error"))
                 assertEquals(0, owner.releases)
                 assertTrue(applied.isEmpty())
+            }
+        }
+
+    @Test fun `a Keep ADB off OFF that cannot have the lease back is rejected, leaves the option on and nothing pending`() =
+        withFullReadServer { config, fixture ->
+            capabilities(fixture, Capabilities(appCanSu = true, networkAdb = true))
+            val authority = LiveSettingAuthority(setOf("adb_keep_off"), bootIdentity = { "test-boot" })
+            val applied = mutableListOf<String>()
+            setField(fixture.server, "applySetting", { key: String, value: String ->
+                authority.applyOrQueueOutcome(key, value, null) { _, appliedValue, _ ->
+                    applied += appliedValue
+                    LiveSettingApplyResult.APPLIED
+                }
+            })
+            setField(fixture.server, "onReconfigure", { _: Set<String> -> })
+            assertTrue(config.setAdbKeepOff(true))
+            ManagedNetworkAdb.managed = true
+            val owner = Owner(gives = false)
+            ManagedNetworkAdb.owner = owner
+            testApplication {
+                application { fixture.mount(this) }
+                val response = client.post("/api/v1/config") {
+                    header(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+                    setBody(JSONObject(mapOf("adb_keep_off" to false)).toString())
+                }
+                val text = response.bodyAsText()
+                val rejected = JSONObject(text).getJSONArray("rejected")
+                assertEquals(listOf("adb_keep_off"), (0 until rejected.length()).map(rejected::getString), text)
+                assertEquals(1, owner.releases)
+                assertTrue(config.adbKeepOff, "the option still says what the panel does")
+                assertTrue(applied.isEmpty(), "a refused OFF never reaches the handler: $applied")
+                assertTrue(authority.pendingSnapshot().isEmpty(), "nothing is left to reopen ADB later")
             }
         }
 

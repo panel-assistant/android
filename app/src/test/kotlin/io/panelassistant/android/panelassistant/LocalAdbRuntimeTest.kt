@@ -220,6 +220,25 @@ class LocalAdbRuntimeTest {
         assertTrue(endpoint.effects.isEmpty())
     }
 
+    @Test fun onlyTheFirstSessionAfterInstallGivesBackALeaseNobodyWantsAndRenewalsNeverDo() = runTest {
+        val endpoint = Endpoint().apply { status = LocalAdbState(true, false) }
+        var due = true
+        var keep = false
+        val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), { it() },
+            keepOff = { keep }, migrationDue = { due.also { due = false } })
+        runtime.session("first-after-update", true); runCurrent()
+        assertEquals("the lease an earlier version armed is given back once", listOf("recover"), endpoint.effects)
+        keep = true
+        runtime.session("keep-adb-off", true); runCurrent()
+        assertEquals(listOf("recover", "arm"), endpoint.effects)
+        // A lease left holding with nobody wanting it (Hardened mode left, say) waits for the owner to act.
+        keep = false
+        runtime.session("later", true); runCurrent()
+        advanceTimeBy(95_000); runCurrent()
+        assertEquals("no later session or renewal ends it", 1, endpoint.effects.count { it == "recover" })
+        assertEquals(LocalAdbState(true, false), endpoint.status)
+    }
+
     @Test fun capabilityRollbackKeepsTheOwnersKeepAdbOffLeaseAndRenewsIt() = runTest {
         val endpoint = Endpoint()
         val runtime = LocalAdbRuntime(backgroundScope, endpoint, { false }, { JSONObject() }, { false }, StandardTestDispatcher(testScheduler), { it() }, keepOff = { true })

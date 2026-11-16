@@ -436,8 +436,12 @@ internal fun completeHardenedNetworkAdbAdmission(
  * is refused before this, at each door. It blocks briefly on the helper and must not hold the transition gate.
  */
 internal fun openForNetworkAdbOn(config: Config): Boolean {
-    if (config.adbKeepOff && !config.setAdbKeepOff(false)) return false
-    return ManagedNetworkAdb.releaseForOwner()
+    val keptOff = config.adbKeepOff
+    if (keptOff && !config.setAdbKeepOff(false)) return false
+    if (ManagedNetworkAdb.releaseForOwner()) return true
+    // Refused: the lease still holds, so Keep ADB off goes back on and nothing ends the lease later.
+    if (keptOff) config.setAdbKeepOff(true)
+    return false
 }
 
 /**
@@ -448,6 +452,19 @@ internal fun openForNetworkAdbOn(config: Config): Boolean {
  */
 internal fun adbReopenedByHelper(config: Config) {
     if (!config.hardenedSecurityEnabled && !config.networkAdbEnabled) config.setNetworkAdbEnabled(true)
+}
+
+/**
+ * The settings page's Keep ADB off OFF, straight before it is applied: the lease gives ADB back now, or the OFF
+ * is refused there and never queued. True when nothing holds ADB off afterwards, or Hardened mode does (which
+ * the OFF does not change). Blocks briefly on the helper; must not hold the transition gate.
+ */
+internal fun openForKeepAdbOffOff(config: Config): Boolean {
+    if (!ManagedNetworkAdb.managed || !ManagedNetworkAdb.ownerSwitchWorks()) return true
+    if (!config.setAdbKeepOff(false)) return false
+    if (ManagedNetworkAdb.releaseForOwner()) return true
+    config.setAdbKeepOff(true)
+    return false
 }
 
 /** Android's USB debugging setting says nothing about adbd while the Keep ADB off lease keeps it stopped. */

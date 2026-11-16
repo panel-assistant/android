@@ -81,6 +81,8 @@ internal class LocalAdbRuntime(
     // The helper has reopened ADB on port 5555 (a give-back, or a recovery Panel Assistant asked for): the
     // Network ADB switch must then read on, so its OFF can close what this app's helper opened.
     private val onReopened: () -> Unit = {},
+    // True at the first session after this build is installed, and never again (create() keeps it durably).
+    private val migrationDue: () -> Boolean = { true },
 ) : PanelAssistantLocalAdb, ManagedNetworkAdb.Owner {
     private val generation = AtomicLong()
     private val effects = Mutex()
@@ -112,15 +114,18 @@ internal class LocalAdbRuntime(
             var leaseOperation = "state"
             try { effects.withLock {
                 if (generation.get() != current) return@withLock
+                // The first session after this build is installed gives back a lease an earlier version armed by
+                // itself, once. Later, only the owner ends a lease (Network ADB on, Keep ADB off off).
+                val migration = migrationDue()
                 if (!granted) {
                     // A session that does not grant local ADB cannot arm; a lease the owner wants kept is kept.
-                    giveBackLocked { generation.get() == current }
+                    if (migration) giveBackLocked { generation.get() == current }
                     publish()
                     return@withLock
                 }
                 val state = currentDaemon()
                 if (generation.get() == current && state != null && !keep()) {
-                    giveBackLocked { generation.get() == current }
+                    if (migration) giveBackLocked { generation.get() == current }
                     publish()
                 } else if (generation.get() == current && state != null && healthy()) {
                     leaseOperation = "arm"
@@ -163,15 +168,17 @@ internal class LocalAdbRuntime(
     }
 
     /**
-     * One step toward the owner's setting, under the effects queue: give an unwanted lease back, arm a wanted
-     * one this session may arm, renew one that holds. The helper itself refuses to arm over a hold this
-     * session's own recovery made, so a removal in progress keeps ADB open.
+     * The renewal step, under the effects queue: renew a lease that holds, or arm one the owner wants and this
+     * session may arm. It never ends a lease. A lease ends only when the owner acts (Network ADB on, Keep ADB
+     * off turned off) or once when a session starts, synchronously in each, so nothing in the background can
+     * reopen ADB after the owner's last choice. The helper itself refuses to arm over a hold this session's own
+     * recovery made, so a removal in progress keeps ADB open.
      */
     private fun reconcileLocked(current: Long, fresh: String, operation: (String) -> Unit) {
         val state = if (granted) currentDaemon() else endpoint.state()
         when {
             state == null -> leaseDiagnostics.skip("state_unavailable")
-            !keep() -> { operation("release"); giveBackLocked { generation.get() == current } }
+            !state.managed && !keep() -> Unit
             !state.managed && granted -> {
                 operation("arm")
                 endpoint.arm(fresh) { write ->
@@ -186,7 +193,7 @@ internal class LocalAdbRuntime(
             else -> {
                 operation("beat")
                 if (endpoint.beat(fresh) { write -> RemoteDebugSecurityTransitionGate.withLock {
-                    if (generation.get() == current && nonce == fresh && keep()) { write(); true } else false
+                    if (generation.get() == current && nonce == fresh) { write(); true } else false
                 } }) leaseDiagnostics.beat() else leaseDiagnostics.skip("beat_false", "beat")
             }
         }
@@ -230,15 +237,15 @@ internal class LocalAdbRuntime(
         released
     } }
 
-    /** The owner changed Keep ADB off: act on it now rather than at the next renewal. */
-    override fun reconcile() {
-        kotlinx.coroutines.runBlocking { effects.withLock {
-            val (current, fresh) = RemoteDebugSecurityTransitionGate.withLock { generation.get() to nonce }
-            if (fresh.isEmpty()) return@withLock
-            runCatching { reconcileLocked(current, fresh) {} }
-            runCatching { publish() }
-        } }
-    }
+    /** The owner changed Keep ADB off: arm now, or give ADB back now. False only when the lease still holds
+     *  although the owner no longer wants it (the helper refused), so the caller can keep the setting true. */
+    override fun reconcile(): Boolean = kotlinx.coroutines.runBlocking { effects.withLock {
+        val (current, fresh) = RemoteDebugSecurityTransitionGate.withLock { generation.get() to nonce }
+        val settled = if (!keep()) runCatching { giveBackLocked { true } }.getOrDefault(false)
+            else { if (fresh.isNotEmpty()) runCatching { reconcileLocked(current, fresh) {} }; true }
+        runCatching { publish() }
+        settled
+    } }
 
     private fun newNonce(): String =
         MessageDigest.getInstance("SHA-256").digest(UUID.randomUUID().toString().toByteArray()).joinToString("") { "%02x".format(it) }
@@ -434,7 +441,8 @@ internal class LocalAdbRuntime(
                 } == true
             }, rootKnownUnusable = { Su.rootKnownUnusable() }, daemon = daemon, leaseDiagnostics = leaseDiagnostics,
                 keepOff = { config.adbKeepOff },
-                onReopened = { io.panelassistant.android.control.adbReopenedByHelper(config) })
+                onReopened = { io.panelassistant.android.control.adbReopenedByHelper(config) },
+                migrationDue = { config.takeAdbLeaseMigration() })
                 .also { ManagedNetworkAdb.owner = it }
         }
     }
