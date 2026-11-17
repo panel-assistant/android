@@ -430,6 +430,18 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
         assertTrue(rig.adb.isPersisted())
     }
 
+    @Test fun keepAdbOffOnWithoutALeaseToArmClosesAPortTheHelperReopened() = keptOff { rig, helper, runtime ->
+        assertEquals(LiveSettingRequestOutcome.APPLIED, setting(rig, "adb_keep_off", "false"))
+        assertTrue(helper.listening)
+        assertFalse("the give-back writes no owner setting", rig.config.networkAdbEnabled)
+        assertTrue("the switch reads on: the port is this app's own", rig.adb.isPersisted())
+        // A session that cannot arm a lease, then the owner's Keep ADB off again.
+        runtime.session("older-panel-assistant", false)
+        runCurrent()
+        assertTrue(setting(rig, "adb_keep_off", "true") in setOf(LiveSettingRequestOutcome.APPLIED, LiveSettingRequestOutcome.DEFERRED))
+        awaitReal("the controller closes the port the helper reopened, and the switch reads off") { !helper.listening && !rig.adb.isPersisted() }
+    }
+
     /** Waits in real time: the controller's settle proof sleeps on the command worker, outside test time. */
     private fun awaitReal(what: String, condition: () -> Boolean) {
         val deadline = System.nanoTime() + 20_000_000_000L

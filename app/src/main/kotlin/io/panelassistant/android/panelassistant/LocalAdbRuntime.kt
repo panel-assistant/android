@@ -122,16 +122,17 @@ internal class LocalAdbRuntime(
                 // ADB off off, Relaxed mode).
                 if (!granted) {
                     // A session that does not grant local ADB cannot arm; a lease the owner wants kept is kept.
-                    if (endpoint.state() != null && migrationDue() && !keep() && ownerChoices() == 0L) {
+                    if (endpoint.state() != null && !keep() && ownerChoices() == 0L && migrationDue()) {
                         giveBackLocked { generation.get() == current && ownerChoices() == 0L }
                     }
                     publish()
                     return@withLock
                 }
                 val state = currentDaemon()
-                val migration = state != null && migrationDue()
+                // Taken only when it can run: an owner choice first leaves it for the next process.
+                val migration = state != null && ownerChoices() == 0L && migrationDue()
                 if (generation.get() == current && state != null && !keep()) {
-                    if (migration && ownerChoices() == 0L) giveBackLocked { generation.get() == current && ownerChoices() == 0L }
+                    if (migration) giveBackLocked { generation.get() == current && ownerChoices() == 0L }
                     publish()
                 } else if (generation.get() == current && state != null && healthy()) {
                     leaseOperation = "arm"

@@ -753,7 +753,9 @@ internal class PanelCommandDispatcher(
         if (config.adbKeepOff) {
             onExternalSettingApplied("network_adb")
             managed.owner?.reconcile()
-            if (config.networkAdbEnabled) {
+            // ADB this app keeps open: the owner's Network ADB intent, or a port its helper reopened. An armed
+            // lease has already closed it; without one the controller closes it.
+            if (config.networkAdbEnabled || config.adbOpenedByHelper) {
                 if (managed.managed) config.setNetworkAdbEnabled(false) else runCatching { adb.set(false) }
             }
         } else if (previousValue == "true" && managed.managed && !config.hardenedSecurityEnabled) {
