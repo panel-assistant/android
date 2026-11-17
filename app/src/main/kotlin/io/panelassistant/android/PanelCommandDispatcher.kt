@@ -738,9 +738,11 @@ internal class PanelCommandDispatcher(
     // settings page gives the lease back at its door (liveOwnerDoor) before an OFF gets here.
     // ON: retires a queued Network ADB ON, arms the lease now, and ends a Network ADB intent this app kept (only
     // the saved intent while the lease holds; without a session to arm it the controller closes ADB, best effort).
-    // OFF that reaches here with the lease still holding (no door gave it back): the setting goes back on, as the
-    // panel still is; never a failure, which would be journalled and replayed.
-    override fun handleAdbKeepOff(on: Boolean) {
+    // OFF that turned Keep ADB off off and reaches here with the lease still holding (no door gave it back): the
+    // setting goes back on, as the panel still is; never a failure, which would be journalled and replayed. An OFF
+    // that changed nothing (a restore or import carrying the value the panel has) leaves it off, whatever lease
+    // holds: a lease Keep ADB off did not choose is not the owner's choice.
+    override fun handleAdbKeepOff(on: Boolean, previousValue: String?) {
         val managed = io.panelassistant.android.control.ManagedNetworkAdb
         if (config.adbKeepOff) {
             onExternalSettingApplied("network_adb")
@@ -748,7 +750,7 @@ internal class PanelCommandDispatcher(
             if (config.networkAdbEnabled) {
                 if (managed.managed) config.setNetworkAdbEnabled(false) else runCatching { adb.set(false) }
             }
-        } else if (managed.managed && !config.hardenedSecurityEnabled) {
+        } else if (previousValue == "true" && managed.managed && !config.hardenedSecurityEnabled) {
             config.setAdbKeepOff(true)
         }
         core.reconcile("network_adb")
@@ -1175,7 +1177,7 @@ internal interface LiveSettingHandlers {
     fun handleTouchSound(on: Boolean)
     fun handleVoiceEnabled(on: Boolean)
     fun handleNetAdb(on: Boolean)
-    fun handleAdbKeepOff(on: Boolean)
+    fun handleAdbKeepOff(on: Boolean, previousValue: String? = null)
     fun handleZigbee(on: Boolean)
     fun handleAutoBrightnessMaximum(percent: Int)
     fun handleAutoBrightnessMinimum(percent: Int)
@@ -1247,7 +1249,7 @@ internal fun dispatchLiveSetting(
         LiveSettingEffectOwner.TOUCH_SOUND -> handlers.handleTouchSound(on())
         LiveSettingEffectOwner.VOICE -> handlers.handleVoiceEnabled(on())
         LiveSettingEffectOwner.NETWORK_ADB -> handlers.handleNetAdb(on())
-        LiveSettingEffectOwner.ADB_KEEP_OFF -> handlers.handleAdbKeepOff(on())
+        LiveSettingEffectOwner.ADB_KEEP_OFF -> handlers.handleAdbKeepOff(on(), previousValue)
         LiveSettingEffectOwner.ZIGBEE -> handlers.handleZigbee(on())
         LiveSettingEffectOwner.AUTO_BRIGHTNESS_MINIMUM -> handlers.handleAutoBrightnessMinimum(integer())
         LiveSettingEffectOwner.AUTO_BRIGHTNESS_MAXIMUM -> handlers.handleAutoBrightnessMaximum(integer())

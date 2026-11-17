@@ -374,6 +374,24 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
         assertFalse(helper.listening)
     }
 
+    @Test fun anImportCarryingKeepAdbOffOffNeverTurnsItOnOverALeaseNobodyChose() = panel(firmwareOpen = false, before = {
+        it.holdLeftByEarlierVersion(); it.refuseRecovery = true
+    }) { rig, _, _ ->
+        assertTrue("the migration give-back was refused, so a lease nobody chose still holds", ManagedNetworkAdb.managed)
+        assertFalse(rig.config.adbKeepOff)
+        unattended(rig, "adb_keep_off", "false")
+        assertFalse("an import saying off never turns Keep ADB off on", rig.config.adbKeepOff)
+    }
+
+    @Test fun aRefusalsRevertIsNotALaterOwnerChoice() = keptOff { rig, helper, _ ->
+        val before = Config.adbKeepOffOnEpoch.get()
+        helper.refuseRecovery = true
+        setting(rig, "adb_keep_off", "false")
+        setting(rig, "network_adb", "true")
+        assertEquals("reverts after refusals never count as the owner choosing Keep ADB off", before, Config.adbKeepOffOnEpoch.get())
+        assertTrue(rig.config.adbKeepOff)
+    }
+
     /** Waits in real time: the controller's settle proof sleeps on the command worker, outside test time. */
     private fun awaitReal(what: String, condition: () -> Boolean) {
         val deadline = System.nanoTime() + 20_000_000_000L

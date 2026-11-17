@@ -27,7 +27,7 @@ class LiveSettingHandlerBindingTest {
         override fun handleTouchSound(on: Boolean) = record("handleTouchSound", on)
         override fun handleVoiceEnabled(on: Boolean) = record("handleVoiceEnabled", on)
         override fun handleNetAdb(on: Boolean) = record("handleNetAdb", on)
-        override fun handleAdbKeepOff(on: Boolean) = record("handleAdbKeepOff", on)
+        override fun handleAdbKeepOff(on: Boolean, previousValue: String?) = record("handleAdbKeepOff", on)
         override fun handleZigbee(on: Boolean) = record("handleZigbee", on)
         override fun handleAutoBrightnessMaximum(percent: Int) = record("handleAutoBrightnessMaximum", percent)
         override fun handleAutoBrightnessMinimum(percent: Int) = record("handleAutoBrightnessMinimum", percent)
