@@ -729,6 +729,9 @@ internal class PanelCommandDispatcher(
             requireControlApplied("network_adb", ControlApplyOutcome.FAILED) { "network adb lease release failed" }
         }
         requireControlApplied("network_adb", adb.set(on)) { "network adb transition failed" }
+        // An ON that took effect retires a Keep ADB off still queued from before it, as Keep ADB off retires a
+        // queued ON: a replay of the older choice must never undo this one.
+        if (on) onExternalSettingApplied("adb_keep_off")
         core.reconcile("network_adb")
     }
 

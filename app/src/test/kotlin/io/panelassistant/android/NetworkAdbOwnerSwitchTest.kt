@@ -392,6 +392,21 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
         assertTrue(rig.config.adbKeepOff)
     }
 
+    @Test fun aKeepAdbOffQueuedBeforeALaterNetworkAdbOnNeverUndoesItOnReplay() = panel(firmwareOpen = true) { rig, helper, _ ->
+        // The owner's Keep ADB off ON reaches a draining dispatcher: stored, then deferred and journalled.
+        authority.applyOrQueueOutcome("adb_keep_off", "true", "false") { _, value, _ ->
+            assertTrue(commitHttpLiveSetting(rig.config, io.panelassistant.android.config.SettingsRegistry.spec("adb_keep_off")!!, value) {})
+            LiveSettingApplyResult.DEFERRED
+        }
+        assertEquals(mapOf("adb_keep_off" to "true"), authority.pendingSnapshot())
+        assertEquals(LiveSettingRequestOutcome.APPLIED, setting(rig, "network_adb", "true"))
+        assertTrue(authority.pendingSnapshot().isEmpty())
+        replay(rig)
+        assertTrue("the owner's later Network ADB ON stands after a replay", helper.listening)
+        assertFalse(rig.config.adbKeepOff)
+        assertTrue(rig.config.networkAdbEnabled)
+    }
+
     /** Waits in real time: the controller's settle proof sleeps on the command worker, outside test time. */
     private fun awaitReal(what: String, condition: () -> Boolean) {
         val deadline = System.nanoTime() + 20_000_000_000L
