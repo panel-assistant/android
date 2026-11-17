@@ -58,18 +58,23 @@ class AdbController internal constructor(
 
     /** ha-paneld's persist intent = the switch state. ha-paneld re-asserts adb-tcp at boot/reconnect
      *  while this is true, so it survives firmwares that drop `persist.adb.tcp.port`. */
-    fun isPersisted(): Boolean = config.networkAdbEnabled && !ManagedNetworkAdb.managed
+    fun isPersisted(): Boolean = owned() && !ManagedNetworkAdb.managed
+
+    /** ADB this app keeps open: the owner's Network ADB intent, or a port this app's helper reopened. */
+    private fun owned(): Boolean = config.networkAdbEnabled || config.adbOpenedByHelper
+
+    private fun clearOwnership(): Boolean = config.setNetworkAdbEnabled(false) && config.setAdbOpenedByHelper(false)
 
     /** Exact Hardened/Guard admission: durable OFF marker settled, ownership false, and live state
      * repeatedly proven inactive. Caller composes this under [RemoteDebugSecurityTransitionGate]. */
-    internal fun hardenedRemoteDebugOff(): Boolean = !config.networkAdbEnabled &&
+    internal fun hardenedRemoteDebugOff(): Boolean = !owned() &&
         disableMarker.isAbsentDurably() && (managedOffProof() || proveInactive())
 
     private fun managedOffProof(): Boolean = ManagedNetworkAdb.managed && managedOff()
 
     internal fun resealManagedHardened(): Boolean = RemoteDebugSecurityTransitionGate.withLock {
         if (!config.hardenedSecurityEnabled || !managedOffProof() || !CdpRelay.proveAbsent() || !disableMarker.isAbsentDurably()) false
-        else config.setNetworkAdbEnabled(false) && RemoteDebugSecurityTransitionGate.sealHardened()
+        else clearOwnership() && RemoteDebugSecurityTransitionGate.sealHardened()
     }
 
     /** App-readable positive observations remain authoritative; unknown reads use one fixed helper
@@ -162,16 +167,16 @@ class AdbController internal constructor(
         RemoteDebugSecurityTransitionGate.mutate {
             closeWebViewDebugging()
             if (managedOffProof()) {
-                if (!config.setNetworkAdbEnabled(false) || !disableMarker.clear() || !disableMarker.isAbsentDurably()) return@mutate HardenedNetworkAdbAdmission.DISABLE_FAILED
+                if (!clearOwnership() || !disableMarker.clear() || !disableMarker.isAbsentDurably()) return@mutate HardenedNetworkAdbAdmission.DISABLE_FAILED
                 return@mutate if (commit()) HardenedNetworkAdbAdmission.APPLIED else HardenedNetworkAdbAdmission.COMMIT_FAILED
             }
-            val disableRequired = config.networkAdbEnabled || disableMarker.isPending()
+            val disableRequired = owned() || disableMarker.isPending()
             completeHardenedNetworkAdbAdmission(
                 disableRequired = disableRequired,
                 finishDisable = ::completeDisableTransition,
                 proveInactive = ::proveInactive,
                 activeReadback = ::activeState,
-                ownershipEnabled = { config.networkAdbEnabled },
+                ownershipEnabled = ::owned,
                 disableAbsentDurably = disableMarker::isAbsentDurably,
                 commitHardened = commit,
             )
@@ -197,13 +202,13 @@ class AdbController internal constructor(
     }
 
     private fun completeDisableTransition(): Boolean = completeNetworkAdbDisableTransition(
-        owned = { config.networkAdbEnabled },
+        owned = ::owned,
         rootAvailable = ::available,
         disablePending = disableMarker::isPending,
         armDisable = disableMarker::arm,
         teardown = { root.run(networkAdbDisableCommand()) },
         inactiveReadback = ::proveInactive,
-        clearOwnership = { config.setNetworkAdbEnabled(false) },
+        clearOwnership = ::clearOwnership,
         clearDisable = disableMarker::clear,
     )
 
@@ -230,6 +235,7 @@ class AdbController internal constructor(
             ManagedNetworkAdb.recoveryHold && ManagedNetworkAdb.panelAssistantHold -> "active (recovery)"
             disableMarker.isPending() -> "disabling (recovery pending)"
             config.networkAdbEnabled -> "persistent (Panel Assistant)"
+            config.adbOpenedByHelper -> "open (Panel Assistant's helper reopened it)"
             active == true -> "active (external — not Panel Assistant)"
             active == null -> "unknown"
             else -> "off"
@@ -448,14 +454,11 @@ internal fun openForNetworkAdbOn(config: Config): Boolean {
     return false
 }
 
-/**
- * The root helper has reopened ADB on port 5555 (a lease given back, or a recovery Panel Assistant asked for),
- * and the lease it ended had already made that port persist across restarts. The Network ADB switch then reads
- * on, which is what the panel now does, and its OFF closes what this app's helper opened: a switch reading off
- * over an open port could never close it.
- */
-internal fun adbReopenedByHelper(config: Config) {
-    if (!config.hardenedSecurityEnabled && !config.networkAdbEnabled) config.setNetworkAdbEnabled(true)
+/** Set just before this app asks its root helper to reopen ADB, under the same gate, so an owner's OFF that runs
+ *  after the reopen finds the port this app's own and closes it; cleared when that reopen failed or a lease has
+ *  closed ADB again. Hardened mode never reopens ADB. */
+internal fun adbOpenedByHelper(config: Config, open: Boolean) {
+    if (!open || !config.hardenedSecurityEnabled) config.setAdbOpenedByHelper(open)
 }
 
 /**

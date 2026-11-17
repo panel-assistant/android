@@ -122,6 +122,8 @@ internal class AdbLeftAsThePanelHasItTest : PanelRuntimeRig() {
         var recovers = 0
             private set
         var refuseRecovery = false
+        /** Runs after the reopen was submitted and before its reply returns. */
+        var afterRecoverSubmit: () -> Unit = {}
         fun holdLeftByEarlierVersion() { managed = true; listening = false; nonce = "earlier-version" }
         override fun state() = LocalAdbState(managed, hold)
         override fun arm(nonce: String): Boolean {
@@ -142,6 +144,7 @@ internal class AdbLeftAsThePanelHasItTest : PanelRuntimeRig() {
                 recovers++
                 if (!refuseRecovery) { this.nonce = nonce; hold = true; managed = false; listening = true }
             }) return null
+            afterRecoverSubmit()
             return !refuseRecovery
         }
         override fun shell(command: ByteArray, timeoutMs: Int, submit: (() -> Unit) -> Boolean): JSONObject? =

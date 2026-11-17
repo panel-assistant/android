@@ -709,6 +709,8 @@ internal class PanelCommandDispatcher(
 
     // Persistent network adb (switch). Restarts adbd to apply; that only affects adb, not the Panel Assistant session.
     override fun handleNetAdb(on: Boolean) {
+        // Any Network ADB request is an owner ADB choice: the one migration never runs after one.
+        Config.adbOwnerChoiceEpoch.incrementAndGet()
         if (on && config.hardenedSecurityEnabled) {
             throw HardenedModeRefusalException("network ADB cannot be enabled while Hardened mode is active")
         }
@@ -746,6 +748,7 @@ internal class PanelCommandDispatcher(
     // that changed nothing (a restore or import carrying the value the panel has) leaves it off, whatever lease
     // holds: a lease Keep ADB off did not choose is not the owner's choice.
     override fun handleAdbKeepOff(on: Boolean, previousValue: String?) {
+        Config.adbOwnerChoiceEpoch.incrementAndGet()
         val managed = io.panelassistant.android.control.ManagedNetworkAdb
         if (config.adbKeepOff) {
             onExternalSettingApplied("network_adb")

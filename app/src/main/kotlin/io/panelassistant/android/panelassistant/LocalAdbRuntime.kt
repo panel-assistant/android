@@ -78,9 +78,12 @@ internal class LocalAdbRuntime(
     private val monotonicMs: () -> Long = { System.nanoTime() / 1_000_000 },
     // The owner's Keep ADB off setting ([create] reads it). Off, as on a panel whose owner never chose it.
     private val keepOff: () -> Boolean = { false },
-    // A give-back (an owner's live press, or the one migration) has reopened ADB on port 5555: the Network ADB
-    // switch must then read on, so its OFF can close what this app's helper opened.
-    private val onReopened: () -> Unit = {},
+    // Whether ADB is open because this app's helper reopened it: true just before the reopen is asked for (inside
+    // the same gate), false when that reopen failed or a lease has closed ADB again. The Network ADB switch reads
+    // on while it is true, and its OFF closes the port. Never an owner setting.
+    private val helperOpened: (Boolean) -> Unit = {},
+    // ADB choices the owner has stored in this process: the one migration never runs after one.
+    private val ownerChoices: () -> Long = { 0L },
     // True at the first session after this build is installed, and never again (create() keeps it durably).
     private val migrationDue: () -> Boolean = { true },
 ) : PanelAssistantLocalAdb, ManagedNetworkAdb.Owner {
@@ -119,14 +122,16 @@ internal class LocalAdbRuntime(
                 // ADB off off, Relaxed mode).
                 if (!granted) {
                     // A session that does not grant local ADB cannot arm; a lease the owner wants kept is kept.
-                    if (endpoint.state() != null && migrationDue() && !keep()) giveBackLocked { generation.get() == current }
+                    if (endpoint.state() != null && migrationDue() && !keep() && ownerChoices() == 0L) {
+                        giveBackLocked { generation.get() == current && ownerChoices() == 0L }
+                    }
                     publish()
                     return@withLock
                 }
                 val state = currentDaemon()
                 val migration = state != null && migrationDue()
                 if (generation.get() == current && state != null && !keep()) {
-                    if (migration) giveBackLocked { generation.get() == current }
+                    if (migration && ownerChoices() == 0L) giveBackLocked { generation.get() == current && ownerChoices() == 0L }
                     publish()
                 } else if (generation.get() == current && state != null && healthy()) {
                     leaseOperation = "arm"
@@ -134,7 +139,7 @@ internal class LocalAdbRuntime(
                         RemoteDebugSecurityTransitionGate.withLock {
                             generation.get() == current && keep() && transition { write(); true }
                         }
-                    }.also { if (it) leaseDiagnostics.arm() else leaseDiagnostics.skip("arm_false", "arm") }
+                    }.also { if (it) { leaseDiagnostics.arm(); runCatching { helperOpened(false) } } else leaseDiagnostics.skip("arm_false", "arm") }
                     leaseOperation = "publish"
                     publish()
                     onClosed()
@@ -186,7 +191,7 @@ internal class LocalAdbRuntime(
                     RemoteDebugSecurityTransitionGate.withLock {
                         generation.get() == current && keep() && transition { write(); true }
                     }
-                }.also { if (it) leaseDiagnostics.arm() else leaseDiagnostics.skip("arm_false", "arm") }
+                }.also { if (it) { leaseDiagnostics.arm(); runCatching { helperOpened(false) } } else leaseDiagnostics.skip("arm_false", "arm") }
                 operation("publish")
                 publish()
                 onClosed()
@@ -211,15 +216,12 @@ internal class LocalAdbRuntime(
         if (!state.managed) return true
         val answer = endpoint.recover(newNonce()) { write ->
             RemoteDebugSecurityTransitionGate.withLock {
-                stillCurrent() && !keep() && transition { write(); true }
+                stillCurrent() && !keep() && transition { helperOpened(true); write(); true }
             }
         }
         val after = runCatching { endpoint.state() }.getOrNull()
         val reopened = if (after != null) !after.managed else answer == true
-        if (reopened) {
-            ManagedNetworkAdb.panelAssistantHold = false
-            runCatching(onReopened)
-        }
+        if (reopened) ManagedNetworkAdb.panelAssistantHold = false else runCatching { helperOpened(false) }
         return reopened
     }
 
@@ -311,7 +313,7 @@ internal class LocalAdbRuntime(
                                             refusal = "approval_timeout"
                                             false
                                         }
-                                        op == "adb.recover" -> transition { write(); true }
+                                        op == "adb.recover" -> transition { helperOpened(true); write(); true }
                                         else -> { write(); true }
                                     }
                                 }
@@ -338,7 +340,10 @@ internal class LocalAdbRuntime(
                                             ManagedNetworkAdb.panelAssistantHold = true
                                             publish(); PanelAssistantManageReply("applied", null, JSONObject().put("enabled", true))
                                         }
-                                        false -> PanelAssistantManageReply("failed", "local_adb_unavailable", null)
+                                        false -> {
+                                            runCatching { helperOpened(false) }
+                                            PanelAssistantManageReply("failed", "local_adb_unavailable", null)
+                                        }
                                         null -> if (needsApproval) null else refused(refusal)
                                     }
                                 }
@@ -441,7 +446,8 @@ internal class LocalAdbRuntime(
                 } == true
             }, rootKnownUnusable = { Su.rootKnownUnusable() }, daemon = daemon, leaseDiagnostics = leaseDiagnostics,
                 keepOff = { config.adbKeepOff },
-                onReopened = { io.panelassistant.android.control.adbReopenedByHelper(config) },
+                helperOpened = { open -> io.panelassistant.android.control.adbOpenedByHelper(config, open) },
+                ownerChoices = { Config.adbOwnerChoiceEpoch.get() },
                 migrationDue = { config.takeAdbLeaseMigration() })
                 .also { ManagedNetworkAdb.owner = it }
         }

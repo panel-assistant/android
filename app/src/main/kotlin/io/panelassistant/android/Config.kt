@@ -727,6 +727,15 @@ class Config private constructor(
         durableCommit { putBoolean("network_adb", on) }
     }
 
+    /** This app's root helper reopened ADB on port 5555 (a lease given back, or a recovery Panel Assistant asked
+     *  for): ADB is open because of this app, so the Network ADB switch reads on and its OFF closes it. This is
+     *  ownership, never the owner's setting, so no helper reply can overwrite a choice the owner made since.
+     *  Device-local and unregistered. */
+    val adbOpenedByHelper: Boolean get() = prefs.getBoolean(ADB_OPENED_BY_HELPER_PREF, false)
+    fun setAdbOpenedByHelper(open: Boolean): Boolean = synchronized(CONFIG_LOCK) {
+        if (adbOpenedByHelper == open) true else durableCommit { putBoolean(ADB_OPENED_BY_HELPER_PREF, open) }
+    }
+
     /** The owner's Keep ADB off choice: the helper's lease holds ADB off while it is on. Panel Assistant
      *  never closes ADB otherwise. Turning Network ADB on switches it off (the owner's switch always works). */
     val adbKeepOff: Boolean
@@ -1764,6 +1773,10 @@ class Config private constructor(
         /** Counts every owner store of Keep ADB off on (never a refusal's revert), process-wide: a Home Assistant Network ADB ON admitted before
          *  the latest one loses to it (PanelCommandDispatcher.handleNetAdb). */
         internal val adbKeepOffOnEpoch = java.util.concurrent.atomic.AtomicLong()
+        /** Counts every Network ADB or Keep ADB off request this process has handled (PanelCommandDispatcher): the one
+         *  migration never runs after one. */
+        internal val adbOwnerChoiceEpoch = java.util.concurrent.atomic.AtomicLong()
+        internal const val ADB_OPENED_BY_HELPER_PREF = "device_local_adb_opened_by_helper"
         /** The minted device identity. `device_local_` and unregistered: never exported, never restored. */
         internal const val DEVICE_UID_PREF = "device_local_device_uid_v1"
         private const val DEVICE_UID_BYTES = 16
