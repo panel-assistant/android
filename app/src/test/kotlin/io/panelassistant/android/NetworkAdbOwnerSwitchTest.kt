@@ -8,6 +8,7 @@ import io.panelassistant.android.panelassistant.LocalAdbRuntime
 import io.panelassistant.android.panelassistant.PanelAssistantCommandResult
 import io.panelassistant.android.testsupport.PanelRuntimeRig
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -25,6 +26,16 @@ import org.junit.Test
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
+    @Test fun anOwnersOffDuringALiveKeepOffReleaseReplyClosesAdb() = keptOff { rig, helper, _ ->
+        helper.afterRecoverSubmit = {
+            assertEquals(PanelAssistantCommandResult.Applied, submitNative(rig, "network_adb", "off"))
+            assertFalse(rig.config.networkAdbEnabled)
+        }
+        assertEquals(LiveSettingRequestOutcome.APPLIED, setting(rig, "adb_keep_off", "false"))
+        assertFalse("the later Network ADB OFF leaves the listener closed", helper.listening)
+        assertFalse("the later Network ADB OFF leaves the switch off", rig.adb.isPersisted())
+    }
+
     @Test fun anOwnersOffDuringTheMigrationReplyStaysOffAndClosesAdb() = panel(session = false) { rig, helper, runtime ->
         helper.holdLeftByEarlierVersion()
         // The owner turns Network ADB off from Home Assistant after the helper reopened ADB, before its reply lands.
@@ -442,6 +453,128 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
         awaitReal("the controller closes the port the helper reopened, and the switch reads off") { !helper.listening && !rig.adb.isPersisted() }
     }
 
+    // An owner's press made while the root helper is answering an earlier lease request ends exactly as the same
+    // press made straight after that request: every lease request the app makes, crossed with every owner press,
+    // with the helper acting on the request as it is submitted and as it replies.
+    private enum class Request(val helperRequest: String, val onCommandWorker: Boolean = false) {
+        MIGRATION_GIVE_BACK("recover"),
+        SESSION_ARM("arm"),
+        RENEWAL_ARM("arm"),
+        RENEWAL("beat"),
+        KEEP_ADB_OFF_OFF_GIVE_BACK("recover"),
+        PAGE_ON_GIVE_BACK("recover"),
+        HOME_ASSISTANT_ON_GIVE_BACK("recover", onCommandWorker = true),
+        KEEP_ADB_OFF_ON_ARM("arm", onCommandWorker = true),
+        PANEL_ASSISTANT_RECOVERY("recover"),
+    }
+
+    /** [firstTurnOnCommandWorker]: the press reaches the lease's queue first from the command worker (a Home
+     *  Assistant command, or a setting's handler), not from the settings page's own door. */
+    private enum class Press(val key: String, val value: String, val homeAssistant: Boolean, val firstTurnOnCommandWorker: Boolean) {
+        HOME_ASSISTANT_ON("network_adb", "true", true, true),
+        HOME_ASSISTANT_OFF("network_adb", "false", true, true),
+        PAGE_ON("network_adb", "true", false, false),
+        PAGE_OFF("network_adb", "false", false, true),
+        KEEP_ADB_OFF_ON("adb_keep_off", "true", false, true),
+        KEEP_ADB_OFF_OFF("adb_keep_off", "false", false, false),
+    }
+
+    private data class Ending(val answer: String, val listening: Boolean, val leaseHolds: Boolean, val switchReadsOn: Boolean, val networkAdb: Boolean, val keepAdbOff: Boolean, val queued: Map<String, String>)
+
+    @Test fun aPressDuringAnyHelperRequestEndsAsTheSamePressStraightAfterIt() {
+        val differ = mutableListOf<String>()
+        val notDuring = mutableListOf<String>()
+        for (request in Request.entries) for (press in Press.entries) {
+            val after = ending(request, press, atReply = false, during = false)
+            for (atReply in listOf(false, true)) {
+                var waited = false
+                val during = ending(request, press, atReply, during = true) { waited = it }
+                val case = "$request x $press, the helper acting at ${if (atReply) "its reply" else "submission"}"
+                if (during != after) differ += "$case: straight after $after; during $during"
+                if (waitsOnTheLeaseQueue(request, press) && !waited) notDuring += case
+            }
+        }
+        assertEquals(emptyList<String>(), differ)
+        assertEquals("each press reached the lease's queue while the request was in flight", emptyList<String>(), notDuring)
+    }
+
+    /** The command worker runs one command at a time, so a press that first reaches the lease's queue from it,
+     *  during a request that runs on it, waits in the command queue instead: also straight after the request. */
+    private fun waitsOnTheLeaseQueue(request: Request, press: Press) = !(request.onCommandWorker && press.firstTurnOnCommandWorker)
+
+    private fun ending(request: Request, press: Press, atReply: Boolean, during: Boolean, waited: (Boolean) -> Unit = {}): Ending {
+        lateinit var ending: Ending
+        panel(
+            session = request != Request.MIGRATION_GIVE_BACK && request != Request.SESSION_ARM,
+            before = { if (request == Request.MIGRATION_GIVE_BACK) it.holdLeftByEarlierVersion() },
+            settlesInstantly = true,
+        ) { rig, helper, runtime ->
+            when (request) {
+                Request.MIGRATION_GIVE_BACK, Request.KEEP_ADB_OFF_ON_ARM -> Unit
+                // Keep ADB off chosen before Panel Assistant's session: the session arms the lease.
+                Request.SESSION_ARM -> assertEquals(LiveSettingRequestOutcome.APPLIED, setting(rig, "adb_keep_off", "true"))
+                else -> {
+                    assertEquals(LiveSettingRequestOutcome.APPLIED, setting(rig, "adb_keep_off", "true"))
+                    assertTrue(ManagedNetworkAdb.managed)
+                }
+            }
+            if (request == Request.RENEWAL_ARM) helper.lapse()
+            helper.actsAtReply = atReply
+            var pressed: java.util.concurrent.CompletableFuture<String>? = null
+            if (during) {
+                var armed = true
+                helper.duringRequest = { name ->
+                    if (armed && name == request.helperRequest) {
+                        armed = false
+                        val before = runtime.pressesWaiting
+                        val answer = press(rig, press).also { pressed = it }
+                        if (waitsOnTheLeaseQueue(request, press)) {
+                            val deadline = System.nanoTime() + 10_000_000_000L
+                            while (runtime.pressesWaiting == before && !answer.isDone && System.nanoTime() < deadline) Thread.sleep(2)
+                            waited(runtime.pressesWaiting > before)
+                        }
+                    }
+                }
+            }
+            when (request) {
+                Request.MIGRATION_GIVE_BACK -> { runtime.session("migrate", true); runCurrent() }
+                Request.SESSION_ARM -> { runtime.session("arm", true); runCurrent() }
+                Request.RENEWAL_ARM, Request.RENEWAL -> { advanceTimeBy(30_000); runCurrent() }
+                Request.KEEP_ADB_OFF_OFF_GIVE_BACK -> setting(rig, "adb_keep_off", "false")
+                Request.PAGE_ON_GIVE_BACK -> setting(rig, "network_adb", "true")
+                Request.HOME_ASSISTANT_ON_GIVE_BACK -> submitNative(rig, "network_adb", "on")
+                Request.KEEP_ADB_OFF_ON_ARM -> setting(rig, "adb_keep_off", "true")
+                Request.PANEL_ASSISTANT_RECOVERY -> {
+                    val reply = async { runtime.request("adb.recover", JSONObject(), { true }) }
+                    runCurrent()
+                    assertEquals("applied", reply.await().outcome)
+                }
+            }
+            helper.duringRequest = {}
+            val answer = if (during) requireNotNull(pressed) { "$request reached the helper" }.get(20, java.util.concurrent.TimeUnit.SECONDS)
+                else press(rig, press).get(20, java.util.concurrent.TimeUnit.SECONDS)
+            runCurrent()
+            advanceTimeBy(65_000)
+            runCurrent()
+            ending = Ending(answer, helper.listening, ManagedNetworkAdb.managed, rig.adb.isPersisted(), rig.config.networkAdbEnabled, rig.config.adbKeepOff, authority.pendingSnapshot())
+        }
+        return ending
+    }
+
+    /** The owner's press from Home Assistant (a native command) or the settings page (on a thread of its own). */
+    private fun press(rig: Rig, press: Press): java.util.concurrent.CompletableFuture<String> {
+        val answer = java.util.concurrent.CompletableFuture<String>()
+        if (press.homeAssistant) {
+            rig.commands.submit(
+                io.panelassistant.android.panelassistant.PanelAssistantCommand(press.key, nativeValue(press.key, if (press.value == "true") "on" else "off"), admit = { null }),
+                io.panelassistant.android.CommandOrigin.panelAssistant(),
+            ) { answer.complete(it.toString()) }
+        } else {
+            Thread { answer.complete(runCatching { setting(rig, press.key, press.value).name }.getOrElse { "threw ${it.javaClass.simpleName}" }) }.start()
+        }
+        return answer
+    }
+
     /** Waits in real time: the controller's settle proof sleeps on the command worker, outside test time. */
     private fun awaitReal(what: String, condition: () -> Boolean) {
         val deadline = System.nanoTime() + 20_000_000_000L
@@ -485,6 +618,7 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
         firmwareOpen: Boolean = true,
         session: Boolean = true,
         before: (AdbLeftAsThePanelHasItTest.Helper) -> Unit = {},
+        settlesInstantly: Boolean = false,
         body: suspend TestScope.(Rig, AdbLeftAsThePanelHasItTest.Helper, LocalAdbRuntime) -> Unit,
     ) = runTest {
         migrationDue = true
@@ -500,7 +634,7 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
         lastRoot = root
         authority = LiveSettingAuthority(setOf("network_adb", "adb_keep_off"), bootIdentity = { "test-boot" })
         // As the service wires it: a command that supersedes a setting retires its queued HTTP value.
-        val rig = rig(adbRoot = root, adbListening = { helper.listening }, onExternalSettingApplied = { authority.discard(it) },
+        val rig = rig(adbRoot = root, adbListening = { helper.listening }, adbSettlesInstantly = settlesInstantly, onExternalSettingApplied = { authority.discard(it) },
             configure = { assertTrue(it.setSecurityMode(if (hardened) Config.SecurityMode.HARDENED else Config.SecurityMode.RELAXED)) })
         val runtime = LocalAdbRuntime(
             backgroundScope, helper, { rig.config.hardenedSecurityEnabled }, { JSONObject() }, { false },

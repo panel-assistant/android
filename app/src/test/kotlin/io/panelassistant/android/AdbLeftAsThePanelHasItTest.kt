@@ -124,28 +124,53 @@ internal class AdbLeftAsThePanelHasItTest : PanelRuntimeRig() {
         var refuseRecovery = false
         /** Runs after the reopen was submitted and before its reply returns. */
         var afterRecoverSubmit: () -> Unit = {}
+        /** Runs while any lease request (arm, beat or recover) is in flight: after it was submitted, before its
+         *  reply returns. */
+        var duringRequest: (String) -> Unit = {}
+        /** The helper acts on a request only as it replies, after [duringRequest], instead of as it is submitted. */
+        var actsAtReply = false
         fun holdLeftByEarlierVersion() { managed = true; listening = false; nonce = "earlier-version" }
+        /** The helper's own five-minute lapse: it reopens ADB and holds nothing. */
+        fun lapse() { managed = false; hold = false; listening = true }
         override fun state() = LocalAdbState(managed, hold)
-        override fun arm(nonce: String): Boolean {
-            arms++
+        override fun arm(nonce: String): Boolean { arms++; return armNow(nonce) }
+        override fun arm(nonce: String, submit: (() -> Unit) -> Boolean): Boolean =
+            request("arm", submit, { arms++ }) { armNow(nonce) }
+        private fun armNow(nonce: String): Boolean {
             if (nonce != this.nonce) { this.nonce = nonce; hold = false }
             if (hold) return false
             managed = true; listening = false
             return true
         }
-        override fun beat(nonce: String): Boolean {
-            beats++
+        override fun beat(nonce: String): Boolean { beats++; return beatNow(nonce) }
+        override fun beat(nonce: String, submit: (() -> Unit) -> Boolean): Boolean =
+            request("beat", submit, { beats++ }) { beatNow(nonce) }
+        private fun beatNow(nonce: String): Boolean {
             if (!managed || hold || nonce != this.nonce) return false
             listening = false
             return true
         }
         override fun recover(nonce: String, submit: (() -> Unit) -> Boolean): Boolean? {
+            var answer = false
             if (!submit {
                 recovers++
-                if (!refuseRecovery) { this.nonce = nonce; hold = true; managed = false; listening = true }
+                if (!actsAtReply) answer = recoverNow(nonce)
             }) return null
             afterRecoverSubmit()
+            duringRequest("recover")
+            if (actsAtReply) answer = recoverNow(nonce)
+            return answer
+        }
+        private fun recoverNow(nonce: String): Boolean {
+            if (!refuseRecovery) { this.nonce = nonce; hold = true; managed = false; listening = true }
             return !refuseRecovery
+        }
+        private fun request(name: String, submit: (() -> Unit) -> Boolean, count: () -> Unit, act: () -> Boolean): Boolean {
+            var answer = false
+            if (!submit { count(); if (!actsAtReply) answer = act() }) return false
+            duringRequest(name)
+            if (actsAtReply) answer = act()
+            return answer
         }
         override fun shell(command: ByteArray, timeoutMs: Int, submit: (() -> Unit) -> Boolean): JSONObject? =
             error("this test runs no maintenance shell")

@@ -44,6 +44,7 @@ class NetworkAdbManagedConfigPostTest {
             return gives
         }
         override fun reconcile() {}
+        override fun <T> turn(waiting: T, press: () -> T): T = press()
     }
 
     @Test fun `a Configure ON while Keep ADB off holds ADB opens it at once with the session up`() =

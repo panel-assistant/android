@@ -86,9 +86,18 @@ internal class LocalAdbRuntime(
     private val ownerChoices: () -> Long = { 0L },
     // True at the first session after this build is installed, and never again (create() keeps it durably).
     private val migrationDue: () -> Boolean = { true },
+    // How long an owner's press made while the helper is answering waits for its own result.
+    private val pressWaitMs: Long = 5_000L,
 ) : PanelAssistantLocalAdb, ManagedNetworkAdb.Owner {
     private val generation = AtomicLong()
+    // One queue for everything that changes ADB: the lease's own requests and the owner's presses. Nothing decides
+    // from the published state while a helper request it would race is in flight.
     private val effects = Mutex()
+    /** Owner presses made while a helper request held [effects], in the order they were made. */
+    private val waitingPresses = java.util.concurrent.ConcurrentLinkedQueue<() -> Unit>()
+    @Volatile private var effectsThread: Thread? = null
+    /** Owner presses waiting for a helper request in flight; a test reads it to know a press arrived during one. */
+    internal val pressesWaiting: Int get() = waitingPresses.size
     private val shells = Mutex()
     @Volatile private var nonce = ""
     @Volatile private var granted = false
@@ -115,8 +124,8 @@ internal class LocalAdbRuntime(
         }
         scope.launch(dispatcher) {
             var leaseOperation = "state"
-            try { effects.withLock {
-                if (generation.get() != current) return@withLock
+            try { withEffects {
+                if (generation.get() != current) return@withEffects
                 // The first session after this build is installed in which the helper answers gives back a lease an
                 // earlier version armed by itself, once. Later, only the owner ends a lease (Network ADB on, Keep
                 // ADB off off, Relaxed mode).
@@ -126,7 +135,7 @@ internal class LocalAdbRuntime(
                         giveBackLocked { generation.get() == current && ownerChoices() == 0L }
                     }
                     publish()
-                    return@withLock
+                    return@withEffects
                 }
                 val state = currentDaemon()
                 // Taken only when it can run: an owner choice first leaves it for the next process.
@@ -157,7 +166,7 @@ internal class LocalAdbRuntime(
                     if (!healthy()) { leaseDiagnostics.skip("unhealthy"); continue }
                     val waitingSince = leaseDiagnostics.now()
                     leaseOperation = "state"
-                    try { effects.withLock {
+                    try { withEffects {
                         leaseDiagnostics.lockWait(waitingSince)
                         if (generation.get() == current) {
                             reconcileLocked(current, fresh) { leaseOperation = it }
@@ -233,21 +242,97 @@ internal class LocalAdbRuntime(
         ManagedNetworkAdb.panelAssistantHold = false
     }
 
-    /** The owner's Network ADB press, after Keep ADB off has been switched off: ADB reopens now. Takes the
-     *  effects queue before the transition gate, as every lease effect does. */
-    override fun release(): Boolean = kotlinx.coroutines.runBlocking { effects.withLock {
+    /** The owner's Network ADB press, after Keep ADB off has been switched off: ADB reopens now. Only inside the
+     *  owner's turn ([turn]), which holds the effects queue. */
+    override fun release(): Boolean {
+        check(effects.isLocked) { "the lease is released only in an owner's turn" }
         val released = runCatching { giveBackLocked { true } }.getOrDefault(false)
         runCatching { publish() }
-        released
-    } }
+        return released
+    }
 
-    /** The owner turned Keep ADB off on: arm now rather than at the next renewal. Never ends a lease. */
+    /** The owner turned Keep ADB off on: arm now rather than at the next renewal. Never ends a lease. Only inside
+     *  the owner's turn. */
     override fun reconcile() {
-        kotlinx.coroutines.runBlocking { effects.withLock {
-            val (current, fresh) = RemoteDebugSecurityTransitionGate.withLock { generation.get() to nonce }
-            if (fresh.isNotEmpty() && keep()) runCatching { reconcileLocked(current, fresh) {} }
+        check(effects.isLocked) { "the lease is armed for the owner only in an owner's turn" }
+        val (current, fresh) = RemoteDebugSecurityTransitionGate.withLock { generation.get() to nonce }
+        if (fresh.isNotEmpty() && keep()) runCatching { reconcileLocked(current, fresh) {} }
+        runCatching { publish() }
+    }
+
+    /**
+     * The owner's press, in its turn on the effects queue. With nothing in flight it runs now, on state read
+     * from the helper just before. A press made while a helper request is in flight runs straight after that
+     * request, before the queue is let go, in the order presses were made, and this call waits for its result.
+     * It returns [waiting] when it cannot wait: [pressWaitMs] passed, or the request in flight is this thread's.
+     */
+    override fun <T> turn(waiting: T, press: () -> T): T {
+        if (effects.tryLock()) {
+            effectsThread = Thread.currentThread()
+            try {
+                drainLocked()
+                runCatching { publish() }
+                return press()
+            } finally {
+                letGo()
+            }
+        }
+        val answer = java.util.concurrent.CompletableFuture<T>()
+        waitingPresses.add {
+            try { answer.complete(press()) } catch (failure: Throwable) { answer.completeExceptionally(failure) }
+        }
+        kick()
+        if (!answer.isDone && effectsThread === Thread.currentThread()) return waiting
+        return try {
+            answer.get(pressWaitMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+        } catch (_: java.util.concurrent.TimeoutException) {
+            waiting
+        } catch (failure: java.util.concurrent.ExecutionException) {
+            throw failure.cause ?: failure
+        }
+    }
+
+    /** Holds the effects queue for a lease request, then lets it go through [letGo]. */
+    private suspend inline fun <T> withEffects(block: () -> T): T {
+        effects.lock()
+        effectsThread = Thread.currentThread()
+        try {
+            return block()
+        } finally {
+            letGo()
+        }
+    }
+
+    /** Presses that waited run before the queue is let go, each on state read from the helper just before it;
+     *  any that arrived as it was let go run straight after. */
+    private fun letGo() {
+        try {
+            drainLocked()
+        } finally {
+            effectsThread = null
+            effects.unlock()
+        }
+        kick()
+    }
+
+    private fun drainLocked() {
+        while (true) {
+            val press = waitingPresses.poll() ?: return
             runCatching { publish() }
-        } }
+            press()
+        }
+    }
+
+    private fun kick() {
+        while (waitingPresses.isNotEmpty() && effects.tryLock()) {
+            effectsThread = Thread.currentThread()
+            try {
+                drainLocked()
+            } finally {
+                effectsThread = null
+                effects.unlock()
+            }
+        }
     }
 
     private fun newNonce(): String =
@@ -299,8 +384,8 @@ internal class LocalAdbRuntime(
                         var refusal = "expired"
                         // Shell execution has its own serial queue. Approval waits and long shell
                         // replies must not hold healthy-app heartbeat or recovery behind this gate.
-                        val reply = (if (op == "adb.recover") effects else shells).withLock {
-                            if (!currentRequest()) return@withLock refused("expired")
+                        fun attempt(): PanelAssistantManageReply? {
+                            if (!currentRequest()) return refused("expired")
                             val submit: (() -> Unit) -> Boolean = { write ->
                                 RemoteDebugSecurityTransitionGate.withLock {
                                     when {
@@ -319,7 +404,7 @@ internal class LocalAdbRuntime(
                                     }
                                 }
                             }
-                            try {
+                            return try {
                                 if (typed != null) {
                                     when (val answer = endpoint.command(typed.first, typed.second, submit)) {
                                         is LocalAdbCommandReply.Fields -> PanelAssistantManageReply("applied", null,
@@ -352,6 +437,7 @@ internal class LocalAdbRuntime(
                                 PanelAssistantManageReply("failed", "local_adb_unavailable", null)
                             }
                         }
+                        val reply = if (op == "adb.recover") withEffects { attempt() } else shells.withLock { attempt() }
                         if (reply != null) return@withContext reply
                         approval?.cancel?.invoke()
                         approval = authorize(payload, onPending, ::currentRequest)
@@ -361,8 +447,8 @@ internal class LocalAdbRuntime(
                     approval?.cancel?.invoke()
                 }
             }
-            effects.withLock {
-                if (!currentRequest()) return@withLock refused("expired")
+            withEffects {
+                if (!currentRequest()) return@withEffects refused("expired")
                 try {
                     val result = when (op) {
                         "adb.prepare" -> prepare()
@@ -372,7 +458,7 @@ internal class LocalAdbRuntime(
                                 if (args.opt("include_build_id") == true) it.put("build_id", state?.buildId ?: JSONObject.NULL)
                             }
                         }
-                        else -> return@withLock refused("unknown_command")
+                        else -> return@withEffects refused("unknown_command")
                     }
                     PanelAssistantManageReply("applied", null, result)
                 } catch (_: Exception) {

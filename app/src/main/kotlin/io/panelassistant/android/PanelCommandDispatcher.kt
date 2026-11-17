@@ -709,6 +709,9 @@ internal class PanelCommandDispatcher(
 
     // Persistent network adb (switch). Restarts adbd to apply; that only affects adb, not the Panel Assistant session.
     override fun handleNetAdb(on: Boolean) {
+        val live = currentOrigin.get() != null
+        // This press's place in the owner's order: stamped at its door (the settings page) or now.
+        val (stamp, hadDoor) = io.panelassistant.android.control.ManagedNetworkAdb.pressFor("network_adb", on)
         // Any Network ADB request is an owner ADB choice: the one migration never runs after one.
         Config.adbOwnerChoiceEpoch.incrementAndGet()
         if (on && config.hardenedSecurityEnabled) {
@@ -721,20 +724,32 @@ internal class PanelCommandDispatcher(
         // An ON never outranks a Keep ADB off the owner chose after it: an unattended ON (replay, restore,
         // import) waits while Keep ADB off is on, published lease or not (a replay at startup runs before any
         // session), and a Home Assistant ON loses to a Keep ADB off stored after the ON was admitted.
-        if (on && config.adbKeepOff) {
-            val admitted = admittedKeepOffEpoch.get()
-            if (currentOrigin.get() == null || admitted == null || admitted != Config.adbKeepOffOnEpoch.get()) {
+        val admitted = admittedKeepOffEpoch.get()
+        // The page ON is one press in two steps (its door gave the lease back, this applies it): a press that
+        // closes ADB made between them is the later choice and stands, as it would straight after the ON.
+        fun superseded() = on && hadDoor && io.panelassistant.android.control.ManagedNetworkAdb.closedSince(stamp)
+        if (superseded()) return
+        fun keepOffOutranks() = on && config.adbKeepOff && (!live || admitted == null || admitted != Config.adbKeepOffOnEpoch.get())
+        if (keepOffOutranks()) {
+            requireControlApplied("network_adb", ControlApplyOutcome.FAILED) { "Keep ADB off outranks this Network ADB ON" }
+        }
+        // The effect runs in the owner's turn on the lease's queue, on state read from the helper just before it:
+        // never while a helper request it would race is in flight. A Keep ADB off stored while it waited for its
+        // turn still outranks it.
+        io.panelassistant.android.control.ManagedNetworkAdb.turn(Unit) {
+            if (superseded()) return@turn
+            if (keepOffOutranks()) {
                 requireControlApplied("network_adb", ControlApplyOutcome.FAILED) { "Keep ADB off outranks this Network ADB ON" }
             }
+            if (on && live && !openForNetworkAdbOn(config)) {
+                requireControlApplied("network_adb", ControlApplyOutcome.FAILED) { "network adb lease release failed" }
+            }
+            requireControlApplied("network_adb", adb.set(on)) { "network adb transition failed" }
+            // An ON that took effect retires a Keep ADB off still queued from before it, as Keep ADB off retires a
+            // queued ON: a replay of the older choice must never undo this one.
+            if (on) onExternalSettingApplied("adb_keep_off")
+            core.reconcile("network_adb")
         }
-        if (on && currentOrigin.get() != null && !openForNetworkAdbOn(config)) {
-            requireControlApplied("network_adb", ControlApplyOutcome.FAILED) { "network adb lease release failed" }
-        }
-        requireControlApplied("network_adb", adb.set(on)) { "network adb transition failed" }
-        // An ON that took effect retires a Keep ADB off still queued from before it, as Keep ADB off retires a
-        // queued ON: a replay of the older choice must never undo this one.
-        if (on) onExternalSettingApplied("adb_keep_off")
-        core.reconcile("network_adb")
     }
 
     // Keep ADB off, the owner's opt-in. The generic live-setting path has already stored the value, and the
@@ -748,20 +763,23 @@ internal class PanelCommandDispatcher(
     // that changed nothing (a restore or import carrying the value the panel has) leaves it off, whatever lease
     // holds: a lease Keep ADB off did not choose is not the owner's choice.
     override fun handleAdbKeepOff(on: Boolean, previousValue: String?) {
+        io.panelassistant.android.control.ManagedNetworkAdb.pressFor("adb_keep_off", on)
         Config.adbOwnerChoiceEpoch.incrementAndGet()
         val managed = io.panelassistant.android.control.ManagedNetworkAdb
-        if (config.adbKeepOff) {
-            onExternalSettingApplied("network_adb")
-            managed.owner?.reconcile()
-            // ADB this app keeps open: the owner's Network ADB intent, or a port its helper reopened. An armed
-            // lease has already closed it; without one the controller closes it.
-            if (config.networkAdbEnabled || config.adbOpenedByHelper) {
-                if (managed.managed) config.setNetworkAdbEnabled(false) else runCatching { adb.set(false) }
+        managed.turn(Unit) {
+            if (config.adbKeepOff) {
+                onExternalSettingApplied("network_adb")
+                managed.owner?.reconcile()
+                // ADB this app keeps open: the owner's Network ADB intent, or a port its helper reopened. An armed
+                // lease has already closed it; without one the controller closes it.
+                if (config.networkAdbEnabled || config.adbOpenedByHelper) {
+                    if (managed.managed) config.setNetworkAdbEnabled(false) else runCatching { adb.set(false) }
+                }
+            } else if (previousValue == "true" && managed.managed && !config.hardenedSecurityEnabled) {
+                config.setAdbKeepOff(true)
             }
-        } else if (previousValue == "true" && managed.managed && !config.hardenedSecurityEnabled) {
-            config.setAdbKeepOff(true)
+            core.reconcile("network_adb")
         }
-        core.reconcile("network_adb")
     }
 
     /** A sensitive command's one-shot panel approval binds to the approval key of the origin that sent it;

@@ -44,6 +44,7 @@ class AdbController internal constructor(
     private val directPropertyRead: (String) -> String? = ::readSystemPropertyDirect,
     private val directListenerRead: (String) -> String? = ::readTcpListenerInventoryDirect,
     private val monotonicMs: () -> Long = SystemClock::elapsedRealtime,
+    private val waitMs: (Long) -> Boolean = ::waitForNetworkAdb,
 ) {
     constructor(context: Context, config: Config) : this(
         config = config,
@@ -90,7 +91,7 @@ class AdbController internal constructor(
     fun proveInactive(): Boolean = proveSettledNetworkAdbInactive(
         sample = ::activeState,
         monotonicMs = monotonicMs,
-        waitMs = ::waitForNetworkAdb,
+        waitMs = waitMs,
     )
 
     /**
@@ -443,7 +444,8 @@ internal fun completeHardenedNetworkAdbAdmission(
  * The first step of every Network ADB ON, whatever its door (the settings page, Home Assistant's switch, a
  * restore), straight before it is applied: the owner's switch always works, so an ON switches Keep ADB off
  * off and has the helper's lease give ADB back now. True when nothing holds ADB off afterwards. Hardened mode
- * is refused before this, at each door. It blocks briefly on the helper and must not hold the transition gate.
+ * is refused before this, at each door. It runs in the owner's turn (ManagedNetworkAdb.turn), blocks briefly
+ * on the helper and must not hold the transition gate.
  */
 internal fun openForNetworkAdbOn(config: Config): Boolean {
     val keptOff = config.adbKeepOff
@@ -464,20 +466,35 @@ internal fun adbOpenedByHelper(config: Config, open: Boolean) {
 /**
  * The owner has switched the panel back to Relaxed mode, at the panel: a lease Hardened mode held that Keep ADB
  * off does not want ends now, so nothing ends it later in the background. True when nothing holds ADB off
- * afterwards that the owner does not want. Blocks briefly on the helper; must not hold the transition gate.
+ * afterwards that the owner does not want. Runs in the owner's turn; blocks briefly on the helper and must not
+ * hold the transition gate.
  */
-internal fun endLeaseOnRelaxed(config: Config): Boolean =
+internal fun endLeaseOnRelaxed(config: Config): Boolean = ManagedNetworkAdb.turn(true) {
     config.hardenedSecurityEnabled || config.adbKeepOff || ManagedNetworkAdb.releaseForOwner()
+}
 
 /**
  * The settings page's door for the two ADB choices, straight before either is applied: the only place, with a
  * Home Assistant press while it runs (PanelCommandDispatcher.handleNetAdb), where an owner's request ends the
- * lease. False refuses the request there, so nothing is queued to end a lease later.
+ * lease, in the owner's turn. False refuses the request there, so nothing is queued to end a lease later.
  */
-internal fun liveOwnerDoor(config: Config, key: String, value: String): Boolean = when {
-    key == "network_adb" && value == "true" -> openForNetworkAdbOn(config)
-    key == "adb_keep_off" && value == "false" -> openForKeepAdbOffOff(config)
-    else -> true
+internal fun liveOwnerDoor(config: Config, key: String, value: String): Boolean {
+    if (key != "network_adb" && key != "adb_keep_off") return true
+    val on = value == "true"
+    val stamp = ManagedNetworkAdb.stampAtDoor(key, on)
+    val passed = when {
+        key == "network_adb" && value == "true" -> {
+            // A Keep ADB off stored while this ON waited for its turn outranks it, as it does a Home Assistant ON.
+            val keepOffChosen = Config.adbKeepOffOnEpoch.get()
+            ManagedNetworkAdb.turn(true) {
+                !(config.adbKeepOff && Config.adbKeepOffOnEpoch.get() != keepOffChosen) && openForNetworkAdbOn(config)
+            }
+        }
+        key == "adb_keep_off" && value == "false" -> ManagedNetworkAdb.turn(true) { openForKeepAdbOffOff(config) }
+        else -> true
+    }
+    if (!passed) ManagedNetworkAdb.refusedAtDoor(key, on, stamp)
+    return passed
 }
 
 /**

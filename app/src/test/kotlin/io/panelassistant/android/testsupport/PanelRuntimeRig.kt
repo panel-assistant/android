@@ -232,6 +232,8 @@ internal abstract class PanelRuntimeRig {
         /** Whether ADB listens, as the root helper reads it for the network ADB controller; null leaves the
          *  controller with the JVM's unreadable properties, so no OFF can be proved. */
         adbListening: (() -> Boolean)? = null,
+        /** The network ADB controller's settle proof waits on a clock of its own instead of sleeping. */
+        adbSettlesInstantly: Boolean = false,
         wifiOutages: () -> WifiOutageCounts? = { WifiOutageCounts(last24h = 3) },
         /** The helper the system controller sends reload and reboot to; a test reads what it was sent. */
         systemDaemon: FakeDaemon = FakeDaemon(
@@ -371,14 +373,19 @@ internal abstract class PanelRuntimeRig {
             fakeProfile(), cpuShell, FakeDaemon(), io.panelassistant.android.metrics.PanelMetrics(metrics),
         )
         // Only its best-effort reconnect reassertion runs, on a worker that logs and discards failure.
+        val settleClock = java.util.concurrent.atomic.AtomicLong()
         val adb = adbRoot?.let { root ->
             val marker = io.panelassistant.android.control.NetworkAdbDisableTransitionMarker(File(tmp, "network-adb-disable.v1"))
+            val helperReads = object : io.panelassistant.android.platform.Daemon by io.panelassistant.android.control.FakeDaemon() {
+                override fun adbState() = io.panelassistant.android.platform.HelperAdbState(adbListening?.invoke(), adbListening?.invoke())
+            }
             if (adbListening == null) AdbController(config, marker, root)
+            else if (adbSettlesInstantly) AdbController(
+                config, marker, root, daemon = helperReads, directPropertyRead = { null }, directListenerRead = { null },
+                monotonicMs = settleClock::get, waitMs = { settleClock.addAndGet(it); true },
+            )
             else AdbController(
-                config, marker, root,
-                daemon = object : io.panelassistant.android.platform.Daemon by io.panelassistant.android.control.FakeDaemon() {
-                    override fun adbState() = io.panelassistant.android.platform.HelperAdbState(adbListening(), adbListening())
-                },
+                config, marker, root, daemon = helperReads,
                 directPropertyRead = { null }, directListenerRead = { null },
                 monotonicMs = { System.nanoTime() / 1_000_000 },
             )
