@@ -350,7 +350,9 @@ internal class SetupState(
         // an address was handed over and did not answer, which is exactly the state the wizard renders as
         // a correction rather than as a blank question. Both are cheap stored reads, so the expense rule
         // SetupStateEndpointContractTest pins is untouched — the probe itself runs on the config POST.
-        val handover = "{\"supported\":true," +
+        // `alternates` says the same for `ha_url_handover_alternates`: a list of the same Home Assistant's
+        // other addresses, probed alongside the handed-over one, the first that answers kept.
+        val handover = "{\"supported\":true,\"alternates\":true," +
             "\"source\":${config.haSetupHandover}," +
             "\"url\":${jsonStr(config.haUrlHandover)}," +
             "\"reason\":${jsonStr(config.haUrlHandoverReason)}}"

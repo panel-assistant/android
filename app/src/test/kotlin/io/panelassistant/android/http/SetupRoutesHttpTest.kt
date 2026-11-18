@@ -181,6 +181,7 @@ class SetupRoutesHttpTest {
                 assertEquals(false, state.getJSONObject("entity_filter").getBoolean("answered"))
                 assertTrue(state.getJSONObject("entity_filter").getBoolean("counting"))
                 assertTrue(state.getJSONObject("handover").getBoolean("supported"))
+                assertTrue(state.getJSONObject("handover").getBoolean("alternates"))
                 assertFalse(state.has("config_hash"))
             }
         }

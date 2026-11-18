@@ -3,6 +3,9 @@ package io.panelassistant.android.http
 import io.panelassistant.android.DiscoveryResult
 import io.panelassistant.android.control.SystemController
 import io.ktor.http.Parameters
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 
 internal fun builtinRendererNeedsConnection(
     currentPackage: String,
@@ -51,6 +54,41 @@ internal suspend fun rewritePostForHandover(
     posted: Parameters,
     currentHaUrl: String,
     verify: suspend (String) -> HaUrlHandover.Outcome,
+): HandoverConfigPost = rewriteHandover(stripAlternates(posted), currentHaUrl, alternatesOf(posted), verify)
+
+/** The other addresses Panel Assistant knows, in its order; admission has already normalised and bounded them. */
+private fun alternatesOf(posted: Parameters): List<String> =
+    posted[HANDOVER_ALTERNATES_KEY]?.split(' ')?.filter(String::isNotBlank).orEmpty()
+
+/** The alternates are only candidates for this one decision, never a stored setting. */
+private fun stripAlternates(posted: Parameters): Parameters =
+    if (HANDOVER_ALTERNATES_KEY !in posted) posted else Parameters.build {
+        for (name in posted.names()) {
+            if (name == HANDOVER_ALTERNATES_KEY) continue
+            posted.getAll(name).orEmpty().forEach { append(name, it) }
+        }
+    }
+
+/**
+ * Probe every candidate at once and keep the first, in Panel Assistant's order, that answers as Home
+ * Assistant. Parallel so a list of dead addresses costs one probe's time, not one per address. When none
+ * answers, the offered address and its own reason stand, exactly as before alternates existed.
+ */
+private suspend fun firstVerified(
+    offered: String,
+    alternates: List<String>,
+    verify: suspend (String) -> HaUrlHandover.Outcome,
+): Pair<String, HaUrlHandover.Outcome> = coroutineScope {
+    val candidates = (listOf(offered) + alternates).distinct()
+    val outcomes = candidates.map { async { verify(it) } }.awaitAll()
+    candidates.zip(outcomes).firstOrNull { it.second.verified } ?: (offered to outcomes.first())
+}
+
+private suspend fun rewriteHandover(
+    posted: Parameters,
+    currentHaUrl: String,
+    alternates: List<String>,
+    verify: suspend (String) -> HaUrlHandover.Outcome,
 ): HandoverConfigPost {
     val offered = posted["ha_url_handover"]?.trim().orEmpty()
     if (offered.isBlank()) {
@@ -83,13 +121,13 @@ internal suspend fun rewritePostForHandover(
         append("ha_setup_handover", "true")
     }
     if (currentHaUrl.isNotBlank()) return HandoverConfigPost(carried)
-    val outcome = verify(offered)
+    val (chosen, outcome) = firstVerified(offered, alternates, verify)
     val augmented = Parameters.build {
         for (name in carried.names()) {
             carried.getAll(name).orEmpty().forEach { append(name, it) }
         }
         if (outcome.verified) {
-            append("ha_url", offered)
+            append("ha_url", chosen)
             append("ha_url_handover", "")
             append("ha_url_handover_reason", "")
         } else {
@@ -97,8 +135,14 @@ internal suspend fun rewritePostForHandover(
             append("ha_url_handover_reason", outcome.reason)
         }
     }
-    return HandoverConfigPost(augmented, outcome, offered)
+    return HandoverConfigPost(augmented, outcome, chosen)
 }
+
+/** Every other address of the same Home Assistant, space-separated, for the panel to try (see [rewritePostForHandover]). */
+internal const val HANDOVER_ALTERNATES_KEY = "ha_url_handover_alternates"
+
+/** Same number as Panel Assistant's `MAX_HANDOVER_ALTERNATES`: it bounds the form and the parallel probes. */
+internal const val MAX_HANDOVER_ALTERNATES = 16
 
 internal data class ConfigDiscoverySuggestions(
     val haUrl: String = "",
