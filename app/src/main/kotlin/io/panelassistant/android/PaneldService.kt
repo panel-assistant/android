@@ -862,6 +862,7 @@ class PaneldService : Service() {
                     displayPower.refreshAutoSleepPresence()
                 }
             },
+            pressNetworkAdbOn = { origin -> pressNetworkAdbOn(runtime.current().commands, origin) },
             onProximityCalibration = { action, id -> proximityWizard?.remote(action, id) == true },
             pendingLiveSettings = liveSettingAuthority::pendingSnapshot,
             stalledLiveSettings = liveSettingAuthority::pendingStalledSnapshot,

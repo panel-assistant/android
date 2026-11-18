@@ -469,33 +469,21 @@ internal fun adbOpenedByHelper(config: Config, open: Boolean) {
  * afterwards that the owner does not want. Runs in the owner's turn; blocks briefly on the helper and must not
  * hold the transition gate.
  */
-internal fun endLeaseOnRelaxed(config: Config): Boolean = ManagedNetworkAdb.turn(true) {
+internal fun endLeaseOnRelaxed(config: Config): Boolean = ManagedNetworkAdb.turn(opens = true, waiting = false) {
     config.hardenedSecurityEnabled || config.adbKeepOff || ManagedNetworkAdb.releaseForOwner()
 }
 
 /**
- * The settings page's door for the two ADB choices, straight before either is applied: the only place, with a
- * Home Assistant press while it runs (PanelCommandDispatcher.handleNetAdb), where an owner's request ends the
- * lease, in the owner's turn. False refuses the request there, so nothing is queued to end a lease later.
+ * The settings page's door for Keep ADB off OFF, straight before it is applied: the lease gives ADB back in the
+ * owner's turn, or the OFF is refused there, so nothing is queued to end a lease later. The page's Network ADB ON
+ * is not a door: it is Home Assistant's own live command (pressNetworkAdbOn). Every other request passes.
  */
-internal fun liveOwnerDoor(config: Config, key: String, value: String): Boolean {
-    if (key != "network_adb" && key != "adb_keep_off") return true
-    val on = value == "true"
-    val stamp = ManagedNetworkAdb.stampAtDoor(key, on)
-    val passed = when {
-        key == "network_adb" && value == "true" -> {
-            // A Keep ADB off stored while this ON waited for its turn outranks it, as it does a Home Assistant ON.
-            val keepOffChosen = Config.adbKeepOffOnEpoch.get()
-            ManagedNetworkAdb.turn(true) {
-                !(config.adbKeepOff && Config.adbKeepOffOnEpoch.get() != keepOffChosen) && openForNetworkAdbOn(config)
-            }
-        }
-        key == "adb_keep_off" && value == "false" -> ManagedNetworkAdb.turn(true) { openForKeepAdbOffOff(config) }
-        else -> true
+internal fun liveOwnerDoor(config: Config, key: String, value: String): Boolean =
+    if (key == "adb_keep_off" && value == "false") {
+        ManagedNetworkAdb.turn(opens = true, waiting = false) { openForKeepAdbOffOff(config) }
+    } else {
+        true
     }
-    if (!passed) ManagedNetworkAdb.refusedAtDoor(key, on, stamp)
-    return passed
-}
 
 /**
  * The settings page's Keep ADB off OFF, straight before it is applied: the lease gives ADB back now, or the OFF

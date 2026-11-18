@@ -124,3 +124,56 @@ internal fun Config.kioskOffsStoredAhead(): Long = synchronized(Config.CONFIG_LO
 internal fun Config.commitKioskOnUnlessOffStoredSince(count: Long): Boolean = synchronized(Config.CONFIG_LOCK) {
     kioskOffsStoredAhead == count && commitKioskLock(true)
 }
+
+/**
+ * The settings page's Network ADB ON, made exactly as Home Assistant's switch makes it: one live command on the
+ * dispatcher, whose handler gives a held lease back and applies the ON in a single turn on the lease's queue, and
+ * which is never journalled. APPLIED only when it took effect. Anything else is REJECTED and has changed
+ * nothing: a refusal, a later command on the channel that replaced it before it ran, or a worker too busy to
+ * start it within [startWaitMs], when it is withdrawn before it can run. Once started it is answered for what
+ * it did.
+ */
+internal fun pressNetworkAdbOn(
+    commands: PanelCommandDispatcher,
+    origin: CommandOrigin,
+    startWaitMs: Long = PAGE_NETWORK_ADB_ON_START_WAIT_MS,
+): LiveSettingRequestOutcome {
+    // 0 waiting for the worker, 1 started, 2 withdrawn
+    val state = java.util.concurrent.atomic.AtomicInteger()
+    val done = java.util.concurrent.CompletableFuture<io.panelassistant.android.panelassistant.PanelAssistantCommandResult>()
+    commands.submit(
+        io.panelassistant.android.panelassistant.PanelAssistantCommand(
+            "network_adb",
+            io.panelassistant.android.panelassistant.CommandValue.Switch(true),
+            admit = {
+                if (state.compareAndSet(0, 1)) null
+                else io.panelassistant.android.panelassistant.PanelAssistantCommandResult.Failed(
+                    io.panelassistant.android.panelassistant.PanelAssistantCommandProcessor.CODE_FAILED,
+                )
+            },
+        ),
+        origin,
+    ) { done.complete(it) }
+    val result = try {
+        done.get(startWaitMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+    } catch (_: java.util.concurrent.TimeoutException) {
+        if (state.compareAndSet(0, 2)) return LiveSettingRequestOutcome.REJECTED
+        try {
+            done.get(PAGE_NETWORK_ADB_ON_RUNNING_WAIT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
+        } catch (_: java.util.concurrent.TimeoutException) {
+            // Still running past every budget it has: say it is on its way rather than that nothing happened.
+            return LiveSettingRequestOutcome.DEFERRED
+        }
+    }
+    return if (result == io.panelassistant.android.panelassistant.PanelAssistantCommandResult.Applied) {
+        LiveSettingRequestOutcome.APPLIED
+    } else {
+        LiveSettingRequestOutcome.REJECTED
+    }
+}
+
+/** How long the settings page's ON waits for the command worker to start it before withdrawing it. */
+internal const val PAGE_NETWORK_ADB_ON_START_WAIT_MS = 10_000L
+/** Once started, it ends within its own budgets: the lease queue's wait, the helper's exchange and the
+ *  controller's settle deadline. */
+private const val PAGE_NETWORK_ADB_ON_RUNNING_WAIT_MS = 60_000L

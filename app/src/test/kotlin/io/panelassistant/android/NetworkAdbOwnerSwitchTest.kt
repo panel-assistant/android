@@ -26,6 +26,185 @@ import org.junit.Test
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
+    // Each of these failed on the queue's first version, and each must pass.
+    private fun blockWorker(rig: Rig): java.util.concurrent.CountDownLatch {
+        val gate = java.util.concurrent.CountDownLatch(1)
+        val entered = java.util.concurrent.CountDownLatch(1)
+        rig.commands.submit(
+            io.panelassistant.android.panelassistant.PanelAssistantCommand("navigate", io.panelassistant.android.panelassistant.CommandValue.Text(""),
+                admit = { entered.countDown(); gate.await(20, java.util.concurrent.TimeUnit.SECONDS); PanelAssistantCommandResult.Refused("blocker") }),
+            io.panelassistant.android.CommandOrigin.panelAssistant(),
+        ) {}
+        assertTrue(entered.await(20, java.util.concurrent.TimeUnit.SECONDS))
+        return gate
+    }
+
+    @Test fun advA_aConflatedPageOnLeavesNoStampThatSilencesALaterHomeAssistantOn() = panel(firmwareOpen = false) { rig, helper, _ ->
+        val gate = blockWorker(rig)
+        // The owner's page ON passes its door; its request waits behind the busy worker.
+        val page = Thread { setting(rig, "network_adb", "true") }.also { it.start() }
+        Thread.sleep(500)
+        // Home Assistant's OFF, on the same conflation key, replaces the queued page ON.
+        val off = java.util.concurrent.CompletableFuture<PanelAssistantCommandResult>()
+        rig.commands.submit(io.panelassistant.android.panelassistant.PanelAssistantCommand("network_adb", nativeValue("network_adb", "off"), admit = { null }),
+            io.panelassistant.android.CommandOrigin.panelAssistant()) { off.complete(it) }
+        gate.countDown()
+        assertEquals(PanelAssistantCommandResult.Applied, off.get(20, java.util.concurrent.TimeUnit.SECONDS))
+        page.join(20_000)
+        assertFalse(helper.listening)
+        // Much later, the owner turns Network ADB on from Home Assistant.
+        val on = submitNative(rig, "network_adb", "on")
+        assertEquals(PanelAssistantCommandResult.Applied, on)
+        assertTrue("an Applied ON opens the port", helper.listening)
+        assertTrue("an Applied ON reads on", rig.adb.isPersisted())
+    }
+
+    /** advA2, for the page's ON as one live command: replaced in the queue by a later Home Assistant OFF, it is
+     *  answered rejected and opens nothing; the OFF stands. */
+    @Test fun advA2_aPageOnReplacedByALaterHomeAssistantOffIsRejectedAndTheOffStands() = panel(firmwareOpen = false) { rig, helper, _ ->
+        assertEquals(PanelAssistantCommandResult.Applied, submitNative(rig, "network_adb", "on"))
+        assertTrue(helper.listening)
+        val gate = blockWorker(rig)
+        val page = java.util.concurrent.CompletableFuture<LiveSettingRequestOutcome>()
+        Thread { page.complete(setting(rig, "network_adb", "true")) }.start()
+        Thread.sleep(500)
+        val off = java.util.concurrent.CompletableFuture<PanelAssistantCommandResult>()
+        rig.commands.submit(io.panelassistant.android.panelassistant.PanelAssistantCommand("network_adb", nativeValue("network_adb", "off"), admit = { null }),
+            io.panelassistant.android.CommandOrigin.panelAssistant()) { off.complete(it) }
+        gate.countDown()
+        assertEquals(PanelAssistantCommandResult.Applied, off.get(20, java.util.concurrent.TimeUnit.SECONDS))
+        assertEquals(LiveSettingRequestOutcome.REJECTED, page.get(20, java.util.concurrent.TimeUnit.SECONDS))
+        assertFalse("the Home Assistant OFF made after the page ON is the later choice", helper.listening)
+        assertFalse(rig.adb.isPersisted())
+        assertTrue(authority.pendingSnapshot().isEmpty())
+    }
+
+    @Test fun aPageOnTheWorkerCannotStartInTimeIsWithdrawnAndOpensNothing() = keptOff { rig, helper, _ ->
+        val gate = blockWorker(rig)
+        val outcome = pressNetworkAdbOn(rig.commands, CommandOrigin.peer("192.0.2.10"), startWaitMs = 300)
+        gate.countDown()
+        assertEquals(LiveSettingRequestOutcome.REJECTED, outcome)
+        barrier(rig)
+        runCurrent()
+        assertFalse("withdrawn before it ran", helper.listening)
+        assertTrue(rig.config.adbKeepOff)
+        assertTrue(ManagedNetworkAdb.managed)
+        assertTrue(authority.pendingSnapshot().isEmpty())
+    }
+
+    /** Waits until the command worker has run everything queued before this. */
+    private fun barrier(rig: Rig) {
+        val done = java.util.concurrent.CountDownLatch(1)
+        rig.commands.submit(io.panelassistant.android.panelassistant.PanelAssistantCommand("navigate", io.panelassistant.android.panelassistant.CommandValue.Text(""),
+            admit = { PanelAssistantCommandResult.Refused("barrier") }), io.panelassistant.android.CommandOrigin.panelAssistant()) { done.countDown() }
+        assertTrue(done.await(20, java.util.concurrent.TimeUnit.SECONDS))
+    }
+
+    @Test fun advB_aHomeAssistantOnWhoseTurnTimedOutNeverAnswersAppliedForAnOnThatFailed() = keptOff { rig, helper, _ ->
+        val answer = java.util.concurrent.CompletableFuture<PanelAssistantCommandResult>()
+        var armed = true
+        helper.duringRequest = { name ->
+            if (armed && name == "beat") {
+                armed = false
+                rig.commands.submit(io.panelassistant.android.panelassistant.PanelAssistantCommand("network_adb", nativeValue("network_adb", "on"), admit = { null }),
+                    io.panelassistant.android.CommandOrigin.panelAssistant()) { answer.complete(it) }
+                // The helper is slow to answer this renewal; then refuses the give-back.
+                answer.get(20, java.util.concurrent.TimeUnit.SECONDS)
+                helper.refuseRecovery = true
+            }
+        }
+        advanceTimeBy(30_000); runCurrent()
+        helper.duringRequest = {}
+        val result = answer.get(1, java.util.concurrent.TimeUnit.SECONDS)
+        runCurrent()
+        if (result == PanelAssistantCommandResult.Applied) {
+            assertTrue("an Applied ON opened the port", helper.listening)
+            assertFalse("an Applied ON switched Keep ADB off off", rig.config.adbKeepOff)
+        }
+    }
+
+    /** advB2: an ON answered Applied has taken effect when it is answered; one that could not have its turn is
+     *  answered as not applied and has changed nothing. */
+    @Test fun advB2_aHomeAssistantOnAnsweredAppliedHasTakenEffect() = keptOff { rig, helper, _ ->
+        val answer = java.util.concurrent.CompletableFuture<PanelAssistantCommandResult>()
+        var atAnswer = ""
+        var armed = true
+        helper.duringRequest = { name ->
+            if (armed && name == "beat") {
+                armed = false
+                rig.commands.submit(io.panelassistant.android.panelassistant.PanelAssistantCommand("network_adb", nativeValue("network_adb", "on"), admit = { null }),
+                    io.panelassistant.android.CommandOrigin.panelAssistant()) {
+                    atAnswer = "listening=${helper.listening} keepOff=${rig.config.adbKeepOff} networkAdb=${rig.config.networkAdbEnabled}"
+                    answer.complete(it)
+                }
+                answer.get(20, java.util.concurrent.TimeUnit.SECONDS)
+            }
+        }
+        advanceTimeBy(30_000); runCurrent()
+        helper.duringRequest = {}
+        val result = answer.get(1, java.util.concurrent.TimeUnit.SECONDS)
+        if (result == PanelAssistantCommandResult.Applied) {
+            assertEquals("at the Applied answer", "listening=true keepOff=false networkAdb=true", atAnswer)
+        } else {
+            assertEquals("a refused ON changed nothing", "listening=false keepOff=true networkAdb=false", atAnswer)
+            runCurrent()
+            assertFalse(helper.listening)
+            assertTrue(rig.config.adbKeepOff)
+        }
+    }
+
+    @Test fun advH_aPageOnDuringTheSessionsHealthCheckIsAnsweredForWhatItDoes() =
+        panel(firmwareOpen = true, session = false, healthy = { kotlinx.coroutines.delay(1_000); true }) { rig, helper, runtime ->
+            assertEquals(LiveSettingRequestOutcome.APPLIED, setting(rig, "adb_keep_off", "true"))
+            runtime.session("panel-assistant", true)
+            runCurrent()
+            // The session's start holds the lease's queue across its suspending health check.
+            val outcome = setting(rig, "network_adb", "true")
+            advanceTimeBy(1_500); runCurrent()
+            assertEquals("answer=$outcome listening=${helper.listening} keepOff=${rig.config.adbKeepOff} queued=${authority.pendingSnapshot()}",
+                outcome == LiveSettingRequestOutcome.APPLIED, helper.listening)
+        }
+
+    @Test fun advC_aPageOnWhoseDoorTimedOutNeverReportsFailureForAnOnThatThenOpensAdb() = keptOff { rig, helper, _ ->
+        val outcome = java.util.concurrent.CompletableFuture<LiveSettingRequestOutcome>()
+        var armed = true
+        helper.duringRequest = { name ->
+            if (armed && name == "beat") {
+                armed = false
+                Thread { outcome.complete(setting(rig, "network_adb", "true")) }.start()
+                outcome.get(30, java.util.concurrent.TimeUnit.SECONDS)
+            }
+        }
+        advanceTimeBy(30_000); runCurrent()
+        helper.duringRequest = {}
+        val result = outcome.get(1, java.util.concurrent.TimeUnit.SECONDS)
+        runCurrent()
+        val opened = helper.listening
+        assertEquals("the page's answer matches what happened: $result, listening=$opened, keepOff=${rig.config.adbKeepOff}, queued=${authority.pendingSnapshot()}",
+            result == LiveSettingRequestOutcome.APPLIED, opened)
+    }
+
+    @Test fun advE1_aRefusedPanelAssistantRecoveryKeepsOwnershipOfAPortTheHelperReopened() = keptOff { rig, helper, runtime ->
+        assertEquals(LiveSettingRequestOutcome.APPLIED, setting(rig, "adb_keep_off", "false"))
+        assertTrue(helper.listening)
+        assertTrue(rig.adb.isPersisted())
+        helper.refuseRecovery = true
+        assertEquals("failed", runtime.request("adb.recover", JSONObject(), { true }).outcome)
+        helper.refuseRecovery = false
+        assertTrue(helper.listening)
+        assertTrue("the port is still open and still this app's", rig.adb.isPersisted())
+    }
+
+    @Test fun advE2_anOwnersOffAfterARefusedPanelAssistantRecoveryClosesThePort() = keptOff { rig, helper, runtime ->
+        assertEquals(LiveSettingRequestOutcome.APPLIED, setting(rig, "adb_keep_off", "false"))
+        assertTrue(helper.listening)
+        helper.refuseRecovery = true
+        assertEquals("failed", runtime.request("adb.recover", JSONObject(), { true }).outcome)
+        helper.refuseRecovery = false
+        assertEquals(PanelAssistantCommandResult.Applied, submitNative(rig, "network_adb", "off"))
+        assertFalse("an Applied OFF closes the port this app's helper reopened", helper.listening)
+    }
+
     @Test fun anOwnersOffDuringALiveKeepOffReleaseReplyClosesAdb() = keptOff { rig, helper, _ ->
         helper.afterRecoverSubmit = {
             assertEquals(PanelAssistantCommandResult.Applied, submitNative(rig, "network_adb", "off"))
@@ -462,7 +641,7 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
         RENEWAL_ARM("arm"),
         RENEWAL("beat"),
         KEEP_ADB_OFF_OFF_GIVE_BACK("recover"),
-        PAGE_ON_GIVE_BACK("recover"),
+        PAGE_ON_GIVE_BACK("recover", onCommandWorker = true),
         HOME_ASSISTANT_ON_GIVE_BACK("recover", onCommandWorker = true),
         KEEP_ADB_OFF_ON_ARM("arm", onCommandWorker = true),
         PANEL_ASSISTANT_RECOVERY("recover"),
@@ -473,7 +652,7 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
     private enum class Press(val key: String, val value: String, val homeAssistant: Boolean, val firstTurnOnCommandWorker: Boolean) {
         HOME_ASSISTANT_ON("network_adb", "true", true, true),
         HOME_ASSISTANT_OFF("network_adb", "false", true, true),
-        PAGE_ON("network_adb", "true", false, false),
+        PAGE_ON("network_adb", "true", false, true),
         PAGE_OFF("network_adb", "false", false, true),
         KEEP_ADB_OFF_ON("adb_keep_off", "true", false, true),
         KEEP_ADB_OFF_OFF("adb_keep_off", "false", false, false),
@@ -591,9 +770,13 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
     private lateinit var authority: LiveSettingAuthority
     private lateinit var lastRoot: FakeRootShell
 
-    /** The owner's press on the settings page: its door (the production [liveOwnerDoor]), then the request. */
-    private fun setting(rig: Rig, key: String, value: String): LiveSettingRequestOutcome =
-        if (!liveOwnerDoor(rig.config, key, value)) LiveSettingRequestOutcome.REJECTED else unattended(rig, key, value)
+    /** The owner's press on the settings page, as DirectConfigPost makes it: a Network ADB ON is the live command
+     *  ([pressNetworkAdbOn]); anything else passes its door ([liveOwnerDoor]), then the request. */
+    private fun setting(rig: Rig, key: String, value: String): LiveSettingRequestOutcome = when {
+        key == "network_adb" && value == "true" -> pressNetworkAdbOn(rig.commands, CommandOrigin.peer("192.0.2.10"))
+        !liveOwnerDoor(rig.config, key, value) -> LiveSettingRequestOutcome.REJECTED
+        else -> unattended(rig, key, value)
+    }
 
     /** The same request with no owner at a door: a journal replay, a restore or an import. */
     private fun unattended(rig: Rig, key: String, value: String): LiveSettingRequestOutcome =
@@ -619,6 +802,7 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
         session: Boolean = true,
         before: (AdbLeftAsThePanelHasItTest.Helper) -> Unit = {},
         settlesInstantly: Boolean = false,
+        healthy: suspend () -> Boolean = { true },
         body: suspend TestScope.(Rig, AdbLeftAsThePanelHasItTest.Helper, LocalAdbRuntime) -> Unit,
     ) = runTest {
         migrationDue = true
@@ -642,6 +826,7 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
             helperOpened = { open -> adbOpenedByHelper(rig.config, open) },
             ownerChoices = { Config.adbOwnerChoiceEpoch.get() - choicesAtStart },
             migrationDue = { migrationDue.also { migrationDue = false } },
+            healthy = healthy,
         )
         // Production installs the runtime as the lease owner where it is created, with the same reopen rule.
         ManagedNetworkAdb.owner = runtime

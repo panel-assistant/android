@@ -60,7 +60,7 @@ class ManagementHttpTest {
             override fun hardened() = hardened
             override fun release() = false
             override fun reconcile() {}
-            override fun <T> turn(waiting: T, press: () -> T): T = press()
+            override fun <T> turn(opens: Boolean, waiting: T, press: () -> T): T = press()
         }
         PaneldServerHttpFixture().use { fixture ->
             fixture.useManagementStatus { error("Passive status read must not refresh storage") }

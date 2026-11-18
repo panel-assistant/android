@@ -94,8 +94,7 @@ internal class LocalAdbRuntime(
     // from the published state while a helper request it would race is in flight.
     private val effects = Mutex()
     /** Owner presses made while a helper request held [effects], in the order they were made. */
-    private val waitingPresses = java.util.concurrent.ConcurrentLinkedQueue<() -> Unit>()
-    @Volatile private var effectsThread: Thread? = null
+    private val waitingPresses = java.util.concurrent.ConcurrentLinkedQueue<Waiting<*>>()
     /** Owner presses waiting for a helper request in flight; a test reads it to know a press arrived during one. */
     internal val pressesWaiting: Int get() = waitingPresses.size
     private val shells = Mutex()
@@ -231,7 +230,9 @@ internal class LocalAdbRuntime(
         }
         val after = runCatching { endpoint.state() }.getOrNull()
         val reopened = if (after != null) !after.managed else answer == true
-        if (reopened) ManagedNetworkAdb.panelAssistantHold = false else runCatching { helperOpened(false) }
+        // A refusal clears the mark only while the lease still holds ADB off: a port an earlier reopen opened, or
+        // one the helper keeps retrying after a failed reopen, stays this app's to close.
+        if (reopened) ManagedNetworkAdb.panelAssistantHold = false else if (after?.managed != false) runCatching { helperOpened(false) }
         return reopened
     }
 
@@ -264,11 +265,12 @@ internal class LocalAdbRuntime(
      * The owner's press, in its turn on the effects queue. With nothing in flight it runs now, on state read
      * from the helper just before. A press made while a helper request is in flight runs straight after that
      * request, before the queue is let go, in the order presses were made, and this call waits for its result.
-     * It returns [waiting] when it cannot wait: [pressWaitMs] passed, or the request in flight is this thread's.
+     * When [pressWaitMs] passes first, a press that only closes ADB ([opens] false) is answered [waiting] and still
+     * runs straight after; one that opens ADB is withdrawn unrun and answered [waiting], so its answer never
+     * claims an effect it did not have.
      */
-    override fun <T> turn(waiting: T, press: () -> T): T {
+    override fun <T> turn(opens: Boolean, waiting: T, press: () -> T): T {
         if (effects.tryLock()) {
-            effectsThread = Thread.currentThread()
             try {
                 drainLocked()
                 runCatching { publish() }
@@ -277,25 +279,40 @@ internal class LocalAdbRuntime(
                 letGo()
             }
         }
-        val answer = java.util.concurrent.CompletableFuture<T>()
-        waitingPresses.add {
-            try { answer.complete(press()) } catch (failure: Throwable) { answer.completeExceptionally(failure) }
-        }
+        val entry = Waiting(press)
+        waitingPresses.add(entry)
         kick()
-        if (!answer.isDone && effectsThread === Thread.currentThread()) return waiting
-        return try {
-            answer.get(pressWaitMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+        val waited = try {
+            entry.answer.get(pressWaitMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+            true
         } catch (_: java.util.concurrent.TimeoutException) {
-            waiting
+            false
+        } catch (_: java.util.concurrent.ExecutionException) {
+            true
+        }
+        if (!waited && (!opens || entry.withdraw())) return waiting
+        // Answered, or already running on the queue's own thread, where it ends within its own budgets.
+        return try {
+            entry.answer.get(PRESS_RUNNING_WAIT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
         } catch (failure: java.util.concurrent.ExecutionException) {
             throw failure.cause ?: failure
         }
     }
 
+    /** One press waiting for the queue: run once by whoever drains it, or withdrawn unrun by its caller. */
+    private class Waiting<T>(private val press: () -> T) {
+        private val state = java.util.concurrent.atomic.AtomicInteger()
+        val answer = java.util.concurrent.CompletableFuture<T>()
+        fun run() {
+            if (!state.compareAndSet(0, 1)) return
+            try { answer.complete(press()) } catch (failure: Throwable) { answer.completeExceptionally(failure) }
+        }
+        fun withdraw(): Boolean = state.compareAndSet(0, 2)
+    }
+
     /** Holds the effects queue for a lease request, then lets it go through [letGo]. */
     private suspend inline fun <T> withEffects(block: () -> T): T {
         effects.lock()
-        effectsThread = Thread.currentThread()
         try {
             return block()
         } finally {
@@ -309,7 +326,6 @@ internal class LocalAdbRuntime(
         try {
             drainLocked()
         } finally {
-            effectsThread = null
             effects.unlock()
         }
         kick()
@@ -317,19 +333,17 @@ internal class LocalAdbRuntime(
 
     private fun drainLocked() {
         while (true) {
-            val press = waitingPresses.poll() ?: return
+            val entry = waitingPresses.poll() ?: return
             runCatching { publish() }
-            press()
+            entry.run()
         }
     }
 
     private fun kick() {
         while (waitingPresses.isNotEmpty() && effects.tryLock()) {
-            effectsThread = Thread.currentThread()
             try {
                 drainLocked()
             } finally {
-                effectsThread = null
                 effects.unlock()
             }
         }
@@ -427,7 +441,7 @@ internal class LocalAdbRuntime(
                                             publish(); PanelAssistantManageReply("applied", null, JSONObject().put("enabled", true))
                                         }
                                         false -> {
-                                            runCatching { helperOpened(false) }
+                                            if (runCatching { endpoint.state()?.managed }.getOrNull() != false) runCatching { helperOpened(false) }
                                             PanelAssistantManageReply("failed", "local_adb_unavailable", null)
                                         }
                                         null -> if (needsApproval) null else refused(refusal)
@@ -482,6 +496,10 @@ internal class LocalAdbRuntime(
     }
 
     companion object {
+        /** A withdrawn-too-late press is already running on the queue's thread; it ends within the helper's and the
+         *  controller's own budgets (the 10 s settle deadline, the 20 s exchange budget). */
+        private const val PRESS_RUNNING_WAIT_MS = 60_000L
+
         /** Fixed per-verb helper budgets; Panel Assistant never chooses them. HOME waits on the chooser. */
         val TYPED_COMMAND_TIMEOUT_MS: Map<String, Int> = mapOf(
             "PA_IDENTITY" to 15_000,

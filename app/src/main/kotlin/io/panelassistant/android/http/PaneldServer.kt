@@ -99,6 +99,9 @@ class PaneldServer internal constructor(
     // Applies a single behaviour setting through the command dispatcher (persist → drive hardware →
     // report HA state). Lets the config API set those keys identically to an HA command while preserving whether durable desired state is still waiting for actuation.
     private val applySetting: (String, String) -> LiveSettingRequestOutcome,
+    // The settings page's Network ADB ON, made as Home Assistant's switch makes it (pressNetworkAdbOn).
+    private val pressNetworkAdbOn: (io.panelassistant.android.CommandOrigin) -> LiveSettingRequestOutcome =
+        { applySetting("network_adb", "true") },
     private val onProximityCalibration: (String, String) -> Boolean = { _, _ -> false },
     private val pendingLiveSettings: () -> Map<String, String> = { emptyMap() },
     // The subset of the above whose apply path independent boots have found absent. Still durable, still
@@ -966,6 +969,7 @@ class PaneldServer internal constructor(
         authorizeSensitive = ::authorizeSensitive,
         rejectHardenedNetworkAdb = ::rejectDirectNetworkAdb,
         onHaAreaCommitted = { haArea.onHaAreaCommitted() },
+        pressNetworkAdbOn = pressNetworkAdbOn,
     )
 
 
