@@ -14,6 +14,12 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import io.ktor.client.request.header
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.server.routing.route
+import io.ktor.server.routing.routing
+import io.ktor.client.statement.bodyAsText
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
@@ -356,6 +362,43 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
         assertEquals("page=$outcome queued=${authority.pendingSnapshot()} listening=${helper.listening} keepOff=${rig.config.adbKeepOff}",
             outcome == LiveSettingRequestOutcome.APPLIED, helper.listening)
         assertTrue(authority.pendingSnapshot().isEmpty())
+    }
+
+    /** The settings page's Network ADB ON through its real route: POST /api/v1/config reaches the production
+     *  press (pressNetworkAdbOn) and the real dispatcher, and opens ADB while Keep ADB off held it. */
+    @Test fun aSettingsPagePostOfNetworkAdbOnOpensAdbWhileKeepAdbOffHeldIt() = keptOff { rig, helper, _ ->
+        // The config route reads the panel's identity, which a running service has always settled.
+        rig.config.ensurePanelId { "door_panel" }
+        rig.config.setRaw(requireNotNull(io.panelassistant.android.config.SettingsRegistry.spec("friendly_name")), "Door panel")
+        val server = io.panelassistant.android.http.routeServer(rig.config) { key, value -> unattended(rig, key, value) }
+        server.javaClass.getDeclaredField("pressNetworkAdbOn").apply { isAccessible = true }
+            .set(server, { origin: CommandOrigin -> pressNetworkAdbOn(rig.commands, origin) })
+        var status = 0
+        var body = ""
+        val post = Thread {
+            io.ktor.server.testing.testApplication {
+                application {
+                    routing {
+                        route("/api/v1") {
+                            with(server) { installDirectConfigPostRoute { io.panelassistant.android.config.Capabilities(appCanSu = true, networkAdb = true) } }
+                        }
+                    }
+                }
+                val response = client.post("/api/v1/config") {
+                    header(io.ktor.http.HttpHeaders.ContentType, io.ktor.http.ContentType.Application.Json.toString())
+                    setBody(JSONObject(mapOf("network_adb" to true)).toString())
+                }
+                status = response.status.value
+                body = response.bodyAsText()
+            }
+        }.also { it.start() }
+        post.join(30_000)
+        assertEquals(body, 200, status)
+        assertTrue(body, JSONObject(body).getBoolean("ok"))
+        assertTrue("the lease gave ADB back and the ON opened it", helper.listening)
+        assertFalse(rig.config.adbKeepOff)
+        assertTrue(rig.adb.isPersisted())
+        assertTrue("never a journalled setting", authority.pendingSnapshot().isEmpty())
     }
 
     @Test fun anOwnersOffDuringALiveKeepOffReleaseReplyClosesAdb() = keptOff { rig, helper, _ ->
