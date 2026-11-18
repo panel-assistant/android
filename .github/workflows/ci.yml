@@ -421,7 +421,7 @@ jobs:
     # system libraries. Installing WebKit's dependencies from the Ubuntu mirror took 29 of this job's 32 s of
     # setup (175 packages, 129 MB); Blacksmith starts the image in 1 to 3 s. Chromium is the image's build.
     container:
-      image: mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea
+      image: mcr.microsoft.com/playwright:v1.65.0-noble@sha256:9beb546099e11f52d62e505537914870e01a67e0e6b00ae41da4775324e73dbe
       options: --ipc=host
     timeout-minutes: 15
     defaults:
