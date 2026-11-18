@@ -471,7 +471,7 @@ internal fun adbOpenedByHelper(config: Config, open: Boolean) {
  * earlier request it runs straight after.
  */
 internal fun endLeaseOnRelaxed(config: Config): Boolean = ManagedNetworkAdb.turn(refuseIfLate = false, waiting = true) {
-    config.hardenedSecurityEnabled || config.adbKeepOff || ManagedNetworkAdb.releaseForOwner()
+    config.hardenedSecurityEnabled || config.adbKeepOff || ManagedNetworkAdb.releaseForRelaxed()
 }
 
 /**

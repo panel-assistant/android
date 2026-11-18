@@ -26,6 +26,10 @@ internal object ManagedNetworkAdb {
      *  owner's [turn]; blocks briefly on the helper, so a caller must not hold the transition gate. */
     fun releaseForOwner(): Boolean = !managed || (ownerSwitchWorks() && owner?.release() == true)
 
+    /** [releaseForOwner] for the owner's Relaxed press, nobody waiting on its answer: refused, the renewal asks
+     *  again until the lease is given back or the owner presses anything else about ADB. */
+    fun releaseForRelaxed(): Boolean = releaseForOwner().also { if (!it && ownerSwitchWorks()) owner?.oweRelease() }
+
     /**
      * Every owner press that changes ADB (Network ADB, Keep ADB off, Relaxed mode) runs as [press] in its turn on
      * the lease's one queue, so it never acts while a helper request it would race is in flight, and it decides
@@ -52,5 +56,7 @@ internal object ManagedNetworkAdb {
         fun reconcile()
         /** Runs the owner's [press] in its turn on the lease's queue (see [ManagedNetworkAdb.turn]). */
         fun <T> turn(refuseIfLate: Boolean, waiting: T, press: () -> T): T
+        /** A give-back the owner's Relaxed press asked for was refused: the renewal retries it. Only in a [turn]. */
+        fun oweRelease() {}
     }
 }

@@ -95,6 +95,7 @@ internal class LocalAdbRuntime(
     private val effects = Mutex()
     /** Owner presses made while a helper request held [effects], in the order they were made. */
     private val waitingPresses = java.util.concurrent.ConcurrentLinkedQueue<Waiting<*>>()
+    @Volatile private var releaseOwed = false
     /** Owner presses waiting for a helper request in flight; a test reads it to know a press arrived during one. */
     internal val pressesWaiting: Int get() = waitingPresses.size
     private val shells = Mutex()
@@ -205,6 +206,13 @@ internal class LocalAdbRuntime(
                 publish()
                 onClosed()
             }
+            // The owner's Relaxed press whose give-back the helper refused, retried; any later press cancelled it.
+            releaseOwed && !keep() -> {
+                operation("recover")
+                if (giveBackLocked { generation.get() == current && releaseOwed && !keep() }) releaseOwed = false
+                operation("publish")
+                publish()
+            }
             else -> {
                 operation("beat")
                 if (endpoint.beat(fresh) { write -> RemoteDebugSecurityTransitionGate.withLock {
@@ -275,7 +283,7 @@ internal class LocalAdbRuntime(
         if (effects.tryLock()) {
             try {
                 drainLocked()
-                runCatching { publish() }
+                beforePress()
                 return press()
             } finally {
                 letGo()
@@ -337,9 +345,28 @@ internal class LocalAdbRuntime(
     private fun drainLocked() {
         while (true) {
             val entry = waitingPresses.poll() ?: return
-            runCatching { publish() }
+            beforePress()
             entry.run()
         }
+    }
+
+    /**
+     * Straight before an owner's press: the helper's state is read again, and a helper that cannot be read leaves
+     * the last state it gave, never "no lease", so a press never skips giving a held lease back on one failed
+     * read. Any press cancels a give-back owed by an earlier one ([oweRelease]).
+     */
+    private fun beforePress() {
+        releaseOwed = false
+        runCatching { endpoint.state() }.getOrNull()?.let {
+            ManagedNetworkAdb.managed = it.managed
+            ManagedNetworkAdb.recoveryHold = it.recoveryHold
+        }
+    }
+
+    /** The owner switched back to Relaxed mode and the helper refused to give back the lease Hardened mode held:
+     *  the renewal asks again, until it is given back or the owner presses anything else about ADB. */
+    override fun oweRelease() {
+        releaseOwed = true
     }
 
     private fun kick() {

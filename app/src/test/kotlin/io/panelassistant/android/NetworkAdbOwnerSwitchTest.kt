@@ -401,6 +401,58 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
         assertTrue("never a journalled setting", authority.pendingSnapshot().isEmpty())
     }
 
+    // One failed STATUS read straight before a press, and one refused Relaxed give-back.
+    private fun r3a(unreadable: Boolean) = keptOff { rig, helper, _ ->
+        if (unreadable) stateUnreadable = 1
+        val outcome = setting(rig, "adb_keep_off", "false")
+        advanceTimeBy(5 * 60_000L); runCurrent()
+        assertEquals("answer=$outcome keepOff=${rig.config.adbKeepOff} recovers=${helper.recovers} beatsRenewed=$beatsRenewed [managed, listening]",
+            if (outcome == LiveSettingRequestOutcome.APPLIED) listOf(false, true) else listOf(true, false),
+            listOf(ManagedNetworkAdb.managed, helper.listening))
+    }
+    @Test fun r3a_keepAdbOffOffWithAnUnreadableStatusBeforeThePressEndsTheLease() = r3a(true)
+    @Test fun r3a0_control_readable() = r3a(false)
+
+    private fun r3c(unreadable: Boolean) = panel(hardened = true, firmwareOpen = true) { rig, helper, _ ->
+        assertTrue(ManagedNetworkAdb.managed)
+        assertTrue(rig.config.setSecurityMode(Config.SecurityMode.RELAXED))
+        if (unreadable) stateUnreadable = 1
+        val ended = io.panelassistant.android.control.endLeaseOnRelaxed(rig.config)
+        advanceTimeBy(5 * 60_000L); runCurrent()
+        assertEquals("endLeaseOnRelaxed=$ended recovers=${helper.recovers} beatsRenewed=$beatsRenewed keepOff=${rig.config.adbKeepOff} [managed, listening]",
+            listOf(false, true), listOf(ManagedNetworkAdb.managed, helper.listening))
+    }
+    @Test fun r3c_relaxedWithAnUnreadableStatusBeforeThePressEndsTheLease() = r3c(true)
+    @Test fun r3c0_control_readable() = r3c(false)
+
+    private fun r3d(refuse: Boolean) = panel(hardened = true, firmwareOpen = true) { rig, helper, _ ->
+        assertTrue(ManagedNetworkAdb.managed)
+        assertTrue(rig.config.setSecurityMode(Config.SecurityMode.RELAXED))
+        helper.refuseRecovery = refuse
+        val ended = io.panelassistant.android.control.endLeaseOnRelaxed(rig.config)
+        helper.refuseRecovery = false
+        val renewed = beatsRenewed
+        advanceTimeBy(5 * 60_000L); runCurrent()
+        assertEquals("endLeaseOnRelaxed=$ended BEATs accepted in the next five minutes=${beatsRenewed - renewed} keepOff=${rig.config.adbKeepOff} hardened=${rig.config.hardenedSecurityEnabled} [managed, listening]",
+            listOf(false, true), listOf(ManagedNetworkAdb.managed, helper.listening))
+    }
+    @Test fun r3d_relaxedWhoseGiveBackIsRefusedOnceLeavesNoLeaseRenewed() = r3d(true)
+    @Test fun r3d0_control_noRefusal() = r3d(false)
+
+    /** The Relaxed give-back retried at renewal never overturns a later owner choice: a Network ADB OFF made after
+     *  the refusal keeps ADB closed. */
+    @Test fun aRelaxedGiveBackOwedIsCancelledByALaterOwnerOff() = panel(hardened = true, firmwareOpen = false) { rig, helper, _ ->
+        assertTrue(rig.config.setSecurityMode(Config.SecurityMode.RELAXED))
+        helper.refuseRecovery = true
+        assertFalse(io.panelassistant.android.control.endLeaseOnRelaxed(rig.config))
+        helper.refuseRecovery = false
+        assertEquals(PanelAssistantCommandResult.Applied, submitNative(rig, "network_adb", "off"))
+        val before = helper.recovers
+        advanceTimeBy(5 * 60_000L); runCurrent()
+        assertEquals("nothing reopens ADB after the owner's later OFF", before, helper.recovers)
+        assertFalse(helper.listening)
+    }
+
     @Test fun anOwnersOffDuringALiveKeepOffReleaseReplyClosesAdb() = keptOff { rig, helper, _ ->
         helper.afterRecoverSubmit = {
             assertEquals(PanelAssistantCommandResult.Applied, submitNative(rig, "network_adb", "off"))
