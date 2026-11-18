@@ -189,12 +189,6 @@ internal class PaneldServerHttpFixture(
         ))
         field("sensors", allocate(SensorReporter::class.java))
         field("onProximityCalibration", { _: String, _: String -> false })
-        // As production's default: the page's Network ADB ON through whatever applySetting this test installs.
-        field("pressNetworkAdbOn", { _: io.panelassistant.android.CommandOrigin ->
-            @Suppress("UNCHECKED_CAST")
-            (PaneldServer::class.java.getDeclaredField("applySetting").apply { isAccessible = true }.get(this)
-                as (String, String) -> io.panelassistant.android.LiveSettingRequestOutcome)("network_adb", "true")
-        })
         field("autoBrightnessHttpApi", AutoBrightnessHttpApi.UNAVAILABLE)
         field("autoSleepHttpApi", AutoSleepHttpApi.UNAVAILABLE)
         field("radioStatus", { null })
