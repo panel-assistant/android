@@ -205,6 +205,159 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
         assertFalse("an Applied OFF closes the port this app's helper reopened", helper.listening)
     }
 
+    // A slow or unreadable helper, inside its 20 s exchange budget.
+    private fun haCommand(rig: Rig, key: String, value: String, answer: java.util.concurrent.CompletableFuture<PanelAssistantCommandResult>) =
+        rig.commands.submit(io.panelassistant.android.panelassistant.PanelAssistantCommand(key, nativeValue(key, value), admit = { null }),
+            io.panelassistant.android.CommandOrigin.panelAssistant()) { answer.complete(it) }
+
+    private fun awaitWaiting(runtime: LocalAdbRuntime, n: Int) {
+        val deadline = System.nanoTime() + 10_000_000_000L
+        while (runtime.pressesWaiting < n && System.nanoTime() < deadline) Thread.sleep(2)
+        assertEquals("presses waiting on the lease queue", n, runtime.pressesWaiting)
+    }
+
+    @Test fun r2a_relaxedChosenDuringASlowRenewalEndsTheLeaseOnlyHardenedModeWanted() = panel(hardened = true, firmwareOpen = false) { rig, helper, _ ->
+        assertTrue(ManagedNetworkAdb.managed)
+        val relaxed = java.util.concurrent.CompletableFuture<Boolean>()
+        var armed = true
+        helper.duringRequest = { name ->
+            if (armed && name == "beat") {
+                armed = false
+                Thread {
+                    rig.config.setSecurityMode(Config.SecurityMode.RELAXED)
+                    relaxed.complete(io.panelassistant.android.control.endLeaseOnRelaxed(rig.config))
+                }.start()
+                Thread.sleep(6_000)
+            }
+        }
+        advanceTimeBy(30_000); runCurrent()
+        helper.duringRequest = {}
+        val ended = relaxed.get(20, java.util.concurrent.TimeUnit.SECONDS)
+        advanceTimeBy(5 * 60_000L); runCurrent()
+        assertFalse(rig.config.hardenedSecurityEnabled)
+        assertEquals("Relaxed chosen during a renewal: endLeaseOnRelaxed=$ended, [managed, listening]",
+            listOf(false, true), listOf(ManagedNetworkAdb.managed, helper.listening))
+    }
+
+    /** r2c with each give-back exchange slower than the turn's wait (19 s, past a 60 s cap that
+     *  is gone): an ON already running is answered for what it did. */
+    @Test fun r2c_anOnThatRunsPastTheTurnsWaitIsAnsweredForWhatItDid() = panel(timeoutS = 120) { rig, helper, runtime ->
+        assertEquals(LiveSettingRequestOutcome.APPLIED, setting(rig, "adb_keep_off", "true"))
+        val answer = java.util.concurrent.CompletableFuture<PanelAssistantCommandResult>()
+        var armed = true
+        var slow = false
+        helper.duringRequest = { name ->
+            if (armed && name == "beat") {
+                armed = false
+                haCommand(rig, "network_adb", "on", answer)
+                awaitWaiting(runtime, 1)
+                slow = true
+            }
+            if (slow && name == "recover") Thread.sleep(3_000)
+        }
+        stateHook = { if (slow && !rig.config.adbKeepOff) Thread.sleep(3_000) }
+        advanceTimeBy(30_000); runCurrent()
+        slow = false
+        helper.duringRequest = {}
+        stateHook = {}
+        val result = answer.get(120, java.util.concurrent.TimeUnit.SECONDS)
+        runCurrent()
+        assertEquals("answer=$result listening=${helper.listening} keepOff=${rig.config.adbKeepOff} switch=${rig.adb.isPersisted()}",
+            result == PanelAssistantCommandResult.Applied, helper.listening)
+    }
+
+    @Test fun r2d_aRefusedRecoveryFollowedByAnUnreadableHelperKeepsThePortThisAppsToClose() = keptOff { rig, helper, runtime ->
+        assertEquals(LiveSettingRequestOutcome.APPLIED, setting(rig, "adb_keep_off", "false"))
+        assertTrue(helper.listening)
+        assertTrue(rig.adb.isPersisted())
+        helper.refuseRecovery = true
+        helper.duringRequest = { if (it == "recover") stateUnreadable = 1 }
+        assertEquals("failed", runtime.request("adb.recover", JSONObject(), { true }).outcome)
+        helper.refuseRecovery = false
+        helper.duringRequest = {}
+        assertTrue(helper.listening)
+        val before = "before the OFF: switch=${rig.adb.isPersisted()} openedByHelper=${rig.config.adbOpenedByHelper}"
+        val off = submitNative(rig, "network_adb", "off")
+        assertEquals("$before; OFF answer=$off listening=${helper.listening} switch=${rig.adb.isPersisted()}",
+            off == PanelAssistantCommandResult.Applied, !helper.listening)
+    }
+
+    @Test fun r2e_aRestoredKeepAdbOffOffDuringASlowRenewalLeavesKeepAdbOffAsItIs() = keptOff { rig, helper, _ ->
+        val restored = java.util.concurrent.CompletableFuture<LiveSettingRequestOutcome>()
+        var armed = true
+        helper.duringRequest = { name ->
+            if (armed && name == "beat") {
+                armed = false
+                Thread { restored.complete(unattended(rig, "adb_keep_off", "false")) }.start()
+                Thread.sleep(6_000)
+            }
+        }
+        advanceTimeBy(30_000); runCurrent()
+        helper.duringRequest = {}
+        val outcome = restored.get(20, java.util.concurrent.TimeUnit.SECONDS)
+        runCurrent()
+        advanceTimeBy(5 * 60_000L); runCurrent()
+        assertEquals("outcome=$outcome queued=${authority.pendingSnapshot()}",
+            listOf(true, true, false), listOf(rig.config.adbKeepOff, ManagedNetworkAdb.managed, helper.listening))
+    }
+
+    @Test fun r2e2_afterARestoreDuringASlowRenewalANewSessionKeepsTheLease() = keptOff { rig, helper, runtime ->
+        var armed = true
+        val restored = java.util.concurrent.CompletableFuture<LiveSettingRequestOutcome>()
+        helper.duringRequest = { name ->
+            if (armed && name == "beat") {
+                armed = false
+                Thread { restored.complete(unattended(rig, "adb_keep_off", "false")) }.start()
+                Thread.sleep(6_000)
+            }
+        }
+        advanceTimeBy(30_000); runCurrent()
+        helper.duringRequest = {}
+        restored.get(20, java.util.concurrent.TimeUnit.SECONDS)
+        runtime.session("again", true); runCurrent()
+        val renewed = beatsRenewed
+        advanceTimeBy(5 * 60_000L); runCurrent()
+        val lapsed = beatsRenewed == renewed
+        if (lapsed) helper.lapse()
+        advanceTimeBy(60_000L); runCurrent()
+        assertEquals("accepted BEATs in the five minutes after the new session: ${beatsRenewed - renewed} (lapsed=$lapsed); keepOff=${rig.config.adbKeepOff}",
+            listOf(true, false), listOf(ManagedNetworkAdb.managed, helper.listening))
+    }
+
+    /** r2f: the page's ON starts after waiting on the worker, then runs slowly and is refused by the helper: it is
+     *  answered for what it did, never pending with nothing queued. */
+    @Test fun r2f_aSlowRefusedPageOnIsAnsweredForWhatItDid() = panel(timeoutS = 120) { rig, helper, runtime ->
+        assertEquals(LiveSettingRequestOutcome.APPLIED, setting(rig, "adb_keep_off", "true"))
+        val gate = blockWorker(rig)
+        val page = java.util.concurrent.CompletableFuture<LiveSettingRequestOutcome>()
+        Thread { page.complete(setting(rig, "network_adb", "true")) }.start()
+        var armed = true
+        var slow = false
+        helper.duringRequest = { name ->
+            if (armed && name == "beat") {
+                armed = false
+                Thread.sleep(1_000)
+                gate.countDown()
+                awaitWaiting(runtime, 1)
+                slow = true
+                helper.refuseRecovery = true
+            }
+            if (slow && name == "recover") Thread.sleep(3_000)
+        }
+        stateHook = { if (slow && !rig.config.adbKeepOff) Thread.sleep(3_000) }
+        advanceTimeBy(30_000); runCurrent()
+        slow = false
+        helper.duringRequest = {}
+        stateHook = {}
+        helper.refuseRecovery = false
+        val outcome = page.get(120, java.util.concurrent.TimeUnit.SECONDS)
+        barrier(rig)
+        runCurrent()
+        assertEquals("page=$outcome queued=${authority.pendingSnapshot()} listening=${helper.listening} keepOff=${rig.config.adbKeepOff}",
+            outcome == LiveSettingRequestOutcome.APPLIED, helper.listening)
+        assertTrue(authority.pendingSnapshot().isEmpty())
+    }
+
     @Test fun anOwnersOffDuringALiveKeepOffReleaseReplyClosesAdb() = keptOff { rig, helper, _ ->
         helper.afterRecoverSubmit = {
             assertEquals(PanelAssistantCommandResult.Applied, submitNative(rig, "network_adb", "off"))
@@ -763,6 +916,13 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
         }
     }
 
+    /** Runs at every STATUS exchange the runtime makes. */
+    @Volatile private var stateHook: () -> Unit = {}
+    /** The next n STATUS exchanges fail (the helper cannot be read). */
+    @Volatile private var stateUnreadable = 0
+    /** BEATs the helper accepted (renewed the lease). */
+    @Volatile private var beatsRenewed = 0
+
     /** The first session after install consumes the one migration, as Config.takeAdbLeaseMigration does. */
     private var migrationDue = true
 
@@ -803,8 +963,9 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
         before: (AdbLeftAsThePanelHasItTest.Helper) -> Unit = {},
         settlesInstantly: Boolean = false,
         healthy: suspend () -> Boolean = { true },
+        timeoutS: Long = 60,
         body: suspend TestScope.(Rig, AdbLeftAsThePanelHasItTest.Helper, LocalAdbRuntime) -> Unit,
-    ) = runTest {
+    ) = runTest(timeout = kotlin.time.Duration.parse("${timeoutS}s")) {
         migrationDue = true
         val choicesAtStart = Config.adbOwnerChoiceEpoch.get()
         val helper = AdbLeftAsThePanelHasItTest.Helper(firmwareOpen)
@@ -820,8 +981,21 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
         // As the service wires it: a command that supersedes a setting retires its queued HTTP value.
         val rig = rig(adbRoot = root, adbListening = { helper.listening }, adbSettlesInstantly = settlesInstantly, onExternalSettingApplied = { authority.discard(it) },
             configure = { assertTrue(it.setSecurityMode(if (hardened) Config.SecurityMode.HARDENED else Config.SecurityMode.RELAXED)) })
+        stateHook = {}
+        stateUnreadable = 0
+        beatsRenewed = 0
+        // The helper as the runtime sees it: a STATUS exchange a test can slow down or fail, renewals counted.
+        val endpoint = object : io.panelassistant.android.panelassistant.LocalAdbEndpoint by helper {
+            override fun beat(nonce: String, submit: (() -> Unit) -> Boolean): Boolean =
+                helper.beat(nonce, submit).also { if (it) beatsRenewed++ }
+            override fun state(): io.panelassistant.android.panelassistant.LocalAdbState? {
+                stateHook()
+                if (stateUnreadable > 0) { stateUnreadable--; return null }
+                return helper.state()
+            }
+        }
         val runtime = LocalAdbRuntime(
-            backgroundScope, helper, { rig.config.hardenedSecurityEnabled }, { JSONObject() }, { false },
+            backgroundScope, endpoint, { rig.config.hardenedSecurityEnabled }, { JSONObject() }, { false },
             StandardTestDispatcher(testScheduler), keepOff = { rig.config.adbKeepOff },
             helperOpened = { open -> adbOpenedByHelper(rig.config, open) },
             ownerChoices = { Config.adbOwnerChoiceEpoch.get() - choicesAtStart },

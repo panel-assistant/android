@@ -31,11 +31,11 @@ internal object ManagedNetworkAdb {
      * the lease's one queue, so it never acts while a helper request it would race is in flight, and it decides
      * on state read from the helper just before it. A press made during a request runs straight after it, in the
      * order presses were made. [waiting] is the answer when the press could not wait for its own result: one
-     * that only closes ADB ([opens] false) still runs; one that opens it was withdrawn unrun.
+     * with [refuseIfLate] (one that opens ADB, answered to the owner) was withdrawn unrun; any other still runs.
      */
-    fun <T> turn(opens: Boolean, waiting: T, press: () -> T): T {
+    fun <T> turn(refuseIfLate: Boolean, waiting: T, press: () -> T): T {
         val runtime = owner
-        return if (runtime != null) runtime.turn(opens, waiting, press) else press()
+        return if (runtime != null) runtime.turn(refuseIfLate, waiting, press) else press()
     }
 
     /** `"network_adb":{…}` for the status document: whether the lease holds ADB off, and whether the owner's
@@ -51,6 +51,6 @@ internal object ManagedNetworkAdb {
         /** Arms the lease now when the owner wants it held. Never ends a lease. Only in a [turn]. */
         fun reconcile()
         /** Runs the owner's [press] in its turn on the lease's queue (see [ManagedNetworkAdb.turn]). */
-        fun <T> turn(opens: Boolean, waiting: T, press: () -> T): T
+        fun <T> turn(refuseIfLate: Boolean, waiting: T, press: () -> T): T
     }
 }

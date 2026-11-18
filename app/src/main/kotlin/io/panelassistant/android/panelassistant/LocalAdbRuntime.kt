@@ -230,9 +230,10 @@ internal class LocalAdbRuntime(
         }
         val after = runCatching { endpoint.state() }.getOrNull()
         val reopened = if (after != null) !after.managed else answer == true
-        // A refusal clears the mark only while the lease still holds ADB off: a port an earlier reopen opened, or
-        // one the helper keeps retrying after a failed reopen, stays this app's to close.
-        if (reopened) ManagedNetworkAdb.panelAssistantHold = false else if (after?.managed != false) runCatching { helperOpened(false) }
+        // A refusal clears the mark only when the helper says the lease still holds ADB off: a port an earlier
+        // reopen opened, one the helper keeps retrying after a failed reopen, or one an unreadable helper leaves in
+        // doubt, stays this app's to close.
+        if (reopened) ManagedNetworkAdb.panelAssistantHold = false else if (after?.managed == true) runCatching { helperOpened(false) }
         return reopened
     }
 
@@ -265,11 +266,12 @@ internal class LocalAdbRuntime(
      * The owner's press, in its turn on the effects queue. With nothing in flight it runs now, on state read
      * from the helper just before. A press made while a helper request is in flight runs straight after that
      * request, before the queue is let go, in the order presses were made, and this call waits for its result.
-     * When [pressWaitMs] passes first, a press that only closes ADB ([opens] false) is answered [waiting] and still
-     * runs straight after; one that opens ADB is withdrawn unrun and answered [waiting], so its answer never
+     * When [pressWaitMs] passes before it starts, a press with [refuseIfLate] (one that opens ADB and whose answer
+     * the owner reads) is withdrawn unrun and answered [waiting]; any other is answered [waiting] and still runs
+     * straight after. A press already running is waited for until it ends, so its answer never
      * claims an effect it did not have.
      */
-    override fun <T> turn(opens: Boolean, waiting: T, press: () -> T): T {
+    override fun <T> turn(refuseIfLate: Boolean, waiting: T, press: () -> T): T {
         if (effects.tryLock()) {
             try {
                 drainLocked()
@@ -290,10 +292,11 @@ internal class LocalAdbRuntime(
         } catch (_: java.util.concurrent.ExecutionException) {
             true
         }
-        if (!waited && (!opens || entry.withdraw())) return waiting
-        // Answered, or already running on the queue's own thread, where it ends within its own budgets.
+        if (!waited && (!refuseIfLate || entry.withdraw())) return waiting
+        // Answered, or already running on the queue's own thread: it ends within the helper's and the controller's
+        // own budgets, and the thread running it never waits for this one.
         return try {
-            entry.answer.get(PRESS_RUNNING_WAIT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
+            entry.answer.get()
         } catch (failure: java.util.concurrent.ExecutionException) {
             throw failure.cause ?: failure
         }
@@ -441,7 +444,7 @@ internal class LocalAdbRuntime(
                                             publish(); PanelAssistantManageReply("applied", null, JSONObject().put("enabled", true))
                                         }
                                         false -> {
-                                            if (runCatching { endpoint.state()?.managed }.getOrNull() != false) runCatching { helperOpened(false) }
+                                            if (runCatching { endpoint.state()?.managed }.getOrNull() == true) runCatching { helperOpened(false) }
                                             PanelAssistantManageReply("failed", "local_adb_unavailable", null)
                                         }
                                         null -> if (needsApproval) null else refused(refusal)
@@ -496,10 +499,6 @@ internal class LocalAdbRuntime(
     }
 
     companion object {
-        /** A withdrawn-too-late press is already running on the queue's thread; it ends within the helper's and the
-         *  controller's own budgets (the 10 s settle deadline, the 20 s exchange budget). */
-        private const val PRESS_RUNNING_WAIT_MS = 60_000L
-
         /** Fixed per-verb helper budgets; Panel Assistant never chooses them. HOME waits on the chooser. */
         val TYPED_COMMAND_TIMEOUT_MS: Map<String, Int> = mapOf(
             "PA_IDENTITY" to 15_000,

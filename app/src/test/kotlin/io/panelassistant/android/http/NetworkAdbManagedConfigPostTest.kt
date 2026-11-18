@@ -46,7 +46,7 @@ class NetworkAdbManagedConfigPostTest {
             return gives
         }
         override fun reconcile() {}
-        override fun <T> turn(opens: Boolean, waiting: T, press: () -> T): T = press()
+        override fun <T> turn(refuseIfLate: Boolean, waiting: T, press: () -> T): T = press()
     }
 
     /** The page's Network ADB ON as the server hands it on: what it was answered, and from whom. */

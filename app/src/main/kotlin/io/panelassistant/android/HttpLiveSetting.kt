@@ -130,8 +130,8 @@ internal fun Config.commitKioskOnUnlessOffStoredSince(count: Long): Boolean = sy
  * dispatcher, whose handler gives a held lease back and applies the ON in a single turn on the lease's queue, and
  * which is never journalled. APPLIED only when it took effect. Anything else is REJECTED and has changed
  * nothing: a refusal, a later command on the channel that replaced it before it ran, or a worker too busy to
- * start it within [startWaitMs], when it is withdrawn before it can run. Once started it is answered for what
- * it did.
+ * start it within [startWaitMs], when it is withdrawn before it can run. Once started it is waited for and
+ * answered for what it did.
  */
 internal fun pressNetworkAdbOn(
     commands: PanelCommandDispatcher,
@@ -158,12 +158,8 @@ internal fun pressNetworkAdbOn(
         done.get(startWaitMs, java.util.concurrent.TimeUnit.MILLISECONDS)
     } catch (_: java.util.concurrent.TimeoutException) {
         if (state.compareAndSet(0, 2)) return LiveSettingRequestOutcome.REJECTED
-        try {
-            done.get(PAGE_NETWORK_ADB_ON_RUNNING_WAIT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
-        } catch (_: java.util.concurrent.TimeoutException) {
-            // Still running past every budget it has: say it is on its way rather than that nothing happened.
-            return LiveSettingRequestOutcome.DEFERRED
-        }
+        // Started: it ends within its own budgets (the lease queue's, the helper's, the controller's settle).
+        done.get()
     }
     return if (result == io.panelassistant.android.panelassistant.PanelAssistantCommandResult.Applied) {
         LiveSettingRequestOutcome.APPLIED
@@ -174,6 +170,3 @@ internal fun pressNetworkAdbOn(
 
 /** How long the settings page's ON waits for the command worker to start it before withdrawing it. */
 internal const val PAGE_NETWORK_ADB_ON_START_WAIT_MS = 10_000L
-/** Once started, it ends within its own budgets: the lease queue's wait, the helper's exchange and the
- *  controller's settle deadline. */
-private const val PAGE_NETWORK_ADB_ON_RUNNING_WAIT_MS = 60_000L

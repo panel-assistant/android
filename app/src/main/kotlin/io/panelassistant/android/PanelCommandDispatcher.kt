@@ -729,7 +729,7 @@ internal class PanelCommandDispatcher(
         // The effect runs in the owner's turn on the lease's queue, on state read from the helper just before it:
         // never while a helper request it would race is in flight. An ON that cannot have its turn is refused unrun;
         // an OFF is answered and runs straight after the request.
-        val ran = io.panelassistant.android.control.ManagedNetworkAdb.turn(opens = on, waiting = !on) {
+        val ran = io.panelassistant.android.control.ManagedNetworkAdb.turn(refuseIfLate = on, waiting = !on) {
             if (keepOffOutranks()) {
                 requireControlApplied("network_adb", ControlApplyOutcome.FAILED) { "Keep ADB off outranks this Network ADB ON" }
             }
@@ -759,9 +759,9 @@ internal class PanelCommandDispatcher(
     override fun handleAdbKeepOff(on: Boolean, previousValue: String?) {
         Config.adbOwnerChoiceEpoch.incrementAndGet()
         val managed = io.panelassistant.android.control.ManagedNetworkAdb
-        // Keep ADB off ON only closes ADB, so it is answered at once while the helper answers an earlier request
-        // and runs straight after it; an OFF that cannot have its turn is refused unrun and journalled.
-        val ran = managed.turn(opens = !on, waiting = on) {
+        // This handler never opens ADB (an OFF only puts Keep ADB off back on while the lease still holds), so
+        // while the helper answers an earlier request it is answered at once and runs straight after it.
+        managed.turn(refuseIfLate = false, waiting = Unit) {
             if (config.adbKeepOff) {
                 onExternalSettingApplied("network_adb")
                 managed.owner?.reconcile()
@@ -774,9 +774,7 @@ internal class PanelCommandDispatcher(
                 config.setAdbKeepOff(true)
             }
             core.reconcile("network_adb")
-            true
         }
-        if (!ran) error("Keep ADB off is busy; it is applied again later")
     }
 
     /** A sensitive command's one-shot panel approval binds to the approval key of the origin that sent it;

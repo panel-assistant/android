@@ -467,9 +467,10 @@ internal fun adbOpenedByHelper(config: Config, open: Boolean) {
  * The owner has switched the panel back to Relaxed mode, at the panel: a lease Hardened mode held that Keep ADB
  * off does not want ends now, so nothing ends it later in the background. True when nothing holds ADB off
  * afterwards that the owner does not want. Runs in the owner's turn; blocks briefly on the helper and must not
- * hold the transition gate.
+ * hold the transition gate. Nobody reads its answer, so it is never withdrawn: while the helper answers an
+ * earlier request it runs straight after.
  */
-internal fun endLeaseOnRelaxed(config: Config): Boolean = ManagedNetworkAdb.turn(opens = true, waiting = false) {
+internal fun endLeaseOnRelaxed(config: Config): Boolean = ManagedNetworkAdb.turn(refuseIfLate = false, waiting = true) {
     config.hardenedSecurityEnabled || config.adbKeepOff || ManagedNetworkAdb.releaseForOwner()
 }
 
@@ -480,7 +481,7 @@ internal fun endLeaseOnRelaxed(config: Config): Boolean = ManagedNetworkAdb.turn
  */
 internal fun liveOwnerDoor(config: Config, key: String, value: String): Boolean =
     if (key == "adb_keep_off" && value == "false") {
-        ManagedNetworkAdb.turn(opens = true, waiting = false) { openForKeepAdbOffOff(config) }
+        ManagedNetworkAdb.turn(refuseIfLate = true, waiting = false) { openForKeepAdbOffOff(config) }
     } else {
         true
     }
