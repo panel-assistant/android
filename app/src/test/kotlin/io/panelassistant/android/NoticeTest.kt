@@ -208,6 +208,12 @@ class NoticeTest {
     }
 
     @Test
+    fun onlyACompatibilityScreenThatWaitsOnSomethingIsLoggedAsAWarning() {
+        assertEquals(android.util.Log.INFO, admissionNoticeLogPriority(progress = true))
+        assertEquals(android.util.Log.WARN, admissionNoticeLogPriority(progress = false))
+    }
+
+    @Test
     fun onlyASignInOffersTheQr() {
         assertEquals(
             AdmissionQrSlots(R.string.notice_line_sign_in_needed, R.string.notice_qr_sign_in),

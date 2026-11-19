@@ -58,6 +58,10 @@ internal fun admissionNoticePill(progress: Boolean, signIn: Boolean, retries: Bo
     else -> R.string.notice_pill_action_needed
 }
 
+/** Progress during ordinary startup is INFO. A screen waiting for retry, sign-in or action is WARN. */
+internal fun admissionNoticeLogPriority(progress: Boolean): Int =
+    if (progress) android.util.Log.INFO else android.util.Log.WARN
+
 /** The line and the prompt beside the QR for an outcome a phone can fix, or null when none can. */
 internal data class AdmissionQrSlots(@androidx.annotation.StringRes val line: Int, @androidx.annotation.StringRes val prompt: Int)
 

@@ -450,7 +450,8 @@ internal class DashboardStatusScreens(
         val countdown = if (carriedDeadlineMs != null || autoRetryDelayMs != null) notice.hero("") else null
         // A sign-in keeps its pill whether or not the code can be offered: the page behind it may simply not
         // answer from the network.
-        val pill = admissionNoticePill(progress = retryLabel == null, signIn = qrSlots != null, retries = countdown != null)
+        val progress = retryLabel == null
+        val pill = admissionNoticePill(progress = progress, signIn = qrSlots != null, retries = countdown != null)
         surface.setBody(
             activity.getString(pill),
             qr ?: countdown ?: heroWord?.let { notice.hero(it, word = true) },
@@ -466,7 +467,7 @@ internal class DashboardStatusScreens(
         admissionCountdownView = countdown
         if (carriedDeadlineMs != null) resumeAdmissionAutoRetry(carriedDeadlineMs, title)
         else if (autoRetryDelayMs != null) armAdmissionAutoRetry(autoRetryDelayMs, title)
-        Log.w(TAG, "$title: $detail")
+        Log.println(admissionNoticeLogPriority(progress), TAG, "$title: $detail")
     }
 
     fun localizedHaUnavailableDetail(blocked: DashboardV2ProbeResult.Unavailable): String =
