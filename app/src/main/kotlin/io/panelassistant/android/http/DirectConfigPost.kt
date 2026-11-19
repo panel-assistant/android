@@ -85,6 +85,13 @@ internal class DirectConfigPost(
                 return
             }
         }
+        // Fence every baseline-dependent admission decision below. The direct mutation lane rechecks
+        // this complete effective snapshot before persistence, so a concurrent save cannot bypass an
+        // Area prerequisite or hardened approval by changing the value while this request waits. It is
+        // taken before the handover probe, which waits on the network: a save that lands during the
+        // probe (an address typed while the handover was checking its own) must refuse this commit
+        // rather than become its baseline and be overwritten.
+        val admissionBaselineHash = io.panelassistant.android.config.ConfigHash.of(directMutationValues())
         // Settle a handed-over Home Assistant URL before anything else looks at `ha_url`: every
         // admission decision below reads the posted parameters, and a handover that verified is an
         // ordinary `ha_url` write from here on.
@@ -98,10 +105,6 @@ internal class DirectConfigPost(
             return
         }
         if (rejectHardenedNetworkAdb(call, p["network_adb"])) return
-        // Fence every baseline-dependent admission decision below. The direct mutation lane rechecks
-        // this complete effective snapshot before persistence, so a concurrent save cannot bypass an
-        // Area prerequisite or hardened approval by changing the value while this request waits.
-        val admissionBaselineHash = io.panelassistant.android.config.ConfigHash.of(directMutationValues())
         val requestedAutoSleepSource = p[PresenceMode.KEY] ?: config.presenceMode.wire
         val requestedAutoSleep = p["auto_sleep"]?.let(SettingValue::parseBool) ?: config.autoSleep
         val enablingAutoSleep = autoSleepRequiresHaAdmission(

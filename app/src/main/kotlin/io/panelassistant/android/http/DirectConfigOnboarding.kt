@@ -5,8 +5,13 @@ import io.panelassistant.android.Config
 import io.panelassistant.android.haUrl
 import io.panelassistant.android.util.closeBody
 import io.ktor.http.Parameters
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** Resolves a handed-over HA address before the ordinary Configure transaction. */
 internal class DirectConfigOnboarding(private val config: Config) {
@@ -31,7 +36,8 @@ internal class DirectConfigOnboarding(private val config: Config) {
      */
     suspend fun augmentPostWithVerifiedHandover(posted: Parameters): HandoverConfigPost =
         rewritePostForHandover(posted, config.haUrl) { offered ->
-            withContext(Dispatchers.IO) { verifyHandedOverHaUrl(offered) }
+            (withTimeoutOrNull(HaUrlHandover.PROBE_DEADLINE_MS) { verifyHandedOverHaUrl(offered) }
+                ?: HaUrlHandover.Outcome.TIMEOUT)
                 .also { Log.i(TAG, "config: handed-over Home Assistant URL verification ${it.name.lowercase()}") }
         }
 
@@ -42,10 +48,24 @@ internal class DirectConfigOnboarding(private val config: Config) {
      * no "Login attempt failed" notification. See [HaUrlHandover] for why anything else answering,
      * including a bare 200, is a failure.
      */
-    private fun verifyHandedOverHaUrl(url: String): HaUrlHandover.Outcome {
+    private suspend fun verifyHandedOverHaUrl(url: String): HaUrlHandover.Outcome {
         val probe = HaUrlHandover.probeUrl(url) ?: return HaUrlHandover.Outcome.INVALID
-        return runCatching {
-            val connection = java.net.URL(probe).openConnection() as java.net.HttpURLConnection
+        val connection = runCatching { java.net.URL(probe).openConnection() as java.net.HttpURLConnection }
+            .getOrElse { return HaUrlHandover.classifyFailure(it) }
+        // Not a child of the caller: blocking socket I/O ignores cancellation, and closing a connection
+        // mid-body can itself block while the JDK drains it, so a deadline or a preferred address
+        // answering first returns at once and the connection is closed off the caller's path.
+        val io = ioScope.async { readProbe(connection) }
+        return try {
+            io.await()
+        } catch (cancelled: CancellationException) {
+            ioScope.launch { connection.disconnect() }
+            throw cancelled
+        }
+    }
+
+    private fun readProbe(connection: java.net.HttpURLConnection): HaUrlHandover.Outcome =
+        runCatching {
             try {
                 connection.requestMethod = "GET"
                 connection.connectTimeout = HaUrlHandover.CONNECT_TIMEOUT_MS
@@ -65,7 +85,6 @@ internal class DirectConfigOnboarding(private val config: Config) {
                 connection.disconnect()
             }
         }.getOrElse(HaUrlHandover::classifyFailure)
-    }
 
     /** The body as UTF-8, or null when it exceeds [HaUrlHandover.MAX_BODY_BYTES]. */
     private fun readBoundedBody(input: java.io.InputStream): String? {
@@ -82,5 +101,6 @@ internal class DirectConfigOnboarding(private val config: Config) {
 
     private companion object {
         const val TAG = "ha-paneld/http"
+        val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     }
 }

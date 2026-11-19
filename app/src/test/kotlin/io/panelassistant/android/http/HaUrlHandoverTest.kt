@@ -224,6 +224,41 @@ class HaUrlHandoverTest {
         assertEquals(4, probed.size)
     }
 
+    @Test fun `a verified handed-over address does not wait for alternates still probing`() = runBlocking {
+        val cancelled = java.util.concurrent.atomic.AtomicBoolean(false)
+        val result = kotlinx.coroutines.withTimeout(5_000) {
+            rewritePostForHandover(
+                params("ha_url_handover" to "http://ha.local:8123", HANDOVER_ALTERNATES_KEY to "http://192.0.2.9:8123"),
+                "",
+            ) { url ->
+                if (url == "http://ha.local:8123") {
+                    HaUrlHandover.Outcome.VERIFIED
+                } else {
+                    try { kotlinx.coroutines.awaitCancellation() } finally { cancelled.set(true) }
+                }
+            }
+        }
+        assertEquals("http://ha.local:8123", result.parameters["ha_url"])
+        assertTrue("the unused probe is cancelled, not waited for", cancelled.get())
+    }
+
+    @Test fun `a slower earlier alternate still beats a faster later one`() = runBlocking {
+        val result = rewritePostForHandover(
+            params(
+                "ha_url_handover" to "http://ha.local:8123",
+                HANDOVER_ALTERNATES_KEY to "http://192.0.2.1:8123 http://192.0.2.2:8123",
+            ),
+            "",
+        ) { url ->
+            when (url) {
+                "http://192.0.2.1:8123" -> { kotlinx.coroutines.delay(200); HaUrlHandover.Outcome.VERIFIED }
+                "http://192.0.2.2:8123" -> HaUrlHandover.Outcome.VERIFIED
+                else -> HaUrlHandover.Outcome.UNRESOLVABLE
+            }
+        }
+        assertEquals("http://192.0.2.1:8123", result.parameters["ha_url"])
+    }
+
     @Test fun `the handed-over address still wins when it answers`() {
         val result = rewriteWith(
             params(

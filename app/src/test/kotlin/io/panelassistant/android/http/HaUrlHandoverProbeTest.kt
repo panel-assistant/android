@@ -109,4 +109,40 @@ class HaUrlHandoverProbeTest {
         val fresh = server { Triple(400, "application/json", """{"message":"Onboarding not finished","code":"onboarding_required"}""") }
         assertEquals(HaUrlHandover.Outcome.NOT_HOME_ASSISTANT, handover(fresh.url).outcome)
     }
+
+    @Test fun `a server that trickles its answer cannot hold the handover past the probe deadline`() {
+        // Every byte arrives inside the per-read timeout, so only a whole-probe deadline ends it.
+        val socket = java.net.ServerSocket(0, 1, InetAddress.getLoopbackAddress())
+        val trickler = Thread {
+            runCatching {
+                socket.accept().use { client ->
+                    val out = client.getOutputStream()
+                    out.write(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 100000\r\n\r\n"
+                            .toByteArray(),
+                    )
+                    out.flush()
+                    while (true) {
+                        Thread.sleep(500)
+                        out.write(' '.code)
+                        out.flush()
+                    }
+                }
+            }
+        }.apply { isDaemon = true; start() }
+        try {
+            val started = System.nanoTime()
+            val result = handover("http://127.0.0.1:${socket.localPort}")
+            val elapsedMs = (System.nanoTime() - started) / 1_000_000
+            assertNull(result.parameters["ha_url"])
+            assertEquals("timeout", result.parameters["ha_url_handover_reason"])
+            assertTrue(
+                "took $elapsedMs ms against a ${HaUrlHandover.PROBE_DEADLINE_MS} ms deadline",
+                elapsedMs < HaUrlHandover.PROBE_DEADLINE_MS + 2_000,
+            )
+        } finally {
+            socket.close()
+            trickler.interrupt()
+        }
+    }
 }

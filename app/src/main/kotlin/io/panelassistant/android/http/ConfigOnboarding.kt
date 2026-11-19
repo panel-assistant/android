@@ -4,7 +4,6 @@ import io.panelassistant.android.DiscoveryResult
 import io.panelassistant.android.control.SystemController
 import io.ktor.http.Parameters
 import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 
 internal fun builtinRendererNeedsConnection(
@@ -71,8 +70,10 @@ private fun stripAlternates(posted: Parameters): Parameters =
 
 /**
  * Probe every candidate at once and keep the first, in Panel Assistant's order, that answers as Home
- * Assistant. Parallel so a list of dead addresses costs one probe's time, not one per address. When none
- * answers, the offered address and its own reason stand, exactly as before alternates existed.
+ * Assistant. Results are taken in that order, so a verified address returns as soon as every address
+ * ahead of it has failed, and the probes still running are cancelled rather than waited for. Each probe
+ * is bounded by [verify] itself. When none answers, the offered address and its own reason stand,
+ * exactly as before alternates existed.
  */
 private suspend fun firstVerified(
     offered: String,
@@ -80,8 +81,18 @@ private suspend fun firstVerified(
     verify: suspend (String) -> HaUrlHandover.Outcome,
 ): Pair<String, HaUrlHandover.Outcome> = coroutineScope {
     val candidates = (listOf(offered) + alternates).distinct()
-    val outcomes = candidates.map { async { verify(it) } }.awaitAll()
-    candidates.zip(outcomes).firstOrNull { it.second.verified } ?: (offered to outcomes.first())
+    val probes = candidates.map { async { verify(it) } }
+    try {
+        val offeredOutcome = probes.first().await()
+        if (offeredOutcome.verified) return@coroutineScope offered to offeredOutcome
+        for (index in 1 until probes.size) {
+            val outcome = probes[index].await()
+            if (outcome.verified) return@coroutineScope candidates[index] to outcome
+        }
+        offered to offeredOutcome
+    } finally {
+        probes.forEach { it.cancel() }
+    }
 }
 
 private suspend fun rewriteHandover(
