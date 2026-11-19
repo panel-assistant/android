@@ -509,6 +509,9 @@ for (const engine of ['Chromium', 'WebKit']) for (const [endpoint, fields] of [
           await button.click();
           assert.equal(await button.isDisabled(), true, `${locale}/${kind}: submission is held`);
           assert.equal(await note.textContent(), projection.strings['install.approval.waiting']);
+          // The click dispatches the request asynchronously: on a busy machine it reaches the
+          // route after the held state has rendered, so wait for it rather than assume it is there.
+          for (const deadline = Date.now() + 5_000; !answer && Date.now() < deadline;) await page.waitForTimeout(20);
           assert.ok(answer, 'the actual HTTP request reached the route');
           answer();
           await button.waitFor({ state: 'visible' });
