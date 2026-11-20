@@ -176,4 +176,32 @@ class LogCaptureNoiseTest {
             assertEquals(1, dumps.get())
         } finally { viewer.lease.close(); cap.close() }
     }
+
+    @Test fun helperBacklogCollapsesWarningsThatDifferOnlyInTheLeadingNumericAuditStamp() {
+        val messages = listOf(
+            "type=1400 audit(0.0:9): avc: denied { read } path=\"/tmp/audit(0.0:21)\"",
+            "type=1400 audit(169.812:10): avc: denied { read } path=\"/tmp/audit(0.0:21)\"",
+            "type=1400 audit(170.003:11): avc: denied { read } path=\"/tmp/audit(0.0:21)\"",
+            "type=1400 audit(0.0:12): avc: denied { read } path=\"/tmp/audit(0.0:22)\"",
+            "type=1400 audit(): avc: denied { read } path=\"/tmp/audit(0.0:21)\"",
+            "type=1400 audit(invalid:13): avc: denied { read }",
+            "type=1400 audit(invalid:14): avc: denied { read }",
+            "retry failed for audit(0.0:15)",
+            "retry failed for audit(0.0:16)",
+        )
+        val native = messages.mapIndexed { index, message ->
+            val tag = if (message.startsWith("type=")) "auditd" else "Example"
+            listOf("[ 1794011128.12$index 123: 123 W/$tag ]", message)
+        }
+        val raw = native.map { it.joinToString("\n") }
+        val cap = LogCapture(CoroutineScope(Dispatchers.IO), emptyList(), { emptyList() },
+            helperDump = { native.flatMap { it + "" } }, longLogcatRecords = true, wallMillis = { 0L })
+        try {
+            val bytes = raw.subList(1, 3).sumOf { it.toByteArray(Charsets.UTF_8).size }
+            val summary = "[ 0.000000000  123: 0 W/ha-paneld/log-noise ]\n" +
+                "repeated warning from auditd: collapsed 2 records ($bytes UTF-8 bytes); raw logs available on demand"
+            assertEquals(listOf(raw.first()) + raw.drop(3) + summary, cap.dump())
+            assertEquals(raw, cap.dump(raw = true))
+        } finally { cap.close() }
+    }
 }

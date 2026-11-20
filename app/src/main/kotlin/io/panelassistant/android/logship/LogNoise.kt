@@ -8,7 +8,7 @@ internal class LogNoise(private val render: (LogCaptureRecord) -> String) {
     fun accept(line: String, record: LogCaptureRecord?, rules: Set<String>): List<String> {
         if (record == null) return listOf(line)
         val known = if ("selinux-permissive" in rules && isPermissiveAudit(record)) "selinux-permissive" else null
-        val key = known ?: if (record.priority >= 5) "${record.priority}\u0000${record.tag}\u0000${record.message}" else return listOf(line)
+        val key = known ?: if (record.priority >= 5) repeatKey(record) else return listOf(line)
         val output = mutableListOf<String>()
         var count = counts[key]
         if (count == null) {
@@ -38,8 +38,16 @@ internal class LogNoise(private val render: (LogCaptureRecord) -> String) {
 
     companion object {
         private const val MAX_KEYS = 64
+        private val AUDIT_STAMP = Regex("^(type=[0-9]+ audit\\()[0-9]+\\.[0-9]+:[0-9]+(?=\\): )")
         private val PERMISSIVE = Regex("(?:^|\\s)permissive=1(?:\\s|$)")
         private val AVC_DENIED = Regex("\\):\\s+avc:\\s+denied(?:\\s|$)")
+
+        private fun repeatKey(record: LogCaptureRecord): String {
+            val prefix = "${record.priority}\u0000${record.tag}\u0000"
+            val stamp = AUDIT_STAMP.find(record.message) ?: return prefix + record.message
+            // Keep normalized audit keys distinct from literal messages with an empty stamp.
+            return "audit\u0000$prefix${stamp.groupValues[1]}${record.message.substring(stamp.range.last + 1)}"
+        }
 
         private fun isPermissiveAudit(record: LogCaptureRecord): Boolean =
             record.priority < 6 && record.message.startsWith("type=1400 audit(") &&
