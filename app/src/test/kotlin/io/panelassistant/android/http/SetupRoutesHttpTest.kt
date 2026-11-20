@@ -1,5 +1,6 @@
 package io.panelassistant.android.http
 
+import io.panelassistant.android.Config
 import io.panelassistant.android.config.SettingsRegistry
 import io.panelassistant.android.DiscoveryResult
 import io.panelassistant.android.GuidedSetupPresence
@@ -8,6 +9,7 @@ import io.panelassistant.android.control.SystemController
 import io.panelassistant.android.dashboard.EntityLearningManager
 import io.panelassistant.android.dashboardEntityLearningEnabled
 import io.panelassistant.android.device.DeviceProfile
+import io.panelassistant.android.persistence.SqliteStatePreferences
 import io.panelassistant.android.platform.ActivityRef
 import io.panelassistant.android.platform.SystemEnv
 import io.ktor.client.plugins.websocket.webSocket
@@ -20,6 +22,7 @@ import io.ktor.client.request.post
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.testing.testApplication
+import io.panelassistant.android.setDashboardEntityLearningEnabled
 import io.panelassistant.android.setHaConnection
 import io.panelassistant.android.setHaSetupHandover
 import io.panelassistant.android.setupEntityFilterAnswered
@@ -28,6 +31,7 @@ import io.panelassistant.android.setupHomeDashboardChosen
 import io.panelassistant.android.setupIdentityConfirmed
 import io.panelassistant.android.setupRenderAttestation
 import java.lang.reflect.Proxy
+import java.util.concurrent.Executors
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -217,6 +221,58 @@ class SetupRoutesHttpTest {
         }
     }
 
+    @Test fun `dashboard setup reasks after a failed answer write and persists a successful retry`() {
+        val writer = Executors.newSingleThreadExecutor()
+        try {
+            withRouteConfig { config, persistence, _, _ ->
+                withSetup(configOverride = config) { fixture ->
+                    assertTrue(config.applyBatch {
+                        config.setDashboardPackage(SystemController.BUILTIN_DASHBOARD)
+                        config.setupIdentityConfirmed = true
+                        config.setHaConnection("http://ha.example", "fixture-token")
+                        config.setHomeDashboard("/dashboard-wall")
+                        config.setDashboardEntityLearningEnabled(true)
+                    })
+                    fun reopened() = Config(SqliteStatePreferences(persistence, writer))
+                    testApplication {
+                        application { fixture.mount(this) }
+                        suspend fun setup() = JSONObject(client.get("/api/v1/setup").bodyAsText())
+                        val before = setup()
+                        assertEquals("home_dashboard", before.getString("next"))
+                        assertEquals("/dashboard-wall", before.getJSONObject("home_dashboard").getString("value"))
+                        assertFalse(before.getJSONObject("home_dashboard").getBoolean("answered"))
+
+                        persistence.failWrites = true
+                        val failure = client.post("/api/v1/setup/home-dashboard")
+                        val afterFailure = setup()
+                        val storedAfterFailure = reopened()
+                        assertEquals(
+                            listOf(HttpStatusCode.InternalServerError, "home_dashboard", false, false),
+                            listOf(
+                                failure.status,
+                                afterFailure.getString("next"),
+                                afterFailure.getJSONObject("home_dashboard").getBoolean("answered"),
+                                storedAfterFailure.setupHomeDashboardChosen,
+                            ),
+                        )
+                        assertEquals("/dashboard-wall", storedAfterFailure.homeDashboard)
+
+                        persistence.failWrites = false
+                        val retry = client.post("/api/v1/setup/home-dashboard")
+                        assertEquals(HttpStatusCode.OK, retry.status)
+                        assertEquals("{\"ok\":true}", retry.bodyAsText())
+                        assertTrue(setup().getJSONObject("home_dashboard").getBoolean("answered"))
+                        val storedAfterRetry = reopened()
+                        assertTrue(storedAfterRetry.setupHomeDashboardChosen)
+                        assertEquals("/dashboard-wall", storedAfterRetry.homeDashboard)
+                    }
+                }
+            }
+        } finally {
+            writer.shutdownNow()
+        }
+    }
+
     @Test fun `declining filtering records the answer for a foreign renderer without launching it`() = withSetup { fixture ->
         testApplication {
             application { fixture.mount(this) }
@@ -326,11 +382,13 @@ class SetupRoutesHttpTest {
     private fun withSetup(
         webView: PanelInfo.WebViewStatus = PanelInfo.WebViewStatus("unknown", tooOld = false),
         profileId: String = "tpa10",
+        configOverride: Config? = null,
         block: (PaneldServerHttpFixture) -> Unit,
     ) {
         PaneldServerHttpFixture().use { fixture ->
-            fixture.config.setDashboardPackage("com.example.dashboard")
-            fixture.config.setRaw(requireNotNull(SettingsRegistry.spec("friendly_name")), "Contract panel")
+            val config = configOverride ?: fixture.config
+            config.setDashboardPackage("com.example.dashboard")
+            config.setRaw(requireNotNull(SettingsRegistry.spec("friendly_name")), "Contract panel")
             val system = SystemController(object : SystemEnv {
                 override val ownPackage = "io.github.maxlyth.hapaneld"
                 override fun isInstalled(pkg: String) = pkg == "com.example.dashboard"
@@ -345,7 +403,7 @@ class SetupRoutesHttpTest {
             }
             val learning = unsafe.allocateInstance(EntityLearningManager::class.java) as EntityLearningManager
             EntityLearningManager::class.java.getDeclaredField("config").apply { isAccessible = true }
-                .set(learning, fixture.config)
+                .set(learning, config)
             val profile = Proxy.newProxyInstance(
                 DeviceProfile::class.java.classLoader,
                 arrayOf(DeviceProfile::class.java),
@@ -370,9 +428,9 @@ class SetupRoutesHttpTest {
                 get(fixture.server) as android.content.Context
             }
             field("setupState", SetupState(
-                fixture.config, system, learning, profile, context, { 0 },
+                config, system, learning, profile, context, { 0 },
                 { DiscoveryResult() }, { webView },
-                { system.resolveDashboard(fixture.config.dashboardPackage) == SystemController.BUILTIN_DASHBOARD },
+                { system.resolveDashboard(config.dashboardPackage) == SystemController.BUILTIN_DASHBOARD },
                 kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Job().apply { cancel() }),
                 io.panelassistant.android.util.RendererPreparationCoordinator(
                     builtinPackage = "builtin",

@@ -13,6 +13,7 @@ import io.panelassistant.android.Config
 import io.panelassistant.android.DiscoveryResult
 import io.panelassistant.android.HaDiscovery
 import io.panelassistant.android.RendererResolver
+import io.panelassistant.android.commitSetupHomeDashboardChoice
 import io.panelassistant.android.control.BuiltinDashboard
 import io.panelassistant.android.control.SystemController
 import io.panelassistant.android.dashboard.EntityLearningManager
@@ -67,13 +68,13 @@ internal class SetupState(
         config.setupIdentityConfirmed = true
     }
 
-    fun chooseHomeDashboard() {
+    fun chooseHomeDashboard(): Boolean {
         // Records that the dashboard question was answered — including "follow the account's
         // default", which leaves home_dashboard blank and is otherwise indistinguishable from
         // never having been asked. The value itself is an ordinary setting and has already
         // arrived via POST /config; no renderer side-effect here, because the first load stays
         // held until the entity-filter answer that necessarily follows this step.
-        config.setupHomeDashboardChosen = true
+        if (!config.commitSetupHomeDashboardChoice()) return false
         // The entity-filter question is next, and it needs a COUNT — but on a fresh panel
         // every scan trigger is gated on dashboard_entity_learning, the very setting that
         // question asks about, so nothing would ever produce one and the card showed a
@@ -87,6 +88,7 @@ internal class SetupState(
         ) {
             entityLearning.syncNow("entity-filter-count")
         }
+        return true
     }
 
     fun answerEntityFilter() {

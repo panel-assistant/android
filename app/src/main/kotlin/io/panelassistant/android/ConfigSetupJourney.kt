@@ -135,6 +135,10 @@ var Config.setupHomeDashboardChosen: Boolean
         Unit
     }
 
+internal fun Config.commitSetupHomeDashboardChoice(): Boolean = synchronized(CONFIG_LOCK) {
+    durableCommit { putBoolean(SETUP_HOME_DASHBOARD_CHOSEN_PREF, true) }
+}
+
 /**
  * A human's "yes, the dashboard is on the panel" — recorded as the configuration fingerprint it was
  * given against, because for a foreign renderer a render can only be attested, never observed. A

@@ -3,6 +3,7 @@ package io.panelassistant.android.http
 import io.panelassistant.android.GuidedSetupPresence
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
@@ -18,7 +19,10 @@ internal fun Route.setupRoutes(state: () -> SetupState) = ops {
         call.respondText("{\"ok\":true}", ContentType.Application.Json)
     }
     post("/setup/home-dashboard") {
-        state().chooseHomeDashboard()
+        if (!state().chooseHomeDashboard()) {
+            call.respondText("configuration commit failed\n", status = HttpStatusCode.InternalServerError)
+            return@post
+        }
         call.respondText("{\"ok\":true}", ContentType.Application.Json)
     }
     post("/setup/entity-filter") {
