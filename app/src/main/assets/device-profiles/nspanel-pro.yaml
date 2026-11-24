@@ -1,6 +1,6 @@
 schema: 2
 id: nspanel-pro
-version: 2.0.5
+version: 2.0.6
 display_name: Sonoff NSPanel Pro
 soc_class: PX30 / rk3326
 logging:
@@ -22,8 +22,7 @@ metadata:
   tested_firmware:
     - NSPanel 86P firmware before and after 3.0.0
     - NSPanel 120P firmware before and after 3.5.0
-  limitations:
-    - The NSPanel Pro Gen2 relay layout is not represented by this profile.
+  limitations: []
 requires:
   # logging.known_noise needs the 1.0.0 parser; older cores reject the field.
   min_core_version: 1.0.0

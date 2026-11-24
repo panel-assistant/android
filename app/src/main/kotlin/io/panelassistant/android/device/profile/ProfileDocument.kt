@@ -152,6 +152,13 @@ data class ProfileHardware(
     val zigbeeGatewayDir: String? = null,
     val relayBase: String? = null,
     val relayBaseFallbacks: List<String> = emptyList(),
+    /**
+     * How many relays the board physically carries (`hardware.relay_count`). The relay class may hold
+     * more `relayN` nodes than relays (the NSPanel Pro 120P exposes four with none behind them), so a
+     * profile that knows the count pins it and the controller never offers a node above it. Null leaves
+     * the count to discovery.
+     */
+    val relayCount: Int? = null,
     val buttonLedGpioBase: Int? = null,
     val touchClickGain: Float? = null,
     /**

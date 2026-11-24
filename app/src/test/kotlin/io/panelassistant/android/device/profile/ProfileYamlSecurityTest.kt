@@ -467,6 +467,20 @@ class ProfileYamlSecurityTest {
         assertTrue(issues.any { it.path == "hardware.button_led_gpio_base" })
     }
 
+    @Test fun `relay count is bounded and needs a relay class`() {
+        val base = testProfileDocument().copy(
+            requires = ProfileRequirements(drivers = setOf("screen.brightness-zero", "relay.sysfs")),
+        )
+        fun issues(relayBase: String?, count: Int) = ProfileValidator.validate(
+            base.copy(hardware = base.hardware.copy(relayBase = relayBase, relayCount = count)), "1.1.0", bundled = false,
+        ).filter { it.path == "hardware.relay_count" }
+        assertTrue(issues("/sys/class/st_relay", 2).isEmpty())
+        assertTrue(issues("/sys/class/st_relay", 16).isEmpty())
+        assertTrue(issues("/sys/class/st_relay", 0).isNotEmpty())
+        assertTrue(issues("/sys/class/st_relay", 17).isNotEmpty())
+        assertTrue(issues(null, 2).isNotEmpty())
+    }
+
     @Test fun `profile cannot supply an apk trust root`() {
         val raw = ProfileYaml.serialize(testProfileDocument()).replace(
             "software: {}",

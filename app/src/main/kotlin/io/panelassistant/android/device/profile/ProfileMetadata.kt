@@ -142,6 +142,7 @@ object ProfileMetadata {
             field("hardware.zigbee_gateway_dir", "path", false, "Supported Sonoff gateway directory."),
             field("hardware.relay_base", "path", false, "Preferred supported relay sysfs class."),
             field("hardware.relay_base_fallbacks", "path[]", false, "Alternative relay sysfs classes."),
+            field("hardware.relay_count", "integer", false, "Relays the board carries, 1 through 16; nodes above it are never offered."),
             field("hardware.button_led_gpio_base", "integer", false, "First GPIO in a button LED block."),
             field("hardware.touch_click_gain", "number", false, "Touch-click feedback volume, 0.05 through 1.0."),
             field("sensors.proximity_technology", "string", false, "Author-declared proximity technology."),

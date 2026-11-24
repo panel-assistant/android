@@ -21,6 +21,7 @@ fun fakeProfile(
     cpuGovernors: Map<String, String>? = null,
     relayBase: String? = null,
     relayBaseFallbacks: List<String> = emptyList(),
+    relayCount: Int? = null,
     buttonLedGpioBase: Int? = null,
     zigbeeGatewayDir: String? = null,
     evdevButtons: List<EvdevButton> = emptyList(),
@@ -42,6 +43,7 @@ fun fakeProfile(
     override val zigbeeGatewayDir = zigbeeGatewayDir
     override val relayBase = relayBase
     override val relayBaseFallbacks = relayBaseFallbacks
+    override val relayCount = relayCount
     override val buttonLedGpioBase = buttonLedGpioBase
     override val hasButtonBacklight = hasButtonBacklight
     override val manufacturer: String? = null

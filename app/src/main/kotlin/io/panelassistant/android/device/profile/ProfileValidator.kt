@@ -298,6 +298,10 @@ internal object ProfileValidator {
         if (document.hardware.relayBaseFallbacks.size != document.hardware.relayBaseFallbacks.toSet().size || document.hardware.relayBase in document.hardware.relayBaseFallbacks) {
             reject("hardware.relay_base_fallbacks", "Relay class paths must be unique.", "relay-paths-unique")
         }
+        document.hardware.relayCount?.let { count ->
+            if (count !in 1..16) reject("hardware.relay_count", "Expected 1 through 16 relays.", "relay-count-range")
+            if (document.hardware.relayBase == null) reject("hardware.relay_count", "A relay count needs hardware.relay_base.", "relay-count-needs-base")
+        }
         document.hardware.buttonLedGpioBase?.let { if (it !in 0..4092) reject("hardware.button_led_gpio_base", "GPIO block base must be between 0 and 4092.", "gpio-block-base-range") }
         document.sensors.proximityGpio?.let {
             if (it !in 0..4095) reject("sensors.proximity_gpio", "GPIO must be between 0 and 4095.", "gpio-range")

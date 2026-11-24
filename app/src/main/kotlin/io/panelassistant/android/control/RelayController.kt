@@ -46,6 +46,8 @@ class RelayController(
     // so the profile supplies both; resolution picks the first whose dir actually holds relayN nodes.
     private val candidateBases: List<String> = listOfNotNull(profile.relayBase) + profile.relayBaseFallbacks
     private val ledBase: Int? = profile.buttonLedGpioBase
+    // Physical relays the profile declares. Discovery never offers a node above it.
+    private val relayCap: Int? = profile.relayCount
 
     @Volatile private var resolvedBase: String? = null
     private var directRelays = false
@@ -85,14 +87,15 @@ class RelayController(
                     continue
                 }
                 if (count > 0) {
+                    val offered = relayCap?.let { minOf(count, it) } ?: count
                     synchronized(this) {
                         if (resolvedRelayCount == null) {
                             resolvedBase = candidate
                             directRelays = directCount != null
-                            resolvedRelayCount = count
+                            resolvedRelayCount = offered
                         }
                     }
-                    cost.work(units = count.toLong())
+                    cost.work(units = offered.toLong())
                     return
                 }
             }

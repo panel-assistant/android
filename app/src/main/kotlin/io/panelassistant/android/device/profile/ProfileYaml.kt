@@ -196,7 +196,7 @@ private class SchemaReader(private val issues: MutableList<ProfileIssue>) {
         val vendorService = map(launcher["vendor_service"], "platform.launcher.vendor_service", setOf("activity", "port"))
         val hardware = map(root["hardware"], "hardware", setOf(
             "led", "screen_off", "has_button_backlight", "local_wake", "zigbee_gateway_dir", "relay_base",
-            "relay_base_fallbacks", "button_led_gpio_base", "touch_click_gain", "camera", "microphone", "speaker",
+            "relay_base_fallbacks", "relay_count", "button_led_gpio_base", "touch_click_gain", "camera", "microphone", "speaker",
             "camera_lens_offset_px", "backlight", "button_backlight", "microphone_capture",
         ), required = true).orEmpty()
         val led = map(hardware["led"], "hardware.led", setOf("mechanism", "transfer", "gamma", "points", "floor"), required = true).orEmpty()
@@ -324,6 +324,7 @@ private class SchemaReader(private val issues: MutableList<ProfileIssue>) {
                 zigbeeGatewayDir = string(hardware, "zigbee_gateway_dir", "hardware"),
                 relayBase = string(hardware, "relay_base", "hardware"),
                 relayBaseFallbacks = stringList(hardware["relay_base_fallbacks"], "hardware.relay_base_fallbacks"),
+                relayCount = integer(hardware, "relay_count", "hardware"),
                 buttonLedGpioBase = integer(hardware, "button_led_gpio_base", "hardware"),
                 touchClickGain = float(hardware, "touch_click_gain", "hardware"),
                 cameraDeclared = boolean(hardware, "camera", "hardware"),
@@ -819,6 +820,7 @@ internal fun ProfileDocument.toYamlMap(): Map<String, Any?> = linkedMapOf(
         "zigbee_gateway_dir" to hardware.zigbeeGatewayDir,
         "relay_base" to hardware.relayBase,
         "relay_base_fallbacks" to hardware.relayBaseFallbacks.takeIf { it.isNotEmpty() },
+        "relay_count" to hardware.relayCount,
         "button_led_gpio_base" to hardware.buttonLedGpioBase,
         "touch_click_gain" to hardware.touchClickGain,
         "camera" to hardware.cameraDeclared,

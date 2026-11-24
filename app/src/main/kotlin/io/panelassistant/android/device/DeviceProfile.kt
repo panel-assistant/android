@@ -190,6 +190,11 @@ interface DeviceProfile {
      *  tried — the controller uses the first whose dir actually holds `relayN` nodes. Default empty. */
     val relayBaseFallbacks: List<String> get() = emptyList()
 
+    /** Relays the board physically carries, or null to take the count from discovery. The controller
+     *  never offers a `relayN` node above it, because a relay class can hold nodes with no relay behind
+     *  them (the NSPanel Pro 120P shows four). */
+    val relayCount: Int? get() = null
+
     /** First GPIO number of the button-LED block (e.g. 147 on the S9E), or null if none. */
     val buttonLedGpioBase: Int?
 

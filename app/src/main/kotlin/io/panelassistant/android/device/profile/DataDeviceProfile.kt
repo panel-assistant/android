@@ -70,6 +70,7 @@ class DataDeviceProfile internal constructor(
     override val zigbeeGatewayDir = document.hardware.zigbeeGatewayDir
     override val relayBase = document.hardware.relayBase
     override val relayBaseFallbacks = document.hardware.relayBaseFallbacks
+    override val relayCount = document.hardware.relayCount
     override val buttonLedGpioBase = document.hardware.buttonLedGpioBase
     override val proximityTech = document.sensors.proximityTechnology
     override val proximityCalibration = document.sensors.proximityCalibration
