@@ -155,6 +155,33 @@ class PaneldServerBackupRestoreRoutesTest {
         }
     }
 
+    @Test fun `restore preview reports the settings skipped to keep ADB off`() {
+        PaneldServerHttpFixture().use { fixture ->
+            assertTrue(fixture.config.setAdbKeepOff(true))
+            testApplication {
+                application { fixture.mount(this) }
+                val response = client.post("/api/v1/restore?dry_run=1") {
+                    setBody("""{"kind":"ha-paneld-backup","schema":15,"config":{"friendly_name":"Restored panel","ha_area":"Kitchen","network_adb":"true","adb_keep_off":"false"}}""")
+                }
+                val text = response.bodyAsText()
+                assertEquals(text, HttpStatusCode.OK, response.status)
+                val body = JSONObject(text)
+                assertEquals(text, 2, body.getInt("config_keys"))
+                val skipped = body.getJSONArray("config_skipped")
+                assertEquals(setOf("network_adb", "adb_keep_off"), (0 until skipped.length()).map(skipped::getString).toSet())
+                val warnings = body.getJSONArray("config_warnings")
+                for (key in listOf("network_adb", "adb_keep_off")) {
+                    assertTrue(text, (0 until warnings.length()).map(warnings::getString).any {
+                        it.startsWith(key) && it.contains("Keep ADB off")
+                    })
+                }
+                assertTrue(fixture.config.adbKeepOff)
+                assertTrue(fixture.config.haArea.isEmpty())
+                assertFalse(InstallProgress.running)
+            }
+        }
+    }
+
     @Test fun `unavailable live setting is still validated before a preview can skip it`() {
         PaneldServerHttpFixture().use { fixture ->
             testApplication {

@@ -71,9 +71,10 @@ internal class RestoreExecutor(
         stateSkipped: Int = 0,
     ) {
         val before = currentValues()
-        // Preview is not admission: sample current capability again for the actual execution.
+        // Recheck live capabilities and the owner's current choice at execution.
         val executionCapabilities = capabilities()
-        val admittedPlan = configPlan.withAvailableLiveSettings(executionCapabilities)
+        val keepAdbOff = before["adb_keep_off"] == "true"
+        val admittedPlan = configPlan.withAvailableLiveSettings(executionCapabilities, keepAdbOff)
         // Initially unavailable live values were never touched. Do not turn a genuine rollback
         // into another refusal by trying them; previously supported keys remain in rollback even
         // if their privilege disappears after this snapshot.
@@ -200,7 +201,7 @@ internal class RestoreExecutor(
                         "Restore partially completed; live settings pending"
                     stateComponent()?.status == InstallProgress.Outcome.PARTIAL || policySkipIsPartial ->
                         "Restore partially completed; some panel state was not restored"
-                    admittedPlan.skipped.isNotEmpty() -> "Restore partially completed; unavailable settings: " +
+                    admittedPlan.skipped.isNotEmpty() -> "Restore partially completed; skipped settings: " +
                         admittedPlan.skipped.joinToString(", ") { requireNotNull(SettingsRegistry.spec(it)).label }
                     restoredStateRows > 0 ->
                         "Restore completed, including $restoredStateRows panel state values"

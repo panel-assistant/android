@@ -488,7 +488,7 @@ internal class RestoreRoutes(
                 )
             }
             if (dryRun) {
-                val preview = configPlan.withAvailableLiveSettings(capabilities())
+                val preview = configPlan.withAvailableLiveSettings(capabilities(), config.adbKeepOff)
                 requestAccepted = true
                 return call.respondText(
                     """{"ok":true,"dry_run":true,"panel_id":${Json.str(obj.optString("panel_id"))},""" +

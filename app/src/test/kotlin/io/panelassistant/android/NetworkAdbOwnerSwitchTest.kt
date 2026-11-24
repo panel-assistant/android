@@ -1,5 +1,18 @@
 package io.panelassistant.android
 
+import io.panelassistant.android.config.Capabilities
+import io.panelassistant.android.config.SettingsRegistry
+import io.panelassistant.android.control.SystemController
+import io.panelassistant.android.http.AcceptedConfigTransaction
+import io.panelassistant.android.http.ConfigValueProjection
+import io.panelassistant.android.http.PaneldServerHttpFixture
+import io.panelassistant.android.http.RestoreConfigPlan
+import io.panelassistant.android.http.RevisionStore
+import io.panelassistant.android.platform.ActivityRef
+import io.panelassistant.android.platform.SystemEnv
+import io.panelassistant.android.util.InstallProgress
+import io.panelassistant.android.util.RendererPreparationCoordinator
+import io.panelassistant.android.util.RendererPreparationState
 import io.panelassistant.android.control.FakeRootShell
 import io.panelassistant.android.control.ManagedNetworkAdb
 import io.panelassistant.android.control.adbOpenedByHelper
@@ -1000,6 +1013,102 @@ internal class NetworkAdbOwnerSwitchTest : PanelRuntimeRig() {
             Thread { answer.complete(runCatching { setting(rig, press.key, press.value).name }.getOrElse { "threw ${it.javaClass.simpleName}" }) }.start()
         }
         return answer
+    }
+
+    // A backup restore under Keep ADB off: an archived Network ADB on, or an archived Keep ADB off disable, is
+    // skipped with a warning while the rest of the backup is restored, with and without the helper's lease.
+    @Test fun restoreKeepsAdbOffWithALease() = checkRestore(lease = true)
+
+    @Test fun restoreKeepsAdbOffWithoutALease() = checkRestore(lease = false)
+
+    private fun checkRestore(lease: Boolean) = panel(firmwareOpen = lease, session = lease) { rig, helper, _ ->
+        authority = LiveSettingAuthority(PanelCommandDispatcher.APPLY_SETTING_KEYS, bootIdentity = { "test-boot" })
+        assertEquals(LiveSettingRequestOutcome.APPLIED, setting(rig, "adb_keep_off", "true"))
+        runCurrent()
+        assertEquals(lease, ManagedNetworkAdb.managed)
+        assertFalse(helper.listening)
+        val config = rig.config
+        config.ensurePanelId { "door_panel" }
+        PaneldServerHttpFixture().use { fixture ->
+            val executor = AcceptedConfigTransaction.restoreExecutor(
+                appContext = fixture.context,
+                config = config,
+                capabilities = { Capabilities(appCanSu = true, networkAdb = true) },
+                transaction = { restoreTransaction(rig, fixture) },
+                restoreCompanion = { error("no Companion") },
+                profileAdmin = null,
+                onProfileRestart = { error("no profiles") },
+                onProfileRestartAbort = { error("no profiles") },
+                onDurableStateRestored = { error("no state") },
+                onWakeWordsChanged = { error("no wake words") },
+            )
+            for (includesKeepOff in listOf(false, true)) {
+                config.setRaw(requireNotNull(SettingsRegistry.spec("friendly_name")), "Before")
+                config.setRaw(requireNotNull(SettingsRegistry.spec("ha_area")), "Hall")
+                val values = buildMap {
+                    put("friendly_name", "Restored panel")
+                    put("ha_area", "Kitchen")
+                    put("network_adb", "true")
+                    if (includesKeepOff) put("adb_keep_off", "false")
+                }
+                val ticket = requireNotNull(InstallProgress.start("restore"))
+                try {
+                    executor.execute(
+                        RestoreConfigPlan(values, emptyList(), emptyList()),
+                        null, null, null, null, emptyList(), false, emptyList(), null, ticket,
+                    )
+                    val result = JSONObject(InstallProgress.json()).getJSONObject("result")
+                    assertEquals(result.toString(), "Restored panel", config.friendlyName)
+                    assertEquals("Kitchen", config.haArea)
+                    assertEquals(result.toString(), "partial", result.getString("status"))
+                    val configResult = result.getJSONObject("config")
+                    assertEquals("partial", configResult.getString("status"))
+                    val detail = configResult.getString("detail")
+                    assertTrue(detail, detail.contains("network_adb") && detail.contains("Keep ADB off"))
+                    if (includesKeepOff) assertTrue(detail, detail.contains("adb_keep_off"))
+                    assertTrue(config.adbKeepOff)
+                    assertFalse(rig.adb.isPersisted())
+                    assertFalse(helper.listening)
+                    assertTrue(authority.pendingSnapshot().isEmpty())
+                    replay(rig)
+                    runCurrent()
+                    assertTrue(config.adbKeepOff)
+                    assertFalse(rig.adb.isPersisted())
+                    assertFalse(helper.listening)
+                } finally {
+                    InstallProgress.finish(ticket, "test cleanup")
+                }
+            }
+        }
+    }
+
+    private fun restoreTransaction(rig: Rig, fixture: PaneldServerHttpFixture): AcceptedConfigTransaction {
+        val system = SystemController(object : SystemEnv {
+            override val ownPackage = "io.panelassistant.android"
+            override fun isInstalled(pkg: String) = false
+            override fun launchComponent(pkg: String): String? = null
+            override fun homeActivities(): List<ActivityRef> = emptyList()
+            override fun defaultHome(): ActivityRef? = null
+            override fun directStart(component: String) = true
+        })
+        return AcceptedConfigTransaction(
+            config = rig.config,
+            revisions = RevisionStore(fixture.directory),
+            rendererPreparation = RendererPreparationCoordinator(
+                builtinPackage = "builtin", state = { RendererPreparationState("external", "") },
+                borrow = { null }, persist = { true },
+            ),
+            system = system,
+            values = ConfigValueProjection(
+                config = rig.config, configLiveValues = { mapOf("network_adb" to rig.adb.isPersisted().toString()) },
+                renderedLiveValues = { emptyMap() }, pendingLiveSettings = authority::pendingSnapshot,
+                stalledLiveSettings = { emptySet() }, proximityJson = { error("no page") },
+                powerSafetyJson = { error("no page") }, haAreaCatalogJson = { error("no page") },
+            ),
+            applySetting = { key, value -> unattended(rig, key, value) },
+            onEntityTargetChanged = {}, setEntityLearningEnabled = { true }, effectiveDashboardIsBuiltin = { false },
+            requestTameReconcileAfterCommit = { true }, snapInvalidate = {}, onReconfigure = {},
+        )
     }
 
     /** Waits in real time: the controller's settle proof sleeps on the command worker, outside test time. */
