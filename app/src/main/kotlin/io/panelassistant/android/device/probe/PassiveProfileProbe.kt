@@ -96,7 +96,7 @@ class AndroidPassiveProfileProbe(private val context: Context) {
         val rgbNodes = listOf("red", "green", "blue").map { File("/sys/class/leds/$it") }
         return PassiveProbeSnapshot(
             generatedAtEpochMs = nowEpochMs,
-            facts = DeviceFacts(Build.MODEL.orEmpty(), Build.DEVICE.orEmpty(), SystemProps.get("ro.product.version")),
+            facts = DeviceFacts(Build.MODEL.orEmpty(), Build.DEVICE.orEmpty(), SystemProps.get("ro.product.version"), Build.DISPLAY.orEmpty()),
             androidSdk = Build.VERSION.SDK_INT,
             abis = Build.SUPPORTED_ABIS.orEmpty().map(::clean).filter(String::isNotBlank).take(MAX_ABIS),
             board = clean(Build.BOARD.orEmpty()),

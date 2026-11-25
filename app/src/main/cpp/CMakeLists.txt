@@ -4,7 +4,7 @@ project(hapaneld_native C CXX)
 
 # Built for the fleet ABIs (arm64-v8a, armeabi-v7a) — see app/build.gradle.kts ndk.abiFilters.
 # Produces libhapaneld_led.so, loaded by hardware/NativeLed.kt via System.loadLibrary("hapaneld_led").
-add_library(hapaneld_led SHARED led_jni.c)
+add_library(hapaneld_led SHARED led_jni.c gpio_control_jni.c)
 
 # Linux flock shared by the app's handback and the installer's rootless HOME setup.
 add_library(hapaneld_home SHARED home_lock_jni.c)

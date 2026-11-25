@@ -94,6 +94,7 @@ enum class ProfileFact(val yamlName: String) {
     MODEL("model"),
     DEVICE("device"),
     PRODUCT_VERSION("product_version"),
+    BUILD_DISPLAY("build_display"),
 }
 
 enum class ProfileMatchOp(val yamlName: String) {
@@ -159,6 +160,12 @@ data class ProfileHardware(
      * the count to discovery.
      */
     val relayCount: Int? = null,
+    /**
+     * GPIO numbers of relays switched through the vendor `/dev/gpio_control` ioctl
+     * (`hardware.relay_gpio_control`), one per relay in order: relay 1 is the first entry. Used where a
+     * board has no relay sysfs class (the Electron SMT97T). Empty when the board has none.
+     */
+    val relayGpioControl: List<Int> = emptyList(),
     val buttonLedGpioBase: Int? = null,
     val touchClickGain: Float? = null,
     /**

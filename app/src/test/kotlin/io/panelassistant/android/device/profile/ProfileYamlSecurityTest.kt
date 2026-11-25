@@ -643,6 +643,7 @@ class ProfileYamlSecurityTest {
             "led.rk3576-ioctl-daemon" to ProfileHelperAuthorityDemand.REQUIRED,
             "led.sysfs-daemon" to ProfileHelperAuthorityDemand.REQUIRED,
             "radio.siliconlabs-host" to ProfileHelperAuthorityDemand.NONE,
+            "relay.gpio-control" to ProfileHelperAuthorityDemand.NONE,
             "relay.sysfs" to ProfileHelperAuthorityDemand.NONE,
             "relay.gpio-button-led" to ProfileHelperAuthorityDemand.NONE,
             "screen.brightness-zero" to ProfileHelperAuthorityDemand.NONE,

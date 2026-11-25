@@ -8,6 +8,8 @@ import io.panelassistant.android.platform.RootShell
 import io.panelassistant.android.platform.Daemon
 import io.panelassistant.android.platform.HelperRelayClass
 import io.panelassistant.android.util.HelperClient
+import io.panelassistant.android.hardware.GpioControl
+import io.panelassistant.android.hardware.NativeGpioControl
 import io.panelassistant.android.util.MonotonicDeadline
 import java.io.File
 
@@ -40,6 +42,7 @@ class RelayController(
     private val daemon: Daemon = HelperClient,
     private val nowNs: () -> Long = System::nanoTime,
     private val relayFile: (String) -> File = ::File,
+    private val gpioControl: GpioControl = NativeGpioControl,
 ) {
 
     // Candidate relay-class bases, primary first. The S9E renamed st_relay -> strelay across firmware,
@@ -48,10 +51,12 @@ class RelayController(
     private val ledBase: Int? = profile.buttonLedGpioBase
     // Physical relays the profile declares. Discovery never offers a node above it.
     private val relayCap: Int? = profile.relayCount
+    // Relays on the vendor /dev/gpio_control ioctl (SMT97T), relay 1 first. Exclusive with relay classes.
+    private val gpioRelays: List<Int> = profile.relayGpioControl
 
     @Volatile private var resolvedBase: String? = null
     private var directRelays = false
-    @Volatile private var resolvedRelayCount: Int? = if (candidateBases.isEmpty()) 0 else null
+    @Volatile private var resolvedRelayCount: Int? = if (candidateBases.isEmpty() && gpioRelays.isEmpty()) 0 else null
     @Volatile private var resolvedLedCount: Int = if (ledBase == null) 0 else BUTTON_LED_COUNT
 
     // GPIOs whose output preparation was PROVEN (`ready`), guarded by the class monitor. ledSet and the
@@ -66,6 +71,13 @@ class RelayController(
     /** Resolve topology without holding the actuator monitor. Unknown observations remain retryable. */
     private fun resolveRelays() {
         if (resolvedRelayCount != null) return
+        if (gpioRelays.isNotEmpty()) {
+            // Fail closed: no relay is offered until the node is present and writable by this app.
+            if (gpioControl.available()) {
+                synchronized(this) { if (resolvedRelayCount == null) resolvedRelayCount = minOf(gpioRelays.size, relayCap ?: gpioRelays.size) }
+            }
+            return
+        }
         val cost = FeatureCosts.registry.span(FeatureCostOperation.RELAY_TOPOLOGY_DISCOVERY)
         try {
             var probeFailed = false
@@ -140,6 +152,7 @@ class RelayController(
     }
 
     private fun setResolved(n: Int, on: Boolean): Boolean {
+        if (gpioRelays.isNotEmpty()) return gpioControl.write(gpioRelays[n - 1], on)
         val base = resolvedBase ?: return false
         val started = FeatureCosts.registry.beginSynchronous(FeatureCostOperation.RELAY_HARDWARE_WRITE)
         var outcome = FeatureCostOutcome.FAILURE
@@ -166,6 +179,7 @@ class RelayController(
     /** Physical state, preserving unreadable as null rather than inventing OFF. */
     fun read(n: Int): Boolean? {
         if (n !in 1..count()) return null
+        if (gpioRelays.isNotEmpty()) return gpioControl.read(gpioRelays[n - 1])
         val relayClass = resolvedBase?.let(HelperRelayClass::fromSysfsBase) ?: return null
         val cost = FeatureCosts.registry.beginSynchronous(FeatureCostOperation.RELAY_STATE_READ)
         var outcome = FeatureCostOutcome.SUCCESS

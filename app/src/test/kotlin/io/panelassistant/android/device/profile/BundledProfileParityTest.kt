@@ -946,6 +946,7 @@ class BundledProfileParityTest {
                     ProfileFact.MODEL to "unmatched-model",
                     ProfileFact.DEVICE to "unmatched-device",
                     ProfileFact.PRODUCT_VERSION to "unmatched-version",
+                    ProfileFact.BUILD_DISPLAY to "unmatched-display",
                 )
                 group.all.forEachIndexed { index, predicate ->
                     values[predicate.field] = if (index == predicateIndex) {
@@ -965,6 +966,7 @@ class BundledProfileParityTest {
                         model = values.getValue(ProfileFact.MODEL),
                         device = values.getValue(ProfileFact.DEVICE),
                         productVersion = values.getValue(ProfileFact.PRODUCT_VERSION),
+                        buildDisplay = values.getValue(ProfileFact.BUILD_DISPLAY),
                     ),
                 )
             }
@@ -991,6 +993,7 @@ class BundledProfileParityTest {
             ProfileFact.MODEL -> matchingFacts.copy(model = nearValue)
             ProfileFact.DEVICE -> matchingFacts.copy(device = nearValue)
             ProfileFact.PRODUCT_VERSION -> matchingFacts.copy(productVersion = nearValue)
+            ProfileFact.BUILD_DISPLAY -> matchingFacts.copy(buildDisplay = nearValue)
         }
     }
 
@@ -1077,6 +1080,7 @@ class BundledProfileParityTest {
             "tpa10",
             "wf1589t",
             "zx-smt156",
+            "zx-smt97",
         )
         val EXPECTED_BUNDLED_SHA256 = mapOf(
             "generic.yaml" to "16088624128aa375bc28fb747e535f93aa43c65881b5041a6fedc3ce4de056d2",
@@ -1093,6 +1097,7 @@ class BundledProfileParityTest {
             "tpa10.yaml" to "0d7fabc9fff76e7949c4575aec7b75a6e73facf44ac98af928c2ff06280c4d75",
             "wf1589t.yaml" to "d899f9fce75bcd5dc55f10a546896a0164642ba3e4b93aec0300bbb217bfd0a2",
             "zx-smt156.yaml" to "8c5fe65c26eaefb964899dfaf596adf6df485285a94ce0eeecd65b2d833a389e",
+            "zx-smt97.yaml" to "fa55b6d4c091df745f13371a9ad64a23ac7f82f763ba220d53fff921407bf1ab",
         )
         val EXPECTED_UNOFFICIAL_IDS = setOf(
             "community.cronos-lineageos18",

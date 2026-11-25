@@ -300,7 +300,18 @@ internal object ProfileValidator {
         }
         document.hardware.relayCount?.let { count ->
             if (count !in 1..16) reject("hardware.relay_count", "Expected 1 through 16 relays.", "relay-count-range")
-            if (document.hardware.relayBase == null) reject("hardware.relay_count", "A relay count needs hardware.relay_base.", "relay-count-needs-base")
+            if (document.hardware.relayBase == null && document.hardware.relayGpioControl.isEmpty()) reject("hardware.relay_count", "A relay count needs hardware.relay_base or hardware.relay_gpio_control.", "relay-count-needs-base")
+        }
+        document.hardware.relayGpioControl.takeIf { it.isNotEmpty() }?.let { gpios ->
+            if (gpios.size > 16) reject("hardware.relay_gpio_control", "At most 16 relays are allowed.", "relay-count-range")
+            if (gpios.any { it !in 0..255 }) reject("hardware.relay_gpio_control", "GPIO must be between 0 and 255.", "gpio-range")
+            if (gpios.size != gpios.toSet().size) reject("hardware.relay_gpio_control", "Relay GPIOs must be unique.", "relay-paths-unique")
+            if (document.hardware.relayBase != null || document.hardware.relayBaseFallbacks.isNotEmpty()) {
+                reject("hardware.relay_gpio_control", "Declare either a relay class or gpio_control relays, not both.", "relay-mechanism-exclusive")
+            }
+            if (document.hardware.relayCount != gpios.size) {
+                reject("hardware.relay_gpio_control", "hardware.relay_count must equal the number of relay GPIOs.", "relay-count-matches-gpios")
+            }
         }
         document.hardware.buttonLedGpioBase?.let { if (it !in 0..4092) reject("hardware.button_led_gpio_base", "GPIO block base must be between 0 and 4092.", "gpio-block-base-range") }
         document.sensors.proximityGpio?.let {
@@ -489,7 +500,7 @@ internal object ProfileValidator {
 
     fun risks(document: ProfileDocument, overridesBundled: Boolean): Set<ProfileRisk> = buildSet {
         if (document.platform.appCanSu || document.hardware.screenOff != "brightness-zero" || document.requires.drivers.any { ProfileMetadata.drivers.find { d -> d.id == it }?.privileged == true }) add(ProfileRisk.ROOT_PATHS)
-        if (document.hardware.relayBase != null || document.hardware.relayBaseFallbacks.isNotEmpty() || document.hardware.buttonLedGpioBase != null || document.sensors.proximityGpio != null) add(ProfileRisk.RELAY_OR_GPIO_WRITES)
+        if (document.hardware.relayBase != null || document.hardware.relayBaseFallbacks.isNotEmpty() || document.hardware.relayGpioControl.isNotEmpty() || document.hardware.buttonLedGpioBase != null || document.sensors.proximityGpio != null) add(ProfileRisk.RELAY_OR_GPIO_WRITES)
         if (document.input.evdevButtons.any { it.deviceName == null }) add(ProfileRisk.EVDEV_READ)
         if (document.input.evdevButtons.any { it.grab }) add(ProfileRisk.EVDEV_GRAB)
         if (document.provisioning.packages.any { it.importance == ProfileProvisioningImportance.RECOMMENDED }) {
@@ -508,6 +519,7 @@ internal object ProfileValidator {
         add("screen.${document.hardware.screenOff}")
         if (document.hardware.zigbeeGatewayDir != null) add("radio.siliconlabs-host")
         if (document.hardware.relayBase != null || document.hardware.relayBaseFallbacks.isNotEmpty()) add("relay.sysfs")
+        if (document.hardware.relayGpioControl.isNotEmpty()) add("relay.gpio-control")
         if (document.hardware.buttonLedGpioBase != null) add("relay.gpio-button-led")
         if (document.hardware.hasButtonBacklight) add("input.button-backlight")
         if (document.sensors.proximityTechnology != null || document.sensors.lightTechnology != null) add("sensor.android")

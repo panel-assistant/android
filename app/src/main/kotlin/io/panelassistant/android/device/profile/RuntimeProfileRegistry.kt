@@ -1311,7 +1311,7 @@ class RuntimeProfileRegistry internal constructor(
     private fun stockRelayIdentityIssue(entry: StoredProfile, path: String): ProfileIssue? {
         if (entry.origin == ProfileOrigin.IMPORTED) return null
         val document = entry.document ?: return null
-        if (document.hardware.relayCount == null || document.matches(facts)) return null
+        if ((document.hardware.relayCount == null && document.hardware.relayGpioControl.isEmpty()) || document.matches(facts)) return null
         return ProfileIssue(
             ProfileIssueSeverity.ERROR,
             path,
@@ -1466,6 +1466,7 @@ class RuntimeProfileRegistry internal constructor(
             Build.MODEL.orEmpty(),
             Build.DEVICE.orEmpty(),
             SystemProps.get("ro.product.version"),
+            Build.DISPLAY.orEmpty(),
         )
 
         private fun bundledAssets(context: Context): Map<String, String> =

@@ -195,6 +195,9 @@ interface DeviceProfile {
      *  them (the NSPanel Pro 120P shows four). */
     val relayCount: Int? get() = null
 
+    /** GPIOs of relays switched through `/dev/gpio_control`, relay 1 first; empty when none. */
+    val relayGpioControl: List<Int> get() = emptyList()
+
     /** First GPIO number of the button-LED block (e.g. 147 on the S9E), or null if none. */
     val buttonLedGpioBase: Int?
 

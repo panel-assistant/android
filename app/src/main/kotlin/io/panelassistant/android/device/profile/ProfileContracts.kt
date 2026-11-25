@@ -722,11 +722,14 @@ data class DeviceFacts(
     val model: String,
     val device: String,
     val productVersion: String,
+    /** `ro.build.display.id` (Android `Build.DISPLAY`): the only fact that tells some vendor boards apart. */
+    val buildDisplay: String = "",
 ) {
     fun normalized(): DeviceFacts = DeviceFacts(
         model = model.lowercase(),
         device = device.lowercase(),
         productVersion = productVersion.lowercase(),
+        buildDisplay = buildDisplay.lowercase(),
     )
 }
 
