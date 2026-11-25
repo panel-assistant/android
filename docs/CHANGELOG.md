@@ -2,7 +2,17 @@
 
 The full notes for every release and pre-release, from 1.0.0 on, are on [panel-assistant.io](https://panel-assistant.io/go/release-notes). Each section here is a short summary with a link to them; earlier sections are the full notes as they were released.
 
-## v1.0.3
+## v1.0.5 - 2026-11-25
+
+With the new Keep ADB off setting you decide whether network debugging stays on. A new panel can also find Home Assistant at its other local addresses. The NSPanel Pro Gen2 gets its own profile with both relays, thanks to @cyraxx (#215), and the Electron SMT97T's two relays and the light strip on some Electron WF1589T panels are now supported, thanks to @GrisuBerlin (panel-assistant/ha-integration#37, panel-assistant/ha-integration#42). Saying the wake word again straight after a reply now starts a new question, thanks to @Ste05 (#221). Pairs with Panel Assistant 1.0.5, which offers each panel the update.
+
+[Full release notes](https://panel-assistant.io/go/release-notes?v=1.0.5&component=panel-app)
+
+## v1.0.3 - 2026-11-13
+
+An update for panels on a separate network, such as a VLAN or an IoT network: the panel says which address it cannot reach, its Network ADB switch gives you a way back when it loses Home Assistant, and it can take its WebView update from Home Assistant when it has no internet. Pairs with Panel Assistant 1.0.3, which offers each panel the update.
+
+[Full release notes](https://panel-assistant.io/go/release-notes?v=1.0.3&component=panel-app)
 
 ## v1.0.2 - 2026-11-11
 
