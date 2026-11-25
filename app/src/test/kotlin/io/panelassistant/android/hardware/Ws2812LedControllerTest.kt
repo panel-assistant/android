@@ -86,4 +86,36 @@ class Ws2812LedControllerTest {
     @Test fun theFourBitLedjniStubIsNotAppliedToTheStrip() {
         assertSame(LedTransfer.Identity, LedFactory.fallbackTransfer(LedTransfer.Rk3576FourBit))
     }
+
+    private class FlakyStrip : Ws2812Driver {
+        var opens = false
+        val fills = mutableListOf<List<Int>>()
+        override fun available() = opens
+        override fun fill(r: Int, g: Int, b: Int, count: Int): Int {
+            if (!opens) return -16
+            fills += listOf(r, g, b, count); return 0
+        }
+        override fun nodePresent() = true
+    }
+
+    // A strip node that fails open or SET_PARAM once is indeterminate: the LED is never reported absent (so
+    // Home Assistant keeps its light), and the same controller drives the strip once the node opens.
+    @Test fun aTransientStripFailureStaysIndeterminateAndRecoversWithTheSameService() {
+        val driver = FlakyStrip()
+        val chosen = LedFactory.appDirect(wf1589t, FakeLed(present = false), driver)
+        assertTrue(chosen is Ws2812LedController)
+        assertFalse(chosen.confirmedAbsent)
+        assertFalse(chosen.available())
+        assertFalse(chosen.setRgb(1, 2, 3))
+        driver.opens = true
+        assertTrue(chosen.available())
+        assertEquals(LedBackend.WS2812, chosen.backend())
+        assertTrue(chosen.setRgb(10, 20, 30))
+        assertEquals(listOf(10, 20, 30), driver.fills.single().take(3))
+    }
+
+    @Test fun noStripNodeStillFallsBackToTheHelper() {
+        val chosen = LedFactory.appDirect(wf1589t, FakeLed(present = false), FakeStrip(present = false))
+        assertTrue(chosen is SocketLedController)
+    }
 }

@@ -45,6 +45,7 @@ class RelayController(
     private val relayFile: (String) -> File = ::File,
     private val gpioControl: GpioControl = NativeGpioControl,
     private val buildDisplay: () -> String = { android.os.Build.DISPLAY.orEmpty() },
+    private val buildDevice: () -> String = { android.os.Build.DEVICE.orEmpty() },
 ) {
 
     // Candidate relay-class bases, primary first. The S9E renamed st_relay -> strelay across firmware,
@@ -55,7 +56,7 @@ class RelayController(
     private val relayCap: Int? = profile.relayCount
     // Relays on the vendor /dev/gpio_control ioctl (SMT97T), relay 1 first. Exclusive with relay classes.
     // Driven only on the reviewed board whose live build string names it, whatever profile declares them.
-    private val gpioRelays: List<Int> = profile.relayGpioControl.takeIf { GpioControlRelays.boardMatches(it, buildDisplay()) }.orEmpty()
+    private val gpioRelays: List<Int> = profile.relayGpioControl.takeIf { GpioControlRelays.boardMatches(it, buildDevice(), buildDisplay()) }.orEmpty()
 
     @Volatile private var resolvedBase: String? = null
     private var directRelays = false

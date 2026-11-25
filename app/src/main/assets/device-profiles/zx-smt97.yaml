@@ -57,7 +57,7 @@ match:
         - field: build_display
           op: starts_with
           values:
-            - zx-smt97
+            - zx-smt97-
 platform:
   # These are reported app-install hints, not a claim that USB or vendor root/unlock routes are absent.
   # Runtime authority probes remain decisive; optional enhanced routes use the helper.

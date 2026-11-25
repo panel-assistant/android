@@ -45,6 +45,8 @@ interface Ws2812Driver {
     fun available(): Boolean
     fun fill(r: Int, g: Int, b: Int, count: Int): Int
     fun close() = Unit
+    /** True when the device node exists, whether or not it opens right now. */
+    fun nodePresent(): Boolean = false
 }
 
 internal class NativeWs2812 : Ws2812Driver {
@@ -65,6 +67,8 @@ internal class NativeWs2812 : Ws2812Driver {
         if (result != 0 && result != -OsConstants.EBUSY) release()
         return result
     }
+
+    override fun nodePresent(): Boolean = java.io.File("/dev/ws2812_pwm").exists()
 
     @Synchronized
     override fun close() {

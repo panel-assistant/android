@@ -79,12 +79,18 @@ object LedFactory {
      * App-direct LED nodes first: the `/dev/ledjni` RGB LED, then a `/dev/ws2812_pwm` addressable strip (a WF1589T
      * variant has the strip and no ledjni), then the helper daemon.
      */
-    internal fun appDirect(profile: DeviceProfile, ledjni: LedController, stripDriver: Ws2812Driver): LedController =
-        ledjni.takeIf { it.available() } ?: Ws2812LedController(
+    internal fun appDirect(profile: DeviceProfile, ledjni: LedController, stripDriver: Ws2812Driver): LedController {
+        if (ledjni.available()) return ledjni
+        val strip = Ws2812LedController(
             transfer = fallbackTransfer(profile.ledTransfer),
             driver = stripDriver,
             ledCount = profile.ledCount ?: Ws2812LedController.DEFAULT_LED_COUNT,
-        ).takeIf { it.available() } ?: fallback(profile)
+        )
+        // A strip node that exists but did not open this time stays the backend: it is indeterminate, never
+        // absent, and every later availability check or command opens it again. Only a panel with no strip
+        // node falls through to the helper, whose LEDPROBE does not cover the strip.
+        return if (strip.available() || stripDriver.nodePresent()) strip else fallback(profile)
+    }
 
     /** A declared daemon route gets the profile's transfer, as the app-direct ioctl route does. */
     private fun socket(profile: DeviceProfile) = SocketLedController(transfer = profile.ledTransfer)

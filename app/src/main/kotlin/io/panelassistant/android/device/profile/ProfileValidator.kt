@@ -315,6 +315,10 @@ internal object ProfileValidator {
         document.hardware.relayGpioControl.takeIf { it.isNotEmpty() }?.let { gpios ->
             // Only reviewed board mappings: these GPIOs switch mains loads, and an imported profile also
             // supplies its own identity match, so it must not be able to point the ioctl at other pins.
+            // A shipped profile only: an imported copy, even of the reviewed mapping, never drives these relays.
+            if (!bundled) {
+                reject("hardware.relay_gpio_control", "gpio_control relays are available only in the shipped SMT97T profile.", "relay-gpio-bundled-only")
+            }
             if (gpios != GpioControlRelays.SMT97_GPIOS) {
                 reject("hardware.relay_gpio_control", "Only the reviewed Electron SMT97T relay mapping [4, 5] is supported.", "relay-gpio-unreviewed")
             }
