@@ -4,6 +4,11 @@ import io.panelassistant.android.BuildConfig
 import io.panelassistant.android.device.profile.BundledProfileFixtures
 import io.panelassistant.android.device.profile.DataDeviceProfile
 import io.panelassistant.android.device.profile.DeviceFacts
+import io.panelassistant.android.device.profile.ProfileBackup
+import io.panelassistant.android.device.profile.ProfileBackupRestoreOutcome
+import io.panelassistant.android.device.profile.ProfileMutation
+import io.panelassistant.android.device.profile.ProfileRef
+import io.panelassistant.android.device.profile.ProfileSelection
 import io.panelassistant.android.device.profile.ProfilePreferences
 import io.panelassistant.android.device.profile.ProfileYaml
 import io.panelassistant.android.device.profile.ResolvedProfile
@@ -83,6 +88,49 @@ class NspanelProGen2RelayTest {
         assertEquals(2, RelayController(profile, FakeRootShell(), fourNodeHelper().client).count())
     }
 
+    // An owner's pin and a restored backup bypass automatic matching, so both refuse the Gen2 profile (and its
+    // relays) on a first-generation panel and accept it on a Gen2.
+    @Test fun gen2PinIsRefusedOnFirstGenerationAndAcceptedOnGen2() {
+        for ((facts, accepted) in listOf(FIRST_GENERATION to false, GEN2 to true)) withRegistry(facts) { registry ->
+            val selected = registry.select(ProfileSelection.Pinned(gen2Ref()), registry.status().catalogRevision)
+            if (accepted) {
+                assertTrue("$facts $selected", selected is ProfileMutation.Success)
+                assertEquals(ProfileSelection.Pinned(gen2Ref()), registry.status().selection)
+            } else {
+                assertTrue("$facts $selected", selected is ProfileMutation.Rejected)
+                assertTrue("$facts", (selected as ProfileMutation.Rejected).issues.any { it.path == "selection.match" })
+                assertEquals(ProfileSelection.Auto, registry.status().selection)
+                assertEquals("nspanel-pro", registry.resolveForStartup().profile.id)
+            }
+        }
+    }
+
+    @Test fun restoredGen2PinIsRefusedOnFirstGenerationAndAcceptedOnGen2() {
+        val backup = ProfileBackup(
+            revisions = emptyList(),
+            selection = ProfileSelection.Pinned(gen2Ref()),
+            active = gen2Ref(),
+            lastKnownGood = ProfileSelection.Pinned(gen2Ref()),
+        )
+        for ((facts, accepted) in listOf(FIRST_GENERATION to false, GEN2 to true)) withRegistry(facts) { registry ->
+            val plan = registry.planBackupRestore(backup)
+            val result = registry.restoreBackup(backup, plan.expectedCatalogRevision)
+            assertEquals("$facts ${plan.issues}", accepted, plan.valid)
+            if (accepted) {
+                assertEquals(ProfileBackupRestoreOutcome.SUCCEEDED, result.outcome)
+                assertTrue(result.selectionStaged)
+                assertEquals(ProfileSelection.Pinned(gen2Ref()), registry.status().selection)
+            } else {
+                assertTrue("$facts", plan.issues.any { it.path == "profiles.selection" && it.presentation?.code == "activation-device-mismatch" })
+                assertEquals(ProfileBackupRestoreOutcome.REJECTED, result.outcome)
+                assertFalse(result.selectionStaged)
+                assertEquals(ProfileSelection.Auto, registry.status().selection)
+            }
+        }
+    }
+
+    private fun gen2Ref() = BundledProfileFixtures.bundledById.getValue("nspanel-pro-gen2").let { ProfileRef(it.document.id, it.rawSha256) }
+
     private fun fourNodeHelper() = ZigbeeReadFixture().apply {
         version = "HELPER version=1.12.0 proto=1.12"
         replies["RELAYREAD ST_RELAY COUNT"] = "RELAYREAD ST_RELAY COUNT=4\n".toByteArray()
@@ -90,20 +138,28 @@ class NspanelProGen2RelayTest {
         replies["RELAYREAD RELAY COUNT"] = "RELAYREAD RELAY COUNT=4\n".toByteArray()
     }
 
-    private fun resolve(facts: DeviceFacts): ResolvedProfile {
+    private fun resolve(facts: DeviceFacts): ResolvedProfile = withRegistry(facts) { it.resolveForStartup() }
+
+    private fun <T> withRegistry(facts: DeviceFacts, body: (RuntimeProfileRegistry) -> T): T {
         val filesDir = scratchDirectory("gen2-relay").toFile()
         return try {
-            RuntimeProfileRegistry(
+            body(RuntimeProfileRegistry(
                 filesDir = filesDir,
                 preferences = MemoryPreferences(),
                 bundledLoader = BundledProfileFixtures::rawByName,
                 facts = facts,
                 coreVersion = BuildConfig.VERSION_NAME,
                 clock = { 1_000L },
-            ).resolveForStartup()
+            ))
         } finally {
             filesDir.deleteRecursively()
         }
+    }
+
+    private companion object {
+        // ro.product.device as each generation's update packages require it.
+        val FIRST_GENERATION = DeviceFacts("px30_evb", "px30_evb", "NSPanel86P_1.5.5")
+        val GEN2 = DeviceFacts("unknown", "PX30_Android11", "")
     }
 
     private class MemoryPreferences : ProfilePreferences {

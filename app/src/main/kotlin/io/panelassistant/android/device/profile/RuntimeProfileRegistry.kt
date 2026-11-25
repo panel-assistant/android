@@ -761,6 +761,9 @@ class RuntimeProfileRegistry internal constructor(
             issues += repinIssue(payload.selection as ProfileSelection.Pinned, entries.getValue((selection as ProfileSelection.Pinned).ref))
                 .copy(path = "profiles.selection")
         }
+        (selection as? ProfileSelection.Pinned)?.let { entries[it.ref] }
+            ?.let { stockRelayIdentityIssue(it, "profiles.selection") }
+            ?.let { issues += it }
         (payload.lastKnownGood as? ProfileSelection.Pinned)?.ref?.takeIf { it !in available }?.let {
             issues += ProfileIssue(
                 ProfileIssueSeverity.WARNING,
@@ -1299,8 +1302,26 @@ class RuntimeProfileRegistry internal constructor(
         trustedProvenance = false,
     )
 
+    /**
+     * A stock profile that pins its relay count (the NSPanel Pro Gen2) switches mains relays that only its
+     * own board carries; on other hardware the same relay class holds placeholder nodes. So it is never
+     * activated, pinned or restored on a device its match block does not select. Other stock profiles stay
+     * selectable on any device.
+     */
+    private fun stockRelayIdentityIssue(entry: StoredProfile, path: String): ProfileIssue? {
+        if (entry.origin == ProfileOrigin.IMPORTED) return null
+        val document = entry.document ?: return null
+        if (document.hardware.relayCount == null || document.matches(facts)) return null
+        return ProfileIssue(
+            ProfileIssueSeverity.ERROR,
+            path,
+            "This profile switches relays found only on its own hardware, and this device's build identity does not match it.",
+            ProfilePresentation("activation-device-mismatch"),
+        )
+    }
+
     private fun activationIssues(entry: StoredProfile): List<ProfileIssue> {
-        if (entry.origin != ProfileOrigin.IMPORTED) return emptyList()
+        if (entry.origin != ProfileOrigin.IMPORTED) return listOfNotNull(stockRelayIdentityIssue(entry, "selection.match"))
         val document = entry.document ?: return emptyList()
         if (!document.matches(facts)) {
             return listOf(ProfileIssue(
