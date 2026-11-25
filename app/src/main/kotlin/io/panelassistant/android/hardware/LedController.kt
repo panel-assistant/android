@@ -33,7 +33,7 @@ class NoOpLedController : LedController {
 
 /**
  * Picks the LED backend from the active [DeviceProfile]'s [DeviceProfile.ledMechanism]:
- * - `RK3576_IOCTL` (e.g. WF1589T): NDK ioctl on the app-accessible `/dev/ledjni` — app-direct. Falls
+ * - `RK3576_IOCTL` (e.g. WF1589T): NDK ioctl on the app-accessible `/dev/ledjni`, else a `/dev/ws2812_pwm` strip — app-direct. Falls
  *   back to the daemon if the node isn't actually present (graceful for a mis-profiled panel).
  * - `RK3576_IOCTL_DAEMON` (e.g. SMT1019): the `/dev/ledjni` ioctl is the same, but the app is
  *   SELinux-denied it, so the [SocketLedController] asks the root daemon to issue it (the daemon runs
@@ -52,9 +52,15 @@ object LedFactory {
         LedMechanism.NONE -> NoOpLedController()
         LedMechanism.SYSFS_DAEMON -> socket(profile)
         LedMechanism.RK3576_IOCTL_DAEMON -> socket(profile)
-        LedMechanism.RK3576_IOCTL -> Rk3576LedController(profile.ledTransfer).takeIf { it.available() } ?: fallback(profile)
-        LedMechanism.AUTODETECT -> Rk3576LedController(profile.ledTransfer).takeIf { it.available() } ?: fallback(profile)
+        LedMechanism.RK3576_IOCTL, LedMechanism.AUTODETECT -> appDirect(profile, Rk3576LedController(profile.ledTransfer), Ws2812LedController())
     }
+
+    /**
+     * App-direct LED nodes first: the `/dev/ledjni` RGB LED, then a `/dev/ws2812_pwm` addressable strip (a WF1589T
+     * variant has the strip and no ledjni), then the helper daemon.
+     */
+    internal fun appDirect(profile: DeviceProfile, ledjni: LedController, strip: LedController): LedController =
+        ledjni.takeIf { it.available() } ?: strip.takeIf { it.available() } ?: fallback(profile)
 
     /** A declared daemon route gets the profile's transfer, as the app-direct ioctl route does. */
     private fun socket(profile: DeviceProfile) = SocketLedController(transfer = profile.ledTransfer)

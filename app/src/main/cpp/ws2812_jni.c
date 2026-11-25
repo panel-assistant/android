@@ -1,0 +1,82 @@
+// Addressable WS2812 LED strips behind the vendor /dev/ws2812_pwm driver (Electron WF1589T variants).
+// Protocol from an owner's documentation of the vendor library (ioctl magic 'W'): SET_PARAM once after
+// open with {bit_period, t0h, t1h, reset, zero} = {1250, 400, 800, 60000, 0}; then per frame SET_FRAME
+// with {led_count, 24, pointer to GRB bytes} and START. The node is world read-write on these panels,
+// so no root or helper is needed. No vendor library is bundled or loaded.
+#include <errno.h>
+#include <fcntl.h>
+#include <jni.h>
+#include <pthread.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
+
+#define WS2812_NODE "/dev/ws2812_pwm"
+#define WS2812_SET_PARAM 0x40145704UL
+#define WS2812_SET_FRAME 0x40105701UL
+#define WS2812_START 0x5702UL
+#define WS2812_MAX_LEDS 1024
+
+struct ws2812_param { uint32_t bit_period, t0h, t1h, reset, zero; };
+struct ws2812_frame { uint32_t led_count; uint32_t bits_per_led; uint64_t data; };
+
+static pthread_mutex_t ws_lock = PTHREAD_MUTEX_INITIALIZER;
+static int ws_fd = -1;
+
+static int ws_open_locked(void) {
+    if (ws_fd >= 0) return 0;
+    int fd = open(WS2812_NODE, O_RDWR | O_CLOEXEC);
+    if (fd < 0) return -errno;
+    struct ws2812_param param = {1250, 400, 800, 60000, 0};
+    if (ioctl(fd, WS2812_SET_PARAM, &param) < 0) {
+        int failure = errno;
+        close(fd);
+        return -failure;
+    }
+    ws_fd = fd;
+    return 0;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_io_panelassistant_android_hardware_NativeWs2812_nativeProbe(JNIEnv *env, jobject thiz) {
+    (void)env; (void)thiz;
+    return access(WS2812_NODE, R_OK | W_OK) == 0 ? JNI_TRUE : JNI_FALSE;
+}
+
+// Fill [count] LEDs with one colour and transmit. Returns 0 on success or a negative errno.
+JNIEXPORT jint JNICALL
+Java_io_panelassistant_android_hardware_NativeWs2812_nativeFill(JNIEnv *env, jobject thiz, jint r, jint g, jint b, jint count) {
+    (void)env; (void)thiz;
+    if (count < 1 || count > WS2812_MAX_LEDS) return -EINVAL;
+    uint8_t *grb = malloc((size_t)count * 3);
+    if (grb == NULL) return -ENOMEM;
+    for (int i = 0; i < count; i++) {
+        grb[i * 3] = (uint8_t)(g & 0xff);
+        grb[i * 3 + 1] = (uint8_t)(r & 0xff);
+        grb[i * 3 + 2] = (uint8_t)(b & 0xff);
+    }
+    pthread_mutex_lock(&ws_lock);
+    int result = ws_open_locked();
+    if (result == 0) {
+        struct ws2812_frame frame = {(uint32_t)count, 24, (uint64_t)(uintptr_t)grb};
+        if (ioctl(ws_fd, WS2812_SET_FRAME, &frame) < 0) {
+            result = -errno;
+        } else {
+            result = -EBUSY;
+            // EBUSY means the previous frame is still in flight (about 7 ms for 234 LEDs).
+            for (int attempt = 0; attempt < 10 && result == -EBUSY; attempt++) {
+                if (ioctl(ws_fd, WS2812_START) == 0) result = 0;
+                else if (errno == EBUSY) usleep(5000);
+                else result = -errno;
+            }
+        }
+        if (result != 0 && result != -EBUSY) {
+            close(ws_fd);
+            ws_fd = -1;
+        }
+    }
+    pthread_mutex_unlock(&ws_lock);
+    free(grb);
+    return result;
+}
