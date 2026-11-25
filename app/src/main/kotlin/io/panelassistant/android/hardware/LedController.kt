@@ -7,11 +7,16 @@ import io.panelassistant.android.device.LedMechanism
  * Per-panel RGB LED HAL. The uniform interface lets the `light.<panel>_led` entity look
  * identical fleet-wide; the adapter underneath differs by hardware (clean-room NDK ioctl on the
  * rk3576 `/dev/ledjni`, root sysfs elsewhere). r/g/b are HA range 0..255; adapters scale to the
- * panel's native range. [available] is false when the panel has no usable LED backend (no node /
- * no root), so the bridge can skip publishing the entity.
+ * panel's native range. [backend] distinguishes confirmed absence from a route that is temporarily
+ * unavailable. Only confirmed absence makes the channel unsupported.
  */
 interface LedController {
     fun available(): Boolean
+
+    fun backend(): LedBackend
+
+    /** Last settled topology; reporting can read this without opening the device or helper socket. */
+    val confirmedAbsent: Boolean get() = false
 
     /** True if the backend can set arbitrary RGB; false = brightness-only (HA publishes no colour). */
     fun colorCapable(): Boolean
@@ -21,11 +26,26 @@ interface LedController {
 
     /** Turn every channel off and report whether the backend confirmed the operation. */
     fun off(): Boolean
+
+    /** Release any resources owned by this controller once output has stopped. */
+    fun close() = Unit
+}
+
+enum class LedBackend(val ready: Boolean, val label: String) {
+    LEDJNI(true, "Rockchip /dev/ledjni (RGB)"),
+    WS2812(true, "WS2812 /dev/ws2812_pwm (RGB)"),
+    HELPER_LEDJNI(true, "Rockchip /dev/ledjni helper daemon (RGB)"),
+    HELPER_SYSFS(true, "sysfs helper daemon (RGB)"),
+    HELPER_LEGACY(true, "helper daemon (RGB)"),
+    UNAVAILABLE(false, "unavailable"),
+    ABSENT(false, "none"),
 }
 
 /** Used on panels with no known LED backend. */
 class NoOpLedController : LedController {
     override fun available() = false
+    override fun backend() = LedBackend.ABSENT
+    override val confirmedAbsent = true
     override fun colorCapable() = false
     override fun setRgb(r: Int, g: Int, b: Int) = false
     override fun off() = false
@@ -43,24 +63,28 @@ class NoOpLedController : LedController {
  * - `NONE` (e.g. NSPanel Pro): no LED — skip probing entirely.
  * - `AUTODETECT` (unknown panel): probe rk3576 ioctl, then the daemon (the previous behaviour).
  *
- * For the socket path, `detect()` returns the controller without probing; the bridge later calls
- * `available()` (off the main thread), which is false when the daemon has no reachable LED node → the
- * LED entity is skipped. So a panel with neither a node nor the daemon yields no LED entity.
+ * The socket path keeps its controller through helper outages. A live LEDPROBE can confirm absence
+ * or report a usable route when the helper becomes reachable.
  */
 object LedFactory {
     fun detect(profile: DeviceProfile): LedController = when (profile.ledMechanism) {
         LedMechanism.NONE -> NoOpLedController()
         LedMechanism.SYSFS_DAEMON -> socket(profile)
         LedMechanism.RK3576_IOCTL_DAEMON -> socket(profile)
-        LedMechanism.RK3576_IOCTL, LedMechanism.AUTODETECT -> appDirect(profile, Rk3576LedController(profile.ledTransfer), Ws2812LedController(fallbackTransfer(profile.ledTransfer)))
+        LedMechanism.RK3576_IOCTL, LedMechanism.AUTODETECT ->
+            appDirect(profile, Rk3576LedController(profile.ledTransfer), NativeWs2812())
     }
 
     /**
      * App-direct LED nodes first: the `/dev/ledjni` RGB LED, then a `/dev/ws2812_pwm` addressable strip (a WF1589T
      * variant has the strip and no ledjni), then the helper daemon.
      */
-    internal fun appDirect(profile: DeviceProfile, ledjni: LedController, strip: LedController): LedController =
-        ledjni.takeIf { it.available() } ?: strip.takeIf { it.available() } ?: fallback(profile)
+    internal fun appDirect(profile: DeviceProfile, ledjni: LedController, stripDriver: Ws2812Driver): LedController =
+        ledjni.takeIf { it.available() } ?: Ws2812LedController(
+            transfer = fallbackTransfer(profile.ledTransfer),
+            driver = stripDriver,
+            ledCount = profile.ledCount ?: Ws2812LedController.DEFAULT_LED_COUNT,
+        ).takeIf { it.available() } ?: fallback(profile)
 
     /** A declared daemon route gets the profile's transfer, as the app-direct ioctl route does. */
     private fun socket(profile: DeviceProfile) = SocketLedController(transfer = profile.ledTransfer)

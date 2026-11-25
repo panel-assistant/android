@@ -237,13 +237,15 @@ data class ProfileBacklight(
 )
 
 /** `hardware.led`: the LED [mechanism] and its curve. [transfer] also accepts the ioctl-only
- *  `rk3576-four-bit` stub, which takes no [gamma], [points] or [floor]. */
+ *  `rk3576-four-bit` stub, which takes no [gamma], [points] or [floor]. [count] applies to WS2812 strip
+ *  frames only. */
 data class ProfileLed(
     val mechanism: String,
     val transfer: String = "identity",
     val gamma: Double? = null,
     val points: List<Pair<Int, Int>>? = null,
     val floor: Int? = null,
+    val count: Int? = null,
 ) {
     val curve: ProfileLightCurve get() = ProfileLightCurve(transfer, gamma, points, floor)
 }

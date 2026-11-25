@@ -5,6 +5,7 @@ import io.panelassistant.android.audio.CaptureDownmix
 import io.panelassistant.android.audio.PlatformAecMode
 import io.panelassistant.android.audio.PreferredMicDevice
 import io.panelassistant.android.hardware.LedTransfer
+import io.panelassistant.android.hardware.Ws2812LedController
 import io.panelassistant.android.device.SuForm
 import io.panelassistant.android.device.LocalWake
 import io.panelassistant.android.device.ScreenOff
@@ -36,10 +37,11 @@ object ProfileMetadata {
         ProfileDriverDescriptor("input.button-backlight", ProfileDriverKind.INPUT, "Helper-backed monochrome button backlight", true, ProfileHelperAuthorityDemand.REQUIRED),
         ProfileDriverDescriptor("input.evdev", ProfileDriverKind.INPUT, "Helper-backed Linux input event watcher", true, ProfileHelperAuthorityDemand.REQUIRED),
         ProfileDriverDescriptor("input.android-keys", ProfileDriverKind.INPUT, "Named Android accessibility key inputs", false, ProfileHelperAuthorityDemand.NONE),
-        ProfileDriverDescriptor("led.autodetect", ProfileDriverKind.LED, "Probe built-in LED transports including helper fallback", true, ProfileHelperAuthorityDemand.SANDBOX_FALLBACK),
-        ProfileDriverDescriptor("led.rk3576-ioctl", ProfileDriverKind.LED, "Built-in /dev/ledjni ioctl with helper fallback", true, ProfileHelperAuthorityDemand.SANDBOX_FALLBACK),
+        ProfileDriverDescriptor("led.autodetect", ProfileDriverKind.LED, "Probe /dev/ledjni, then /dev/ws2812_pwm, then the helper", true, ProfileHelperAuthorityDemand.SANDBOX_FALLBACK),
+        ProfileDriverDescriptor("led.rk3576-ioctl", ProfileDriverKind.LED, "Built-in /dev/ledjni ioctl with WS2812 strip and helper fallback", true, ProfileHelperAuthorityDemand.SANDBOX_FALLBACK),
         ProfileDriverDescriptor("led.rk3576-ioctl-daemon", ProfileDriverKind.LED, "Helper-backed /dev/ledjni ioctl protocol", true, ProfileHelperAuthorityDemand.REQUIRED),
         ProfileDriverDescriptor("led.sysfs-daemon", ProfileDriverKind.LED, "Helper-backed supported RGB sysfs protocol", true, ProfileHelperAuthorityDemand.REQUIRED),
+        ProfileDriverDescriptor("led.ws2812-pwm", ProfileDriverKind.LED, "App-direct /dev/ws2812_pwm RGB strip, probed by autodetect and rk3576-ioctl", false, ProfileHelperAuthorityDemand.NONE),
         ProfileDriverDescriptor("radio.siliconlabs-host", ProfileDriverKind.RADIO, "Sonoff Silicon Labs gateway directory", true, ProfileHelperAuthorityDemand.NONE),
         ProfileDriverDescriptor("relay.gpio-control", ProfileDriverKind.RELAY, "Vendor /dev/gpio_control relay ioctl", false, ProfileHelperAuthorityDemand.NONE),
         ProfileDriverDescriptor("relay.sysfs", ProfileDriverKind.RELAY, "Supported relay sysfs class", true, ProfileHelperAuthorityDemand.NONE),
@@ -113,6 +115,7 @@ object ProfileMetadata {
             field("platform.launcher.vendor_home_packages", "package-name[]", false, "Vendor apps that register as Home but are not app drawers; the navbar Launcher button skips them."),
             field("platform.vendor_mdns", "string[]", false, "DNS-SD instances the vendor's own software announces, as instance-glob.service (ShellyWallDisplay-*._shelly._tcp); Panel Assistant browses them to find the panel."),
             field("hardware.led.mechanism", "enum", true, "Built-in LED route.", LedMechanism.entries.map { it.yamlName }),
+            field("hardware.led.count", "integer", false, "WS2812 strip length, 1 through ${Ws2812LedController.MAX_LED_COUNT}; defaults to ${Ws2812LedController.DEFAULT_LED_COUNT}. Only used if autodetect or rk3576-ioctl selects the strip."),
             field("hardware.led.transfer", "enum", false, "Core-owned LED transfer function; defaults to identity.", LedTransfer.NAMES.toList()),
             field("hardware.led.gamma", "number", false, "Power-law exponent for transfer gamma, 0.2 through 5.0."),
             field("hardware.led.points", "integer[][]", false, "Control points for transfer points: [request, hardware] pairs from [0, 0] to [255, 255]."),

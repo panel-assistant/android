@@ -17,6 +17,7 @@ class Rk3576LedController(
 ) : LedController {
 
     override fun available(): Boolean = driver.available()
+    override fun backend(): LedBackend = if (available()) LedBackend.LEDJNI else LedBackend.UNAVAILABLE
 
     override fun colorCapable(): Boolean = true
 

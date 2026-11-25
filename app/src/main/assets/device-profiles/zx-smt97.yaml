@@ -11,7 +11,7 @@ soc:
       count: 4
 metadata:
   author: ha-paneld maintainers
-  source: https://panel-assistant.io/go/docs?page=hardware/zx-smt156
+  source: https://github.com/panel-assistant/ha-integration/issues/37
   links:
     - label: SoC details
       url: https://www.rock-chips.com/a/en/products/RK35_Series/2021/0113/1274.html

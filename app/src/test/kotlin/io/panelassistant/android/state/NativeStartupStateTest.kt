@@ -2,6 +2,7 @@ package io.panelassistant.android.state
 
 import io.panelassistant.android.testsupport.PanelRuntimeRig
 import io.panelassistant.android.hardware.LedController
+import io.panelassistant.android.hardware.LedBackend
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -14,6 +15,7 @@ internal class NativeStartupStateTest : PanelRuntimeRig() {
         var accepted = true
         val writes = mutableListOf<String>()
         override fun available() = true
+        override fun backend() = LedBackend.LEDJNI
         override fun colorCapable() = true
         override fun off(): Boolean { writes += "off"; return accepted }
         override fun setRgb(r: Int, g: Int, b: Int): Boolean {

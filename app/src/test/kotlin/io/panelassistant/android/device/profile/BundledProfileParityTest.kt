@@ -1097,7 +1097,7 @@ class BundledProfileParityTest {
             "tpa10.yaml" to "0d7fabc9fff76e7949c4575aec7b75a6e73facf44ac98af928c2ff06280c4d75",
             "wf1589t.yaml" to "d899f9fce75bcd5dc55f10a546896a0164642ba3e4b93aec0300bbb217bfd0a2",
             "zx-smt156.yaml" to "8c5fe65c26eaefb964899dfaf596adf6df485285a94ce0eeecd65b2d833a389e",
-            "zx-smt97.yaml" to "fa55b6d4c091df745f13371a9ad64a23ac7f82f763ba220d53fff921407bf1ab",
+            "zx-smt97.yaml" to "801c97522cd02e2cb9253bf066a217cea6d86755779cd70878991403c2d25805",
         )
         val EXPECTED_UNOFFICIAL_IDS = setOf(
             "community.cronos-lineageos18",

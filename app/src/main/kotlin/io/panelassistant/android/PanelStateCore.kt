@@ -24,7 +24,6 @@ import io.panelassistant.android.control.ZigbeeController
 import io.panelassistant.android.control.ZigbeeHealthSnapshot
 import io.panelassistant.android.control.ZigbeeHealthState
 import io.panelassistant.android.hardware.LedController
-import io.panelassistant.android.hardware.NoOpLedController
 import io.panelassistant.android.input.ButtonBus
 import io.panelassistant.android.metrics.PanelMetrics
 import io.panelassistant.android.panelassistant.PanelAssistantChannelCatalog
@@ -346,9 +345,7 @@ internal class PanelStateCore(
         "camera_enabled" -> hasCamera()
         "proximity", "proximity_level" -> learnedProximity
         "illuminance" -> lightChannel()
-        // LedFactory returns the no-op controller only for a profile declaring no LED. A declared LED stays
-        // described even when its probe fails: a daemon-driven one reads false until the helper answers.
-        "led" -> if (led is NoOpLedController) false else null
+        "led" -> if (led.confirmedAbsent) false else null
         SoftwareUpdates.stateChannelKey(SoftwareComponent.COMPANION) ->
             softwareUpdateInputs(SoftwareComponent.COMPANION)
                 ?.takeUnless { it.presenceUnknown }
@@ -431,6 +428,10 @@ internal class PanelStateCore(
                 lastPublishedVolume = volume.getPercent()
                 lastPublishedGovTier = cpu.currentTier()
             }.onFailure { Log.w(TAG, "startup volume and CPU governor baseline failed", it) }
+            // Prime the hardware shape before the first native hello. Subsequent probes come from
+            // the capability refresh, outside the transport's per-message descriptor reads.
+            runCatching { led.backend() }
+                .onFailure { Log.w(TAG, "startup LED probe failed", it) }
             runCatching { reapplyStoredLed() }
                 .onFailure { Log.w(TAG, "startup LED restoration failed", it) }
             runCatching { restoreButtonBacklight() }

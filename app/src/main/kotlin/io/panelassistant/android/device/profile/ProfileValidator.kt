@@ -15,6 +15,7 @@ import io.panelassistant.android.audio.PlatformAecMode
 import io.panelassistant.android.audio.PreferredMicDevice
 import io.panelassistant.android.hardware.LedTransfer
 import io.panelassistant.android.hardware.TransferCurve
+import io.panelassistant.android.hardware.Ws2812LedController
 import java.net.URI
 
 internal object ProfileValidator {
@@ -263,6 +264,14 @@ internal object ProfileValidator {
             }
         }
         val led = document.hardware.led
+        led.count?.let { count ->
+            if (count !in 1..Ws2812LedController.MAX_LED_COUNT) {
+                reject("hardware.led.count", "WS2812 LED count must be 1 through ${Ws2812LedController.MAX_LED_COUNT}.")
+            }
+            if (LedMechanism.ofYaml(led.mechanism) !in setOf(LedMechanism.AUTODETECT, LedMechanism.RK3576_IOCTL)) {
+                reject("hardware.led.count", "WS2812 LED count requires the autodetect or rk3576-ioctl mechanism.")
+            }
+        }
         if (led.transfer == LedTransfer.RK3576_FOUR_BIT) {
             if (led.gamma != null || led.points != null || led.floor != null) {
                 reject("hardware.led", "The rk3576-four-bit stub takes no gamma, points or floor.")

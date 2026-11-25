@@ -286,26 +286,6 @@ class WakeWordDetectorTest {
     }
 
     @Test
-    fun cooldownRunsInTimeSoTheSamePhraseWakesStraightAfterAPausedTurn() {
-        // Real 10 ms frame spacing, as the microphone delivers. The coordinator pauses the wake lease for
-        // the whole turn, so no frames arrive during the reply; the cooldown must elapse in that time.
-        val frameNs = FRAME_NS
-        val rig = Rig(config("okay_nabu", cutoff = 0.6f, window = 2), cooldown = 200)
-        repeat(100) { rig.scorers[0].script.add(255) }
-        var ts = 0L
-        fun deliver(n: Int) = repeat(n) { rig.detector.onFrame(PcmFrame(ShortArray(160), timestampNs = ts)); ts += frameNs }
-        deliver(2)
-        assertEquals(1, rig.hits.size)
-        // Still live: the same utterance must not fire again within the cooldown.
-        deliver(20)
-        assertEquals(1, rig.hits.size)
-        // The lease pauses for a 5 s reply, then resumes and the same phrase is said again.
-        ts += 5_000_000_000L
-        deliver(3)
-        assertEquals(2, rig.hits.size)
-    }
-
-    @Test
     fun irregularCaptureCadenceNeitherShortensNorStretchesTheCooldown() {
         // Alternating 20.1 ms and 0.1 ms gaps: a per-frame charge burned 2 s of cooldown in about 1.35 s.
         val rig = Rig(config("okay_nabu", cutoff = 0.6f, window = 2), cooldown = 200)

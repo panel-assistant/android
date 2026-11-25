@@ -1,6 +1,9 @@
 package io.panelassistant.android.hardware
 
 import io.panelassistant.android.device.profile.BundledProfileFixtures
+import io.panelassistant.android.device.DeviceProfile
+import io.panelassistant.android.control.LedEffectController
+import io.panelassistant.android.http.DiagReader
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
@@ -12,39 +15,48 @@ class Ws2812LedControllerTest {
 
     private class FakeStrip(private val present: Boolean, private val rc: Int = 0) : Ws2812Driver {
         val fills = mutableListOf<List<Int>>()
+        var closes = 0
         override fun available() = present
         override fun fill(r: Int, g: Int, b: Int, count: Int): Int { fills += listOf(r, g, b, count); return rc }
+        override fun close() { closes++ }
     }
 
     private class FakeLed(private val present: Boolean) : LedController {
         override fun available() = present
+        override fun backend() = if (present) LedBackend.LEDJNI else LedBackend.UNAVAILABLE
         override fun colorCapable() = true
         override fun setRgb(r: Int, g: Int, b: Int) = true
         override fun off() = true
     }
 
-    private val wf1589t = BundledProfileFixtures.bundledById.getValue("wf1589t").let {
-        io.panelassistant.android.device.profile.DataDeviceProfile(it.document, "", it.rawSha256, trustedBundledContent = true)
-    }
+    private val wf1589t = BundledProfileFixtures.profile("wf1589t")
 
-    @Test fun stripIsChosenWhenTheBoardHasNoLedjni() {
-        val strip = Ws2812LedController(driver = FakeStrip(present = true))
-        assertSame(strip, LedFactory.appDirect(wf1589t, FakeLed(present = false), strip))
+    @Test fun stripOnlyBoardReportsTheActiveRgbRouteAndUsesTheDefaultFrameSize() {
+        val driver = FakeStrip(present = true)
+        val chosen = LedFactory.appDirect(wf1589t, FakeLed(present = false), driver)
+        val backend = chosen.backend()
+        assertEquals("WS2812 /dev/ws2812_pwm (RGB)", backend.label)
+        assertEquals("ok", DiagReader.rgbLedCapability(backend).status)
+        assertTrue(chosen.setRgb(255, 40, 255))
+        assertEquals(listOf(255, 40, 255, 500), driver.fills.single())
     }
 
     @Test fun ledjniStillWinsWhereItExists() {
         val ledjni = FakeLed(present = true)
-        assertSame(ledjni, LedFactory.appDirect(wf1589t, ledjni, Ws2812LedController(driver = FakeStrip(present = true))))
+        assertSame(ledjni, LedFactory.appDirect(wf1589t, ledjni, FakeStrip(present = true)))
     }
 
-    @Test fun neitherNodeFallsBackToTheHelperWhoseAbsenceHidesTheEntity() {
-        val chosen = LedFactory.appDirect(wf1589t, FakeLed(present = false), Ws2812LedController(driver = FakeStrip(present = false)))
+    @Test fun neitherNodeFallsBackToTheHelper() {
+        val chosen = LedFactory.appDirect(wf1589t, FakeLed(present = false), FakeStrip(present = false))
         assertTrue(chosen is SocketLedController)
     }
 
-    @Test fun colourFillsTheWholeStripAndOffSendsBlack() {
+    @Test fun configuredFrameSizeAppliesToColourAndOff() {
         val driver = FakeStrip(present = true)
-        val strip = Ws2812LedController(driver = driver, ledCount = 234)
+        val profile = object : DeviceProfile by wf1589t {
+            override val ledCount = 234
+        }
+        val strip = LedFactory.appDirect(profile, FakeLed(present = false), driver)
         assertTrue(strip.colorCapable())
         assertTrue(strip.setRgb(255, 40, 300))
         assertTrue(strip.off())
@@ -53,6 +65,15 @@ class Ws2812LedControllerTest {
 
     @Test fun aDriverErrorIsReported() {
         assertFalse(Ws2812LedController(driver = FakeStrip(present = true, rc = -5)).setRgb(1, 2, 3))
+    }
+
+    @Test fun closingTheOutputOwnerReleasesTheSelectedStripOnce() {
+        val driver = FakeStrip(present = true)
+        val strip = LedFactory.appDirect(wf1589t, FakeLed(present = false), driver)
+        val effects = LedEffectController(strip)
+        effects.close()
+        effects.close()
+        assertEquals(1, driver.closes)
     }
 
     @Test fun aDeclaredCurveIsAppliedToTheStrip() {

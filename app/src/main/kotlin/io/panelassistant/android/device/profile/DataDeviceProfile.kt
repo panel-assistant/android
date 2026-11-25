@@ -54,6 +54,7 @@ class DataDeviceProfile internal constructor(
         } else {
             LedTransfer.curved(validCurve(document.hardware.led.curve))
         }
+    override val ledCount = document.hardware.led.count
     override val backlightTransfer: TransferCurve = validCurve(document.hardware.backlight?.curve)
     override val backlightRoute: BacklightRoute =
         if (document.hardware.backlight?.route == "setting") BacklightRoute.SETTING else BacklightRoute.NODE

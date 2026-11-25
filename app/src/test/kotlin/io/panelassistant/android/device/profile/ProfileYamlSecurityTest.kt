@@ -642,6 +642,7 @@ class ProfileYamlSecurityTest {
             "led.rk3576-ioctl" to ProfileHelperAuthorityDemand.SANDBOX_FALLBACK,
             "led.rk3576-ioctl-daemon" to ProfileHelperAuthorityDemand.REQUIRED,
             "led.sysfs-daemon" to ProfileHelperAuthorityDemand.REQUIRED,
+            "led.ws2812-pwm" to ProfileHelperAuthorityDemand.NONE,
             "radio.siliconlabs-host" to ProfileHelperAuthorityDemand.NONE,
             "relay.gpio-control" to ProfileHelperAuthorityDemand.NONE,
             "relay.sysfs" to ProfileHelperAuthorityDemand.NONE,

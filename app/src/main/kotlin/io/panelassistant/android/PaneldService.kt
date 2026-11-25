@@ -55,9 +55,9 @@ import io.panelassistant.android.control.SystemController
 import io.panelassistant.android.control.ZigbeeObservation
 import io.panelassistant.android.control.observeTypedShellCapability
 import io.panelassistant.android.control.preventIdleDimDiagnostic
-import io.panelassistant.android.device.LedMechanism
-import io.panelassistant.android.hardware.Rk3576LedController
-import io.panelassistant.android.hardware.SocketLedController
+import io.panelassistant.android.hardware.LedBackend
+import io.panelassistant.android.hardware.LedController
+import io.panelassistant.android.hardware.LedFactory
 import io.panelassistant.android.config.Capabilities
 import io.panelassistant.android.config.presenceModeDefault
 import io.panelassistant.android.dashboard.EntityLearningManager
@@ -619,13 +619,20 @@ class PaneldService : Service() {
                 cameraCapabilityReason(resolvedProfile.profile.cameraDeclared, cameraPresence.get()),
             )
         }
-        withContext(Dispatchers.Main.immediate) {
-            if (teardownBoundary.isStopping) return@withContext
-            config = preparedConfig
-            liveSettingAuthority = preparedLiveSettings
-            profileRegistry = preparedProfiles
-            initializeRuntimeAfterDatabase(resolvedProfile, wifiStore, preparedEntityLearning)
-            if (pendingStart) startInitializedRuntime()
+        if (teardownBoundary.isStopping) return
+        // Strip selection opens and configures the driver. Keep it on the startup IO lane.
+        val preparedLed = LedFactory.detect(resolvedProfile.profile)
+        try {
+            withContext(Dispatchers.Main.immediate) {
+                if (teardownBoundary.isStopping) return@withContext
+                config = preparedConfig
+                liveSettingAuthority = preparedLiveSettings
+                profileRegistry = preparedProfiles
+                initializeRuntimeAfterDatabase(resolvedProfile, wifiStore, preparedEntityLearning, preparedLed)
+                if (pendingStart) startInitializedRuntime()
+            }
+        } finally {
+            if (!::runtime.isInitialized) preparedLed.close()
         }
     }
 
@@ -645,6 +652,7 @@ class PaneldService : Service() {
         resolvedProfile: ResolvedProfile,
         wifiStore: AndroidWifiOutageStore,
         preparedEntityLearning: EntityLearningManager,
+        preparedLed: LedController,
     ) {
         reconcileNativePresentationAfterPromotion()
         updateForegroundStatus(nativeString(R.string.starting))
@@ -742,7 +750,7 @@ class PaneldService : Service() {
             panelAssistantLogs = io.panelassistant.android.panelassistant.PanelAssistantLogs(config, logCaptureApp, logCaptureSystem, logShipper::setPanelAssistantForwarding),
         )
         displayPower.bindHaAmbient()
-        controls.buildLighting()
+        controls.buildLighting(preparedLed)
         // Camera trial. Owned here, beside the LED it borrows for off-screen indication and the screen
         // whose intended-off state decides the handover; nothing runs until a subscriber asks for a frame.
         // The stream transport reads the owner through the FIELD so construction order does not matter:
@@ -1386,19 +1394,19 @@ class PaneldService : Service() {
 
     private fun managementProjection(privilege: PrivilegedRouteObservation): ManagementProjection {
         val controllers = observeManagementControllers(privilege)
-        val diagnostic = DiagReader.capabilities(this, profile, privilege)
+        val ledBackend = controls.led.backend()
         // ONE outage read feeds both the diagnostics row and the /diag gate. Reading the tracker
         // twice would let an episode age out between them, and a report could then omit the line
         // while printing a row that says the Wi-Fi needs attention, or the reverse.
         val wifi = wifiOutageTracker.counts()
         return ManagementProjection(
-            facts = panelInfo(controllers, diagnostic.rgbLedReady, wifi),
+            facts = panelInfo(controllers, ledBackend, wifi),
             live = projectLiveValues(
                 cpuTier = controllers.cpuTier,
                 networkAdbPersisted = controllers.networkAdbPersisted,
             ),
             capabilities = capabilitiesSnapshot(privilege, controllers),
-            capabilityRows = diagnostic.rows,
+            capabilityRows = DiagReader.capabilities(this, profile, privilege, ledBackend),
             wifiChronic = wifiOutageChronic(wifi),
             networkAdbExternal = !controllers.networkAdbPersisted && controllers.networkAdbActive == true,
         )
@@ -1407,7 +1415,7 @@ class PaneldService : Service() {
     /** Ordered facts for the info page (`GET /`). */
     private fun panelInfo(
         controllers: ManagementControllerObservation,
-        rgbLedReady: Boolean,
+        ledBackend: LedBackend,
         wifiOutages: WifiOutageCounts,
     ): Map<String, String> {
         val pv = SystemProps.get("ro.product.version")
@@ -1432,7 +1440,7 @@ class PaneldService : Service() {
             "Platform" to profile.displayName,
             "SoC" to (profile.soc?.displayText() ?: profile.socClass),
             "Model" to profile.panelModelLabel(pv),
-            "LED" to ledLabel(rgbLedReady),
+            "LED" to ledBackend.label,
             "Light sensor" to sensorRow(sensors.hasLight(), profile.lightTech, sensors.lightDesc()),
             "Proximity" to sensorRow(sensors.hasProximity(), profile.proximityTech, sensors.proximityDesc()),
             // a11y service = software back/recents nav, NOT physical buttons (NSPanel Pro has none).
@@ -1472,18 +1480,6 @@ class PaneldService : Service() {
         // something has actually synced, so it doesn't clutter a steady panel. Flows to /diag too.
         core.recentSyncEvents().takeIf { it.isNotEmpty() }?.let { extras["Local-state sync"] = it.joinToString(" · ") }
         return PanelInfo.collect(this, extras, profile)
-    }
-
-    private fun ledLabel(rgbLedReady: Boolean): String {
-        if (!rgbLedReady) return "none"
-        return when {
-        controls.led is Rk3576LedController -> "Rockchip /dev/ledjni (RGB)"
-        controls.led is SocketLedController && profile.ledMechanism == LedMechanism.RK3576_IOCTL_DAEMON -> "Rockchip /dev/ledjni helper daemon (RGB)"
-        controls.led is SocketLedController && profile.ledMechanism == LedMechanism.SYSFS_DAEMON -> "sysfs helper daemon (RGB)"
-        controls.led is SocketLedController -> "helper daemon (RGB)"
-        controls.led.colorCapable() -> "RGB"
-        else -> "brightness"
-        }
     }
 
     /** "no", or "yes" with any declared technology + runtime value-type/range appended ("yes · Infrared ·
@@ -1533,6 +1529,7 @@ class PaneldService : Service() {
     /** This panel's capability snapshot for the settings registry's availableWhen gates
      *  (the Configure form/schema + the dashboard's read-only values card). */
     private fun capabilitiesSnapshot(): Capabilities {
+        controls.led.backend()
         val privilege = observeTypedShellCapability(
             directSuProbe = Su::observedUsable,
             helperRootProbe = HelperClient::available,

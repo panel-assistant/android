@@ -1,6 +1,7 @@
 package io.panelassistant.android.control
 
 import io.panelassistant.android.hardware.LedController
+import io.panelassistant.android.hardware.LedBackend
 import io.panelassistant.android.hardware.LedEffects
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -36,6 +37,7 @@ class LedEffectControllerTest {
         @Volatile var failAt = Int.MAX_VALUE
         private var attempts = 0
         override fun available() = true
+        override fun backend() = LedBackend.LEDJNI
         override fun colorCapable() = true
         @Synchronized override fun setRgb(r: Int, g: Int, b: Int): Boolean {
             writes.add("rgb:$r,$g,$b")
@@ -174,6 +176,7 @@ class LedEffectControllerTest {
         val releaseBlockedFrame = CountDownLatch(1)
         private val attempts = AtomicInteger()
         override fun available() = true
+        override fun backend() = LedBackend.LEDJNI
         override fun colorCapable() = true
         override fun setRgb(r: Int, g: Int, b: Int): Boolean {
             writes += "rgb:$r,$g,$b"
@@ -204,6 +207,7 @@ class LedEffectControllerHoldTest {
     private class RecordingLed : LedController {
         val writes = java.util.concurrent.CopyOnWriteArrayList<String>()
         override fun available() = true
+        override fun backend() = LedBackend.LEDJNI
         override fun colorCapable() = true
         override fun setRgb(r: Int, g: Int, b: Int): Boolean { writes.add("rgb:$r,$g,$b"); return true }
         override fun off(): Boolean { writes.add("off"); return true }

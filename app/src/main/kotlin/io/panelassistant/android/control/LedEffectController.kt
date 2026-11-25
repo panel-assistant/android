@@ -150,7 +150,9 @@ class LedEffectController(
     @Synchronized
     fun close() {
         holder = null
-        if (status() != Status.CLOSED) cancelAndJoinCurrent(Status.CLOSED)
+        if (status() == Status.CLOSED) return
+        cancelAndJoinCurrent(Status.CLOSED)
+        led.close()
     }
 
     /** Cancel the current job and block until its last frame has finished, so no stale frame survives. */

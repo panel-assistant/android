@@ -199,7 +199,7 @@ private class SchemaReader(private val issues: MutableList<ProfileIssue>) {
             "relay_base_fallbacks", "relay_count", "relay_gpio_control", "button_led_gpio_base", "touch_click_gain", "camera", "microphone", "speaker",
             "camera_lens_offset_px", "backlight", "button_backlight", "microphone_capture",
         ), required = true).orEmpty()
-        val led = map(hardware["led"], "hardware.led", setOf("mechanism", "transfer", "gamma", "points", "floor"), required = true).orEmpty()
+        val led = map(hardware["led"], "hardware.led", setOf("mechanism", "transfer", "gamma", "points", "floor", "count"), required = true).orEmpty()
         val sensors = map(
             root["sensors"],
             "sensors",
@@ -315,6 +315,7 @@ private class SchemaReader(private val issues: MutableList<ProfileIssue>) {
                         gamma = curve.gamma,
                         points = curve.points,
                         floor = curve.floor,
+                        count = integer(led, "count", "hardware.led"),
                     )
                 },
                 screenOff = string(hardware, "screen_off", "hardware", required = true).orEmpty(),
@@ -821,7 +822,7 @@ internal fun ProfileDocument.toYamlMap(): Map<String, Any?> = linkedMapOf(
         "vendor_mdns" to platform.vendorMdns.takeIf { it.isNotEmpty() },
     ).withoutNullValues(),
     "hardware" to linkedMapOf(
-        "led" to linkedMapOf<String, Any?>("mechanism" to hardware.led.mechanism)
+        "led" to linkedMapOf<String, Any?>("mechanism" to hardware.led.mechanism, "count" to hardware.led.count)
             .apply { putAll(hardware.led.curve.toYamlFields()) }.withoutNullValues(),
         "screen_off" to hardware.screenOff,
         "has_button_backlight" to hardware.hasButtonBacklight,

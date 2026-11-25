@@ -40,6 +40,7 @@ import io.panelassistant.android.control.ZigbeeController
 import io.panelassistant.android.control.fakeProfile
 import io.panelassistant.android.device.ScreenOff
 import io.panelassistant.android.hardware.LedController
+import io.panelassistant.android.hardware.LedBackend
 import io.panelassistant.android.config.SettingValue
 import io.panelassistant.android.panelassistant.CommandValue
 import io.panelassistant.android.panelassistant.PanelAssistantChannelCatalog
@@ -177,6 +178,7 @@ internal abstract class PanelRuntimeRig {
         lightChannel: () -> Boolean? = { true },
         led: LedController = object : LedController {
             override fun available() = true
+            override fun backend() = LedBackend.LEDJNI
             override fun colorCapable() = true
             override fun setRgb(r: Int, g: Int, b: Int) = true
             override fun off() = true
