@@ -53,6 +53,46 @@ class PinnedBundledRevisionUpgradeTest {
         directory.deleteRecursively()
     }
 
+    @Test fun `an active retired Gen2 pin rolls back on first-generation hardware`() {
+        assertMismatchedPinRecovers("nspanel-pro-gen2", DeviceFacts("unknown", "PX30_Android11", ""), active = true)
+    }
+
+    @Test fun `a pending retired Gen2 pin rolls back on first-generation hardware`() {
+        assertMismatchedPinRecovers("nspanel-pro-gen2", DeviceFacts("unknown", "PX30_Android11", ""), active = false)
+    }
+
+    @Test fun `an active retired SMT97 pin rolls back on first-generation hardware`() {
+        val matching = DeviceFacts("unknown", "rk3566_t", "", buildDisplay = "ZX-SMT97-R128V1.2A-GG-9.7-J4.62-20250106")
+        assertMismatchedPinRecovers("zx-smt97", matching, active = true)
+    }
+
+    private fun assertMismatchedPinRecovers(profileId: String, matching: DeviceFacts, active: Boolean) {
+        val current = BundledProfileFixtures.rawByName()
+        val asset = "$profileId.yaml"
+        val oldYaml = "# Previous bundled revision\n" + current.getValue(asset)
+        val pin = ProfileSelection.Pinned(ProfileRef(profileId, ProfileYaml.sha256(oldYaml)))
+        val old = install(current + (asset to oldYaml), matching)
+        assertTrue(old.select(pin, old.status().catalogRevision) is ProfileMutation.Success)
+        if (active) assertTrue(old.markActivationHealthy(generationOf(old.resolveForStartup())))
+        assertEquals(
+            if (active) ProfileActivationPhase.ACTIVE else ProfileActivationPhase.PENDING,
+            old.status().activation.phase,
+        )
+
+        val firstGen = DeviceFacts("px30_evb", "px30_evb", "NSPanel86P_1.5.5")
+        val upgraded = install(current, firstGen)
+        val resolved = upgraded.resolveForStartup()
+
+        assertEquals("nspanel-pro", resolved.profile.id)
+        assertNull(resolved.activationGeneration)
+        assertEquals(ProfileActivationPhase.ROLLED_BACK, upgraded.status().activation.phase)
+        assertEquals(ProfileSelection.Auto, upgraded.status().selection)
+        assertTrue(upgraded.markResolvedStartupHealthy())
+        val restarted = install(current, firstGen).resolveForStartup()
+        assertEquals(resolved.summary.ref, restarted.summary.ref)
+        assertNull(restarted.activationGeneration)
+    }
+
     @Test fun `a healthy pin whose retained snapshot is gone follows the bundled successor instead of generic`() {
         pinHealthyOnReleaseOne()
         assertTrue(rollbackFile(oldRef).delete())

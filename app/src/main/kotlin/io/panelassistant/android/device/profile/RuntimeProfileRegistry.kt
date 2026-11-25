@@ -1029,12 +1029,14 @@ class RuntimeProfileRegistry internal constructor(
      * not at all, follows the asset. Retained snapshots of older revisions are never candidates. The
      * current asset is withheld while it is the recorded rejected successor: the last APPLYING rollback
      * found it unhealthy, or the administrator explicitly selected a retained revision instead of it.
-     * A newer asset is offered as soon as it ships; [select] rewrites the record with every explicit
-     * choice, and a re-pin to a newer asset clears it.
+     * A newer asset is offered as soon as it ships and passes the same eligibility checks as a pin.
+     * [select] rewrites the hold with every explicit choice, and a re-pin to a newer asset clears it.
      */
     private fun retiredBundledSuccessor(pinned: ProfileSelection.Pinned): StoredProfile? {
         if (pinnedOrigin(pinned) != ProfileOrigin.BUNDLED) return null
-        return currentBundledAsset(pinned)?.takeIf { it.ref != readRejectedSuccessor() }
+        return currentBundledAsset(pinned)?.takeIf {
+            it.ref != readRejectedSuccessor() && resolveSelection(ProfileSelection.Pinned(it.ref)).entry != null
+        }
     }
 
     /**
