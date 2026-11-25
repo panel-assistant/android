@@ -431,7 +431,9 @@ internal class PanelStateCore(
             }.onFailure { Log.w(TAG, "startup volume and CPU governor baseline failed", it) }
             // Prime the hardware shape before the first native hello. Subsequent probes come from
             // the capability refresh, outside the transport's per-message descriptor reads.
-            runCatching { syncLedRoute(led.backend().takeIf { it.ready }) }
+            runCatching { ledRoute = led.backend().takeIf { it.ready } }
+                .onFailure { Log.w(TAG, "startup LED probe failed", it) }
+            runCatching { reapplyStoredLed() }
                 .onFailure { Log.w(TAG, "startup LED restoration failed", it) }
             runCatching { restoreButtonBacklight() }
                 .onFailure { Log.w(TAG, "startup button backlight restoration failed", it) }
@@ -452,8 +454,12 @@ internal class PanelStateCore(
      * Persisted intent includes commands refused while the camera owned the output. */
     fun reapplyStoredLed() = actuateLed { LedCommandPolicy.stored(config.lastLed, config.lastLedEffect) }
 
-    // The ready LED route at the last refresh (null when none was ready); seeded at startup.
+    // The ready LED route at the last probe (null when none was ready).
     @Volatile private var ledRoute: LedBackend? = null
+
+    // The route that acknowledged the LATEST actuation, set under the actuation lock; null when that actuation
+    // was refused. Whenever it differs from the probed route, that route does not hold the latest intent.
+    @Volatile private var ledWriter: LedBackend? = null
 
     /**
      * Probe the LED route on the capability refresh. A route that becomes ready, or changes (helper to strip),
@@ -463,14 +469,8 @@ internal class PanelStateCore(
      */
     fun refreshLedRoute() {
         val backend = led.backend().takeIf { it.ready }
-        if (backend == null) ledRoute = null else if (backend != ledRoute) syncLedRoute(backend)
-    }
-
-    // Apply the stored output and remember the route only once a route acknowledged it, the one that did, so a
-    // failed replay is retried on the next refresh even when the probed route has not changed.
-    private fun syncLedRoute(probed: LedBackend?) {
-        val acknowledged = reapplyStoredLed()
-        ledRoute = if (acknowledged && probed != null) led.acknowledgedBackend() ?: probed else null
+        ledRoute = backend
+        if (backend != null && ledWriter != backend) reapplyStoredLed()
     }
 
     /**
@@ -498,6 +498,9 @@ internal class PanelStateCore(
             // without driving it leaves HA and the physical LED disagreeing (seen on rk3576).
             ledEffect.setOff()
         }
+        // Bound to this (the latest) intent and the route that actually wrote it: a refused write, or one a
+        // fallback route took, leaves the probed route out of sync, so the next refresh replays.
+        ledWriter = if (ledActuationKnown) led.acknowledgedBackend() ?: ledRoute else null
         reconcile("led")
         return ledActuationKnown
     }

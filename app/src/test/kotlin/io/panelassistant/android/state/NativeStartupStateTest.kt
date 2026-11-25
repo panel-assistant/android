@@ -9,6 +9,7 @@ import io.panelassistant.android.hardware.Ws2812LedController
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.concurrent.CopyOnWriteArrayList
@@ -233,6 +234,42 @@ internal class NativeStartupStateTest : PanelRuntimeRig() {
             strip.framesAccepted = true
             rig.core.refreshLedRoute()
             assertEquals(listOf(listOf(0, 0, 255)), strip.fills)
+        } finally { rig.close() }
+    }
+
+    // Strip ready at startup, but its first frame falls back to the helper: the strip did not get the output,
+    // so when it accepts frames again the refresh replays to it.
+    @Test fun aStripReadyStartWhoseFirstFrameFellBackIsReplayedOnRecovery() {
+        val strip = Strip(opens = true, framesAccepted = false)
+        val helper = Helper(present = true)
+        val rig = rig(led = stripOrHelper(strip, helper), configure = { it.lastLed = "1,255,255,0,0" })
+        try {
+            rig.start()
+            assertEquals(listOf("255,0,0"), helper.writes)
+            strip.framesAccepted = true
+            rig.core.refreshLedRoute()
+            rig.core.refreshLedRoute()
+            assertEquals(listOf(255, 0, 0), strip.fills.last())
+        } finally { rig.close() }
+    }
+
+    // A newer OFF that the strip refuses leaves the strip out of sync: on recovery the refresh replays OFF,
+    // never the older colour.
+    @Test fun aRefusedOffIsReplayedOnRecoveryNotTheOlderColour() {
+        val strip = Strip(opens = true)
+        val rig = rig(led = stripOrHelper(strip, Helper(present = false)), configure = { it.lastLed = "1,255,0,255,0" })
+        try {
+            rig.start()
+            assertEquals(listOf(listOf(0, 255, 0)), strip.fills)
+            strip.framesAccepted = false
+            // As the command dispatcher does: persist the new intent, then drive it.
+            assertFalse(rig.core.actuateLed {
+                rig.config.lastLed = "0,0,0,0,0"
+                io.panelassistant.android.control.LedCommandPolicy.Desired(on = false)
+            })
+            strip.framesAccepted = true
+            rig.core.refreshLedRoute()
+            assertEquals(listOf(0, 0, 0), strip.fills.last())
         } finally { rig.close() }
     }
 }

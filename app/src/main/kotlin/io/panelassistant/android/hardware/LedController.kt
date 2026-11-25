@@ -160,8 +160,10 @@ internal class StripOrHelperLedController(
             if (onStrip()) return true.also { acknowledged = LedBackend.WS2812 }
             stripFramesAccepted = false
         }
-        // The helper route is named from the last refresh's probe; a command never probes it.
-        return onHelper().also { acknowledged = if (it) lastHelperBackend else null }
+        acknowledged = null
+        // The helper route is named from the last refresh's probe (a command never probes it); with none yet it
+        // is UNAVAILABLE, which matches no probed route, so a later refresh replays to whatever is ready.
+        return onHelper().also { acknowledged = if (it) lastHelperBackend ?: LedBackend.UNAVAILABLE else null }
     }
 
     override fun setRgb(r: Int, g: Int, b: Int): Boolean = drive({ strip.setRgb(r, g, b) }, { helper.setRgb(r, g, b) })
