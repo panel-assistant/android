@@ -1529,7 +1529,7 @@ class PaneldService : Service() {
     /** This panel's capability snapshot for the settings registry's availableWhen gates
      *  (the Configure form/schema + the dashboard's read-only values card). */
     private fun capabilitiesSnapshot(): Capabilities {
-        controls.led.backend()
+        runCatching { core.refreshLedRoute() }.onFailure { Log.w(TAG, "LED route refresh failed", it) }
         val privilege = observeTypedShellCapability(
             directSuProbe = Su::observedUsable,
             helperRootProbe = HelperClient::available,

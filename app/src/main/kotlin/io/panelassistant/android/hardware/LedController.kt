@@ -79,17 +79,19 @@ object LedFactory {
      * App-direct LED nodes first: the `/dev/ledjni` RGB LED, then a `/dev/ws2812_pwm` addressable strip (a WF1589T
      * variant has the strip and no ledjni), then the helper daemon.
      */
-    internal fun appDirect(profile: DeviceProfile, ledjni: LedController, stripDriver: Ws2812Driver): LedController {
+    internal fun appDirect(
+        profile: DeviceProfile,
+        ledjni: LedController,
+        stripDriver: Ws2812Driver,
+        helper: LedController = fallback(profile),
+    ): LedController {
         if (ledjni.available()) return ledjni
         val strip = Ws2812LedController(
             transfer = fallbackTransfer(profile.ledTransfer),
             driver = stripDriver,
             ledCount = profile.ledCount ?: Ws2812LedController.DEFAULT_LED_COUNT,
         )
-        // A strip node that exists but did not open this time stays the backend: it is indeterminate, never
-        // absent, and every later availability check or command opens it again. Only a panel with no strip
-        // node falls through to the helper, whose LEDPROBE does not cover the strip.
-        return if (strip.available() || stripDriver.nodePresent()) strip else fallback(profile)
+        return StripOrHelperLedController(strip, stripDriver, helper)
     }
 
     /** A declared daemon route gets the profile's transfer, as the app-direct ioctl route does. */
@@ -104,4 +106,42 @@ object LedFactory {
      */
     internal fun fallbackTransfer(transfer: LedTransfer): LedTransfer =
         if (transfer === LedTransfer.Rk3576FourBit) LedTransfer.Identity else transfer
+}
+
+/**
+ * The strip and the helper are both live routes, chosen per call: the strip when it opens now, else the helper.
+ * Neither is dropped after one failure, so a strip that recovers is used again and a helper LED keeps working
+ * while the strip keeps failing. The LED is absent only when no strip node exists and the helper has confirmed
+ * no LED, the helper's LEDPROBE does not cover the strip.
+ */
+internal class StripOrHelperLedController(
+    private val strip: LedController,
+    private val stripDriver: Ws2812Driver,
+    private val helper: LedController,
+) : LedController {
+    private fun route(): LedController? = when {
+        strip.available() -> strip
+        helper.available() -> helper
+        else -> null
+    }
+
+    override fun available(): Boolean = route() != null
+    // The helper's own backend probe is what settles its absence, so it runs whenever the strip is not ready.
+    override fun backend(): LedBackend {
+        if (strip.available()) return strip.backend()
+        val helperBackend = helper.backend()
+        return when {
+            helperBackend.ready -> helperBackend
+            confirmedAbsent -> LedBackend.ABSENT
+            else -> LedBackend.UNAVAILABLE
+        }
+    }
+    override val confirmedAbsent: Boolean get() = !stripDriver.nodePresent() && helper.confirmedAbsent
+    override fun colorCapable(): Boolean = route()?.colorCapable() ?: true
+    override fun setRgb(r: Int, g: Int, b: Int): Boolean = route()?.setRgb(r, g, b) ?: false
+    override fun off(): Boolean = route()?.off() ?: false
+    override fun close() {
+        strip.close()
+        helper.close()
+    }
 }

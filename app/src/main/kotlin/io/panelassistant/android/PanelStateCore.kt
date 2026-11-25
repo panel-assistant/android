@@ -430,7 +430,7 @@ internal class PanelStateCore(
             }.onFailure { Log.w(TAG, "startup volume and CPU governor baseline failed", it) }
             // Prime the hardware shape before the first native hello. Subsequent probes come from
             // the capability refresh, outside the transport's per-message descriptor reads.
-            runCatching { led.backend() }
+            runCatching { ledRouteReady = led.backend().ready }
                 .onFailure { Log.w(TAG, "startup LED probe failed", it) }
             runCatching { reapplyStoredLed() }
                 .onFailure { Log.w(TAG, "startup LED restoration failed", it) }
@@ -452,6 +452,19 @@ internal class PanelStateCore(
     /** Restore persisted LED intent through acknowledged actuation after startup, reconnect or a camera hold.
      * Persisted intent includes commands refused while the camera owned the output. */
     fun reapplyStoredLed() = actuateLed { LedCommandPolicy.stored(config.lastLed, config.lastLedEffect) }
+
+    // Whether the LED route was ready at the last refresh; null before the first one.
+    @Volatile private var ledRouteReady: Boolean? = null
+
+    /**
+     * Probe the LED route on the capability refresh. A route that becomes ready after startup could not take
+     * the stored output then (a strip that opens after failing once), so it gets it now, as startup would have.
+     */
+    fun refreshLedRoute() {
+        val ready = led.backend().ready
+        if (ready && ledRouteReady == false) reapplyStoredLed()
+        ledRouteReady = ready
+    }
 
     /**
      * Drive the LED to [desired] and report it. Observation authority is cleared before [desired] runs, so
