@@ -32,7 +32,8 @@ class LoadedWakeWordModel(val config: MicroWakeWordModelConfig, val scorer: Wake
  *   the model fires when the ring mean is at or above [MicroWakeWordModelConfig.probabilityCutoff]
  * - the first [warmupInferences] inferences after load or reset never fire, because the frontend's
  *   noise and gain estimates are still settling
- * - after a hit the ring is cleared and the model stays silent for [cooldownChunks] delivered frames
+ * - after a hit the ring is cleared and the model stays silent for [cooldownChunks] frames of capture
+ *   time, so a lease paused for a turn comes back with the cooldown already spent
  *
  * Frames are scored on the delivering thread; [onFrame] does the inference inline and returns.
  * Nothing here touches the main looper.
@@ -60,6 +61,7 @@ class WakeWordDetector(
         var next = 0
         var inferences = 0L
         var cooldownRemaining = 0
+        var lastFrameNs = Long.MIN_VALUE
         var approachPeak = 0f
 
         fun clearWindow() {
@@ -96,8 +98,14 @@ class WakeWordDetector(
         for (slot in slots) {
             // Scoring continues through the cooldown so the window is live again when it ends;
             // only firing is suppressed, for exactly cooldownChunks frames after a hit.
+            // A gap in timestamps (the lease paused for a turn) counts as the frames it spans.
             val coolingDown = slot.cooldownRemaining > 0
-            if (coolingDown) slot.cooldownRemaining--
+            if (coolingDown) {
+                val elapsed = if (slot.lastFrameNs == Long.MIN_VALUE) 1L
+                else ((frame.timestampNs - slot.lastFrameNs) / FRAME_NS).coerceAtLeast(1L)
+                slot.cooldownRemaining = (slot.cooldownRemaining - elapsed).coerceAtLeast(0L).toInt()
+            }
+            slot.lastFrameNs = frame.timestampNs
             val probability = slot.model.scorer.score(frame.samples, frame.samples.size)
             if (probability < 0) continue
             slot.inferences++
@@ -140,6 +148,9 @@ class WakeWordDetector(
 
         /** 2 s of 10 ms frames. */
         const val DEFAULT_COOLDOWN_CHUNKS = 200
+
+        /** One delivered frame's span of capture time. */
+        private const val FRAME_NS = 10_000_000L
 
         /** Matches ESPHome's MIN_SLICES_BEFORE_DETECTION. */
         const val DEFAULT_WARMUP_INFERENCES = 100
