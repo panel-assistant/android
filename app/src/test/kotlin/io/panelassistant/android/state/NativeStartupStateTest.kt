@@ -205,4 +205,34 @@ internal class NativeStartupStateTest : PanelRuntimeRig() {
         assertTrue(led.setRgb(9, 9, 9))
         assertEquals(listOf(listOf(9, 9, 9)), strip.fills)
     }
+
+    // A stored-output replay that fails is retried on the next refresh, even though the route is unchanged.
+    @Test fun aFailedReplayIsRetriedOnTheSameRoute() {
+        val strip = Strip(opens = true, framesAccepted = false)
+        val rig = rig(led = stripOrHelper(strip, Helper(present = false)), configure = { it.lastLed = "1,255,0,255,0" })
+        try {
+            rig.start()
+            assertTrue(strip.fills.isEmpty())
+            strip.framesAccepted = true
+            rig.core.refreshLedRoute()
+            assertEquals(listOf(listOf(0, 255, 0)), strip.fills)
+            rig.core.refreshLedRoute()
+            assertEquals("synced: no further replay", 1, strip.fills.size)
+        } finally { rig.close() }
+    }
+
+    // The strip refused the replay and the helper acknowledged it: the helper is the synced route, so the strip
+    // gets the stored output once it accepts frames.
+    @Test fun recoveryTracksTheRouteThatAcknowledged() {
+        val strip = Strip(opens = true, framesAccepted = false)
+        val helper = Helper(present = true)
+        val rig = rig(led = stripOrHelper(strip, helper), configure = { it.lastLed = "1,255,0,0,255" })
+        try {
+            rig.start()
+            assertEquals(listOf("0,0,255"), helper.writes)
+            strip.framesAccepted = true
+            rig.core.refreshLedRoute()
+            assertEquals(listOf(listOf(0, 0, 255)), strip.fills)
+        } finally { rig.close() }
+    }
 }

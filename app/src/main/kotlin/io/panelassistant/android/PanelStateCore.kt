@@ -431,9 +431,7 @@ internal class PanelStateCore(
             }.onFailure { Log.w(TAG, "startup volume and CPU governor baseline failed", it) }
             // Prime the hardware shape before the first native hello. Subsequent probes come from
             // the capability refresh, outside the transport's per-message descriptor reads.
-            runCatching { ledRoute = led.backend().takeIf { it.ready } }
-                .onFailure { Log.w(TAG, "startup LED probe failed", it) }
-            runCatching { reapplyStoredLed() }
+            runCatching { syncLedRoute(led.backend().takeIf { it.ready }) }
                 .onFailure { Log.w(TAG, "startup LED restoration failed", it) }
             runCatching { restoreButtonBacklight() }
                 .onFailure { Log.w(TAG, "startup button backlight restoration failed", it) }
@@ -465,8 +463,14 @@ internal class PanelStateCore(
      */
     fun refreshLedRoute() {
         val backend = led.backend().takeIf { it.ready }
-        if (backend != null && backend != ledRoute) reapplyStoredLed()
-        ledRoute = backend
+        if (backend == null) ledRoute = null else if (backend != ledRoute) syncLedRoute(backend)
+    }
+
+    // Apply the stored output and remember the route only once a route acknowledged it, the one that did, so a
+    // failed replay is retried on the next refresh even when the probed route has not changed.
+    private fun syncLedRoute(probed: LedBackend?) {
+        val acknowledged = reapplyStoredLed()
+        ledRoute = if (acknowledged && probed != null) led.acknowledgedBackend() ?: probed else null
     }
 
     /**

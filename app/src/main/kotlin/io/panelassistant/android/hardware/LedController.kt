@@ -15,6 +15,9 @@ interface LedController {
 
     fun backend(): LedBackend
 
+    /** The route that acknowledged the last write, where a controller has more than one; null otherwise. */
+    fun acknowledgedBackend(): LedBackend? = null
+
     /** Last settled topology; reporting can read this without opening the device or helper socket. */
     val confirmedAbsent: Boolean get() = false
 
@@ -134,9 +137,11 @@ internal class StripOrHelperLedController(
         val usable = stripUsable()
         stripFramesAccepted = true
         if (usable) return strip.backend()
-        val helperBackend = helper.backend()
+        val helperBackend = helper.backend().also { lastHelperBackend = it.takeIf { b -> b.ready } }
         return when {
             helperBackend.ready -> helperBackend
+            // No helper LED: a strip that refused a frame is still the only route, so offer it again.
+            strip.available() -> strip.backend()
             confirmedAbsent -> LedBackend.ABSENT
             else -> LedBackend.UNAVAILABLE
         }
@@ -145,12 +150,18 @@ internal class StripOrHelperLedController(
     override val confirmedAbsent: Boolean get() = absenceAllowed && !stripDriver.nodePresent() && helper.confirmedAbsent
     override fun colorCapable(): Boolean = true
 
+    @Volatile private var acknowledged: LedBackend? = null
+    @Volatile private var lastHelperBackend: LedBackend? = null
+
+    override fun acknowledgedBackend(): LedBackend? = acknowledged
+
     private fun drive(onStrip: () -> Boolean, onHelper: () -> Boolean): Boolean {
         if (stripUsable()) {
-            if (onStrip()) return true
+            if (onStrip()) return true.also { acknowledged = LedBackend.WS2812 }
             stripFramesAccepted = false
         }
-        return onHelper()
+        // The helper route is named from the last refresh's probe; a command never probes it.
+        return onHelper().also { acknowledged = if (it) lastHelperBackend else null }
     }
 
     override fun setRgb(r: Int, g: Int, b: Int): Boolean = drive({ strip.setRgb(r, g, b) }, { helper.setRgb(r, g, b) })
