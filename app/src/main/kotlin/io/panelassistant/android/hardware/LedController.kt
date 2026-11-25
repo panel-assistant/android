@@ -91,7 +91,7 @@ object LedFactory {
             driver = stripDriver,
             ledCount = profile.ledCount ?: Ws2812LedController.DEFAULT_LED_COUNT,
         )
-        return StripOrHelperLedController(strip, stripDriver, helper)
+        return StripOrHelperLedController(strip, stripDriver, helper, absenceAllowed = profile.ledMechanism == LedMechanism.AUTODETECT)
     }
 
     /** A declared daemon route gets the profile's transfer, as the app-direct ioctl route does. */
@@ -109,26 +109,31 @@ object LedFactory {
 }
 
 /**
- * The strip and the helper are both live routes, chosen per call: the strip when it opens now, else the helper.
- * Neither is dropped after one failure, so a strip that recovers is used again and a helper LED keeps working
- * while the strip keeps failing. The LED is absent only when no strip node exists and the helper has confirmed
- * no LED, the helper's LEDPROBE does not cover the strip.
+ * The WS2812 strip and the helper are both live routes on a panel without `/dev/ledjni`. A command goes to the
+ * strip while it opens and its frames are accepted, else to the helper, so neither route is dropped after a
+ * failure. Commands never probe the helper: only [backend], on the capability refresh, runs its LEDPROBE.
+ * The LED is reported absent only for an autodetect profile with no strip node and a helper that found no LED;
+ * a profile that declares an LED (rk3576-ioctl) is never absent here, because a strip node can appear later.
  */
 internal class StripOrHelperLedController(
     private val strip: LedController,
     private val stripDriver: Ws2812Driver,
     private val helper: LedController,
+    private val absenceAllowed: Boolean,
 ) : LedController {
-    private fun route(): LedController? = when {
-        strip.available() -> strip
-        helper.available() -> helper
-        else -> null
-    }
+    // False after the strip refused a frame; a later accepted frame, or the next refresh, tries it again.
+    @Volatile private var stripFramesAccepted = true
 
-    override fun available(): Boolean = route() != null
-    // The helper's own backend probe is what settles its absence, so it runs whenever the strip is not ready.
+    private fun stripUsable(): Boolean = stripFramesAccepted && strip.available()
+
+    override fun available(): Boolean = stripUsable() || helper.available()
+
     override fun backend(): LedBackend {
-        if (strip.available()) return strip.backend()
+        // A strip that refused its last frame is reported by the route actually in use, then gets one more try
+        // on the next command after this refresh.
+        val usable = stripUsable()
+        stripFramesAccepted = true
+        if (usable) return strip.backend()
         val helperBackend = helper.backend()
         return when {
             helperBackend.ready -> helperBackend
@@ -136,10 +141,20 @@ internal class StripOrHelperLedController(
             else -> LedBackend.UNAVAILABLE
         }
     }
-    override val confirmedAbsent: Boolean get() = !stripDriver.nodePresent() && helper.confirmedAbsent
-    override fun colorCapable(): Boolean = route()?.colorCapable() ?: true
-    override fun setRgb(r: Int, g: Int, b: Int): Boolean = route()?.setRgb(r, g, b) ?: false
-    override fun off(): Boolean = route()?.off() ?: false
+
+    override val confirmedAbsent: Boolean get() = absenceAllowed && !stripDriver.nodePresent() && helper.confirmedAbsent
+    override fun colorCapable(): Boolean = true
+
+    private fun drive(onStrip: () -> Boolean, onHelper: () -> Boolean): Boolean {
+        if (stripUsable()) {
+            if (onStrip()) return true
+            stripFramesAccepted = false
+        }
+        return onHelper()
+    }
+
+    override fun setRgb(r: Int, g: Int, b: Int): Boolean = drive({ strip.setRgb(r, g, b) }, { helper.setRgb(r, g, b) })
+    override fun off(): Boolean = drive({ strip.off() }, { helper.off() })
     override fun close() {
         strip.close()
         helper.close()
