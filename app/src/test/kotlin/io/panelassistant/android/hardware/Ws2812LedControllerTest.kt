@@ -28,23 +28,23 @@ class Ws2812LedControllerTest {
     }
 
     @Test fun stripIsChosenWhenTheBoardHasNoLedjni() {
-        val strip = Ws2812LedController(FakeStrip(present = true))
+        val strip = Ws2812LedController(driver = FakeStrip(present = true))
         assertSame(strip, LedFactory.appDirect(wf1589t, FakeLed(present = false), strip))
     }
 
     @Test fun ledjniStillWinsWhereItExists() {
         val ledjni = FakeLed(present = true)
-        assertSame(ledjni, LedFactory.appDirect(wf1589t, ledjni, Ws2812LedController(FakeStrip(present = true))))
+        assertSame(ledjni, LedFactory.appDirect(wf1589t, ledjni, Ws2812LedController(driver = FakeStrip(present = true))))
     }
 
     @Test fun neitherNodeFallsBackToTheHelperWhoseAbsenceHidesTheEntity() {
-        val chosen = LedFactory.appDirect(wf1589t, FakeLed(present = false), Ws2812LedController(FakeStrip(present = false)))
+        val chosen = LedFactory.appDirect(wf1589t, FakeLed(present = false), Ws2812LedController(driver = FakeStrip(present = false)))
         assertTrue(chosen is SocketLedController)
     }
 
     @Test fun colourFillsTheWholeStripAndOffSendsBlack() {
         val driver = FakeStrip(present = true)
-        val strip = Ws2812LedController(driver, ledCount = 234)
+        val strip = Ws2812LedController(driver = driver, ledCount = 234)
         assertTrue(strip.colorCapable())
         assertTrue(strip.setRgb(255, 40, 300))
         assertTrue(strip.off())
@@ -52,6 +52,17 @@ class Ws2812LedControllerTest {
     }
 
     @Test fun aDriverErrorIsReported() {
-        assertFalse(Ws2812LedController(FakeStrip(present = true, rc = -5)).setRgb(1, 2, 3))
+        assertFalse(Ws2812LedController(driver = FakeStrip(present = true, rc = -5)).setRgb(1, 2, 3))
+    }
+
+    @Test fun aDeclaredCurveIsAppliedToTheStrip() {
+        val driver = FakeStrip(present = true)
+        val halve = object : LedTransfer { override fun toHardware(v: Int) = v / 2 }
+        assertTrue(Ws2812LedController(halve, driver, ledCount = 1).setRgb(200, 100, 0))
+        assertEquals(listOf(100, 50, 0, 1), driver.fills.single())
+    }
+
+    @Test fun theFourBitLedjniStubIsNotAppliedToTheStrip() {
+        assertSame(LedTransfer.Identity, LedFactory.fallbackTransfer(LedTransfer.Rk3576FourBit))
     }
 }

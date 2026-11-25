@@ -41,7 +41,12 @@ static int ws_open_locked(void) {
 JNIEXPORT jboolean JNICALL
 Java_io_panelassistant_android_hardware_NativeWs2812_nativeProbe(JNIEnv *env, jobject thiz) {
     (void)env; (void)thiz;
-    return access(WS2812_NODE, R_OK | W_OK) == 0 ? JNI_TRUE : JNI_FALSE;
+    // Usable only once the node opens and accepts the strip timing, so a node that exists but refuses
+    // SET_PARAM leaves the LED to the next backend instead of stranding its commands.
+    pthread_mutex_lock(&ws_lock);
+    int result = ws_open_locked();
+    pthread_mutex_unlock(&ws_lock);
+    return result == 0 ? JNI_TRUE : JNI_FALSE;
 }
 
 // Fill [count] LEDs with one colour and transmit. Returns 0 on success or a negative errno.

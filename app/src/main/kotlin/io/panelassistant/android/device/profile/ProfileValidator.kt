@@ -1,5 +1,6 @@
 package io.panelassistant.android.device.profile
 
+import io.panelassistant.android.hardware.GpioControlRelays
 import io.panelassistant.android.config.SettingType
 import io.panelassistant.android.config.SettingValue
 import io.panelassistant.android.config.SettingsRegistry
@@ -303,9 +304,11 @@ internal object ProfileValidator {
             if (document.hardware.relayBase == null && document.hardware.relayGpioControl.isEmpty()) reject("hardware.relay_count", "A relay count needs hardware.relay_base or hardware.relay_gpio_control.", "relay-count-needs-base")
         }
         document.hardware.relayGpioControl.takeIf { it.isNotEmpty() }?.let { gpios ->
-            if (gpios.size > 16) reject("hardware.relay_gpio_control", "At most 16 relays are allowed.", "relay-count-range")
-            if (gpios.any { it !in 0..255 }) reject("hardware.relay_gpio_control", "GPIO must be between 0 and 255.", "gpio-range")
-            if (gpios.size != gpios.toSet().size) reject("hardware.relay_gpio_control", "Relay GPIOs must be unique.", "relay-paths-unique")
+            // Only reviewed board mappings: these GPIOs switch mains loads, and an imported profile also
+            // supplies its own identity match, so it must not be able to point the ioctl at other pins.
+            if (gpios != GpioControlRelays.SMT97_GPIOS) {
+                reject("hardware.relay_gpio_control", "Only the reviewed Electron SMT97T relay mapping [4, 5] is supported.", "relay-gpio-unreviewed")
+            }
             if (document.hardware.relayBase != null || document.hardware.relayBaseFallbacks.isNotEmpty()) {
                 reject("hardware.relay_gpio_control", "Declare either a relay class or gpio_control relays, not both.", "relay-mechanism-exclusive")
             }

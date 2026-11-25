@@ -52,7 +52,7 @@ object LedFactory {
         LedMechanism.NONE -> NoOpLedController()
         LedMechanism.SYSFS_DAEMON -> socket(profile)
         LedMechanism.RK3576_IOCTL_DAEMON -> socket(profile)
-        LedMechanism.RK3576_IOCTL, LedMechanism.AUTODETECT -> appDirect(profile, Rk3576LedController(profile.ledTransfer), Ws2812LedController())
+        LedMechanism.RK3576_IOCTL, LedMechanism.AUTODETECT -> appDirect(profile, Rk3576LedController(profile.ledTransfer), Ws2812LedController(fallbackTransfer(profile.ledTransfer)))
     }
 
     /**

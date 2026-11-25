@@ -28,7 +28,7 @@ class ElectronSmt97RelayTest {
         val resolved = resolve(SMT97)
         assertEquals("zx-smt97", resolved.profile.id)
         val gpio = FakeGpio()
-        val relay = RelayController(resolved.profile, FakeRootShell(), gpioControl = gpio)
+        val relay = RelayController(resolved.profile, FakeRootShell(), gpioControl = gpio, buildDisplay = { SMT97.buildDisplay })
         assertEquals(2, relay.count())
         assertTrue(relay.set(1, true))
         assertTrue(relay.set(2, false))
@@ -43,7 +43,7 @@ class ElectronSmt97RelayTest {
             val resolved = resolve(facts)
             assertEquals("$facts", "zx-smt156", resolved.profile.id)
             val gpio = FakeGpio()
-            val relay = RelayController(resolved.profile, FakeRootShell(), gpioControl = gpio)
+            val relay = RelayController(resolved.profile, FakeRootShell(), gpioControl = gpio, buildDisplay = { SMT97.buildDisplay })
             assertEquals("$facts", 0, relay.count())
             assertFalse(relay.set(1, true))
             assertTrue(gpio.writes.isEmpty())
@@ -52,7 +52,7 @@ class ElectronSmt97RelayTest {
 
     @Test fun relaysStayHiddenWhenTheNodeIsNotUsable() {
         val gpio = FakeGpio(available = false)
-        val relay = RelayController(resolve(SMT97).profile, FakeRootShell(), gpioControl = gpio)
+        val relay = RelayController(resolve(SMT97).profile, FakeRootShell(), gpioControl = gpio, buildDisplay = { SMT97.buildDisplay })
         assertEquals(0, relay.count())
         assertFalse(relay.set(1, true))
         assertNull(relay.read(1))
@@ -68,12 +68,45 @@ class ElectronSmt97RelayTest {
         }
     }
 
-    private class FakeGpio(private val available: Boolean = true) : GpioControl {
+    // The SMT97 profile reaches a panel whose live build string is something else (a pin made before a
+    // firmware change, or a restored backup): its relays stay off.
+    @Test fun relaysNeedTheLiveSmt97BuildString() {
+        val gpio = FakeGpio()
+        val relay = RelayController(resolve(SMT97).profile, FakeRootShell(), gpioControl = gpio, buildDisplay = { "ZX-SMT156-R128V1.2B" })
+        assertEquals(0, relay.count())
+        assertFalse(relay.set(1, true))
+        assertTrue(gpio.writes.isEmpty())
+    }
+
+    // An unreadable relay output keeps the topology unknown, and discovery retries once it reads.
+    @Test fun anUnreadableRelayHidesBothUntilItReads() {
+        val gpio = FakeGpio(unreadable = mutableSetOf(5))
+        val relay = RelayController(resolve(SMT97).profile, FakeRootShell(), gpioControl = gpio, buildDisplay = { SMT97.buildDisplay })
+        assertEquals(0, relay.count())
+        assertFalse(relay.set(1, true))
+        gpio.unreadable.clear()
+        assertEquals(2, relay.count())
+    }
+
+    // These GPIOs switch mains loads, and an imported profile supplies its own match, so only the reviewed
+    // SMT97T mapping is accepted.
+    @Test fun anImportedProfileCannotPointTheIoctlAtOtherPins() {
+        val shipped = BundledProfileFixtures.bundledById.getValue("zx-smt97").rawYaml
+        for (mapping in listOf("    - 4\n    - 6", "    - 0\n    - 1", "    - 5\n    - 4")) {
+            val altered = shipped.replace("  relay_gpio_control:\n    - 4\n    - 5", "  relay_gpio_control:\n$mapping")
+            assertTrue(altered != shipped)
+            val document = requireNotNull(io.panelassistant.android.device.profile.ProfileYaml.parse(altered).document)
+            val issues = io.panelassistant.android.device.profile.ProfileValidator.validate(document, BuildConfig.VERSION_NAME, bundled = false)
+            assertTrue("$mapping $issues", issues.any { it.path == "hardware.relay_gpio_control" })
+        }
+    }
+
+    private class FakeGpio(private val available: Boolean = true, val unreadable: MutableSet<Int> = mutableSetOf()) : GpioControl {
         val writes = mutableListOf<Pair<Int, Boolean>>()
         val state = mutableMapOf<Int, Boolean>()
         override fun available() = available
         override fun write(gpio: Int, on: Boolean): Boolean { writes += gpio to on; state[gpio] = on; return true }
-        override fun read(gpio: Int): Boolean? = state[gpio] ?: false
+        override fun read(gpio: Int): Boolean? = if (gpio in unreadable) null else state[gpio] ?: false
     }
 
     private fun resolve(facts: DeviceFacts): ResolvedProfile = withRegistry(facts) { it.resolveForStartup() }
@@ -108,5 +141,11 @@ class ElectronSmt97RelayTest {
             values.forEach { (key, value) -> if (value == null) this.values.remove(key) else this.values[key] = value }
             return true
         }
+    }
+
+    @Test fun theShippedMappingStillValidates() {
+        val document = BundledProfileFixtures.bundledById.getValue("zx-smt97").document
+        val issues = io.panelassistant.android.device.profile.ProfileValidator.validate(document, BuildConfig.VERSION_NAME, bundled = false)
+        assertTrue("$issues", issues.none { it.path == "hardware.relay_gpio_control" })
     }
 }

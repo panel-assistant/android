@@ -9,6 +9,7 @@ import io.panelassistant.android.platform.Daemon
 import io.panelassistant.android.platform.HelperRelayClass
 import io.panelassistant.android.util.HelperClient
 import io.panelassistant.android.hardware.GpioControl
+import io.panelassistant.android.hardware.GpioControlRelays
 import io.panelassistant.android.hardware.NativeGpioControl
 import io.panelassistant.android.util.MonotonicDeadline
 import java.io.File
@@ -43,6 +44,7 @@ class RelayController(
     private val nowNs: () -> Long = System::nanoTime,
     private val relayFile: (String) -> File = ::File,
     private val gpioControl: GpioControl = NativeGpioControl,
+    private val buildDisplay: () -> String = { android.os.Build.DISPLAY.orEmpty() },
 ) {
 
     // Candidate relay-class bases, primary first. The S9E renamed st_relay -> strelay across firmware,
@@ -52,7 +54,8 @@ class RelayController(
     // Physical relays the profile declares. Discovery never offers a node above it.
     private val relayCap: Int? = profile.relayCount
     // Relays on the vendor /dev/gpio_control ioctl (SMT97T), relay 1 first. Exclusive with relay classes.
-    private val gpioRelays: List<Int> = profile.relayGpioControl
+    // Driven only on the reviewed board whose live build string names it, whatever profile declares them.
+    private val gpioRelays: List<Int> = profile.relayGpioControl.takeIf { GpioControlRelays.boardMatches(it, buildDisplay()) }.orEmpty()
 
     @Volatile private var resolvedBase: String? = null
     private var directRelays = false
@@ -72,8 +75,9 @@ class RelayController(
     private fun resolveRelays() {
         if (resolvedRelayCount != null) return
         if (gpioRelays.isNotEmpty()) {
-            // Fail closed: no relay is offered until the node is present and writable by this app.
-            if (gpioControl.available()) {
+            // Fail closed: a relay is offered only once the node is usable and every relay output reads back
+            // a state. Anything less leaves the topology unknown, so the next call retries.
+            if (gpioControl.available() && gpioRelays.all { gpioControl.read(it) != null }) {
                 synchronized(this) { if (resolvedRelayCount == null) resolvedRelayCount = minOf(gpioRelays.size, relayCap ?: gpioRelays.size) }
             }
             return

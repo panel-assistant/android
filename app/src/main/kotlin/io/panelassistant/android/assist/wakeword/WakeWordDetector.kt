@@ -60,8 +60,8 @@ class WakeWordDetector(
         val window = IntArray(model.config.slidingWindowSize)
         var next = 0
         var inferences = 0L
-        var cooldownRemaining = 0
-        var lastFrameNs = Long.MIN_VALUE
+        // Capture time up to which firing stays suppressed after a hit; MIN_VALUE when no cooldown runs.
+        var cooldownUntilNs = Long.MIN_VALUE
         var approachPeak = 0f
 
         fun clearWindow() {
@@ -96,16 +96,11 @@ class WakeWordDetector(
 
     override fun onFrame(frame: PcmFrame) {
         for (slot in slots) {
-            // Scoring continues through the cooldown so the window is live again when it ends;
-            // only firing is suppressed, for exactly cooldownChunks frames after a hit.
-            // A gap in timestamps (the lease paused for a turn) counts as the frames it spans.
-            val coolingDown = slot.cooldownRemaining > 0
-            if (coolingDown) {
-                val elapsed = if (slot.lastFrameNs == Long.MIN_VALUE) 1L
-                else ((frame.timestampNs - slot.lastFrameNs) / FRAME_NS).coerceAtLeast(1L)
-                slot.cooldownRemaining = (slot.cooldownRemaining - elapsed).coerceAtLeast(0L).toInt()
-            }
-            slot.lastFrameNs = frame.timestampNs
+            // Scoring continues through the cooldown so the window is live again when it ends; only firing
+            // is suppressed, for cooldownChunks frames of capture time measured from the hit. Capture time,
+            // not delivered frames: a lease paused for a turn comes back with the cooldown spent, and an
+            // irregular frame cadence can neither shorten nor stretch it.
+            val coolingDown = slot.cooldownUntilNs != Long.MIN_VALUE && frame.timestampNs <= slot.cooldownUntilNs
             val probability = slot.model.scorer.score(frame.samples, frame.samples.size)
             if (probability < 0) continue
             slot.inferences++
@@ -125,7 +120,7 @@ class WakeWordDetector(
             if (mean >= cutoff) {
                 slot.approachPeak = 0f
                 slot.clearWindow()
-                slot.cooldownRemaining = cooldownChunks
+                slot.cooldownUntilNs = if (cooldownChunks == 0) Long.MIN_VALUE else frame.timestampNs + cooldownChunks * FRAME_NS
                 listener(WakeWordHit(slot.model.config.id, slot.model.config.wakeWord, mean, frame.timestampNs, cutoff))
             }
         }

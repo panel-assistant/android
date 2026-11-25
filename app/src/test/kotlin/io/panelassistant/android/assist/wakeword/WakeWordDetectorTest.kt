@@ -51,17 +51,18 @@ class WakeWordDetectorTest {
         val hits = mutableListOf<WakeWordHit>()
         val detector = WakeWordDetector(
             models = configs.mapIndexed { i, c -> LoadedWakeWordModel(c, scorers[i]) },
-            listener = { hits += it },
+            // Frames are 10 ms apart in capture time; hits are recorded by chunk index so they stay traceable.
+            listener = { hits += it.copy(timestampNs = it.timestampNs / FRAME_NS) },
             maxActive = maxActive,
             cooldownChunks = cooldown,
             warmupInferences = warmup,
         )
         var chunk = 0L
 
-        /** Deliver one 10 ms frame; its timestamp is the chunk index in ns so hits are traceable. */
+        /** Deliver one 10 ms frame; returns its chunk index, which is how [hits] record their timestamps. */
         fun frame(): Long {
             val ts = chunk++
-            detector.onFrame(PcmFrame(ShortArray(160), timestampNs = ts))
+            detector.onFrame(PcmFrame(ShortArray(160), timestampNs = ts * FRAME_NS))
             return ts
         }
 
@@ -288,7 +289,7 @@ class WakeWordDetectorTest {
     fun cooldownRunsInTimeSoTheSamePhraseWakesStraightAfterAPausedTurn() {
         // Real 10 ms frame spacing, as the microphone delivers. The coordinator pauses the wake lease for
         // the whole turn, so no frames arrive during the reply; the cooldown must elapse in that time.
-        val frameNs = 10_000_000L
+        val frameNs = FRAME_NS
         val rig = Rig(config("okay_nabu", cutoff = 0.6f, window = 2), cooldown = 200)
         repeat(100) { rig.scorers[0].script.add(255) }
         var ts = 0L
@@ -302,5 +303,26 @@ class WakeWordDetectorTest {
         ts += 5_000_000_000L
         deliver(3)
         assertEquals(2, rig.hits.size)
+    }
+
+    @Test
+    fun irregularCaptureCadenceNeitherShortensNorStretchesTheCooldown() {
+        // Alternating 20.1 ms and 0.1 ms gaps: a per-frame charge burned 2 s of cooldown in about 1.35 s.
+        val rig = Rig(config("okay_nabu", cutoff = 0.6f, window = 2), cooldown = 200)
+        repeat(1_000) { rig.scorers[0].script.add(255) }
+        var ts = 0L
+        var n = 0
+        fun deliver() { rig.detector.onFrame(PcmFrame(ShortArray(160), timestampNs = ts)); ts += if (n++ % 2 == 0) 20_100_000L else 100_000L }
+        deliver(); deliver()
+        assertEquals(1, rig.hits.size)
+        val hitNs = ts - 100_000L
+        while (ts <= hitNs + 2_000_000_000L) deliver()
+        assertEquals("no second hit inside the 2 s cooldown", 1, rig.hits.size)
+        deliver(); deliver(); deliver()
+        assertEquals(2, rig.hits.size)
+    }
+
+    private companion object {
+        const val FRAME_NS = 10_000_000L
     }
 }

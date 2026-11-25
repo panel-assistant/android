@@ -10,6 +10,7 @@ import android.util.Log
  * strip is shifted out and ignored, as the vendor library does with its own default of 500.
  */
 class Ws2812LedController(
+    private val transfer: LedTransfer = LedTransfer.Identity,
     private val driver: Ws2812Driver = NativeWs2812,
     private val ledCount: Int = DEFAULT_LED_COUNT,
 ) : LedController {
@@ -19,12 +20,14 @@ class Ws2812LedController(
     override fun colorCapable(): Boolean = true
 
     override fun setRgb(r: Int, g: Int, b: Int): Boolean {
-        val rc = driver.fill(r.coerceIn(0, 255), g.coerceIn(0, 255), b.coerceIn(0, 255), ledCount)
+        val rc = driver.fill(channel(r), channel(g), channel(b), ledCount)
         if (rc != 0) Log.w(TAG, "fill failed rc=$rc")
         return rc == 0
     }
 
     override fun off(): Boolean = setRgb(0, 0, 0)
+
+    private fun channel(v: Int) = transfer.toHardware(v).coerceIn(0, 255)
 
     companion object {
         const val DEFAULT_LED_COUNT = 500
@@ -34,6 +37,7 @@ class Ws2812LedController(
 
 /** Injectable native boundary so the controller and backend choice are JVM-testable. */
 interface Ws2812Driver {
+    /** True only once the node has opened and accepted the strip timing (SET_PARAM). */
     fun available(): Boolean
     fun fill(r: Int, g: Int, b: Int, count: Int): Int
 }
