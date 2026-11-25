@@ -24,10 +24,26 @@ class SocketLedController(
     // Gate on a reachable LED node, not just "daemon up". An OLD daemon doesn't know LEDPROBE and
     // replies "ERR" → fall back to PING so already-deployed panels keep their LED (backward-compatible);
     // a new daemon that reports "none" (installed for control only, no LED) correctly yields no entity.
-    override fun available(): Boolean = when (daemon.send("LEDPROBE")) {
-        "ledjni", "sysfs" -> true
-        "none" -> false
-        else -> daemon.available()
+    override fun available(): Boolean = backend().ready
+
+    @Volatile override var confirmedAbsent = false
+        private set
+
+    override fun backend(): LedBackend {
+        val observed = when (daemon.send("LEDPROBE")) {
+            "ledjni" -> LedBackend.HELPER_LEDJNI
+            "sysfs" -> LedBackend.HELPER_SYSFS
+            "none" -> LedBackend.ABSENT
+            "ERR" -> if (daemon.available()) LedBackend.HELPER_LEGACY else LedBackend.UNAVAILABLE
+            else -> LedBackend.UNAVAILABLE
+        }
+        // Losing the helper cannot reverse a definitive topology observation.
+        when (observed) {
+            LedBackend.ABSENT -> confirmedAbsent = true
+            LedBackend.HELPER_LEDJNI, LedBackend.HELPER_SYSFS -> confirmedAbsent = false
+            else -> Unit
+        }
+        return if (confirmedAbsent) LedBackend.ABSENT else observed
     }
 
     override fun colorCapable(): Boolean = true

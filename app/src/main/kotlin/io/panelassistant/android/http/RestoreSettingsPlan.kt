@@ -33,20 +33,33 @@ internal fun restorableSettingValue(key: String, value: String, configuredOrigin
         else -> value
     }
 
-/** Only structural unavailability may omit a live setting, before it can admit actuator intent.
- * Validation and security admission still see the original archive; failed supported work remains a failure. */
+/** Live settings the panel cannot apply because it lacks the required capability. */
 internal fun unavailableRestoreSettings(values: Map<String, String>, capabilities: Capabilities): List<String> =
     values.filter { (key, value) ->
         SettingsRegistry.spec(key)?.let { it.liveApply && !it.canApplyValue(value, capabilities) } == true
     }.keys.toList()
 
-internal fun RestoreConfigPlan.withAvailableLiveSettings(capabilities: Capabilities): RestoreConfigPlan {
-    val unavailable = unavailableRestoreSettings(values, capabilities)
-    if (unavailable.isEmpty()) return this
+internal fun RestoreConfigPlan.withAvailableLiveSettings(
+    capabilities: Capabilities,
+    keepAdbOff: Boolean = false,
+): RestoreConfigPlan {
+    val skippedReasons = unavailableRestoreSettings(values, capabilities).associateWithTo(linkedMapOf()) {
+        "$it: unavailable on this panel"
+    }
+    // Omit conflicting backup choices before they reach the live setting journal.
+    if (keepAdbOff) {
+        if (values["network_adb"] == "true") {
+            skippedReasons["network_adb"] = "network_adb: skipped because Keep ADB off is enabled"
+        }
+        if (values["adb_keep_off"] == "false") {
+            skippedReasons["adb_keep_off"] = "adb_keep_off: skipped to preserve Keep ADB off"
+        }
+    }
+    if (skippedReasons.isEmpty()) return this
     return copy(
-        values = values - unavailable.toSet(),
-        warnings = warnings + unavailable.map { "$it: unavailable on this panel" },
-        skipped = skipped + unavailable,
+        values = values - skippedReasons.keys,
+        warnings = warnings + skippedReasons.values,
+        skipped = skipped + skippedReasons.keys,
     )
 }
 

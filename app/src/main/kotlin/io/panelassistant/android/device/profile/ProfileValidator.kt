@@ -1,5 +1,6 @@
 package io.panelassistant.android.device.profile
 
+import io.panelassistant.android.hardware.GpioControlRelays
 import io.panelassistant.android.config.SettingType
 import io.panelassistant.android.config.SettingValue
 import io.panelassistant.android.config.SettingsRegistry
@@ -14,6 +15,7 @@ import io.panelassistant.android.audio.PlatformAecMode
 import io.panelassistant.android.audio.PreferredMicDevice
 import io.panelassistant.android.hardware.LedTransfer
 import io.panelassistant.android.hardware.TransferCurve
+import io.panelassistant.android.hardware.Ws2812LedController
 import java.net.URI
 
 internal object ProfileValidator {
@@ -262,6 +264,14 @@ internal object ProfileValidator {
             }
         }
         val led = document.hardware.led
+        led.count?.let { count ->
+            if (count !in 1..Ws2812LedController.MAX_LED_COUNT) {
+                reject("hardware.led.count", "WS2812 LED count must be 1 through ${Ws2812LedController.MAX_LED_COUNT}.")
+            }
+            if (LedMechanism.ofYaml(led.mechanism) !in setOf(LedMechanism.AUTODETECT, LedMechanism.RK3576_IOCTL)) {
+                reject("hardware.led.count", "WS2812 LED count requires the autodetect or rk3576-ioctl mechanism.")
+            }
+        }
         if (led.transfer == LedTransfer.RK3576_FOUR_BIT) {
             if (led.gamma != null || led.points != null || led.floor != null) {
                 reject("hardware.led", "The rk3576-four-bit stub takes no gamma, points or floor.")
@@ -297,6 +307,27 @@ internal object ProfileValidator {
         if (document.hardware.relayBaseFallbacks.size > 3) reject("hardware.relay_base_fallbacks", "At most 3 fallback classes are allowed.", "relay-fallback-count-limit")
         if (document.hardware.relayBaseFallbacks.size != document.hardware.relayBaseFallbacks.toSet().size || document.hardware.relayBase in document.hardware.relayBaseFallbacks) {
             reject("hardware.relay_base_fallbacks", "Relay class paths must be unique.", "relay-paths-unique")
+        }
+        document.hardware.relayCount?.let { count ->
+            if (count !in 1..16) reject("hardware.relay_count", "Expected 1 through 16 relays.", "relay-count-range")
+            if (document.hardware.relayBase == null && document.hardware.relayGpioControl.isEmpty()) reject("hardware.relay_count", "A relay count needs hardware.relay_base or hardware.relay_gpio_control.", "relay-count-needs-base")
+        }
+        document.hardware.relayGpioControl.takeIf { it.isNotEmpty() }?.let { gpios ->
+            // Only reviewed board mappings: these GPIOs switch mains loads, and an imported profile also
+            // supplies its own identity match, so it must not be able to point the ioctl at other pins.
+            // A shipped profile only: an imported copy, even of the reviewed mapping, never drives these relays.
+            if (!bundled) {
+                reject("hardware.relay_gpio_control", "gpio_control relays are available only in the shipped SMT97T profile.", "relay-gpio-bundled-only")
+            }
+            if (gpios != GpioControlRelays.SMT97_GPIOS) {
+                reject("hardware.relay_gpio_control", "Only the reviewed Electron SMT97T relay mapping [4, 5] is supported.", "relay-gpio-unreviewed")
+            }
+            if (document.hardware.relayBase != null || document.hardware.relayBaseFallbacks.isNotEmpty()) {
+                reject("hardware.relay_gpio_control", "Declare either a relay class or gpio_control relays, not both.", "relay-mechanism-exclusive")
+            }
+            if (document.hardware.relayCount != gpios.size) {
+                reject("hardware.relay_gpio_control", "hardware.relay_count must equal the number of relay GPIOs.", "relay-count-matches-gpios")
+            }
         }
         document.hardware.buttonLedGpioBase?.let { if (it !in 0..4092) reject("hardware.button_led_gpio_base", "GPIO block base must be between 0 and 4092.", "gpio-block-base-range") }
         document.sensors.proximityGpio?.let {
@@ -485,7 +516,7 @@ internal object ProfileValidator {
 
     fun risks(document: ProfileDocument, overridesBundled: Boolean): Set<ProfileRisk> = buildSet {
         if (document.platform.appCanSu || document.hardware.screenOff != "brightness-zero" || document.requires.drivers.any { ProfileMetadata.drivers.find { d -> d.id == it }?.privileged == true }) add(ProfileRisk.ROOT_PATHS)
-        if (document.hardware.relayBase != null || document.hardware.relayBaseFallbacks.isNotEmpty() || document.hardware.buttonLedGpioBase != null || document.sensors.proximityGpio != null) add(ProfileRisk.RELAY_OR_GPIO_WRITES)
+        if (document.hardware.relayBase != null || document.hardware.relayBaseFallbacks.isNotEmpty() || document.hardware.relayGpioControl.isNotEmpty() || document.hardware.buttonLedGpioBase != null || document.sensors.proximityGpio != null) add(ProfileRisk.RELAY_OR_GPIO_WRITES)
         if (document.input.evdevButtons.any { it.deviceName == null }) add(ProfileRisk.EVDEV_READ)
         if (document.input.evdevButtons.any { it.grab }) add(ProfileRisk.EVDEV_GRAB)
         if (document.provisioning.packages.any { it.importance == ProfileProvisioningImportance.RECOMMENDED }) {
@@ -504,6 +535,7 @@ internal object ProfileValidator {
         add("screen.${document.hardware.screenOff}")
         if (document.hardware.zigbeeGatewayDir != null) add("radio.siliconlabs-host")
         if (document.hardware.relayBase != null || document.hardware.relayBaseFallbacks.isNotEmpty()) add("relay.sysfs")
+        if (document.hardware.relayGpioControl.isNotEmpty()) add("relay.gpio-control")
         if (document.hardware.buttonLedGpioBase != null) add("relay.gpio-button-led")
         if (document.hardware.hasButtonBacklight) add("input.button-backlight")
         if (document.sensors.proximityTechnology != null || document.sensors.lightTechnology != null) add("sensor.android")

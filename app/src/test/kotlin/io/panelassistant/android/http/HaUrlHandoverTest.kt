@@ -187,6 +187,128 @@ class HaUrlHandoverTest {
         assertEquals("true", result.parameters["ha_setup_handover"])
     }
 
+    /* ---------------- every other address of the same Home Assistant ---------------- */
+
+    private fun rewriteWith(
+        posted: Parameters,
+        answers: Map<String, HaUrlHandover.Outcome>,
+        probed: MutableList<String> = mutableListOf(),
+    ): HandoverConfigPost = runBlocking {
+        rewritePostForHandover(posted, "") { offered ->
+            synchronized(probed) { probed += offered }
+            answers[offered] ?: HaUrlHandover.Outcome.UNREACHABLE
+        }
+    }
+
+    @Test fun `an unresolvable name gives way to the first alternate that answers, in Panel Assistant's order`() {
+        // Android before 13 cannot resolve `.local`; the container address is not on the panel's LAN.
+        val probed = mutableListOf<String>()
+        val result = rewriteWith(
+            params(
+                "ha_setup_handover" to "true",
+                "ha_url_handover" to "http://homeassistant.local:8123",
+                HANDOVER_ALTERNATES_KEY to "http://172.30.32.1:8123 http://192.168.1.10:8123 http://[fd00::10]:8123",
+            ),
+            mapOf(
+                "http://homeassistant.local:8123" to HaUrlHandover.Outcome.UNRESOLVABLE,
+                "http://192.168.1.10:8123" to HaUrlHandover.Outcome.VERIFIED,
+                "http://[fd00::10]:8123" to HaUrlHandover.Outcome.VERIFIED,
+            ),
+            probed,
+        )
+        assertEquals("http://192.168.1.10:8123", result.parameters["ha_url"])
+        assertEquals("", result.parameters["ha_url_handover"])
+        assertEquals("", result.parameters["ha_url_handover_reason"])
+        assertEquals(HaUrlHandover.Outcome.VERIFIED, result.outcome)
+        assertEquals("http://192.168.1.10:8123", result.url)
+        assertEquals(4, probed.size)
+    }
+
+    @Test fun `a verified handed-over address does not wait for alternates still probing`() = runBlocking {
+        val cancelled = java.util.concurrent.atomic.AtomicBoolean(false)
+        val result = kotlinx.coroutines.withTimeout(5_000) {
+            rewritePostForHandover(
+                params("ha_url_handover" to "http://ha.local:8123", HANDOVER_ALTERNATES_KEY to "http://192.0.2.9:8123"),
+                "",
+            ) { url ->
+                if (url == "http://ha.local:8123") {
+                    HaUrlHandover.Outcome.VERIFIED
+                } else {
+                    try { kotlinx.coroutines.awaitCancellation() } finally { cancelled.set(true) }
+                }
+            }
+        }
+        assertEquals("http://ha.local:8123", result.parameters["ha_url"])
+        assertTrue("the unused probe is cancelled, not waited for", cancelled.get())
+    }
+
+    @Test fun `a slower earlier alternate still beats a faster later one`() = runBlocking {
+        val result = rewritePostForHandover(
+            params(
+                "ha_url_handover" to "http://ha.local:8123",
+                HANDOVER_ALTERNATES_KEY to "http://192.0.2.1:8123 http://192.0.2.2:8123",
+            ),
+            "",
+        ) { url ->
+            when (url) {
+                "http://192.0.2.1:8123" -> { kotlinx.coroutines.delay(200); HaUrlHandover.Outcome.VERIFIED }
+                "http://192.0.2.2:8123" -> HaUrlHandover.Outcome.VERIFIED
+                else -> HaUrlHandover.Outcome.UNRESOLVABLE
+            }
+        }
+        assertEquals("http://192.0.2.1:8123", result.parameters["ha_url"])
+    }
+
+    @Test fun `the handed-over address still wins when it answers`() {
+        val result = rewriteWith(
+            params(
+                "ha_url_handover" to "http://homeassistant.local:8123",
+                HANDOVER_ALTERNATES_KEY to "http://192.168.1.10:8123",
+            ),
+            mapOf(
+                "http://homeassistant.local:8123" to HaUrlHandover.Outcome.VERIFIED,
+                "http://192.168.1.10:8123" to HaUrlHandover.Outcome.VERIFIED,
+            ),
+        )
+        assertEquals("http://homeassistant.local:8123", result.parameters["ha_url"])
+    }
+
+    @Test fun `when nothing answers the handed-over address and its own reason stand`() {
+        val result = rewriteWith(
+            params(
+                "ha_url_handover" to "http://homeassistant.local:8123",
+                HANDOVER_ALTERNATES_KEY to "http://172.30.32.1:8123",
+            ),
+            mapOf("http://homeassistant.local:8123" to HaUrlHandover.Outcome.UNRESOLVABLE),
+        )
+        assertNull(result.parameters["ha_url"])
+        assertEquals("http://homeassistant.local:8123", result.parameters["ha_url_handover"])
+        assertEquals("unresolvable", result.parameters["ha_url_handover_reason"])
+    }
+
+    @Test fun `the alternates are never carried into the settings write`() {
+        listOf(
+            params("ha_url_handover" to "http://ha.local:8123", HANDOVER_ALTERNATES_KEY to "http://192.0.2.5:8123"),
+            params("ha_url" to "http://ha.local:8123", HANDOVER_ALTERNATES_KEY to "http://192.0.2.5:8123"),
+            params(HANDOVER_ALTERNATES_KEY to "http://192.0.2.5:8123"),
+        ).forEach { posted ->
+            assertNull(rewrite(posted).parameters[HANDOVER_ALTERNATES_KEY])
+            assertNull(rewrite(posted, currentHaUrl = "http://configured:8123").parameters[HANDOVER_ALTERNATES_KEY])
+        }
+    }
+
+    @Test fun `each alternate is validated like the address itself, and the list is bounded`() {
+        fun admit(value: String) =
+            normalizeConfigPostParameters(Parameters.build { append(HANDOVER_ALTERNATES_KEY, value) })
+        assertTrue(admit("http://192.0.2.5:8123  http://[fd00::10]:8123") is ConfigPostParameters.Ok)
+        assertTrue(admit("http://192.0.2.5:8123 ftp://x") is ConfigPostParameters.Bad)
+        assertTrue(admit("http://user:pass@192.0.2.5:8123") is ConfigPostParameters.Bad)
+        val atBound = (1..MAX_HANDOVER_ALTERNATES).joinToString(" ") { "http://10.0.0.$it:8123" }
+        assertTrue(admit(atBound) is ConfigPostParameters.Ok)
+        assertTrue(admit("$atBound http://10.0.1.1:8123") is ConfigPostParameters.Bad)
+        assertNull("not a user-facing setting", SettingsRegistry.spec(HANDOVER_ALTERNATES_KEY))
+    }
+
     /* ---------------- acceptance case: handed over and unreachable ---------------- */
 
     @Test fun `a failed handover keeps the address and the reason for the correction`() {

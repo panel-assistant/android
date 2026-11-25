@@ -839,6 +839,17 @@ object SettingsRegistry {
                 entityCategory("config")
             },
         ),
+        SettingSpec(
+            key = "adb_keep_off", type = SettingType.BOOL, group = "System",
+            tier = Tier.ADVANCED, summary = "More secure. Stops ADB, which Panel Assistant does not need on this panel.",
+            label = "Keep ADB off", default = "false", scope = Scope.DEVICE,
+            liveApply = true,
+            help = "**Why turn this on:** ADB on this panel lets anyone on your network control it fully, with no password or key. Panel Assistant does its own work over its connection to Home Assistant, so it does not need ADB here.\n\n" +
+                "**What it does:** Panel Assistant stops ADB, over the network and over USB, and keeps it stopped. After a restart ADB is open until the panel connects to Home Assistant again.\n\n" +
+                "**What stops working:** anything else that uses ADB on this panel, such as your own scripts or automations. Turning on Network ADB switches this off.\n\n" +
+                "**Turning it off:** ADB opens again and Network ADB reads on; turn Network ADB off to close it.",
+            availableWhen = { it.networkAdb },
+        ),
         // ---- Voice -------------------------------------------------------------------------------
         // The panel as a Home Assistant voice satellite through Panel Assistant: which wake words it
         // listens for, which Assist pipeline each one runs, and how its microphone is used. Every spec

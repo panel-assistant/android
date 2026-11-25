@@ -40,6 +40,7 @@ import io.panelassistant.android.control.ZigbeeController
 import io.panelassistant.android.control.fakeProfile
 import io.panelassistant.android.device.ScreenOff
 import io.panelassistant.android.hardware.LedController
+import io.panelassistant.android.hardware.LedBackend
 import io.panelassistant.android.config.SettingValue
 import io.panelassistant.android.panelassistant.CommandValue
 import io.panelassistant.android.panelassistant.PanelAssistantChannelCatalog
@@ -150,6 +151,8 @@ internal abstract class PanelRuntimeRig {
         val screen: ScreenController,
         /** The root shell the CPU governor writes go through; a test sets its runResult false to refuse them. */
         val cpuShell: FakeRootShell,
+        /** The network ADB controller the dispatcher uses (inert unless the rig was given an ADB root). */
+        val adb: AdbController,
     ) {
         /** The service's start order: the state core's startup step. */
         fun start() {
@@ -175,6 +178,7 @@ internal abstract class PanelRuntimeRig {
         lightChannel: () -> Boolean? = { true },
         led: LedController = object : LedController {
             override fun available() = true
+            override fun backend() = LedBackend.LEDJNI
             override fun colorCapable() = true
             override fun setRgb(r: Int, g: Int, b: Int) = true
             override fun off() = true
@@ -227,6 +231,11 @@ internal abstract class PanelRuntimeRig {
         bootChimeHardware: BootChimeHardware? = null,
         /** Root for the network ADB controller; null leaves it allocated and unusable, as no network_adb command is sent. */
         adbRoot: RootShell? = null,
+        /** Whether ADB listens, as the root helper reads it for the network ADB controller; null leaves the
+         *  controller with the JVM's unreadable properties, so no OFF can be proved. */
+        adbListening: (() -> Boolean)? = null,
+        /** The network ADB controller's settle proof waits on a clock of its own instead of sleeping. */
+        adbSettlesInstantly: Boolean = false,
         wifiOutages: () -> WifiOutageCounts? = { WifiOutageCounts(last24h = 3) },
         /** The helper the system controller sends reload and reboot to; a test reads what it was sent. */
         systemDaemon: FakeDaemon = FakeDaemon(
@@ -366,8 +375,22 @@ internal abstract class PanelRuntimeRig {
             fakeProfile(), cpuShell, FakeDaemon(), io.panelassistant.android.metrics.PanelMetrics(metrics),
         )
         // Only its best-effort reconnect reassertion runs, on a worker that logs and discards failure.
-        val adb = adbRoot?.let {
-            AdbController(config, io.panelassistant.android.control.NetworkAdbDisableTransitionMarker(File(tmp, "network-adb-disable.v1")), it)
+        val settleClock = java.util.concurrent.atomic.AtomicLong()
+        val adb = adbRoot?.let { root ->
+            val marker = io.panelassistant.android.control.NetworkAdbDisableTransitionMarker(File(tmp, "network-adb-disable.v1"))
+            val helperReads = object : io.panelassistant.android.platform.Daemon by io.panelassistant.android.control.FakeDaemon() {
+                override fun adbState() = io.panelassistant.android.platform.HelperAdbState(adbListening?.invoke(), adbListening?.invoke())
+            }
+            if (adbListening == null) AdbController(config, marker, root)
+            else if (adbSettlesInstantly) AdbController(
+                config, marker, root, daemon = helperReads, directPropertyRead = { null }, directListenerRead = { null },
+                monotonicMs = settleClock::get, waitMs = { settleClock.addAndGet(it); true },
+            )
+            else AdbController(
+                config, marker, root, daemon = helperReads,
+                directPropertyRead = { null }, directListenerRead = { null },
+                monotonicMs = { System.nanoTime() / 1_000_000 },
+            )
         } ?: allocate(AdbController::class.java)
         val volume = VolumeController(context)
         val core = io.panelassistant.android.PanelStateCore(
@@ -446,7 +469,7 @@ internal abstract class PanelRuntimeRig {
         )
         return Rig(
             tmp, config, sysfs, core, commands, storage, storageReads, updateSources, autoSleepConfigChanges,
-            context.audio, metrics, screen, cpuShell,
+            context.audio, metrics, screen, cpuShell, adb,
         )
     }
 

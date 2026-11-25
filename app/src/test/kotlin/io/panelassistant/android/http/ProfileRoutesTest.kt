@@ -16,6 +16,7 @@ import io.panelassistant.android.device.profile.ProfileFieldDescriptor
 import io.panelassistant.android.device.profile.ProfileIssue
 import io.panelassistant.android.device.profile.ProfileIssueSeverity
 import io.panelassistant.android.device.profile.ProfileLink
+import io.panelassistant.android.device.profile.ProfileMetadata
 import io.panelassistant.android.device.profile.ProfileMutation
 import io.panelassistant.android.device.profile.ProfileOrigin
 import io.panelassistant.android.device.profile.ProfilePresentation
@@ -135,6 +136,28 @@ class ProfileRoutesTest {
         val drivers = JSONObject(client.get("/api/v1/profiles/drivers").bodyAsText()).getJSONArray("drivers")
         assertEquals("relay", drivers.getJSONObject(0).getString("kind"))
         assertTrue(drivers.getJSONObject(0).getBoolean("privileged"))
+    }
+
+    @Test
+    fun schemaAndDriversExposeWs2812StripAuthoring() = testApplication {
+        val admin = object : ProfileAdmin by FakeProfileAdmin() {
+            override fun schema() = ProfileMetadata.schema
+            override fun drivers() = ProfileMetadata.drivers
+        }
+        application { routing { route("/api/v1") { profileRoutes(ProfileRouteDependencies(admin)) } } }
+
+        val fields = JSONObject(client.get("/api/v1/profiles/schema").bodyAsText()).getJSONArray("fields")
+        val countField = (0 until fields.length()).map(fields::getJSONObject)
+            .single { it.getString("path") == "hardware.led.count" }
+        assertEquals("integer", countField.getString("type"))
+        assertFalse(countField.getBoolean("required"))
+
+        val drivers = JSONObject(client.get("/api/v1/profiles/drivers").bodyAsText()).getJSONArray("drivers")
+        val strip = (0 until drivers.length()).map(drivers::getJSONObject)
+            .single { it.getString("id") == "led.ws2812-pwm" }
+        assertEquals("led", strip.getString("kind"))
+        assertTrue(strip.getString("description").contains("/dev/ws2812_pwm"))
+        assertFalse(strip.getBoolean("privileged"))
     }
 
     @Test

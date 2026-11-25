@@ -73,6 +73,7 @@ internal class AcceptedConfigTransaction(
         authorizeSensitive: suspend (OpCall, SensitiveOperation, String, String) -> Boolean,
         rejectHardenedNetworkAdb: suspend (OpCall, String?) -> Boolean,
         onHaAreaCommitted: () -> Unit,
+        pressNetworkAdbOn: (io.panelassistant.android.CommandOrigin) -> LiveSettingRequestOutcome = { applySetting("network_adb", "true") },
     ): DirectConfigPost = DirectConfigPost(
         config = config,
         revisions = revisions,
@@ -87,6 +88,7 @@ internal class AcceptedConfigTransaction(
         authorizeSensitive = authorizeSensitive,
         rejectHardenedNetworkAdb = rejectHardenedNetworkAdb,
         applySetting = applySetting,
+        pressNetworkAdbOn = pressNetworkAdbOn,
         applyRendererEffects = ::applyRendererEffects,
         onEntityTargetChanged = onEntityTargetChanged,
         setEntityLearningEnabled = setEntityLearningEnabled,

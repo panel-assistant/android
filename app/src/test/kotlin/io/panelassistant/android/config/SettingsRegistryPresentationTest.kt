@@ -2,6 +2,7 @@ package io.panelassistant.android.config
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -29,9 +30,13 @@ class SettingsRegistryPresentationTest {
         assertEquals("true", spec.default)
     }
 
-    @Test fun networkAdbIsLastSystemSettingAndRetainsSafeDefaults() {
+    @Test fun networkAdbThenKeepAdbOffCloseTheSystemSettingsAndRetainSafeDefaults() {
         val spec = SettingsRegistry.spec("network_adb")!!
-        assertEquals("network_adb", SettingsRegistry.SPECS.last { it.group == "System" }.key)
+        assertEquals(listOf("network_adb", "adb_keep_off"), SettingsRegistry.SPECS.filter { it.group == "System" }.takeLast(2).map { it.key })
+        val keepOff = SettingsRegistry.spec("adb_keep_off")!!
+        assertEquals("Panel Assistant never closes ADB unless the owner asks", "false", keepOff.default)
+        assertEquals(Tier.ADVANCED, keepOff.tier)
+        assertNull("not a Home Assistant entity", keepOff.ha)
         assertEquals("false", spec.default)
         assertEquals(Tier.ADVANCED, spec.tier)
         assertFalse(spec.haExposedByDefault)

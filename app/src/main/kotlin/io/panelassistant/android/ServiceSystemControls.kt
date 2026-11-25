@@ -29,7 +29,6 @@ import io.panelassistant.android.config.SettingsRegistry
 import io.panelassistant.android.config.defaultBool
 import io.panelassistant.android.device.DeviceProfile
 import io.panelassistant.android.hardware.LedController
-import io.panelassistant.android.hardware.LedFactory
 import io.panelassistant.android.http.PaneldServer
 import io.panelassistant.android.platform.AndroidScreenPower
 import io.panelassistant.android.platform.AndroidSystemEnv
@@ -139,8 +138,8 @@ internal class ServiceSystemControls(
         usbDebuggingFeedback?.close()
     }
 
-    fun buildLighting() {
-        led = LedFactory.detect(profile())
+    fun buildLighting(preparedLed: LedController) {
+        led = preparedLed
         ledEffect = LedEffectController(led)
     }
 

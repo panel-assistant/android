@@ -341,7 +341,7 @@ class BundledProfileParityTest {
             assertEquals(
                 "${source.document.id} uses schema fields introduced in rc1",
                 when {
-                    source.document.logging.knownNoise.isNotEmpty() -> "1.0.0"
+                    source.document.logging.knownNoise.isNotEmpty() || source.document.hardware.relayCount != null -> "1.0.0"
                     source.document.platform.vendorMdns.isNotEmpty() -> "1.0.0-preview1"
                     source.document.display.geometry.isEmpty() -> "0.9.5-rc1"
                     else -> "0.9.8-rc2"
@@ -946,6 +946,7 @@ class BundledProfileParityTest {
                     ProfileFact.MODEL to "unmatched-model",
                     ProfileFact.DEVICE to "unmatched-device",
                     ProfileFact.PRODUCT_VERSION to "unmatched-version",
+                    ProfileFact.BUILD_DISPLAY to "unmatched-display",
                 )
                 group.all.forEachIndexed { index, predicate ->
                     values[predicate.field] = if (index == predicateIndex) {
@@ -965,6 +966,7 @@ class BundledProfileParityTest {
                         model = values.getValue(ProfileFact.MODEL),
                         device = values.getValue(ProfileFact.DEVICE),
                         productVersion = values.getValue(ProfileFact.PRODUCT_VERSION),
+                        buildDisplay = values.getValue(ProfileFact.BUILD_DISPLAY),
                     ),
                 )
             }
@@ -991,6 +993,7 @@ class BundledProfileParityTest {
             ProfileFact.MODEL -> matchingFacts.copy(model = nearValue)
             ProfileFact.DEVICE -> matchingFacts.copy(device = nearValue)
             ProfileFact.PRODUCT_VERSION -> matchingFacts.copy(productVersion = nearValue)
+            ProfileFact.BUILD_DISPLAY -> matchingFacts.copy(buildDisplay = nearValue)
         }
     }
 
@@ -1067,6 +1070,7 @@ class BundledProfileParityTest {
             "meta-portal",
             "meta-portal-10-gen2",
             "nspanel-pro",
+            "nspanel-pro-gen2",
             "s9e",
             "shelly-wall-display-v2",
             "shelly-wall-display-xl",
@@ -1076,12 +1080,14 @@ class BundledProfileParityTest {
             "tpa10",
             "wf1589t",
             "zx-smt156",
+            "zx-smt97",
         )
         val EXPECTED_BUNDLED_SHA256 = mapOf(
             "generic.yaml" to "16088624128aa375bc28fb747e535f93aa43c65881b5041a6fedc3ce4de056d2",
             "meta-portal.yaml" to "2817983e13d4e7d327149caecebf400276afdba02b330d46422bcb8b74ddd5de",
             "meta-portal-10-gen2.yaml" to "9c2f19ef4bb776e585c17a8bbab9245e5a3ce474aa7e2c3d70758474023da130",
-            "nspanel-pro.yaml" to "8dda040dce8bfa9e748df1db0aa2bc5f9e61ee43916f66ddf4ef922963446765",
+            "nspanel-pro.yaml" to "5d0e85fd3ae5190f6ad1c570d42401d8858431fd0b23556cd28eee476e45b43b",
+            "nspanel-pro-gen2.yaml" to "e0e19bf0a5cdccb0d521932b688af6507adb301b53893a97fdc8edb4617d1121",
             "s9e.yaml" to "d3f82fdeb52e73bb891121d1589a31d2ff8b60ea35bbbd78b3799dd720cc6da2",
             "shelly-wall-display-v2.yaml" to "68520dc16295d169039c61f02df9aa38a39c28f47da6cefe7cb01b9d3caa117b",
             "shelly-wall-display-xl.yaml" to "1474a50218cfde7715f0f41ddd2d294bf3f362a655b3e28ab13ba41ccf61e984",
@@ -1091,6 +1097,7 @@ class BundledProfileParityTest {
             "tpa10.yaml" to "0d7fabc9fff76e7949c4575aec7b75a6e73facf44ac98af928c2ff06280c4d75",
             "wf1589t.yaml" to "d899f9fce75bcd5dc55f10a546896a0164642ba3e4b93aec0300bbb217bfd0a2",
             "zx-smt156.yaml" to "8c5fe65c26eaefb964899dfaf596adf6df485285a94ce0eeecd65b2d833a389e",
+            "zx-smt97.yaml" to "376d9fcde08908daf0d7d7f52c4f0cf279ca08247e2fa619d6b69c4d02482eee",
         )
         val EXPECTED_UNOFFICIAL_IDS = setOf(
             "community.cronos-lineageos18",

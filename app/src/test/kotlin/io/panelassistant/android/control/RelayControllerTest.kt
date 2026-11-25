@@ -54,6 +54,21 @@ class RelayControllerTest {
         assertTrue(wire.bytes.isEmpty())
     }
 
+    @Test fun declaredRelayCountHidesNodesAboveIt() {
+        val nodes = sysfs.newFolder("st_relay")
+        (1..4).forEach { File(nodes, "relay$it").writeText("0\n") }
+        val root = FakeRootShell(available = false)
+        val direct = RelayController(fakeProfile(relayBase = fallback, relayCount = 2), root, wire().apply { missing = true }.client,
+            relayFile = { path -> File(sysfs.root, path.removePrefix("/sys/class/")) })
+        assertEquals(2, direct.count())
+        assertFalse(direct.set(3, true)); assertNull(direct.read(3)); assertEquals("0\n", File(nodes, "relay3").readText())
+        assertTrue(direct.set(2, true)); assertEquals("1", File(nodes, "relay2").readText())
+        val helperRoot = FakeRootShell()
+        val helper = RelayController(fakeProfile(relayBase = fallback, relayCount = 2), helperRoot, wire().apply { count("ST_RELAY", "4") }.client)
+        assertEquals(2, helper.count()); assertFalse(helper.set(4, true)); assertTrue(helperRoot.ran.isEmpty())
+        assertEquals(1, RelayController(fakeProfile(relayBase = fallback, relayCount = 2), FakeRootShell(), wire().apply { count("ST_RELAY", "1") }.client).count())
+    }
+
     @Test fun directAccessRequiresDeclaredSupportedBaseAndWritableReadableBinaryNodes() {
         val nodes = sysfs.newFolder("strelay")
         File(nodes, "relay1").writeText("0")

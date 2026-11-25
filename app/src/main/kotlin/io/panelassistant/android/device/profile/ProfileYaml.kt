@@ -196,10 +196,10 @@ private class SchemaReader(private val issues: MutableList<ProfileIssue>) {
         val vendorService = map(launcher["vendor_service"], "platform.launcher.vendor_service", setOf("activity", "port"))
         val hardware = map(root["hardware"], "hardware", setOf(
             "led", "screen_off", "has_button_backlight", "local_wake", "zigbee_gateway_dir", "relay_base",
-            "relay_base_fallbacks", "button_led_gpio_base", "touch_click_gain", "camera", "microphone", "speaker",
+            "relay_base_fallbacks", "relay_count", "relay_gpio_control", "button_led_gpio_base", "touch_click_gain", "camera", "microphone", "speaker",
             "camera_lens_offset_px", "backlight", "button_backlight", "microphone_capture",
         ), required = true).orEmpty()
-        val led = map(hardware["led"], "hardware.led", setOf("mechanism", "transfer", "gamma", "points", "floor"), required = true).orEmpty()
+        val led = map(hardware["led"], "hardware.led", setOf("mechanism", "transfer", "gamma", "points", "floor", "count"), required = true).orEmpty()
         val sensors = map(
             root["sensors"],
             "sensors",
@@ -315,6 +315,7 @@ private class SchemaReader(private val issues: MutableList<ProfileIssue>) {
                         gamma = curve.gamma,
                         points = curve.points,
                         floor = curve.floor,
+                        count = integer(led, "count", "hardware.led"),
                     )
                 },
                 screenOff = string(hardware, "screen_off", "hardware", required = true).orEmpty(),
@@ -324,6 +325,8 @@ private class SchemaReader(private val issues: MutableList<ProfileIssue>) {
                 zigbeeGatewayDir = string(hardware, "zigbee_gateway_dir", "hardware"),
                 relayBase = string(hardware, "relay_base", "hardware"),
                 relayBaseFallbacks = stringList(hardware["relay_base_fallbacks"], "hardware.relay_base_fallbacks"),
+                relayCount = integer(hardware, "relay_count", "hardware"),
+                relayGpioControl = intList(hardware["relay_gpio_control"], "hardware.relay_gpio_control"),
                 buttonLedGpioBase = integer(hardware, "button_led_gpio_base", "hardware"),
                 touchClickGain = float(hardware, "touch_click_gain", "hardware"),
                 cameraDeclared = boolean(hardware, "camera", "hardware"),
@@ -593,6 +596,15 @@ private class SchemaReader(private val issues: MutableList<ProfileIssue>) {
             } else item
         }
 
+    private fun intList(value: Any?, path: String): List<Int> =
+        list(value, path, false).mapIndexedNotNull { index, item ->
+            val number = item as? Number
+            if (number == null || number.toDouble() % 1.0 != 0.0 || number.toLong() !in Int.MIN_VALUE..Int.MAX_VALUE) {
+                issues += error("$path[$index]", "Expected a 32-bit integer.", "expected-integer")
+                null
+            } else number.toInt()
+        }
+
     private fun string(map: Map<String, Any?>, key: String, path: String, required: Boolean = false): String? {
         val fullPath = if (path == "$") key else "$path.$key"
         if (!map.containsKey(key) || map[key] == null) {
@@ -810,7 +822,7 @@ internal fun ProfileDocument.toYamlMap(): Map<String, Any?> = linkedMapOf(
         "vendor_mdns" to platform.vendorMdns.takeIf { it.isNotEmpty() },
     ).withoutNullValues(),
     "hardware" to linkedMapOf(
-        "led" to linkedMapOf<String, Any?>("mechanism" to hardware.led.mechanism)
+        "led" to linkedMapOf<String, Any?>("mechanism" to hardware.led.mechanism, "count" to hardware.led.count)
             .apply { putAll(hardware.led.curve.toYamlFields()) }.withoutNullValues(),
         "screen_off" to hardware.screenOff,
         "has_button_backlight" to hardware.hasButtonBacklight,
@@ -819,6 +831,8 @@ internal fun ProfileDocument.toYamlMap(): Map<String, Any?> = linkedMapOf(
         "zigbee_gateway_dir" to hardware.zigbeeGatewayDir,
         "relay_base" to hardware.relayBase,
         "relay_base_fallbacks" to hardware.relayBaseFallbacks.takeIf { it.isNotEmpty() },
+        "relay_count" to hardware.relayCount,
+        "relay_gpio_control" to hardware.relayGpioControl.takeIf { it.isNotEmpty() },
         "button_led_gpio_base" to hardware.buttonLedGpioBase,
         "touch_click_gain" to hardware.touchClickGain,
         "camera" to hardware.cameraDeclared,

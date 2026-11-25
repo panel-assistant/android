@@ -1,0 +1,95 @@
+schema: 2
+id: nspanel-pro-gen2
+version: 1.0.1
+display_name: Sonoff NSPanel Pro Gen2
+soc_class: RK3326-S
+soc:
+  model: Rockchip RK3326-S
+  cpu_cores:
+    - architecture: Arm Cortex-A35
+      count: 4
+metadata:
+  author: ha-paneld maintainers
+  source: https://panel-assistant.io/go/docs?page=hardware/nspanel-pro
+  license: Apache-2.0
+  maturity: experimental
+  tested_firmware: []
+  limitations:
+    - Written from Sonoff's firmware for this panel (4.7.0 to 4.9.0). An owner has installed it and switched the relays through this control path.
+    - The two relays switch mains loads. Which relay is which follows Sonoff's firmware.
+    - Sonoff's panel app keeps its own relay settings, such as power-on state, interlock and pulse. While it runs it may also switch the relays, and ha-paneld does not apply those settings.
+    - Settings beyond the relays use conservative defaults until an owner reports how the panel behaves.
+requires:
+  # hardware.relay_count arrives in 1.0.5. An older core refuses the profile as an unknown field,
+  # so it never offers these relays without the count. (Debug builds report 1.0.0.)
+  min_core_version: 1.0.0
+  drivers:
+    - access.android-su
+    - relay.sysfs
+    - screen.brightness-zero
+match:
+  priority: 500
+  fallback: false
+  any:
+    # Sonoff's update packages for this panel require ro.product.device PX30_Android11 (Android 11).
+    # Every first-generation NSPanel Pro update package requires px30_evb (Android 8.1), so this
+    # never selects an 86P or 120P. It outranks the first-generation profile's firmware (920) and
+    # px30 (910) rules, which this device also satisfies.
+    - priority: 960
+      all:
+        - field: device
+          op: equals
+          values:
+            - px30_android11
+platform:
+  # Android 11 userdebug build. The su form is an attempt-order expectation; root is established
+  # by observing it.
+  su_form: android
+  app_can_su: true
+  launcher:
+    # Sonoff's control-panel package on the first generation; assumed unchanged here until an owner reports.
+    vendor_home_packages:
+      - com.eWeLinkControlPanel
+hardware:
+  # The relays are /sys/class/st_relay/relay1 and relay2: 1 or 0, written as root, readable back.
+  # The relay class can hold more relayN nodes than relays (the first-generation 120P shows four
+  # with none behind them), so the count is pinned to two.
+  relay_base: /sys/class/st_relay
+  relay_count: 2
+  led:
+    mechanism: none
+    transfer: identity
+  screen_off: brightness-zero
+  has_button_backlight: false
+sensors:
+  cht8305: false
+  room_temp_offset_c: 0.0
+identity:
+  manufacturer: Sonoff
+  model: NSPanel Pro Gen2
+  model_label_strategy: display-name
+input:
+  evdev_buttons: []
+cpu: {}
+display:
+  geometry:
+    - width_px: 480
+      height_px: 480
+      active_diagonal_in: 3.95
+      evidence: specification
+      evidence_note: SONOFF NSPanel Pro Gen2 specification, 3.95-inch 480x480.
+provisioning:
+  software: {}
+  display: {}
+  packages:
+    - package: com.eWeLinkControlPanel
+      desired_state: disabled
+      importance: optional
+      tags:
+        - vendor
+        - relay
+      note: >-
+        eWeLink/Sonoff control-panel app. On this panel it also runs the relays: power-on state,
+        interlock and pulse settings, and eWeLink control. Disabling it leaves ha-paneld as the only
+        thing switching the relays, without those settings.
+  recipes: []

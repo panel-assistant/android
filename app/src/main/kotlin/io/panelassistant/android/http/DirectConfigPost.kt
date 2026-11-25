@@ -52,6 +52,8 @@ internal class DirectConfigPost(
     private val authorizeSensitive: suspend (OpCall, SensitiveOperation, String, String) -> Boolean,
     private val rejectHardenedNetworkAdb: suspend (OpCall, String?) -> Boolean,
     private val applySetting: (String, String) -> LiveSettingRequestOutcome,
+    // The owner's Network ADB ON from this page, made as Home Assistant's switch makes it: one live command.
+    private val pressNetworkAdbOn: (io.panelassistant.android.CommandOrigin) -> LiveSettingRequestOutcome,
     private val applyRendererEffects: (RendererConfigEffects) -> Unit,
     private val onEntityTargetChanged: () -> Unit,
     private val setEntityLearningEnabled: (Boolean) -> Boolean,
@@ -83,6 +85,13 @@ internal class DirectConfigPost(
                 return
             }
         }
+        // Fence every baseline-dependent admission decision below. The direct mutation lane rechecks
+        // this complete effective snapshot before persistence, so a concurrent save cannot bypass an
+        // Area prerequisite or hardened approval by changing the value while this request waits. It is
+        // taken before the handover probe, which waits on the network: a save that lands during the
+        // probe (an address typed while the handover was checking its own) must refuse this commit
+        // rather than become its baseline and be overwritten.
+        val admissionBaselineHash = io.panelassistant.android.config.ConfigHash.of(directMutationValues())
         // Settle a handed-over Home Assistant URL before anything else looks at `ha_url`: every
         // admission decision below reads the posted parameters, and a handover that verified is an
         // ordinary `ha_url` write from here on.
@@ -96,10 +105,6 @@ internal class DirectConfigPost(
             return
         }
         if (rejectHardenedNetworkAdb(call, p["network_adb"])) return
-        // Fence every baseline-dependent admission decision below. The direct mutation lane rechecks
-        // this complete effective snapshot before persistence, so a concurrent save cannot bypass an
-        // Area prerequisite or hardened approval by changing the value while this request waits.
-        val admissionBaselineHash = io.panelassistant.android.config.ConfigHash.of(directMutationValues())
         val requestedAutoSleepSource = p[PresenceMode.KEY] ?: config.presenceMode.wire
         val requestedAutoSleep = p["auto_sleep"]?.let(SettingValue::parseBool) ?: config.autoSleep
         val enablingAutoSleep = autoSleepRequiresHaAdmission(
@@ -460,18 +465,22 @@ internal class DirectConfigPost(
                                 is Validation.Bad -> return@dispatchDirectConfigLiveSettings
                             }
                         } else raw.trim()
-                        // The owner's press of Network ADB on a panel that has lost its session: every
-                        // admission above has passed, so this is where Panel Assistant's lease is given
-                        // back. An ON that cannot have it is rejected before anything is queued.
-                        if (key == "network_adb" && value == "true" &&
-                            !io.panelassistant.android.control.takeNetworkAdbBackForOwner()
-                        ) {
+                        // The owner's press of Network ADB or Keep ADB off: every admission above has passed.
+                        // An ON is the same live command as Home Assistant's switch, one turn that gives a held
+                        // lease back and applies, never journalled. A Keep ADB off OFF gives the lease back at
+                        // its door; one that cannot have it is rejected before anything is queued.
+                        val outcome = when {
+                            key == "network_adb" && value == "true" -> pressNetworkAdbOn(call.origin)
+                            !io.panelassistant.android.control.liveOwnerDoor(config, key, value) -> null
+                            else -> applySetting(key, value)
+                        }
+                        if (outcome == null) {
                             liveRejected += key
                             return@dispatchDirectConfigLiveSettings
                         }
                         recordLiveApplyOutcome(
                             key,
-                            applySetting(key, value),
+                            outcome,
                             liveApplied,
                             livePending,
                             liveRejected,

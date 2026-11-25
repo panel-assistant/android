@@ -94,6 +94,7 @@ enum class ProfileFact(val yamlName: String) {
     MODEL("model"),
     DEVICE("device"),
     PRODUCT_VERSION("product_version"),
+    BUILD_DISPLAY("build_display"),
 }
 
 enum class ProfileMatchOp(val yamlName: String) {
@@ -152,6 +153,19 @@ data class ProfileHardware(
     val zigbeeGatewayDir: String? = null,
     val relayBase: String? = null,
     val relayBaseFallbacks: List<String> = emptyList(),
+    /**
+     * How many relays the board physically carries (`hardware.relay_count`). The relay class may hold
+     * more `relayN` nodes than relays (the NSPanel Pro 120P exposes four with none behind them), so a
+     * profile that knows the count pins it and the controller never offers a node above it. Null leaves
+     * the count to discovery.
+     */
+    val relayCount: Int? = null,
+    /**
+     * GPIO numbers of relays switched through the vendor `/dev/gpio_control` ioctl
+     * (`hardware.relay_gpio_control`), one per relay in order: relay 1 is the first entry. Used where a
+     * board has no relay sysfs class (the Electron SMT97T). Empty when the board has none.
+     */
+    val relayGpioControl: List<Int> = emptyList(),
     val buttonLedGpioBase: Int? = null,
     val touchClickGain: Float? = null,
     /**
@@ -223,13 +237,15 @@ data class ProfileBacklight(
 )
 
 /** `hardware.led`: the LED [mechanism] and its curve. [transfer] also accepts the ioctl-only
- *  `rk3576-four-bit` stub, which takes no [gamma], [points] or [floor]. */
+ *  `rk3576-four-bit` stub, which takes no [gamma], [points] or [floor]. [count] applies to WS2812 strip
+ *  frames only. */
 data class ProfileLed(
     val mechanism: String,
     val transfer: String = "identity",
     val gamma: Double? = null,
     val points: List<Pair<Int, Int>>? = null,
     val floor: Int? = null,
+    val count: Int? = null,
 ) {
     val curve: ProfileLightCurve get() = ProfileLightCurve(transfer, gamma, points, floor)
 }

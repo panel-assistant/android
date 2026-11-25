@@ -5,6 +5,7 @@ import io.panelassistant.android.audio.CaptureDownmix
 import io.panelassistant.android.audio.PlatformAecMode
 import io.panelassistant.android.audio.PreferredMicDevice
 import io.panelassistant.android.hardware.LedTransfer
+import io.panelassistant.android.hardware.Ws2812LedController
 import io.panelassistant.android.device.SuForm
 import io.panelassistant.android.device.LocalWake
 import io.panelassistant.android.device.ScreenOff
@@ -36,11 +37,13 @@ object ProfileMetadata {
         ProfileDriverDescriptor("input.button-backlight", ProfileDriverKind.INPUT, "Helper-backed monochrome button backlight", true, ProfileHelperAuthorityDemand.REQUIRED),
         ProfileDriverDescriptor("input.evdev", ProfileDriverKind.INPUT, "Helper-backed Linux input event watcher", true, ProfileHelperAuthorityDemand.REQUIRED),
         ProfileDriverDescriptor("input.android-keys", ProfileDriverKind.INPUT, "Named Android accessibility key inputs", false, ProfileHelperAuthorityDemand.NONE),
-        ProfileDriverDescriptor("led.autodetect", ProfileDriverKind.LED, "Probe built-in LED transports including helper fallback", true, ProfileHelperAuthorityDemand.SANDBOX_FALLBACK),
-        ProfileDriverDescriptor("led.rk3576-ioctl", ProfileDriverKind.LED, "Built-in /dev/ledjni ioctl with helper fallback", true, ProfileHelperAuthorityDemand.SANDBOX_FALLBACK),
+        ProfileDriverDescriptor("led.autodetect", ProfileDriverKind.LED, "Probe /dev/ledjni, then /dev/ws2812_pwm, then the helper", true, ProfileHelperAuthorityDemand.SANDBOX_FALLBACK),
+        ProfileDriverDescriptor("led.rk3576-ioctl", ProfileDriverKind.LED, "Built-in /dev/ledjni ioctl with WS2812 strip and helper fallback", true, ProfileHelperAuthorityDemand.SANDBOX_FALLBACK),
         ProfileDriverDescriptor("led.rk3576-ioctl-daemon", ProfileDriverKind.LED, "Helper-backed /dev/ledjni ioctl protocol", true, ProfileHelperAuthorityDemand.REQUIRED),
         ProfileDriverDescriptor("led.sysfs-daemon", ProfileDriverKind.LED, "Helper-backed supported RGB sysfs protocol", true, ProfileHelperAuthorityDemand.REQUIRED),
+        ProfileDriverDescriptor("led.ws2812-pwm", ProfileDriverKind.LED, "App-direct /dev/ws2812_pwm RGB strip, probed by autodetect and rk3576-ioctl", false, ProfileHelperAuthorityDemand.NONE),
         ProfileDriverDescriptor("radio.siliconlabs-host", ProfileDriverKind.RADIO, "Sonoff Silicon Labs gateway directory", true, ProfileHelperAuthorityDemand.NONE),
+        ProfileDriverDescriptor("relay.gpio-control", ProfileDriverKind.RELAY, "Vendor /dev/gpio_control relay ioctl", false, ProfileHelperAuthorityDemand.NONE),
         ProfileDriverDescriptor("relay.sysfs", ProfileDriverKind.RELAY, "Supported relay sysfs class", true, ProfileHelperAuthorityDemand.NONE),
         ProfileDriverDescriptor("relay.gpio-button-led", ProfileDriverKind.RELAY, "Root-backed button LED GPIO block", true, ProfileHelperAuthorityDemand.NONE),
         ProfileDriverDescriptor("screen.brightness-zero", ProfileDriverKind.SCREEN, "Application-level brightness-zero screen off", false, ProfileHelperAuthorityDemand.NONE),
@@ -112,6 +115,7 @@ object ProfileMetadata {
             field("platform.launcher.vendor_home_packages", "package-name[]", false, "Vendor apps that register as Home but are not app drawers; the navbar Launcher button skips them."),
             field("platform.vendor_mdns", "string[]", false, "DNS-SD instances the vendor's own software announces, as instance-glob.service (ShellyWallDisplay-*._shelly._tcp); Panel Assistant browses them to find the panel."),
             field("hardware.led.mechanism", "enum", true, "Built-in LED route.", LedMechanism.entries.map { it.yamlName }),
+            field("hardware.led.count", "integer", false, "WS2812 strip length, 1 through ${Ws2812LedController.MAX_LED_COUNT}; defaults to ${Ws2812LedController.DEFAULT_LED_COUNT}. Only used if autodetect or rk3576-ioctl selects the strip."),
             field("hardware.led.transfer", "enum", false, "Core-owned LED transfer function; defaults to identity.", LedTransfer.NAMES.toList()),
             field("hardware.led.gamma", "number", false, "Power-law exponent for transfer gamma, 0.2 through 5.0."),
             field("hardware.led.points", "integer[][]", false, "Control points for transfer points: [request, hardware] pairs from [0, 0] to [255, 255]."),
@@ -142,6 +146,8 @@ object ProfileMetadata {
             field("hardware.zigbee_gateway_dir", "path", false, "Supported Sonoff gateway directory."),
             field("hardware.relay_base", "path", false, "Preferred supported relay sysfs class."),
             field("hardware.relay_base_fallbacks", "path[]", false, "Alternative relay sysfs classes."),
+            field("hardware.relay_gpio_control", "integer[]", false, "GPIOs of relays on the vendor /dev/gpio_control ioctl, relay 1 first."),
+            field("hardware.relay_count", "integer", false, "Relays the board carries, 1 through 16; nodes above it are never offered."),
             field("hardware.button_led_gpio_base", "integer", false, "First GPIO in a button LED block."),
             field("hardware.touch_click_gain", "number", false, "Touch-click feedback volume, 0.05 through 1.0."),
             field("sensors.proximity_technology", "string", false, "Author-declared proximity technology."),

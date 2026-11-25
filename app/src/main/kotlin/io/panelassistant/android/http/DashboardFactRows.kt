@@ -32,7 +32,7 @@ internal fun profileFactKeys(profile: DeviceProfile, facts: Map<String, String>)
             "Proximity" -> profile.proximityTech != null || observed(key, "no")
             "Zigbee" -> profile.zigbeeGatewayDir != null || observed(key, "none")
             "Relays" ->
-                profile.relayBase != null || profile.relayBaseFallbacks.isNotEmpty() ||
+                profile.relayBase != null || profile.relayBaseFallbacks.isNotEmpty() || profile.relayGpioControl.isNotEmpty() ||
                     observed(key, "none")
             "CPU profile" -> profile.cpuGovernors != null || observed(key, "n/a")
             else -> true

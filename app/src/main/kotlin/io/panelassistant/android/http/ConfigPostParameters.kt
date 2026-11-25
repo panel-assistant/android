@@ -115,6 +115,21 @@ internal fun normalizeConfigPostParameters(
                             )
                     }
                 }
+                // The other addresses of the same Home Assistant, tried alongside the handed-over one.
+                // Each must pass the same check as the address itself, and the list is bounded.
+                name == HANDOVER_ALTERNATES_KEY -> {
+                    val urls = value.trim().split(Regex("\\s+")).filter(String::isNotBlank)
+                    if (urls.size > MAX_HANDOVER_ALTERNATES) {
+                        return ConfigPostParameters.Bad("$name: at most $MAX_HANDOVER_ALTERNATES addresses")
+                    }
+                    val normalized = urls.map { io.panelassistant.android.config.normalizeHttpOriginUrl(it) }
+                    if (null in normalized) {
+                        return ConfigPostParameters.Bad(
+                            "$name: expected http:// or https:// URLs with no embedded credentials",
+                        )
+                    }
+                    normalized.joinToString(" ")
+                }
                 // Refused from the network outright. The panel's own probe decides this and appends it
                 // after admission; accepting it here would let the party that supplies an address also
                 // declare that address reachable.

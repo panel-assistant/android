@@ -197,6 +197,36 @@
       "softMaxChars": 24,
       "hardMaxChars": 40
     },
+    "configure.adb_keep_off.hardened": {
+      "text": "Hardened mode keeps ADB off. Switch to Relaxed mode at the panel to change this.",
+      "sourceHash": "f704d983d727c746f0c4b8ac8c894eadfca06968c6ea6e48c63640b09d9d7389",
+      "surface": "configure",
+      "context": "Configure > System > Keep ADB off: shown under the switch, which reads on and is disabled, while Hardened mode keeps ADB off.",
+      "risk": "consequential",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [
+        "ADB"
+      ],
+      "softMaxChars": 100,
+      "hardMaxChars": 133
+    },
+    "configure.adb_keep_off.waiting": {
+      "text": "Keep ADB off is on. ADB closes when the panel connects to Home Assistant.",
+      "sourceHash": "76c5109c004ee295ef3e8e2cbb64680b385ca8b237c73ba1201045ea5f50ae1c",
+      "surface": "configure",
+      "context": "Configure > System > Keep ADB off: shown under the switch while the option is on but the panel has no Home Assistant connection yet, so ADB is not closed yet.",
+      "risk": "consequential",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [
+        "Keep ADB off",
+        "ADB",
+        "Home Assistant"
+      ],
+      "softMaxChars": 91,
+      "hardMaxChars": 121
+    },
     "configure.advanced.hide": {
       "text": "Hide advanced settings",
       "sourceHash": "82557c7e15d55184ae10aa64a264e4f03235e662d398d48b1fd3f1d24a515911",
@@ -3780,54 +3810,50 @@
       "softMaxChars": 24,
       "hardMaxChars": 40
     },
-    "configure.network_adb.managed": {
-      "text": "Panel Assistant manages ADB on this panel and keeps it off. Removing the panel from Panel Assistant turns ADB back on.",
-      "sourceHash": "1a7a2f8db70c54fc9bacab8eae1395b666d9ceb583101692b453e1d55e40ed55",
+    "configure.network_adb.external": {
+      "text": "ADB is open on this panel: its own system opened it. Anyone on your network can use it without a password. Keep ADB off below closes it.",
+      "sourceHash": "3669c6c188b598c1cb00dd5c27c7061ba1dbf393555e1b6f507a49e579e0e7bf",
       "surface": "configure",
-      "context": "Configure > System > Network ADB: shown under the switch while Panel Assistant keeps network ADB off on this panel; the switch is disabled and says how ADB comes back.",
+      "context": "Configure > System > Network ADB: shown under the switch when ADB is listening on the network although Panel Assistant keeps nothing open (the panel's firmware opened it); points at the Keep ADB off option in the row below.",
       "risk": "consequential",
       "siblings": [],
       "placeholders": [],
       "frozen": [
-        "Panel Assistant",
-        "ADB"
-      ],
-      "softMaxChars": 150,
-      "hardMaxChars": 215
-    },
-    "configure.network_adb.managed_available": {
-      "text": "This panel has lost its Home Assistant connection. Turning this on takes ADB back from Panel Assistant until the panel connects again.",
-      "sourceHash": "02aa42624aabbe764eabac336e498e416d11ac459c0a901f3df357ac6c6513ab",
-      "surface": "configure",
-      "context": "Configure > System > Network ADB: shown under the switch when the panel has been without its Home Assistant connection long enough that the owner may turn network ADB on although Panel Assistant manages it; the switch is enabled.",
-      "risk": "consequential",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [
-        "Panel Assistant",
-        "Home Assistant",
-        "ADB"
+        "ADB",
+        "Keep ADB off"
       ],
       "softMaxChars": 170,
-      "hardMaxChars": 240
+      "hardMaxChars": 227
     },
-    "configure.network_adb.managed_waiting": {
-      "text": "Panel Assistant manages ADB on this panel and keeps it off. This panel has lost its Home Assistant connection; this switch works after {minutes} minutes without it.",
-      "sourceHash": "3629d98dc5c57aadc5d95eff248532aab6eed586ffbc512d4264538ec84f3ae9",
+    "configure.network_adb.hardened": {
+      "text": "Hardened mode keeps ADB off. Switch to Relaxed mode at the panel to turn on Network ADB.",
+      "sourceHash": "d7f1c233561f6c39879253427c1d0830b804c38bba2f48d5e92a9d348d89c605",
       "surface": "configure",
-      "context": "Configure > System > Network ADB: shown under the disabled switch while Panel Assistant keeps network ADB off and the panel has just lost its Home Assistant connection; {minutes} is a whole number of minutes.",
+      "context": "Configure > System > Network ADB: shown under the disabled switch while Hardened mode keeps ADB off.",
       "risk": "consequential",
       "siblings": [],
-      "placeholders": [
-        "{minutes}"
-      ],
+      "placeholders": [],
       "frozen": [
-        "Panel Assistant",
-        "Home Assistant",
-        "ADB"
+        "ADB",
+        "Network ADB"
       ],
-      "softMaxChars": 200,
-      "hardMaxChars": 280
+      "softMaxChars": 110,
+      "hardMaxChars": 146
+    },
+    "configure.network_adb.kept_off": {
+      "text": "ADB is off because Keep ADB off is on. Turning this on switches that option off and opens ADB.",
+      "sourceHash": "0ff229384af39de9c65c39bbfa15d4c251b392c7aed96b9aee054277f1a75083",
+      "surface": "configure",
+      "context": "Configure > System > Network ADB: shown under the switch while the owner's Keep ADB off option holds ADB off; the switch still works, and one press switches that option off and opens ADB.",
+      "risk": "consequential",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [
+        "ADB",
+        "Keep ADB off"
+      ],
+      "softMaxChars": 117,
+      "hardMaxChars": 156
     },
     "configure.oauth.browser_recommended": {
       "text": "Browser sign-in is recommended; the long-lived token remains available as an advanced fallback.",
@@ -31238,6 +31264,60 @@
       ],
       "softMaxChars": 65,
       "hardMaxChars": 117
+    },
+    "settings.adb_keep_off.help": {
+      "text": "**Why turn this on:** ADB on this panel lets anyone on your network control it fully, with no password or key. Panel Assistant does its own work over its connection to Home Assistant, so it does not need ADB here.\n\n**What it does:** Panel Assistant stops ADB, over the network and over USB, and keeps it stopped. After a restart ADB is open until the panel connects to Home Assistant again.\n\n**What stops working:** anything else that uses ADB on this panel, such as your own scripts or automations. Turning on Network ADB switches this off.\n\n**Turning it off:** ADB opens again and Network ADB reads on; turn Network ADB off to close it.",
+      "sourceHash": "0763a6ab9e91bb993958f0f15977d702d479651ec223e163a780c39e073dd611",
+      "surface": "settings",
+      "context": "Configure > System > Keep ADB off: supporting help for the adb_keep_off setting; three short paragraphs with bold lead-ins (why, what it does, what stops working). Keep the Markdown bold markers.",
+      "risk": "consequential",
+      "siblings": [
+        "settings.adb_keep_off.label"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "Panel Assistant",
+        "Home Assistant",
+        "ADB",
+        "USB",
+        "Network ADB"
+      ],
+      "softMaxChars": 797,
+      "hardMaxChars": 1065
+    },
+    "settings.adb_keep_off.label": {
+      "text": "Keep ADB off",
+      "sourceHash": "9247975568c67aee1c2da39e47bcc85ed4e48bdc7f0370a735deccf95c5b3ec0",
+      "surface": "settings",
+      "context": "Configure > System: label for the adb_keep_off setting, the owner's opt-in that has Panel Assistant stop ADB and keep it stopped.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.adb_keep_off.help"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "ADB"
+      ],
+      "softMaxChars": 32,
+      "hardMaxChars": 32
+    },
+    "settings.adb_keep_off.summary": {
+      "text": "More secure. Stops ADB, which Panel Assistant does not need on this panel.",
+      "sourceHash": "4e59d4bd6dc574a5cc9ac8eeb6028aaa613ce95785dd063e0a08e83ea575c986",
+      "surface": "settings",
+      "context": "Configure > System: one-line summary shown under the adb_keep_off setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.adb_keep_off.label",
+        "settings.adb_keep_off.help"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "ADB",
+        "Panel Assistant"
+      ],
+      "softMaxChars": 92,
+      "hardMaxChars": 123
     },
     "settings.auto_brightness.help": {
       "text": "On-panel engine maps a lux stream to the backlight (off = HA drives the screen).",

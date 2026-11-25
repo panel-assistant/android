@@ -11,6 +11,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.server.testing.testApplication
 import io.panelassistant.android.LiveSettingApplyResult
 import io.panelassistant.android.LiveSettingAuthority
+import io.panelassistant.android.LiveSettingRequestOutcome
 import io.panelassistant.android.config.Capabilities
 import io.panelassistant.android.control.AdbController
 import io.panelassistant.android.control.ManagedNetworkAdb
@@ -23,128 +24,136 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * While Panel Assistant manages network ADB the app cannot turn it on, so Configure's ON is refused at the
- * panel's config door instead of being journalled as a value that waits for good (and could open port 5555
- * once management ends). The Configure projection says ADB is managed, so the row can say so.
+ * While the owner's Keep ADB off lease holds ADB, the owner's Configure ON still works at once: it is the live
+ * command Home Assistant's switch sends, never a journalled setting, and one that could not apply is rejected
+ * rather than queued to open port 5555 later. Keep ADB off OFF gives the lease back at its door. The Configure
+ * projection says what holds ADB, so the rows can say so.
  */
 class NetworkAdbManagedConfigPostTest {
     @After fun releaseManagement() {
         ManagedNetworkAdb.managed = false
         ManagedNetworkAdb.recoveryHold = false
-        ManagedNetworkAdb.ownerSwitch = null
+        ManagedNetworkAdb.owner = null
     }
 
     /** The lease owner as the door sees it; [releases] counts how often the door asked for the lease back. */
-    private class OwnerSwitch(private val waitMs: Long?, private val gives: Boolean) : ManagedNetworkAdb.OwnerSwitch {
+    private class Owner(private val gives: Boolean, private val hardened: Boolean = false, private val onRelease: () -> Unit = {}) : ManagedNetworkAdb.Owner {
         var releases = 0
-        override fun waitMs() = waitMs
+        override fun hardened() = hardened
         override fun release(): Boolean {
             releases++
-            if (gives) ManagedNetworkAdb.managed = false
+            if (gives) { ManagedNetworkAdb.managed = false; onRelease() }
             return gives
         }
+        override fun reconcile() {}
+        override fun <T> turn(refuseIfLate: Boolean, waiting: T, press: () -> T): T = press()
     }
 
-    @Test fun `a Configure ON while Panel Assistant manages ADB is refused and leaves nothing pending`() =
+    /** The page's Network ADB ON as the server hands it on: what it was answered, and from whom. */
+    private class PageOn(private val answer: LiveSettingRequestOutcome) : (io.panelassistant.android.CommandOrigin) -> LiveSettingRequestOutcome {
+        val origins = mutableListOf<io.panelassistant.android.CommandOrigin>()
+        override fun invoke(origin: io.panelassistant.android.CommandOrigin): LiveSettingRequestOutcome { origins += origin; return answer }
+    }
+
+    private suspend fun io.ktor.server.testing.ApplicationTestBuilder.postConfig(body: Map<String, Any>) =
+        client.post("/api/v1/config") {
+            header(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+            setBody(JSONObject(body).toString())
+        }
+
+    @Test fun `a Configure ON is the live command Home Assistant's switch sends, never a queued setting`() =
         withFullReadServer { config, fixture ->
             capabilities(fixture, Capabilities(appCanSu = true, networkAdb = true))
-            val authority = LiveSettingAuthority(setOf("network_adb"), bootIdentity = { "test-boot" })
-            val applied = mutableListOf<String>()
-            // AdbController.set(true) answers FAILED while Panel Assistant owns the runtime.
-            setField(fixture.server, "applySetting", { key: String, value: String ->
-                authority.applyOrQueueOutcome(key, value, null) { _, appliedValue, _ ->
-                    applied += appliedValue
-                    LiveSettingApplyResult.FAILED
-                }
-            })
+            val queued = mutableListOf<String>()
+            setField(fixture.server, "applySetting", { key: String, value: String -> queued += "$key=$value"; LiveSettingRequestOutcome.APPLIED })
             setField(fixture.server, "onReconfigure", { _: Set<String> -> })
+            val pageOn = PageOn(LiveSettingRequestOutcome.APPLIED)
+            setField(fixture.server, "pressNetworkAdbOn", pageOn)
+            assertTrue(config.setAdbKeepOff(true))
             ManagedNetworkAdb.managed = true
             testApplication {
                 application { fixture.mount(this) }
-                val response = client.post("/api/v1/config") {
-                    header(HttpHeaders.ContentType, ContentType.Application.Json.toString())
-                    setBody(JSONObject(mapOf("network_adb" to true)).toString())
-                }
-                val text = response.bodyAsText()
-                assertEquals(HttpStatusCode.Conflict, response.status, text)
-                assertEquals("network-adb-managed-by-panel-assistant", JSONObject(text).getString("error"))
-                assertTrue(authority.pendingSnapshot().isEmpty(), "nothing is left to apply once management ends")
-                assertTrue(applied.isEmpty(), "a refused ON never reaches the controller: $applied")
-                assertFalse(config.networkAdbEnabled)
-
-                // The OFF the switch can still ask for is not refused.
-                val off = client.post("/api/v1/config") {
-                    header(HttpHeaders.ContentType, ContentType.Application.Json.toString())
-                    setBody(JSONObject(mapOf("network_adb" to false)).toString())
-                }
-                assertFalse(off.status == HttpStatusCode.Conflict, off.bodyAsText())
+                val text = postConfig(mapOf("network_adb" to true)).bodyAsText()
+                assertTrue(JSONObject(text).getBoolean("ok"), text)
+                assertEquals(1, pageOn.origins.size, "one live press, whose handler gives the lease back and applies it")
+                assertTrue(queued.isEmpty(), "the ON is never a journalled setting: $queued")
             }
         }
 
-    @Test fun `a panel that has just lost its session still refuses the ON and says how long the switch waits`() =
-        withFullReadServer { config, fixture ->
-            capabilities(fixture, Capabilities(appCanSu = true, networkAdb = true))
-            val applied = mutableListOf<String>()
-            setField(fixture.server, "applySetting", { _: String, value: String -> applied += value; false })
-            setField(fixture.server, "onReconfigure", { _: Set<String> -> })
-            ManagedNetworkAdb.managed = true
-            // A lease owner that would give the lease back if asked: the door must not ask yet.
-            val owner = OwnerSwitch(waitMs = 61_001, gives = true)
-            ManagedNetworkAdb.ownerSwitch = owner
-            testApplication {
-                application { fixture.mount(this) }
-                val response = client.post("/api/v1/config") {
-                    header(HttpHeaders.ContentType, ContentType.Application.Json.toString())
-                    setBody(JSONObject(mapOf("network_adb" to true)).toString())
-                }
-                val text = response.bodyAsText()
-                assertEquals(HttpStatusCode.Conflict, response.status, text)
-                val body = JSONObject(text)
-                assertEquals("network-adb-managed-by-panel-assistant", body.getString("error"))
-                assertEquals(62, body.getInt("owner_switch_wait_s"))
-                assertEquals(0, owner.releases, "the lease is not asked for before the bound")
-                assertTrue(applied.isEmpty(), "a refused ON never reaches the controller: $applied")
-                assertFalse(config.networkAdbEnabled)
-            }
-        }
-
-    @Test fun `an ON after the bound that cannot have the lease back is rejected and leaves nothing pending`() =
+    @Test fun `a Configure ON the press could not apply is rejected and leaves nothing pending`() =
         withFullReadServer { config, fixture ->
             capabilities(fixture, Capabilities(appCanSu = true, networkAdb = true))
             val authority = LiveSettingAuthority(setOf("network_adb"), bootIdentity = { "test-boot" })
-            val applied = mutableListOf<String>()
             setField(fixture.server, "applySetting", { key: String, value: String ->
-                authority.applyOrQueueOutcome(key, value, null) { _, appliedValue, _ ->
-                    applied += appliedValue
-                    LiveSettingApplyResult.FAILED
-                }
+                authority.applyOrQueueOutcome(key, value, null) { _, _, _ -> LiveSettingApplyResult.FAILED }
             })
             setField(fixture.server, "onReconfigure", { _: Set<String> -> })
+            setField(fixture.server, "pressNetworkAdbOn", PageOn(LiveSettingRequestOutcome.REJECTED))
             ManagedNetworkAdb.managed = true
-            // The session came back in the meantime, say, or the helper did not answer.
-            val owner = OwnerSwitch(waitMs = 0, gives = false)
-            ManagedNetworkAdb.ownerSwitch = owner
             testApplication {
                 application { fixture.mount(this) }
-                val response = client.post("/api/v1/config") {
-                    header(HttpHeaders.ContentType, ContentType.Application.Json.toString())
-                    setBody(JSONObject(mapOf("network_adb" to true)).toString())
-                }
-                val text = response.bodyAsText()
+                val text = postConfig(mapOf("network_adb" to true)).bodyAsText()
                 assertFalse(JSONObject(text).getBoolean("ok"), text)
                 val rejected = JSONObject(text).getJSONArray("rejected")
                 assertEquals(listOf("network_adb"), (0 until rejected.length()).map(rejected::getString), text)
-                assertEquals(1, owner.releases)
-                assertTrue(applied.isEmpty(), "a rejected ON never reaches the controller: $applied")
                 assertTrue(authority.pendingSnapshot().isEmpty(), "nothing is left to open ADB later")
                 assertFalse(config.networkAdbEnabled)
             }
         }
 
-    @Test fun `once the panel has been without its session for the bound the ON reaches the controller`() =
-        withFullReadServer { _, fixture ->
+    @Test fun `an ON saved earlier reads off while the lease holds and the owner's next press is the live command`() =
+        withFullReadServer { config, fixture ->
             capabilities(fixture, Capabilities(appCanSu = true, networkAdb = true))
-            val authority = LiveSettingAuthority(setOf("network_adb"), bootIdentity = { "test-boot" })
+            setField(fixture.server, "applySetting", { _: String, _: String -> LiveSettingRequestOutcome.APPLIED })
+            setField(fixture.server, "onReconfigure", { _: Set<String> -> })
+            val pageOn = PageOn(LiveSettingRequestOutcome.APPLIED)
+            setField(fixture.server, "pressNetworkAdbOn", pageOn)
+            liveAsTheServiceReadsThem(fixture, config)
+            // An ON saved before the owner chose Keep ADB off on an older version: the lease closed ADB, but
+            // the saved intent is still ON.
+            assertTrue(config.setNetworkAdbEnabled(true))
+            ManagedNetworkAdb.managed = true
+            testApplication {
+                application { fixture.mount(this) }
+                val values = JSONObject(client.get("/api/v1/config/values").bodyAsText())
+                assertFalse(values.getJSONObject("settings").getBoolean("network_adb"), "the switch reads off: ADB is closed")
+                val text = postConfig(mapOf("network_adb" to true)).bodyAsText()
+                assertTrue(JSONObject(text).getBoolean("ok"), text)
+                assertEquals(1, pageOn.origins.size, "the press is made although the saved value is ON")
+            }
+        }
+
+    @Test fun `a Configure ON while Hardened mode holds ADB never asks for the lease`() =
+        withFullReadServer { config, fixture ->
+            capabilities(fixture, Capabilities(appCanSu = true, networkAdb = true))
+            val applied = mutableListOf<String>()
+            setField(fixture.server, "applySetting", { _: String, value: String -> applied += value; false })
+            setField(fixture.server, "onReconfigure", { _: Set<String> -> })
+            val pageOn = PageOn(LiveSettingRequestOutcome.APPLIED)
+            setField(fixture.server, "pressNetworkAdbOn", pageOn)
+            assertTrue(config.setSecurityMode(io.panelassistant.android.Config.SecurityMode.HARDENED))
+            ManagedNetworkAdb.managed = true
+            val owner = Owner(gives = true, hardened = true)
+            ManagedNetworkAdb.owner = owner
+            testApplication {
+                application { fixture.mount(this) }
+                val response = client.post("/api/v1/config") {
+                    header(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+                    setBody(JSONObject(mapOf("network_adb" to true)).toString())
+                }
+                val text = response.bodyAsText()
+                assertEquals(HttpStatusCode.Conflict, response.status, text)
+                assertEquals("network-adb-incompatible-with-hardened-mode", JSONObject(text).getString("error"))
+                assertEquals(0, owner.releases)
+                assertTrue(pageOn.origins.isEmpty(), "Hardened mode refuses the ON before it is pressed")
+                assertTrue(applied.isEmpty())
+            }
+        }
+
+    @Test fun `a Keep ADB off OFF that cannot have the lease back is rejected, leaves the option on and nothing pending`() =
+        withFullReadServer { config, fixture ->
+            capabilities(fixture, Capabilities(appCanSu = true, networkAdb = true))
+            val authority = LiveSettingAuthority(setOf("adb_keep_off"), bootIdentity = { "test-boot" })
             val applied = mutableListOf<String>()
             setField(fixture.server, "applySetting", { key: String, value: String ->
                 authority.applyOrQueueOutcome(key, value, null) { _, appliedValue, _ ->
@@ -153,18 +162,23 @@ class NetworkAdbManagedConfigPostTest {
                 }
             })
             setField(fixture.server, "onReconfigure", { _: Set<String> -> })
+            assertTrue(config.setAdbKeepOff(true))
             ManagedNetworkAdb.managed = true
-            val owner = OwnerSwitch(waitMs = 0, gives = true)
-            ManagedNetworkAdb.ownerSwitch = owner
+            val owner = Owner(gives = false)
+            ManagedNetworkAdb.owner = owner
             testApplication {
                 application { fixture.mount(this) }
                 val response = client.post("/api/v1/config") {
                     header(HttpHeaders.ContentType, ContentType.Application.Json.toString())
-                    setBody(JSONObject(mapOf("network_adb" to true)).toString())
+                    setBody(JSONObject(mapOf("adb_keep_off" to false)).toString())
                 }
-                assertFalse(response.status == HttpStatusCode.Conflict, response.bodyAsText())
-                assertEquals(1, owner.releases, "the owner's press asks for the lease back exactly once")
-                assertEquals(listOf("true"), applied)
+                val text = response.bodyAsText()
+                val rejected = JSONObject(text).getJSONArray("rejected")
+                assertEquals(listOf("adb_keep_off"), (0 until rejected.length()).map(rejected::getString), text)
+                assertEquals(1, owner.releases)
+                assertTrue(config.adbKeepOff, "the option still says what the panel does")
+                assertTrue(applied.isEmpty(), "a refused OFF never reaches the handler: $applied")
+                assertTrue(authority.pendingSnapshot().isEmpty(), "nothing is left to reopen ADB later")
             }
         }
 
@@ -173,83 +187,6 @@ class NetworkAdbManagedConfigPostTest {
         val adb = AdbController(config, NetworkAdbDisableTransitionMarker(kotlin.io.path.createTempFile("adb-off").toFile()))
         setField(fixture.server, "configLiveValues", { mapOf("network_adb" to adb.isPersisted().toString()) })
     }
-
-    @Test fun `an ON saved by an earlier takeover reads off while the lease holds and the owner's next press takes the lease back`() =
-        withFullReadServer { config, fixture ->
-            capabilities(fixture, Capabilities(appCanSu = true, networkAdb = true))
-            val authority = LiveSettingAuthority(setOf("network_adb"), bootIdentity = { "test-boot" })
-            val applied = mutableListOf<String>()
-            setField(fixture.server, "applySetting", { key: String, value: String ->
-                authority.applyOrQueueOutcome(key, value, null) { _, appliedValue, _ ->
-                    applied += appliedValue
-                    LiveSettingApplyResult.APPLIED
-                }
-            })
-            setField(fixture.server, "onReconfigure", { _: Set<String> -> })
-            liveAsTheServiceReadsThem(fixture, config)
-            // The owner took ADB back once; the panel reconnected and the lease closed ADB again, but the
-            // saved intent is still ON.
-            assertTrue(config.setNetworkAdbEnabled(true))
-            ManagedNetworkAdb.managed = true
-            val owner = OwnerSwitch(waitMs = 0, gives = true)
-            ManagedNetworkAdb.ownerSwitch = owner
-            testApplication {
-                application { fixture.mount(this) }
-                val values = JSONObject(client.get("/api/v1/config/values").bodyAsText())
-                assertFalse(values.getJSONObject("settings").getBoolean("network_adb"), "the switch reads off: ADB is closed")
-                val response = client.post("/api/v1/config") {
-                    header(HttpHeaders.ContentType, ContentType.Application.Json.toString())
-                    setBody(JSONObject(mapOf("network_adb" to true)).toString())
-                }
-                val text = response.bodyAsText()
-                assertTrue(JSONObject(text).getBoolean("ok"), text)
-                assertEquals(1, owner.releases, "the press asks for the lease back although the saved value is ON")
-                assertEquals(listOf("true"), applied)
-            }
-        }
-
-    @Test fun `an ON queued while the lease held does not stop the owner's press taking the lease back`() =
-        withFullReadServer { config, fixture ->
-            capabilities(fixture, Capabilities(appCanSu = true, networkAdb = true))
-            val authority = LiveSettingAuthority(setOf("network_adb"), bootIdentity = { "test-boot" })
-            var leaseHeld = true
-            val applied = mutableListOf<String>()
-            // AdbController.set(true) answers FAILED while Panel Assistant owns the runtime, so the ON stays queued.
-            setField(fixture.server, "applySetting", { key: String, value: String ->
-                authority.applyOrQueueOutcome(key, value, null) { _, appliedValue, _ ->
-                    applied += appliedValue
-                    if (leaseHeld) LiveSettingApplyResult.FAILED else LiveSettingApplyResult.APPLIED
-                }
-            })
-            setField(fixture.server, "pendingLiveSettings", authority::pendingSnapshot)
-            setField(fixture.server, "onReconfigure", { _: Set<String> -> })
-            liveAsTheServiceReadsThem(fixture, config)
-            ManagedNetworkAdb.managed = true
-            // A restored or replayed ON reached the controller while the lease held, and waits.
-            authority.applyOrQueueOutcome("network_adb", "true", null) { _, _, _ -> LiveSettingApplyResult.FAILED }
-            assertEquals(mapOf("network_adb" to "true"), authority.pendingSnapshot())
-            val owner = object : ManagedNetworkAdb.OwnerSwitch {
-                var releases = 0
-                override fun waitMs() = 0L
-                override fun release(): Boolean { releases++; leaseHeld = false; ManagedNetworkAdb.managed = false; return true }
-            }
-            ManagedNetworkAdb.ownerSwitch = owner
-            testApplication {
-                application { fixture.mount(this) }
-                val values = JSONObject(client.get("/api/v1/config/values").bodyAsText())
-                assertFalse(values.getJSONObject("settings").getBoolean("network_adb"), "the switch reads off: ADB is closed")
-                assertFalse(values.getJSONObject("apply_pending").has("network_adb"), "the queued ON is not shown")
-                val response = client.post("/api/v1/config") {
-                    header(HttpHeaders.ContentType, ContentType.Application.Json.toString())
-                    setBody(JSONObject(mapOf("network_adb" to true)).toString())
-                }
-                val text = response.bodyAsText()
-                assertTrue(JSONObject(text).getBoolean("ok"), text)
-                assertEquals(1, owner.releases, "the press asks for the lease back although an ON is queued")
-                assertEquals(listOf("true"), applied)
-                assertTrue(authority.pendingSnapshot().isEmpty(), "the applied ON leaves nothing queued")
-            }
-        }
 
     @Test fun `an OFF while the lease holds still clears an ON queued then`() =
         withFullReadServer { config, fixture ->
@@ -280,52 +217,32 @@ class NetworkAdbManagedConfigPostTest {
             }
         }
 
-    @Test fun `without management a Configure ON is still accepted`() =
-        withFullReadServer { _, fixture ->
-            capabilities(fixture, Capabilities(appCanSu = true, networkAdb = true))
-            val authority = LiveSettingAuthority(setOf("network_adb"), bootIdentity = { "test-boot" })
-            setField(fixture.server, "applySetting", { key: String, value: String ->
-                authority.applyOrQueueOutcome(key, value, null) { _, _, _ -> LiveSettingApplyResult.FAILED }
-            })
-            setField(fixture.server, "onReconfigure", { _: Set<String> -> })
-            testApplication {
-                application { fixture.mount(this) }
-                val response = client.post("/api/v1/config") {
-                    header(HttpHeaders.ContentType, ContentType.Application.Json.toString())
-                    setBody(JSONObject(mapOf("network_adb" to true)).toString())
-                }
-                assertFalse(response.status == HttpStatusCode.Conflict, response.bodyAsText())
-                assertEquals(mapOf("network_adb" to "true"), authority.pendingSnapshot())
-            }
-        }
-
-    @Test fun `the Configure projection says ADB is managed and hides an older queued ON`() =
+    @Test fun `the Configure projection says what holds ADB and hides an older queued ON`() =
         withFullReadServer { config, _ ->
             // Identity fields come from Android build properties this JVM does not have.
             val live = mapOf("panel_id" to "test_panel", "friendly_name" to "Test panel")
-            // A desired ON an older version journalled while Panel Assistant already managed ADB.
+            // A desired ON an older version journalled while its lease already held ADB.
             val queued = mapOf("network_adb" to "true", "touch_sound" to "false")
-            fun values(managed: Boolean, ownerSwitchWaitMs: Long? = null) = JSONObject(ConfigValueProjection(
+            fun values(managed: Boolean, works: Boolean = true, external: Boolean = false) = JSONObject(ConfigValueProjection(
                 config, { live }, { live }, { queued }, { emptySet() }, { "{}" }, { "{}" }, { null },
-                networkAdbManaged = { managed }, networkAdbOwnerSwitchWaitMs = { ownerSwitchWaitMs },
+                networkAdbManaged = { managed }, networkAdbOwnerSwitchWorks = { works }, networkAdbExternal = { external },
             ).valuesJson(null))
 
-            val managed = values(true)
-            assertTrue(managed.getBoolean("network_adb_managed"))
-            assertFalse(managed.getJSONObject("apply_pending").has("network_adb"))
-            assertEquals("false", managed.getJSONObject("apply_pending").getString("touch_sound"))
+            val keptOff = values(true)
+            assertTrue(keptOff.getBoolean("network_adb_managed"))
+            assertFalse(keptOff.getJSONObject("apply_pending").has("network_adb"))
+            assertEquals("false", keptOff.getJSONObject("apply_pending").getString("touch_sound"))
+            assertEquals("available", keptOff.getString("network_adb_owner_switch"), "one press opens ADB")
+            assertFalse(keptOff.getBoolean("hardened_mode"))
 
-            assertTrue(managed.isNull("network_adb_owner_switch"), "a live session leaves the switch off the table")
-            assertEquals(ManagedNetworkAdb.OWNER_SWITCH_AFTER_MS / 60_000, managed.getLong("network_adb_owner_switch_after_min"))
-            // The page follows a state, not a countdown.
-            assertEquals("waiting", values(true, ownerSwitchWaitMs = 299_000).getString("network_adb_owner_switch"))
-            assertEquals("waiting", values(true, ownerSwitchWaitMs = 1).getString("network_adb_owner_switch"))
-            assertEquals("available", values(true, ownerSwitchWaitMs = 0).getString("network_adb_owner_switch"))
+            assertTrue(values(true, works = false).isNull("network_adb_owner_switch"), "Hardened mode holds it")
 
-            val unmanaged = values(false, ownerSwitchWaitMs = 0)
-            assertFalse(unmanaged.getBoolean("network_adb_managed"))
-            assertTrue(unmanaged.isNull("network_adb_owner_switch"))
-            assertEquals("true", unmanaged.getJSONObject("apply_pending").getString("network_adb"))
+            val firmwareOpen = values(false, external = true)
+            assertFalse(firmwareOpen.getBoolean("network_adb_managed"))
+            assertTrue(firmwareOpen.isNull("network_adb_owner_switch"))
+            assertTrue(firmwareOpen.getBoolean("network_adb_external"))
+            assertEquals("true", firmwareOpen.getJSONObject("apply_pending").getString("network_adb"))
+            assertFalse(values(true, external = true).getBoolean("network_adb_external"), "a held port is not open")
         }
 
     private fun capabilities(fixture: PaneldServerHttpFixture, caps: Capabilities) {

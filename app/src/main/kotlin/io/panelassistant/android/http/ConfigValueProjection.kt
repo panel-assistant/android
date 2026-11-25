@@ -28,10 +28,12 @@ internal class ConfigValueProjection(
     private val proximityJson: () -> String,
     private val powerSafetyJson: () -> String,
     private val haAreaCatalogJson: () -> String?,
-    // Panel Assistant keeps network ADB off on this panel and the app cannot turn it on (AdbController.set).
+    // The owner's Keep ADB off lease holds ADB off on this panel (ManagedNetworkAdb).
     private val networkAdbManaged: () -> Boolean = { io.panelassistant.android.control.ManagedNetworkAdb.managed },
-    // Null while the switch cannot work at all; 0 once the panel has been without its session for long enough.
-    private val networkAdbOwnerSwitchWaitMs: () -> Long? = { io.panelassistant.android.control.ManagedNetworkAdb.ownerSwitchWaitMs() },
+    // The owner's Network ADB switch opens it now; false only while Hardened mode holds it.
+    private val networkAdbOwnerSwitchWorks: () -> Boolean = { io.panelassistant.android.control.ManagedNetworkAdb.ownerSwitchWorks() },
+    // ADB listens although this app keeps nothing open: the firmware or the owner opened it.
+    private val networkAdbExternal: () -> Boolean = { false },
 ) {
     fun liveValues(): Map<String, String> = configLiveValues()
 
@@ -71,10 +73,11 @@ internal class ConfigValueProjection(
         "{\"configured\":${config.haToken.isNotEmpty() || config.haRefreshToken.isNotEmpty()},\"oauth\":${config.haRefreshToken.isNotEmpty()}}"
 
     /** `"apply_pending":{…},"apply_stalled":[…],"network_adb_managed":…`: the live settings saved but not yet
-     *  applied, those stuck, and whether Panel Assistant manages network ADB. While it does, a desired
-     *  network_adb value cannot apply, so the row shows the management instead of a value waiting forever.
-     *  `network_adb_owner_switch` says whether the owner's switch works all the same: `waiting` and then
-     *  `available` once the panel has lost its session, null while a session is up or in Hardened mode. */
+     *  applied, those stuck, and the state of ADB the Network ADB and Keep ADB off rows explain. While the lease
+     *  holds, a desired network_adb value cannot apply, so the row shows why instead of a value waiting forever.
+     *  `network_adb_owner_switch` is `available` while only Keep ADB off holds it (one press opens ADB), null
+     *  otherwise; `network_adb_external` says ADB is open though this app keeps nothing open; `hardened_mode` says
+     *  Hardened mode keeps ADB off. */
     private fun applyStateJson(): String {
         val managed = networkAdbManaged()
         val pending = pendingLiveSettings().let { all -> if (managed) all - "network_adb" else all }
@@ -83,14 +86,9 @@ internal class ConfigValueProjection(
             "\"apply_stalled\":${jarr(stalledApplyKeys(pending.keys, stalledLiveSettings()))}," +
             "\"network_adb_managed\":$managed," +
             // A state, not a countdown: an open page re-renders the row only when it changes.
-            "\"network_adb_owner_switch\":${
-                when (val wait = if (managed) networkAdbOwnerSwitchWaitMs() else null) {
-                    null -> "null"
-                    0L -> "\"available\""
-                    else -> "\"waiting\""
-                }
-            }," +
-            "\"network_adb_owner_switch_after_min\":${io.panelassistant.android.control.ManagedNetworkAdb.OWNER_SWITCH_AFTER_MS / 60_000}"
+            "\"network_adb_owner_switch\":${if (managed && networkAdbOwnerSwitchWorks()) "\"available\"" else "null"}," +
+            "\"network_adb_external\":${!managed && networkAdbExternal()}," +
+            "\"hardened_mode\":${config.hardenedSecurityEnabled}"
     }
 
     /**

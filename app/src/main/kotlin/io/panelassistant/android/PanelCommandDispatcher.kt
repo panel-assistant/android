@@ -12,6 +12,7 @@ import io.panelassistant.android.control.AutoBrightnessController
 import io.panelassistant.android.control.BootChimeController
 import io.panelassistant.android.control.BrightnessController
 import io.panelassistant.android.control.BuiltinDashboard
+import io.panelassistant.android.control.ControlApplyOutcome
 import io.panelassistant.android.control.CpuController
 import io.panelassistant.android.control.DeviceCredentialRebootRefusalException
 import io.panelassistant.android.control.LedCommandPolicy
@@ -19,6 +20,7 @@ import io.panelassistant.android.control.NavbarController
 import io.panelassistant.android.control.NavbarModeApplyOutcome
 import io.panelassistant.android.control.NavbarModeApplyStatus
 import io.panelassistant.android.control.NavigateController
+import io.panelassistant.android.control.openForNetworkAdbOn
 import io.panelassistant.android.control.PowerSafetyMutationPolicy
 import io.panelassistant.android.control.RelayController
 import io.panelassistant.android.control.ScreenController
@@ -182,6 +184,8 @@ internal class PanelCommandDispatcher(
 
     /** The origin of the dispatch running on this thread; its approval key is the approval principal. */
     private val currentOrigin = ThreadLocal<CommandOrigin?>()
+    /** The Keep ADB off epoch when the running native command was admitted. */
+    private val admittedKeepOffEpoch = ThreadLocal<Long?>()
 
     /** Whether [channel] takes commands here, and how they queue: state conflates by channel, actions never. */
     fun kind(channel: String): Kind? = when {
@@ -216,6 +220,7 @@ internal class PanelCommandDispatcher(
             null -> return finish(PanelAssistantCommandResult.Refused(PanelAssistantCommandProcessor.CODE_UNKNOWN_CHANNEL))
             Kind.ACTION, Kind.LATEST -> Unit
         }
+        val keepOffEpoch = Config.adbKeepOffOnEpoch.get()
         val run = {
             val refusal = command.admit()
             if (refusal != null) {
@@ -225,7 +230,12 @@ internal class PanelCommandDispatcher(
             ) {
                 finish(PanelAssistantCommandResult.Failed(PanelAssistantCommandProcessor.CODE_HARDWARE_UNAVAILABLE))
             } else {
-                finish(panelAssistantCommandResult(consume(command.channel, command.value, origin.withRequestId(command.requestId ?: origin.requestId))))
+                admittedKeepOffEpoch.set(keepOffEpoch)
+                try {
+                    finish(panelAssistantCommandResult(consume(command.channel, command.value, origin.withRequestId(command.requestId ?: origin.requestId))))
+                } finally {
+                    admittedKeepOffEpoch.remove()
+                }
             }
         }
         val onSkipped = { execution: CommandQueue.Execution ->
@@ -699,11 +709,72 @@ internal class PanelCommandDispatcher(
 
     // Persistent network adb (switch). Restarts adbd to apply; that only affects adb, not the Panel Assistant session.
     override fun handleNetAdb(on: Boolean) {
+        val live = currentOrigin.get() != null
+        // Any Network ADB request is an owner ADB choice: the one migration never runs after one.
+        Config.adbOwnerChoiceEpoch.incrementAndGet()
         if (on && config.hardenedSecurityEnabled) {
             throw HardenedModeRefusalException("network ADB cannot be enabled while Hardened mode is active")
         }
-        requireControlApplied("network_adb", adb.set(on)) { "network adb transition failed" }
-        core.reconcile("network_adb")
+        // Only a live press ends a lease: Home Assistant's own command here (it carries its origin), the settings
+        // page's ON as the same live command (pressNetworkAdbOn). A replayed, restored or imported
+        // ON reaches this handler with no origin and never asks the helper to reopen ADB; while a lease holds it
+        // stays refused (AdbController.set), so it can never undo a choice the owner made after it. Native
+        // commands are never journalled.
+        // An ON never outranks a Keep ADB off the owner chose after it: an unattended ON (replay, restore,
+        // import) waits while Keep ADB off is on, published lease or not (a replay at startup runs before any
+        // session), and a live ON loses to a Keep ADB off stored after the ON was admitted.
+        val admitted = admittedKeepOffEpoch.get()
+        fun keepOffOutranks() = on && config.adbKeepOff &&
+            (!live || admitted == null || admitted != Config.adbKeepOffOnEpoch.get())
+        // The effect runs in the owner's turn on the lease's queue, on state read from the helper just before it:
+        // never while a helper request it would race is in flight. An ON that cannot have its turn is refused unrun;
+        // an OFF is answered and runs straight after the request.
+        val ran = io.panelassistant.android.control.ManagedNetworkAdb.turn(refuseIfLate = on, waiting = !on) {
+            if (keepOffOutranks()) {
+                requireControlApplied("network_adb", ControlApplyOutcome.FAILED) { "Keep ADB off outranks this Network ADB ON" }
+            }
+            if (on && live && !openForNetworkAdbOn(config)) {
+                requireControlApplied("network_adb", ControlApplyOutcome.FAILED) { "network adb lease release failed" }
+            }
+            requireControlApplied("network_adb", adb.set(on)) { "network adb transition failed" }
+            // An ON that took effect retires a Keep ADB off still queued from before it, as Keep ADB off retires a
+            // queued ON: a replay of the older choice must never undo this one.
+            if (on) onExternalSettingApplied("adb_keep_off")
+            core.reconcile("network_adb")
+            true
+        }
+        if (!ran) requireControlApplied("network_adb", ControlApplyOutcome.FAILED) { "Network ADB is busy; press it again" }
+    }
+
+    // Keep ADB off, the owner's opt-in. The generic live-setting path has already stored the value, and the
+    // stored value decides. This handler never asks the helper to reopen ADB: it is also reached by journal
+    // replay, restore and import, and a give-back run there could undo a choice the owner made since. The
+    // settings page gives the lease back at its door (liveOwnerDoor) before an OFF gets here.
+    // ON: retires a queued Network ADB ON, arms the lease now, and ends a Network ADB intent this app kept (only
+    // the saved intent while the lease holds; without a session to arm it the controller closes ADB, best effort).
+    // OFF that turned Keep ADB off off and reaches here with the lease still holding (no door gave it back): the
+    // setting goes back on, as the panel still is; never a failure, which would be journalled and replayed. An OFF
+    // that changed nothing (a restore or import carrying the value the panel has) leaves it off, whatever lease
+    // holds: a lease Keep ADB off did not choose is not the owner's choice.
+    override fun handleAdbKeepOff(on: Boolean, previousValue: String?) {
+        Config.adbOwnerChoiceEpoch.incrementAndGet()
+        val managed = io.panelassistant.android.control.ManagedNetworkAdb
+        // This handler never opens ADB (an OFF only puts Keep ADB off back on while the lease still holds), so
+        // while the helper answers an earlier request it is answered at once and runs straight after it.
+        managed.turn(refuseIfLate = false, waiting = Unit) {
+            if (config.adbKeepOff) {
+                onExternalSettingApplied("network_adb")
+                managed.owner?.reconcile()
+                // ADB this app keeps open: the owner's Network ADB intent, or a port its helper reopened. An armed
+                // lease has already closed it; without one the controller closes it.
+                if (config.networkAdbEnabled || config.adbOpenedByHelper) {
+                    if (managed.managed) config.setNetworkAdbEnabled(false) else runCatching { adb.set(false) }
+                }
+            } else if (previousValue == "true" && managed.managed && !config.hardenedSecurityEnabled) {
+                config.setAdbKeepOff(true)
+            }
+            core.reconcile("network_adb")
+        }
     }
 
     /** A sensitive command's one-shot panel approval binds to the approval key of the origin that sent it;
@@ -1032,6 +1103,7 @@ internal enum class LiveSettingEffectOwner(val settingKey: String) {
     TOUCH_SOUND("touch_sound"),
     VOICE("voice_enabled"),
     NETWORK_ADB("network_adb"),
+    ADB_KEEP_OFF("adb_keep_off"),
     ZIGBEE("zigbee_router"),
     AUTO_BRIGHTNESS_MINIMUM("auto_brightness_minimum_percent"),
     AUTO_BRIGHTNESS_MAXIMUM("auto_brightness_maximum_percent"),
@@ -1126,6 +1198,7 @@ internal interface LiveSettingHandlers {
     fun handleTouchSound(on: Boolean)
     fun handleVoiceEnabled(on: Boolean)
     fun handleNetAdb(on: Boolean)
+    fun handleAdbKeepOff(on: Boolean, previousValue: String? = null)
     fun handleZigbee(on: Boolean)
     fun handleAutoBrightnessMaximum(percent: Int)
     fun handleAutoBrightnessMinimum(percent: Int)
@@ -1197,6 +1270,7 @@ internal fun dispatchLiveSetting(
         LiveSettingEffectOwner.TOUCH_SOUND -> handlers.handleTouchSound(on())
         LiveSettingEffectOwner.VOICE -> handlers.handleVoiceEnabled(on())
         LiveSettingEffectOwner.NETWORK_ADB -> handlers.handleNetAdb(on())
+        LiveSettingEffectOwner.ADB_KEEP_OFF -> handlers.handleAdbKeepOff(on(), previousValue)
         LiveSettingEffectOwner.ZIGBEE -> handlers.handleZigbee(on())
         LiveSettingEffectOwner.AUTO_BRIGHTNESS_MINIMUM -> handlers.handleAutoBrightnessMinimum(integer())
         LiveSettingEffectOwner.AUTO_BRIGHTNESS_MAXIMUM -> handlers.handleAutoBrightnessMaximum(integer())

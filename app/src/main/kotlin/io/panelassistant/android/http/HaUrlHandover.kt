@@ -75,6 +75,10 @@ object HaUrlHandover {
     const val CONNECT_TIMEOUT_MS: Int = 4_000
     const val READ_TIMEOUT_MS: Int = 4_000
 
+    /** Whole-probe deadline: one connect plus one read gap. The per-read timeout alone lets a server that
+     *  trickles a byte at a time hold the probe, and with it the handover, for as long as it likes. */
+    const val PROBE_DEADLINE_MS: Long = (CONNECT_TIMEOUT_MS + READ_TIMEOUT_MS).toLong()
+
     /**
      * The exact URL to probe for a handed-over origin, or null when it is not a usable origin.
      *

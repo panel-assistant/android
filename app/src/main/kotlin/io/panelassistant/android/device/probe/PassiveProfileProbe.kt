@@ -24,6 +24,7 @@ data class PassiveProbeSnapshot(
     val densityDpi: Int,
     val sensors: Set<PassiveSensor>,
     val ledJniReadable: Boolean,
+    val ws2812PwmReadable: Boolean,
     val sysfsRgbReadable: Boolean,
     val cpuGovernors: List<String>,
 )
@@ -52,6 +53,7 @@ object PassiveProfileReportFactory {
                 add(observed(sensor.schemaPath, (sensor in snapshot.sensors).toString(), "Android SensorManager"))
             }
             add(observed("evidence.led.dev_ledjni_readable", snapshot.ledJniReadable.toString(), "app-UID path check"))
+            add(observed("evidence.led.dev_ws2812_pwm_readable", snapshot.ws2812PwmReadable.toString(), "app-UID path check"))
             add(observed("evidence.led.sysfs_rgb_readable", snapshot.sysfsRgbReadable.toString(), "app-UID path check"))
             add(observed("evidence.cpu.available_governors", snapshot.cpuGovernors.joinToString(","), "app-UID sysfs read"))
         }
@@ -96,7 +98,7 @@ class AndroidPassiveProfileProbe(private val context: Context) {
         val rgbNodes = listOf("red", "green", "blue").map { File("/sys/class/leds/$it") }
         return PassiveProbeSnapshot(
             generatedAtEpochMs = nowEpochMs,
-            facts = DeviceFacts(Build.MODEL.orEmpty(), Build.DEVICE.orEmpty(), SystemProps.get("ro.product.version")),
+            facts = DeviceFacts(Build.MODEL.orEmpty(), Build.DEVICE.orEmpty(), SystemProps.get("ro.product.version"), Build.DISPLAY.orEmpty()),
             androidSdk = Build.VERSION.SDK_INT,
             abis = Build.SUPPORTED_ABIS.orEmpty().map(::clean).filter(String::isNotBlank).take(MAX_ABIS),
             board = clean(Build.BOARD.orEmpty()),
@@ -106,6 +108,7 @@ class AndroidPassiveProfileProbe(private val context: Context) {
             densityDpi = metrics.densityDpi.coerceAtLeast(0),
             sensors = sensors,
             ledJniReadable = File("/dev/ledjni").canRead(),
+            ws2812PwmReadable = File("/dev/ws2812_pwm").canRead(),
             sysfsRgbReadable = rgbNodes.all(File::canRead),
             cpuGovernors = governors,
         )

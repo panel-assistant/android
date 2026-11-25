@@ -1,5 +1,8 @@
 package io.panelassistant.android.assist
 
+import io.panelassistant.android.assist.wakeword.LoadedWakeWordModel
+import io.panelassistant.android.assist.wakeword.MicroWakeWordModelConfig
+import io.panelassistant.android.assist.wakeword.WakeWordScorer
 import io.panelassistant.android.audio.FakeMicrophoneSource
 import io.panelassistant.android.audio.MicPurpose
 import io.panelassistant.android.audio.MicrophoneCheck
@@ -149,12 +152,13 @@ class VoiceAssistantCoordinatorTest {
         from: () -> MicrophoneSource = { sourceRequests += 1; source },
         levelLeaseMs: Long = VoiceAssistantCoordinator.DEFAULT_LEVEL_LEASE_MS,
         wakeTestMs: Long = VoiceAssistantCoordinator.DEFAULT_WAKE_TEST_MS,
+        wakeEngineFactory: WakeWordEngineFactory = engineFactory,
     ) = VoiceAssistantCoordinator(
         scope = on,
         settings = { settings },
         microphone = { presence },
         source = from,
-        engineFactory = engineFactory,
+        engineFactory = wakeEngineFactory,
         runnerFactory = runner,
         playback = playback,
         foregroundMicrophone = { active -> foregroundCalls += active; foregroundAccepts },
@@ -584,6 +588,64 @@ class VoiceAssistantCoordinatorTest {
         awaitState(VoiceState.IDLE)
         assertFalse(mic.leases[0].paused)
         assertTrue(mic.leases[1].closed)
+    }
+
+    @Test
+    fun `the same phrase starts another turn as soon as a long reply ends`() {
+        val model = MicroWakeWordModelConfig(
+            id = "okay_nabu",
+            wakeWord = "Okay Nabu",
+            author = "test",
+            website = null,
+            modelFile = "okay_nabu.tflite",
+            trainedLanguages = listOf("en"),
+            version = 2,
+            probabilityCutoff = 0.75f,
+            featureStepSizeMs = 10,
+            slidingWindowSize = 2,
+            tensorArenaSize = 0,
+        )
+        val phrase = ShortArray(MicrophoneSource.SAMPLES_PER_FRAME) { 1000 }
+        val scorer = object : WakeWordScorer {
+            override fun score(samples: ShortArray, count: Int): Int =
+                if (samples.contentEquals(phrase)) WakeWordScorer.MAX_PROBABILITY else 0
+            override fun reset() = Unit
+            override fun close() = Unit
+        }
+        val c = coordinator(wakeEngineFactory = MicroWakeWordEngineFactory(load = { id ->
+            if (id == model.id) LoadedWakeWordModel(model, scorer) else null
+        }))
+        val frameNs = 10_000_000L
+        fun sayPhrase(atNs: Long) {
+            mic.pushFrame(phrase, timestampNs = atNs)
+            mic.pushFrame(phrase, timestampNs = atNs + frameNs)
+        }
+
+        c.start()
+        repeat(150) { mic.pushFrame(timestampNs = it * frameNs) }
+        val firstPhraseNs = 150 * frameNs
+        sayPhrase(firstPhraseNs)
+        val first = awaitRunner(0)
+        assertEquals(VoiceTurnRequest(model.id, heardAtNs = firstPhraseNs + frameNs), first.requests.single())
+        assertEquals(listOf(MicPurpose.ASSIST), mic.activeLeases.map { it.purpose })
+        first.finishCapture()
+        first.speak()
+        assertEquals(listOf(true), pausedWhilePlaying)
+        assertEquals(VoiceState.RESPONDING, state.current())
+
+        // Five seconds pass while the wake lease is paused. The scorer receives no frames.
+        val secondPhraseNs = firstPhraseNs + 5_000_000_000L
+        assertTrue(mic.activeLeases.isEmpty())
+        first.release.complete(AssistOutcome())
+        awaitRunFinished(c)
+        assertEquals(listOf(MicPurpose.WAKE_WORD), mic.activeLeases.map { it.purpose })
+
+        sayPhrase(secondPhraseNs)
+        assertTrue("the first phrase after the reply starts a turn immediately", c.running)
+        val second = awaitRunner(1)
+        assertEquals(VoiceTurnRequest(model.id, heardAtNs = secondPhraseNs + frameNs), second.requests.single())
+        second.release.complete(AssistOutcome())
+        awaitRunFinished(c)
     }
 
     /**

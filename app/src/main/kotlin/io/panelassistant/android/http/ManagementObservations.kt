@@ -104,6 +104,7 @@ internal class ManagementObservations(
             fontScale = d.fontScale,
             wifiChronic = management.wifiChronic,
             confirmedSelfUpdate = ConfirmedSelfInstaller.available(appContext),
+            networkAdbExternal = management.networkAdbExternal,
         )
     }
     val diagCache = Cached(DIAG_TTL_MS) {

@@ -1,8 +1,13 @@
 package io.panelassistant.android.state
 
 import io.panelassistant.android.hardware.LedController
+import io.panelassistant.android.hardware.LedBackend
+import io.panelassistant.android.hardware.SocketLedController
+import io.panelassistant.android.control.FakeDaemon
 import io.panelassistant.android.panelassistant.PanelAssistantCommandResult
 import io.panelassistant.android.panelassistant.CommandValue
+import io.panelassistant.android.panelassistant.PanelAssistantStateReporter
+import io.panelassistant.android.platform.Daemon
 import io.panelassistant.android.testsupport.PanelRuntimeRig
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
@@ -14,9 +19,46 @@ internal class NativeLedActuationTest : PanelRuntimeRig() {
     private class Led : LedController {
         var accepted = true
         override fun available() = true
+        override fun backend() = LedBackend.LEDJNI
         override fun colorCapable() = true
         override fun setRgb(r: Int, g: Int, b: Int) = accepted
         override fun off() = accepted
+    }
+
+    @Test fun onlyConfirmedAbsenceMarksTheLedUnsupported() {
+        for (reply in listOf("none", null, "ERR", "sysfs")) {
+            val replies = reply?.let { mapOf("LEDPROBE" to it) }.orEmpty()
+            val rig = rig(led = SocketLedController(FakeDaemon(replies, available = reply != null)))
+            try {
+                rig.start()
+                val native = PanelAssistantStateReporter(log = {})
+                rig.core.addStateSink(native.bindShape(rig.core::nativeChannelShape))
+                val hello = native.offer()
+                assertEquals("served, reply=$reply", reply != "none", hello.descriptors.any { it.channel == "led" })
+                assertEquals("unsupported, reply=$reply", reply == "none", "led" in hello.unsupported)
+            } finally { rig.close() }
+        }
+    }
+
+    @Test fun losingTheHelperDoesNotAdvertiseAnAbsentLedAgain() {
+        var reply: String? = "none"
+        val daemon = object : Daemon by FakeDaemon() {
+            override fun send(cmd: String): String? = if (cmd == "LEDPROBE") reply else null
+        }
+        val led = SocketLedController(daemon)
+        val rig = rig(led = led)
+        try {
+            rig.start()
+            val native = PanelAssistantStateReporter(log = {})
+            rig.core.addStateSink(native.bindShape(rig.core::nativeChannelShape))
+            assertTrue("led" in native.offer().unsupported)
+            reply = null
+            assertEquals(LedBackend.ABSENT, led.backend())
+            assertTrue("led" in native.offer().unsupported)
+            reply = "sysfs"
+            assertEquals(LedBackend.HELPER_SYSFS, led.backend())
+            assertTrue(native.offer().descriptors.any { it.channel == "led" })
+        } finally { rig.close() }
     }
 
     @Test fun refusedOutputWithdrawsKnownStateAndSuccessfulRetryRestoresIt() {
@@ -44,6 +86,7 @@ internal class NativeLedActuationTest : PanelRuntimeRig() {
         var armed = false
         val led = object : LedController {
             override fun available() = true
+            override fun backend() = LedBackend.LEDJNI
             override fun colorCapable() = true
             fun write(): Boolean {
                 if (!armed || writes.incrementAndGet() == 1) return true

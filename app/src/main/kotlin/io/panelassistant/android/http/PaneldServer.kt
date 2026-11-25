@@ -99,6 +99,10 @@ class PaneldServer internal constructor(
     // Applies a single behaviour setting through the command dispatcher (persist → drive hardware →
     // report HA state). Lets the config API set those keys identically to an HA command while preserving whether durable desired state is still waiting for actuation.
     private val applySetting: (String, String) -> LiveSettingRequestOutcome,
+    // The settings page's Network ADB ON, made as Home Assistant's switch makes it (pressNetworkAdbOn). Required,
+    // so the service cannot lose it; only a test fixture that builds the server without its constructor has none,
+    // and its ON is then the generic live-setting request.
+    private val pressNetworkAdbOn: ((io.panelassistant.android.CommandOrigin) -> LiveSettingRequestOutcome)?,
     private val onProximityCalibration: (String, String) -> Boolean = { _, _ -> false },
     private val pendingLiveSettings: () -> Map<String, String> = { emptyMap() },
     // The subset of the above whose apply path independent boots have found absent. Still durable, still
@@ -297,21 +301,10 @@ class PaneldServer internal constructor(
         return true
     }
 
-    /**
-     * A direct ON while Panel Assistant manages network ADB is refused rather than journalled: the app cannot
-     * apply it (AdbController.set), so a queued ON would read as pending for good and could open port 5555
-     * later without a new action from the owner. Restores and imports keep the hardened check only.
-     * Once the panel has been without its session for long enough the ON is let through here, and the
-     * direct config POST gives the lease back as its last step before applying it (DirectConfigPost).
-     */
-    private suspend fun rejectDirectNetworkAdb(call: OpCall, requested: String?): Boolean {
-        if (rejectHardenedNetworkAdb(call, requested)) return true
-        val refusal = io.panelassistant.android.control.directNetworkAdbOnRefusalJson(
-            SettingValue.parseBool(requested.orEmpty()) == true,
-        ) ?: return false
-        call.respondText(refusal, ContentType.Application.Json, HttpStatusCode.Conflict)
-        return true
-    }
+    /** A direct Network ADB ON is refused only in Hardened mode. The owner's switch otherwise always works: the
+     *  ON switches Keep ADB off off and the lease gives ADB back before it is applied (openForNetworkAdbOn). */
+    private suspend fun rejectDirectNetworkAdb(call: OpCall, requested: String?): Boolean =
+        rejectHardenedNetworkAdb(call, requested)
 
 
 
@@ -977,6 +970,7 @@ class PaneldServer internal constructor(
         authorizeSensitive = ::authorizeSensitive,
         rejectHardenedNetworkAdb = ::rejectDirectNetworkAdb,
         onHaAreaCommitted = { haArea.onHaAreaCommitted() },
+        pressNetworkAdbOn = pressNetworkAdbOn ?: { applySetting("network_adb", "true") },
     )
 
 
@@ -996,6 +990,7 @@ class PaneldServer internal constructor(
         proximityJson = { sensors.proximityJson() },
         powerSafetyJson = { PowerSafetyPresentation.json(pageHealth.powerSafetyAdvisory(managementObservations.snapStaleOk().privilege, { profile.appCanSu }, powerSafety)) },
         haAreaCatalogJson = { haArea.haAreaCatalogJson() },
+        networkAdbExternal = { managementObservations.snapStaleOk().networkAdbExternal },
     )
 
 

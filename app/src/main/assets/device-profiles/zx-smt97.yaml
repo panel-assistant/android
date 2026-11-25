@@ -1,0 +1,93 @@
+schema: 2
+id: zx-smt97
+version: 1.0.0
+display_name: Electron SMT97T
+soc_class: Rockchip rk3566
+soc:
+  model: Rockchip RK3566
+  introduced_year: 2020
+  cpu_cores:
+    - architecture: Arm Cortex-A55
+      count: 4
+metadata:
+  author: ha-paneld maintainers
+  source: https://github.com/panel-assistant/ha-integration/issues/37
+  links:
+    - label: SoC details
+      url: https://www.rock-chips.com/a/en/products/RK35_Series/2021/0113/1274.html
+    - label: SoC announcement
+      url: https://www.rock-chips.com/a/cn/news/rockchip/2020/1130/1368.html
+  license: Apache-2.0
+  maturity: experimental
+  tested_firmware:
+    - ZX-SMT97-R128V1.2A-GG-9.7-J4.62-20250106
+  limitations:
+    - >-
+      Written from an owner's report and the owner's reading of the vendor relay app. The two relays (GPIO 4 and 5
+      on /dev/gpio_control) have not yet been switched by this profile on a unit.
+    - The hardware power button and proximity wake are not available yet.
+    - The LED uses a conservative transfer until its response is measured.
+    - >-
+      Room climate is an optional enhanced capability; its scaling is evidence-backed but still awaits
+      reporter comparison with the vendor UI.
+    - Without the root helper, the optional room-climate reader needs locally approved enhanced access.
+    - >-
+      The reported installation had no app-accessible su; USB adb-root, vendor engineering, and persistent
+      unlock routes remain uncharacterised, while runtime route probes remain decisive.
+requires:
+  # build_display matching and hardware.relay_gpio_control arrive in 1.0.5; an older core refuses the profile as unknown fields. (Debug builds report 1.0.0.)
+  min_core_version: 1.0.0
+  drivers:
+    - led.rk3576-ioctl
+    - relay.gpio-control
+    - screen.brightness-zero
+    - sensor.android
+    - sensor.cht8305-daemon
+match:
+  # Same rk3566_t build properties as the ZX-SMT156; only the build string names the SMT97.
+  priority: 500
+  fallback: false
+  any:
+    - priority: 990
+      all:
+        - field: device
+          op: equals
+          values:
+            - rk3566_t
+        - field: build_display
+          op: starts_with
+          values:
+            - zx-smt97-
+platform:
+  # These are reported app-install hints, not a claim that USB or vendor root/unlock routes are absent.
+  # Runtime authority probes remain decisive; optional enhanced routes use the helper.
+  su_form: none
+  app_can_su: false
+  has_recents: true
+hardware:
+  led:
+    mechanism: rk3576-ioctl
+    transfer: rk3576-four-bit
+  screen_off: brightness-zero
+  has_button_backlight: false
+  relay_count: 2
+  relay_gpio_control:
+    - 4
+    - 5
+sensors:
+  light_technology: Ambient light
+  # The GXHT30 vendor driver uses the helper's exact CHT8305-compatible centi-unit input route.
+  cht8305: true
+  room_temp_offset_c: 0.0
+identity:
+  model: ZX-SMT97T
+  model_label_strategy: display-name
+input:
+  evdev_buttons: []
+cpu: {}
+display: {}
+provisioning:
+  software: {}
+  display: {}
+  packages: []
+  recipes: []

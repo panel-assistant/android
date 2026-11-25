@@ -34,7 +34,7 @@
     <string name="unable_verify_remote_adb">Unable to verify remote ADB</string>
     <string name="unable_verify_remote_adb_detail">Hardened mode was not enabled because the panel could not verify that classic network ADB and Android Wireless debugging are off. Turn off both remote-control paths in Android’s developer settings, then try again.</string>
     <string name="turn_off_remote_adb_first">Turn off remote ADB first</string>
-    <string name="turn_off_remote_adb_first_detail">Hardened mode cannot protect physical approvals while classic network ADB or Android Wireless debugging is active. Turn off both in Android’s developer settings, then enable Hardened mode again.</string>
+    <string name="turn_off_remote_adb_first_detail">Hardened mode cannot protect physical approvals while classic network ADB or Android Wireless debugging is active. Turn on Keep ADB off in the panel’s settings, or turn off both in Android’s developer settings, then enable Hardened mode again.</string>
     <string name="unable_enable_hardened_mode">Unable to enable Hardened mode</string>
     <string name="unable_enable_hardened_mode_detail">The security-mode change could not be saved. Relaxed mode remains active.</string>
     <string name="pending_approvals">Pending approvals</string>

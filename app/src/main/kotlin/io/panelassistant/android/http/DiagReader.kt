@@ -15,7 +15,7 @@ import io.panelassistant.android.i18n.Strings as AppStrings
 import io.panelassistant.android.device.LedMechanism
 import io.panelassistant.android.device.LocalWake
 import io.panelassistant.android.device.ScreenOff
-import io.panelassistant.android.hardware.NativeLed
+import io.panelassistant.android.hardware.LedBackend
 import io.panelassistant.android.input.ButtonCaptureHealth
 import io.panelassistant.android.input.EvdevButtonClient
 import io.panelassistant.android.metrics.PanelMetrics
@@ -62,12 +62,6 @@ object DiagReader {
 
     private fun note(id: String, vararg values: Pair<String, Any>) = CatalogueText("dashboard.capability.note.$id", *values)
 
-    /** Typed probe result shared by service facts and diagnostic presentation. */
-    internal data class CapabilityObservation(
-        val rows: List<Cap>,
-        val rgbLedReady: Boolean,
-    )
-
     /** Cached display facts supplied by the management projection; diagnostics never re-probe them. */
     data class DisplaySizingEvidence(
         val androidBaseLogicalDpi: Int?,
@@ -79,21 +73,11 @@ object DiagReader {
         ctx: Context,
         profile: DeviceProfile,
         privilege: PrivilegedRouteObservation,
-    ): CapabilityObservation {
+        ledBackend: LedBackend,
+    ): List<Cap> {
         val su = privilege.directSuReady
         val daemon = privilege.helperRootReady
         val pkg = ctx.packageName
-        val showLed = showRgbLedCapability(profile)
-        val rkLed = showLed && NativeLed.available()
-        // Which LED node the daemon can actually reach — so "RGB LED" reflects a reachable node, not
-        // just "a daemon is running". An old daemon predates LEDPROBE and replies "ERR" → fall back to
-        // the daemon-up signal (prior behaviour); "none" = daemon present but no LED node.
-        val ledProbe = if (showLed && daemon) HelperClient.send("LEDPROBE") else null
-        val daemonLed = when (ledProbe) {
-            "ledjni", "sysfs" -> true
-            "none" -> false
-            else -> showLed && daemon
-        }
         val canWrite = Settings.System.canWrite(ctx)
         val a11y = a11yEnabled(ctx)
         val showButtons = showHardwareButtonsCapability(profile)
@@ -106,7 +90,7 @@ object DiagReader {
         // Surface the helper whenever this profile needs it for privileged control or profile-specific
         // hardware such as daemon-only LEDs and evdev buttons, even if the app can also execute su.
         val usesDaemon = profile.usesDaemon
-        val rows = listOfNotNull(
+        return listOfNotNull(
             rootSuCapability(su, daemon),
             if (usesDaemon) helperDaemonCapability(profile, daemon) else null,
             verifiedOperationsCapability(rootish),
@@ -125,11 +109,10 @@ object DiagReader {
                     localWake = profile.localWake,
                 )
             },
-            if (showLed) rgbLedCapability(rkLed, ledProbe, daemonLed) else null,
+            if (showRgbLedCapability(profile)) rgbLedCapability(ledBackend) else null,
             buttonHealth?.let(::hardwareButtonsCapability),
             systemActionsCapability(rootish),
         )
-        return CapabilityObservation(rows = rows, rgbLedReady = rkLed || daemonLed)
     }
 
     internal fun helperDaemonCapability(profile: DeviceProfile, daemon: Boolean): Cap =
@@ -139,13 +122,14 @@ object DiagReader {
         Cap("verified_operations", if (rootish) "ok" else "none",
             note(if (rootish) "root_or_helper" else "needs_privileged_access"))
 
-    internal fun rgbLedCapability(rkLed: Boolean, ledProbe: String?, daemonLed: Boolean): Cap =
-        Cap("rgb_led", if (rkLed || daemonLed) "ok" else "none",
-            when {
-                rkLed -> note("rockchip_led_direct")
-                ledProbe == "ledjni" -> note("rockchip_led_helper")
-                ledProbe == "sysfs" || daemonLed -> note("sysfs_led_helper")
-                else -> note("led_unreachable")
+    internal fun rgbLedCapability(backend: LedBackend): Cap =
+        Cap("rgb_led", if (backend.ready) "ok" else "none",
+            when (backend) {
+                LedBackend.LEDJNI -> note("rockchip_led_direct")
+                LedBackend.WS2812, LedBackend.HELPER_LEGACY -> note("available")
+                LedBackend.HELPER_LEDJNI -> note("rockchip_led_helper")
+                LedBackend.HELPER_SYSFS -> note("sysfs_led_helper")
+                LedBackend.ABSENT, LedBackend.UNAVAILABLE -> note("led_unreachable")
             })
 
     internal fun hardwareButtonsCapability(health: ButtonCaptureHealth.Result): Cap =
@@ -332,7 +316,7 @@ object DiagReader {
         appendLine("[adb lease] ${io.panelassistant.android.panelassistant.LocalAdbLeaseDiagnosticHolder.summary()}")
         appendLine("[helper install] ${io.panelassistant.android.util.BundledHelperInstaller.diagnostics.summary()}")
         io.panelassistant.android.util.BundledHelperInstaller.diagnostics.detailLines().forEach(::appendLine)
-        appendLine("[env] selinux=${PanelMetrics.shared.selinuxEnforce() ?: "?"} su=$su write_settings=${Settings.System.canWrite(ctx)} ${io.panelassistant.android.platform.AndroidDeviceName.of(ctx).diagnostic()} a11y=${a11yEnabled(ctx)} daemon=$daemon evdev=${evdev.state.name.lowercase()}/${evdev.mode?.name?.lowercase() ?: "none"} ledjni=${NativeLed.available()}")
+        appendLine("[env] selinux=${PanelMetrics.shared.selinuxEnforce() ?: "?"} su=$su write_settings=${Settings.System.canWrite(ctx)} ${io.panelassistant.android.platform.AndroidDeviceName.of(ctx).diagnostic()} a11y=${a11yEnabled(ctx)} daemon=$daemon evdev=${evdev.state.name.lowercase()}/${evdev.mode?.name?.lowercase() ?: "none"}")
         displaySizing?.let { appendLine(displaySizingLine(it, profile)) }
         // The renderer/Home Assistant line leads the health block deliberately: a pasted report whose
         // dashboard is down should answer that question before it answers anything about storage or
@@ -364,7 +348,7 @@ object DiagReader {
             appendLine("[evdev] requested=$requested state=${evdev.state.name.lowercase()} mode=${evdev.mode?.name?.lowercase() ?: "none"} error=${evdev.lastError ?: "-"}")
         }
         appendLine("[sysfs] leds=${listDir("/sys/class/leds")} backlight=${listDir("/sys/class/backlight")} devfreq=${listDir("/sys/class/devfreq")}")
-        appendLine(labelsLine(exec("ls -Zd /sys/class/leds/*/ /sys/class/backlight/*/ /dev/ledjni 2>&1", deadline)))
+        appendLine(labelsLine(exec("ls -Zd /sys/class/leds/*/ /sys/class/backlight/*/ /dev/ledjni /dev/ws2812_pwm 2>&1", deadline)))
         // Bounded, read-only characterization for an unknown/new panel. These are the high-signal
         // names needed to locate vendor climate sensors, relay controllers and input devices without
         // asking a non-developer reporter to run a long sequence of adb commands. Avoid raw uevent,

@@ -32,7 +32,8 @@ class LoadedWakeWordModel(val config: MicroWakeWordModelConfig, val scorer: Wake
  *   the model fires when the ring mean is at or above [MicroWakeWordModelConfig.probabilityCutoff]
  * - the first [warmupInferences] inferences after load or reset never fire, because the frontend's
  *   noise and gain estimates are still settling
- * - after a hit the ring is cleared and the model stays silent for [cooldownChunks] delivered frames
+ * - after a hit the ring is cleared and the model stays silent for [cooldownChunks] frames of capture
+ *   time, so a lease paused for a turn comes back with the cooldown already spent
  *
  * Frames are scored on the delivering thread; [onFrame] does the inference inline and returns.
  * Nothing here touches the main looper.
@@ -59,7 +60,8 @@ class WakeWordDetector(
         val window = IntArray(model.config.slidingWindowSize)
         var next = 0
         var inferences = 0L
-        var cooldownRemaining = 0
+        // Capture time up to which firing stays suppressed after a hit; MIN_VALUE when no cooldown runs.
+        var cooldownUntilNs = Long.MIN_VALUE
         var approachPeak = 0f
 
         fun clearWindow() {
@@ -94,10 +96,11 @@ class WakeWordDetector(
 
     override fun onFrame(frame: PcmFrame) {
         for (slot in slots) {
-            // Scoring continues through the cooldown so the window is live again when it ends;
-            // only firing is suppressed, for exactly cooldownChunks frames after a hit.
-            val coolingDown = slot.cooldownRemaining > 0
-            if (coolingDown) slot.cooldownRemaining--
+            // Scoring continues through the cooldown so the window is live again when it ends; only firing
+            // is suppressed, for cooldownChunks frames of capture time measured from the hit. Capture time,
+            // not delivered frames: a lease paused for a turn comes back with the cooldown spent, and an
+            // irregular frame cadence can neither shorten nor stretch it.
+            val coolingDown = slot.cooldownUntilNs != Long.MIN_VALUE && frame.timestampNs <= slot.cooldownUntilNs
             val probability = slot.model.scorer.score(frame.samples, frame.samples.size)
             if (probability < 0) continue
             slot.inferences++
@@ -117,7 +120,7 @@ class WakeWordDetector(
             if (mean >= cutoff) {
                 slot.approachPeak = 0f
                 slot.clearWindow()
-                slot.cooldownRemaining = cooldownChunks
+                slot.cooldownUntilNs = if (cooldownChunks == 0) Long.MIN_VALUE else frame.timestampNs + cooldownChunks * FRAME_NS
                 listener(WakeWordHit(slot.model.config.id, slot.model.config.wakeWord, mean, frame.timestampNs, cutoff))
             }
         }
@@ -140,6 +143,9 @@ class WakeWordDetector(
 
         /** 2 s of 10 ms frames. */
         const val DEFAULT_COOLDOWN_CHUNKS = 200
+
+        /** One delivered frame's span of capture time. */
+        private const val FRAME_NS = 10_000_000L
 
         /** Matches ESPHome's MIN_SLICES_BEFORE_DETECTION. */
         const val DEFAULT_WARMUP_INFERENCES = 100

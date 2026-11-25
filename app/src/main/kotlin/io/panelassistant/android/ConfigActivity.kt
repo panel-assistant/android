@@ -240,6 +240,8 @@ class ConfigActivity : AppCompatActivity() {
                             // Keep the durable mode change and revocation together even if this
                             // Activity is destroyed before its coroutine returns to main.
                             LocalApprovalBroker.instance.clear()
+                            // The owner's own press: a lease only Hardened mode wanted ends with it.
+                            io.panelassistant.android.control.endLeaseOnRelaxed(config)
                         }
                     }
                 } else {

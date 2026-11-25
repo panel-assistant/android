@@ -155,10 +155,13 @@ interface DeviceProfile {
     val touchClickGain: Float get() = 0.2f
 
     /** Per-channel LED transfer function (requested 0..255 → hardware value), correcting the panel's
-     *  non-linear LED response. Only consumed on the rk3576 ioctl path. Default = passthrough; rk3576
-     *  profiles override with a curve for their LED. See [io.panelassistant.android.hardware.LedTransfer]. */
+     *  non-linear LED response. Defaults to passthrough. The rk3576 four-bit transfer is specific to
+     *  the ledjni route. See [io.panelassistant.android.hardware.LedTransfer]. */
     val ledTransfer: io.panelassistant.android.hardware.LedTransfer
         get() = io.panelassistant.android.hardware.LedTransfer.Identity
+
+    /** Frame length to send when the selected backend is a WS2812 strip. Null uses the backend default. */
+    val ledCount: Int? get() = null
 
     /** Transfer curve from Home Assistant's 0..255 brightness to the backlight, with its inverse for the
      *  effective read-back; [backlightRoute] says where it is applied. Default = the historic linear scaling. */
@@ -189,6 +192,14 @@ interface DeviceProfile {
      *  `/sys/class/st_relay` → `/sys/class/strelay` between firmware 1.0.2 and 1.1.0, so both must be
      *  tried — the controller uses the first whose dir actually holds `relayN` nodes. Default empty. */
     val relayBaseFallbacks: List<String> get() = emptyList()
+
+    /** Relays the board physically carries, or null to take the count from discovery. The controller
+     *  never offers a `relayN` node above it, because a relay class can hold nodes with no relay behind
+     *  them (the NSPanel Pro 120P shows four). */
+    val relayCount: Int? get() = null
+
+    /** GPIOs of relays switched through `/dev/gpio_control`, relay 1 first; empty when none. */
+    val relayGpioControl: List<Int> get() = emptyList()
 
     /** First GPIO number of the button-LED block (e.g. 147 on the S9E), or null if none. */
     val buttonLedGpioBase: Int?
@@ -333,11 +344,11 @@ data class WebViewSpec(
     val major: Int get() = version.substringBefore('.').toIntOrNull() ?: 0
 }
 
-/** RGB-LED control mechanism. RK3576_IOCTL = app-direct ioctl on `/dev/ledjni` (e.g. WF1589T);
+/** RGB-LED control mechanism. RK3576_IOCTL and AUTODETECT try app-direct `/dev/ledjni`,
+ *  app-direct `/dev/ws2812_pwm`, then the helper. AUTODETECT is used by the generic YAML profile.
  *  RK3576_IOCTL_DAEMON = the *same* ioctl but routed through the root helper daemon, for panels where
  *  the app is SELinux-denied the ioctl (e.g. SMT1019 — the node is `system:system`, generic `device`
- *  label); SYSFS_DAEMON = root-only sysfs LED via the daemon (e.g. TPA10); AUTODETECT = probe rk3576
- *  ioctl then the daemon (used by the generic YAML profile); NONE = no LED, skip probing.
+ *  label); SYSFS_DAEMON = root-only sysfs LED via the daemon (e.g. TPA10); NONE = no LED, skip probing.
  *  The daemon auto-detects sysfs-vs-ledjni itself, so both daemon mechanisms use the same client. */
 enum class LedMechanism(val yamlName: String) {
     NONE("none"),

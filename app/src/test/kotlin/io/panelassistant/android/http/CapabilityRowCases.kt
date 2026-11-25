@@ -3,6 +3,7 @@ package io.panelassistant.android.http
 import io.panelassistant.android.control.fakeProfile
 import io.panelassistant.android.device.EvdevButton
 import io.panelassistant.android.device.ScreenOff
+import io.panelassistant.android.hardware.LedBackend
 import io.panelassistant.android.i18n.AppLocale
 import io.panelassistant.android.i18n.CatalogueLoader
 import io.panelassistant.android.i18n.Strings
@@ -41,10 +42,7 @@ internal fun capabilityRowCases(): List<Pair<String, DiagReader.Cap>> = buildLis
     for (rootish in listOf(true, false)) {
         add("verified rootish=$rootish" to DiagReader.verifiedOperationsCapability(rootish))
     }
-    for ((rk, probe, daemonLed) in listOf(
-        Triple(true, null, false), Triple(false, "ledjni", true), Triple(false, "sysfs", true),
-        Triple(false, "ERR", true), Triple(false, "none", false),
-    )) add("led rk=$rk probe=$probe daemon=$daemonLed" to DiagReader.rgbLedCapability(rk, probe, daemonLed))
+    for (backend in LedBackend.entries) add("led backend=$backend" to DiagReader.rgbLedCapability(backend))
     for (rootish in listOf(true, false)) add("system rootish=$rootish" to DiagReader.systemActionsCapability(rootish))
     val streams = listOf(
         EvdevButtonClient.Snapshot(EvdevButtonClient.State.ACTIVE, EvdevStreamSession.Mode.VERIFIED, null),

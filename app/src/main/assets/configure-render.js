@@ -30,19 +30,24 @@
       "aria-label": cfg.i18nText("configure.advanced.marker", "Advanced setting")
     }) : null;
     labelText.appendChild(cfg.el("span", { class: "flabel-tail" }, [lastWord, advancedMark, cfg.helpButton(f)]));
-    // Panel Assistant keeps network ADB off here and the app cannot turn it on: the row says so instead of
-    // offering a switch whose ON could only ever wait. A panel that has lost its Home Assistant connection
-    // is the exception: after a while its owner's switch works, and the row says when.
+    // The two ADB rows explain the state of ADB, never block the owner. While Keep ADB off holds ADB, the
+    // Network ADB switch still works and says what one press does; only Hardened mode, the owner's own
+    // choice, keeps it from opening. ADB that the firmware opened is named, with the option that closes it.
     var adbHeld = f.key === "network_adb" && cfg.networkAdbManaged === true;
     var adbManaged = adbHeld && cfg.networkAdbOwnerSwitch !== "available";
-    var managedNote = adbHeld ? cfg.el("small", {
-      id: "cfg-network_adb-managed", class: "managed-status",
-      text: cfg.networkAdbOwnerSwitch === "available" ?
-          cfg.i18nText("configure.network_adb.managed_available", "This panel has lost its Home Assistant connection. Turning this on takes ADB back from Panel Assistant until the panel connects again.")
-        : cfg.networkAdbOwnerSwitch === "waiting" ?
-          cfg.i18nText("configure.network_adb.managed_waiting", "Panel Assistant manages ADB on this panel and keeps it off. This panel has lost its Home Assistant connection; this switch works after {minutes} minutes without it.", { minutes: cfg.networkAdbOwnerSwitchAfterMin })
-        : cfg.i18nText("configure.network_adb.managed", "Panel Assistant manages ADB on this panel and keeps it off. Removing the panel from Panel Assistant turns ADB back on.")
-    }) : null;
+    var keepOffHardened = f.key === "adb_keep_off" && cfg.hardenedMode === true;
+    var keepOffChosen = cfg.values.adb_keep_off === "true";
+    var adbNoteText = adbHeld ? (adbManaged ?
+          cfg.i18nText("configure.network_adb.hardened", "Hardened mode keeps ADB off. Switch to Relaxed mode at the panel to turn on Network ADB.")
+        : keepOffChosen ? cfg.i18nText("configure.network_adb.kept_off", "ADB is off because Keep ADB off is on. Turning this on switches that option off and opens ADB.")
+        : null)
+      : f.key === "adb_keep_off" && keepOffChosen && cfg.hardenedMode !== true ?
+        cfg.i18nText("configure.adb_keep_off.waiting", "Keep ADB off is on. ADB closes when the panel connects to Home Assistant.")
+      : f.key === "network_adb" && cfg.networkAdbExternal === true && cfg.values.network_adb !== "true" ?
+        cfg.i18nText("configure.network_adb.external", "ADB is open on this panel: its own system opened it. Anyone on your network can use it without a password. Keep ADB off below closes it.")
+      : keepOffHardened ? cfg.i18nText("configure.adb_keep_off.hardened", "Hardened mode keeps ADB off. Switch to Relaxed mode at the panel to change this.")
+      : null;
+    var managedNote = adbNoteText ? cfg.el("small", { id: "cfg-" + f.key + "-managed", class: "managed-status", text: adbNoteText }) : null;
     var label = cfg.el("div", { class: "flabel" }, [
       labelText,
       summary,
@@ -56,12 +61,13 @@
     ]);
     // Read-only rows (diagnostic sensors) have no editable value — just the expose-to-HA pip.
     var valueControl = f.readOnly ? null : cfg.control(f);
-    if (valueControl && adbManaged) {
-      // A copy keeps the switch's look and drops its handlers, so it reads off and cannot be changed.
+    if (valueControl && (adbManaged || keepOffHardened)) {
+      // A copy keeps the switch's look and drops its handlers, so it reads as Hardened mode holds it and
+      // cannot be changed here.
       valueControl = valueControl.cloneNode(true);
-      valueControl.classList.remove("on");
+      valueControl.classList.toggle("on", keepOffHardened);
       valueControl.classList.add("blocked");
-      valueControl.setAttribute("aria-checked", "false");
+      valueControl.setAttribute("aria-checked", keepOffHardened ? "true" : "false");
       valueControl.setAttribute("aria-disabled", "true");
     }
     if (valueControl) {

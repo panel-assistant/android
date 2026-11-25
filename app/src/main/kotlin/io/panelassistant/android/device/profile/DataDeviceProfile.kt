@@ -54,6 +54,7 @@ class DataDeviceProfile internal constructor(
         } else {
             LedTransfer.curved(validCurve(document.hardware.led.curve))
         }
+    override val ledCount = document.hardware.led.count
     override val backlightTransfer: TransferCurve = validCurve(document.hardware.backlight?.curve)
     override val backlightRoute: BacklightRoute =
         if (document.hardware.backlight?.route == "setting") BacklightRoute.SETTING else BacklightRoute.NODE
@@ -70,6 +71,8 @@ class DataDeviceProfile internal constructor(
     override val zigbeeGatewayDir = document.hardware.zigbeeGatewayDir
     override val relayBase = document.hardware.relayBase
     override val relayBaseFallbacks = document.hardware.relayBaseFallbacks
+    override val relayCount = document.hardware.relayCount
+    override val relayGpioControl = document.hardware.relayGpioControl
     override val buttonLedGpioBase = document.hardware.buttonLedGpioBase
     override val proximityTech = document.sensors.proximityTechnology
     override val proximityCalibration = document.sensors.proximityCalibration
@@ -158,6 +161,7 @@ internal fun ProfileDocument.matchedGroupPriority(rawFacts: DeviceFacts): Int? {
                 ProfileFact.MODEL -> facts.model
                 ProfileFact.DEVICE -> facts.device
                 ProfileFact.PRODUCT_VERSION -> facts.productVersion
+                ProfileFact.BUILD_DISPLAY -> facts.buildDisplay
             }
             predicate.values.any { expected ->
                 when (predicate.op) {
