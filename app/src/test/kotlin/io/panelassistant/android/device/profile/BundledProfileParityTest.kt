@@ -1083,7 +1083,7 @@ class BundledProfileParityTest {
             "meta-portal.yaml" to "2817983e13d4e7d327149caecebf400276afdba02b330d46422bcb8b74ddd5de",
             "meta-portal-10-gen2.yaml" to "9c2f19ef4bb776e585c17a8bbab9245e5a3ce474aa7e2c3d70758474023da130",
             "nspanel-pro.yaml" to "5d0e85fd3ae5190f6ad1c570d42401d8858431fd0b23556cd28eee476e45b43b",
-            "nspanel-pro-gen2.yaml" to "548eeadad9638ade44e4e05f455f15b3a977fdafe94f04ca97e4fdb923eb77bb",
+            "nspanel-pro-gen2.yaml" to "e0e19bf0a5cdccb0d521932b688af6507adb301b53893a97fdc8edb4617d1121",
             "s9e.yaml" to "d3f82fdeb52e73bb891121d1589a31d2ff8b60ea35bbbd78b3799dd720cc6da2",
             "shelly-wall-display-v2.yaml" to "68520dc16295d169039c61f02df9aa38a39c28f47da6cefe7cb01b9d3caa117b",
             "shelly-wall-display-xl.yaml" to "1474a50218cfde7715f0f41ddd2d294bf3f362a655b3e28ab13ba41ccf61e984",

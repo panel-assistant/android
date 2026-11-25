@@ -20,7 +20,7 @@ metadata:
     - Sonoff's panel app keeps its own relay settings, such as power-on state, interlock and pulse. While it runs it may also switch the relays, and ha-paneld does not apply those settings.
     - Settings beyond the relays use conservative defaults until an owner reports how the panel behaves.
 requires:
-  # hardware.relay_count arrives in 1.0.4. An older core refuses the profile as an unknown field,
+  # hardware.relay_count arrives in 1.0.5. An older core refuses the profile as an unknown field,
   # so it never offers these relays without the count. (Debug builds report 1.0.0.)
   min_core_version: 1.0.0
   drivers:
