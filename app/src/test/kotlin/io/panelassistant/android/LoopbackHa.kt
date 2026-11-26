@@ -14,15 +14,22 @@ internal class LoopbackHa : AutoCloseable {
     @Volatile private var gate = CountDownLatch(0)
     @Volatile private var status = 500
     @Volatile private var body = "{}"
+    /** When set, a refresh naming another `client_id` gets Home Assistant's 400 `invalid_request`. */
+    @Volatile var requiredClientId: String? = null
     private val pool = Executors.newCachedThreadPool()
     private val server = HttpServer.create(InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 16).apply {
         executor = pool
         createContext("/auth/token") { exchange ->
             requests.incrementAndGet()
-            exchange.requestBody.readBytes()
+            val form = String(exchange.requestBody.readBytes()).split('&').associate {
+                java.net.URLDecoder.decode(it.substringBefore('='), "UTF-8") to
+                    java.net.URLDecoder.decode(it.substringAfter('=', ""), "UTF-8")
+            }
             gate.await(20, TimeUnit.SECONDS)
-            val bytes = body.toByteArray()
-            exchange.sendResponseHeaders(status, bytes.size.toLong())
+            val required = requiredClientId
+            val refused = required != null && form["client_id"] != required
+            val bytes = (if (refused) """{"error":"invalid_request","error_description":"Invalid client id"}""" else body).toByteArray()
+            exchange.sendResponseHeaders(if (refused) 400 else status, bytes.size.toLong())
             exchange.responseBody.use { it.write(bytes) }
         }
         start()

@@ -13,6 +13,9 @@ import io.ktor.server.application.Application
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
 import io.panelassistant.android.HaAuthSnapshot
+import io.panelassistant.android.HaCredentialManager
+import io.panelassistant.android.LoopbackHa
+import io.panelassistant.android.haRouteEpoch
 import io.panelassistant.android.LiveSettingRequestOutcome
 import io.panelassistant.android.haAuthSnapshot
 import io.panelassistant.android.setHaClientId
@@ -142,6 +145,41 @@ class ConfigBundleRoutesTest {
                 HaAuthSnapshot("http://b.test:8123", "b-access", "b-refresh", 2_345_678_901L, "b-client"),
                 config.haAuthSnapshot(),
             )
+        }
+    }
+
+    // The old app's default export leaves the tokens out as secrets but names its client id, blank when it never
+    // signed in; Home Assistant then refuses the panel's own refresh token.
+    @Test fun `an import without sign-in tokens keeps the panel signed in to the same Home Assistant`() {
+        LoopbackHa().use { ha ->
+            HaCredentialManager.forgetRefusal()
+            ha.requiredClientId = "panel-client"
+            ha.answer(200, """{"access_token":"fresh","expires_in":1800,"token_type":"Bearer"}""")
+            PaneldServerHttpFixture().use { fixture ->
+                val config = fixture.config
+                assertTrue(config.setHaConnection(ha.url, "stale-access"))
+                config.setHaRefreshToken("panel-refresh")
+                config.setHaTokenExpiry(1L)
+                config.setHaClientId("panel-client")
+                val before = config.haAuthSnapshot()
+                val epoch = config.haRouteEpoch()
+                testApplication {
+                    application { mountConfigBundleRoutes(fixture) }
+                    val response = client.post("/api/v1/config/import") {
+                        header(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+                        setBody(ConfigBundle.fromValues(mapOf(
+                            "ha_url" to ha.url, "friendly_name" to "Imported", "ha_client_id" to "",
+                        )).serialize())
+                    }
+                    assertEquals(response.bodyAsText(), HttpStatusCode.OK, response.status)
+                }
+                assertEquals(before, config.haAuthSnapshot())
+                assertEquals(epoch, config.haRouteEpoch())
+                val refreshed = HaCredentialManager.resolve(config, force = true)
+                HaCredentialManager.forgetRefusal()
+                assertFalse("Home Assistant refused the refresh", refreshed.rejected)
+                assertEquals("fresh", refreshed.session?.accessToken)
+            }
         }
     }
 

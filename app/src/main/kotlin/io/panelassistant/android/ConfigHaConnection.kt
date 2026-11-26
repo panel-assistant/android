@@ -205,6 +205,18 @@ internal fun haSignInAfterOriginChange(previousUrl: String, incoming: Map<String
     )
 }
 
+/** [incoming] without the sign-in provenance it carries for tokens it does not carry. A bundle with no access or
+ * refresh token (a default export leaves both out as secrets) still names `ha_client_id`, and an old app's export
+ * names it blank; writing that beside the panel's own refresh token makes Home Assistant refuse the next refresh.
+ * Leaving the key out keeps the stored sign-in whole, and the address rules still clear it on a move or a blank
+ * address, because they read each missing credential as blank. */
+internal fun withoutUnpairedSignInProvenance(incoming: Map<String, String>): Map<String, String> =
+    if (incoming["ha_token"].isNullOrEmpty() && incoming["ha_refresh_token"].isNullOrEmpty()) {
+        incoming - setOf("ha_client_id", "ha_token_expiry")
+    } else {
+        incoming
+    }
+
 internal fun Config.forgetHaRoutes(editor: SharedPreferences.Editor) {
     editor.remove(HaConnectionRoutes.RECORD_KEY)
     // A new binding reopens the REST routes until its Panel Assistant grants both UI families (section 20.8).

@@ -13,6 +13,7 @@ import io.panelassistant.android.isHaOAuthAttemptCurrent
 import io.panelassistant.android.normalizeDashboardEntityPath
 import io.panelassistant.android.setupQuestionHoldsRenderer
 import io.panelassistant.android.stableOwner
+import io.panelassistant.android.withoutUnpairedSignInProvenance
 import io.panelassistant.android.config.Capabilities
 import io.panelassistant.android.config.ConfigBundle
 import io.panelassistant.android.config.SettingValue
@@ -107,7 +108,7 @@ internal class AcceptedConfigTransaction(
      *  Returns false without starting side-effects when the preference commit fails. */
 
     suspend fun applyAccepted(
-        accepted: Map<String, String>,
+        requested: Map<String, String>,
         expectedConfig: String? = null,
         expectedRevision: String? = null,
         expectedHaAuthOwner: HaAuthOwner? = null,
@@ -120,6 +121,7 @@ internal class AcceptedConfigTransaction(
         /** Checked once every lock is held, immediately before the commit: false makes the whole call [ApplyAcceptedResult.Stale]. */
         admit: () -> Boolean = { true },
     ): ApplyAcceptedResult = withContext(Dispatchers.IO) {
+        val accepted = withoutUnpairedSignInProvenance(requested)
         if (existingOperationTicket != null && !InstallProgress.owns(existingOperationTicket)) {
             return@withContext ApplyAcceptedResult.CompatibilityRefused(
                 "the owning panel operation is no longer active",
