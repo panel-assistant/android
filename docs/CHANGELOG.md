@@ -2,6 +2,16 @@
 
 The full notes for every release and pre-release, from 1.0.0 on, are on [panel-assistant.io](https://panel-assistant.io/go/release-notes). Each section here is a short summary with a link to them; earlier sections are the full notes as they were released.
 
+## v1.0.6 - 2026-11-26
+
+This update fixes keyboard delays, dashboard recovery, settings imports and several Configure problems.
+
+- **Keyboard and Configure.** Swipe reveal no longer delays taps on the bottom row of the on-screen keyboard. Configure stays at the setting you just changed (#211). Text fields fit in their cards, help stays open after a quick click, and narrow pages are easier to use with enlarged browser text. Thanks to @jpbaril for reporting the keyboard delay and the scroll jump.
+- **Dashboard and setup.** The dashboard retries after a refused Home Assistant connection while the screen is on. Coming back to the dashboard rebuilds a WebView renderer that died while it was hidden. Setup asks again if it could not save your dashboard answer. Auto sleep refreshes when you put the panel in a Home Assistant Area.
+- **Settings and updates.** Importing settings without sign-in tokens keeps an existing Home Assistant sign-in. The app clears leftover uploads that exactly match the installed APK.
+- **Profiles and diagnostics.** Startup skips incompatible replacements for a pinned bundled profile. Ordinary compatibility checks and repeated diagnostics create fewer warnings.
+- **Proximity.** Configure brings the proximity settings into view and clears their highlight after navigation.
+
 ## v1.0.5 - 2026-11-25
 
 With the new Keep ADB off setting you decide whether network debugging stays on. A new panel can also find Home Assistant at its other local addresses. The NSPanel Pro Gen2 gets its own profile with both relays, thanks to @cyraxx (#215), and the Electron SMT97T's two relays and the light strip on some Electron WF1589T panels are now supported, thanks to @GrisuBerlin (panel-assistant/ha-integration#37, panel-assistant/ha-integration#42). Saying the wake word again straight after a reply now starts a new question, thanks to @Ste05 (#221). Pairs with Panel Assistant 1.0.5, which offers each panel the update.
