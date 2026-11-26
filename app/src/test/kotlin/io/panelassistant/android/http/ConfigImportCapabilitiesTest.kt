@@ -1,6 +1,7 @@
 package io.panelassistant.android.http
 
 import io.panelassistant.android.Config
+import io.panelassistant.android.haUrl
 import io.panelassistant.android.kioskSetting
 import io.panelassistant.android.requestKioskSetting
 import io.panelassistant.android.util.InstallProgress
@@ -290,6 +291,50 @@ internal class ConfigImportCapabilitiesTest : io.panelassistant.android.testsupp
                     assertEquals(available, actuated)
                 }
             }
+        }
+    }
+
+    @Test fun rootlessImportRejectsInvalidValuesWhenOnlyUnavailableKioskOnRemains() = withRealConfigFixture { config, fixture ->
+        capabilities(fixture, Capabilities())
+        assertTrue(config.commitKioskLock(false))
+        val values = mapOf("ha_url" to "not-a-url", "kiosk_lock" to "true")
+        val bundle = ConfigBundle.fromValues(values).serialize()
+        testApplication {
+            application { fixture.mount(this) }
+            val responses = listOf("?dry_run=1", "").map { query ->
+                client.post("/api/v1/config/import$query") { setBody(bundle) }
+            }
+            val results = responses.map { it.status to JSONObject(it.bodyAsText()) }
+            assertEquals(List(2) { HttpStatusCode.UnprocessableEntity }, results.map { it.first }, results.toString())
+            for ((_, receipt) in results) {
+                assertEquals("rejected", receipt.getString("status"))
+                assertEquals(emptyList(), strings(receipt, "applied"))
+                assertEquals(listOf("kiosk_lock"), strings(receipt, "skipped"))
+                assertEquals(listOf("kiosk_lock: unavailable on this panel"), strings(receipt, "warnings"))
+                assertTrue(strings(receipt, "errors").single().contains("URL"), receipt.toString())
+            }
+            assertFalse(config.kioskLock)
+            assertEquals("", config.haUrl)
+
+            val cleanSkip = client.post("/api/v1/config/import") {
+                setBody(ConfigBundle.fromValues(values - "ha_url").serialize())
+            }
+            assertEquals(HttpStatusCode.OK, cleanSkip.status, cleanSkip.bodyAsText())
+            val noOp = JSONObject(cleanSkip.bodyAsText())
+            assertEquals("no-op", noOp.getString("status"))
+            assertEquals(listOf("kiosk_lock"), strings(noOp, "skipped"))
+
+            val usable = client.post("/api/v1/config/import") {
+                setBody(ConfigBundle.fromValues(values + ("friendly_name" to "Imported")).serialize())
+            }
+            assertEquals(HttpStatusCode.OK, usable.status, usable.bodyAsText())
+            val partial = JSONObject(usable.bodyAsText())
+            assertEquals("partial", partial.getString("status"))
+            assertEquals(listOf("friendly_name"), strings(partial, "applied"))
+            assertEquals(listOf("kiosk_lock"), strings(partial, "skipped"))
+            assertEquals("Imported", config.friendlyName)
+            assertFalse(config.kioskLock)
+            assertEquals("", config.haUrl)
         }
     }
 

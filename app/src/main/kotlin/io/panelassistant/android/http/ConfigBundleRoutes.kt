@@ -162,15 +162,22 @@ internal class ConfigBundleRoutes(
                 if (accepted.remove(key) != null) skipped.add(key)
             }
         }
+        suspend fun rejectImport(reasons: List<String> = errors) {
+            call.respondText(
+                importJson("rejected", emptyList(), skipped, warn, reasons),
+                ContentType.Application.Json,
+                HttpStatusCode.UnprocessableEntity,
+            )
+        }
         val strict = call.request.queryParameters["strict"] == "1"
-        if ((strict && errors.isNotEmpty()) || (accepted.isEmpty() && errors.isNotEmpty())) {
-            call.respondText(importJson("rejected", emptyList(), skipped, warn, errors), ContentType.Application.Json, HttpStatusCode.UnprocessableEntity)
+        if (errors.isNotEmpty() && (strict || accepted.isEmpty())) {
+            rejectImport()
             return
         }
         SettingsRegistry.automaticBrightnessBoundsError(
             accepted, config.autoBrightnessMinimumPercent, config.autoBrightnessMaximumPercent,
         )?.let { reason ->
-            call.respondText(importJson("rejected", emptyList(), skipped, warn, errors + reason), ContentType.Application.Json, HttpStatusCode.UnprocessableEntity)
+            rejectImport(errors + reason)
             return
         }
         // Security policy sees requested intent even if this hardware cannot apply the value.
@@ -179,6 +186,10 @@ internal class ConfigBundleRoutes(
         unavailable.forEach { accepted.remove(it) }
         skipped += unavailable
         warn += unavailable.map { "$it: unavailable on this panel" }
+        if (accepted.isEmpty() && errors.isNotEmpty()) {
+            rejectImport()
+            return
+        }
         if (dryRun) {
             val current = values.currentValues()
             call.respondText(
