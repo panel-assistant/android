@@ -142,7 +142,7 @@
     if (helpHover) {
       button.addEventListener("mouseenter", function () {
         if (helpPinned) return;
-        helpHoverTimer = setTimeout(function () { openHelp(button, f, false); }, 180);
+        helpHoverTimer = setTimeout(function () { if (!helpPinned) openHelp(button, f, false); }, 180);
       });
       button.addEventListener("mouseleave", function () {
         if (helpHoverTimer) clearTimeout(helpHoverTimer);

@@ -82,6 +82,28 @@ const card = (p, group) => p.locator(`[data-config-group="${group}"]`);
 
 for (const engine of engines) {
   const engineTest = engine.available ? test : test.skip;
+  engineTest(`${engine.name}: a quick click keeps Configure help open after the pointer leaves`, async (t) => {
+    const h = await harness();
+    const browser = await engine.type.launch(engine.launch);
+    t.after(async () => { await browser.close(); await new Promise((resolve) => h.server.close(resolve)); });
+    const p = await browser.newPage({ viewport: VIEWPORTS[0] });
+    await p.goto(h.url);
+    await card(p, 'Behaviour').locator('.cfg-more').click();
+    const button = p.locator('#cfg-silence_boot_chime .info-btn');
+    const help = p.locator('#cfg-help');
+    await button.evaluate((node) => {
+      node.dispatchEvent(new MouseEvent('mouseenter'));
+      node.click();
+    });
+    await help.waitFor({ state: 'visible' });
+    await p.waitForTimeout(250); // the pending hover-open has had time to fire
+    await help.dispatchEvent('mouseleave');
+    assert.equal(await help.isVisible(), true, 'clicking pins the help open when the pointer leaves');
+    await p.keyboard.press('Escape');
+    assert.equal(await help.isVisible(), false, 'Escape still closes the pinned help');
+    assert.deepEqual(h.posts, [], 'viewing help sends nothing');
+  });
+
   for (const viewport of VIEWPORTS) {
     const where = `${engine.name} ${viewport.width}x${viewport.height}`;
 
