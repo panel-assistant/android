@@ -73,7 +73,13 @@ internal class DashboardRendererPacer(private val main: Handler, private val hos
     // class that onPageFinished and the crash budget both miss. The watchdog runs ONLY while the screen is
     // awake: a screen-off pauses JS timers, so a paused WebView could never complete the handshake and the
     // watchdog would just reload-loop all night behind a dark panel.
-    private val watchdog = Runnable { onWatchdogTimeout() }
+    private val postWatchdog: (Runnable, Long) -> Boolean = { task, delay -> main.postDelayed(task, delay) }
+    private val cancelWatchdog: (Runnable) -> Unit = { task -> main.removeCallbacks(task) }
+    private var watchdogArmed = false
+    private val watchdog = Runnable {
+        watchdogArmed = false
+        onWatchdogTimeout()
+    }
     private var awaitingFrontendReconnect = false
 
     // After a screen-off reload (memory shed), let the fresh page load with timers LIVE for a settle
@@ -117,7 +123,7 @@ internal class DashboardRendererPacer(private val main: Handler, private val hos
     /** The WebView is going away (a teardown or a dead renderer): nothing of its may fire later. */
     fun stop() {
         awaitingFrontendReconnect = false
-        main.removeCallbacks(watchdog)
+        disarmWatchdog()
         main.removeCallbacks(darkSettle)
     }
 
@@ -157,7 +163,7 @@ internal class DashboardRendererPacer(private val main: Handler, private val hos
             }
         } else {
             wakeMediaRecovery.invalidate()
-            main.removeCallbacks(watchdog) // a paused WebView can't complete the handshake — don't loop
+            disarmWatchdog() // a paused WebView can't complete the handshake — don't loop
             when (screenOffStep(phase == RendererPhase.CONNECTED, phase == RendererPhase.AUTH_LATCHED, reloadDue())) {
                 ScreenOffStep.FREEZE -> { w.onPause(); w.pauseTimers() }
                 // A load still in flight: leave the WebView live, untouched, so it can draw and connect.
@@ -289,7 +295,7 @@ internal class DashboardRendererPacer(private val main: Handler, private val hos
         // A load issued while dark (a remote reload, a rebuild) may land in a WebView that an earlier
         // screen-off froze, where it can never connect. Run it live through the settle window instead;
         // the watchdog stays off until the screen wakes, so a dark panel still never reload-loops.
-        main.removeCallbacks(watchdog)
+        disarmWatchdog()
         // resumeTimers() is process-wide: a superseded instance must not unfreeze the owner's page.
         if (host.destroyed || !host.owned) return
         host.web?.let { it.onResume(); it.resumeTimers() }
@@ -314,10 +320,22 @@ internal class DashboardRendererPacer(private val main: Handler, private val hos
 
     fun armWatchdog(ms: Long) {
         if (host.destroyed) return
-        main.removeCallbacks(watchdog); main.postDelayed(watchdog, ms)
+        disarmWatchdog()
+        watchdogArmed = postWatchdog(watchdog, ms)
     }
 
-    fun disarmWatchdog() = main.removeCallbacks(watchdog)
+    fun disarmWatchdog() {
+        cancelWatchdog(watchdog)
+        watchdogArmed = false
+    }
+
+    /** The failed document may have had its watchdog canceled by the latest frontend connection. */
+    fun onMainFrameFailed() {
+        if (!screenAwake || watchdogArmed) return
+        val delay = retryPolicy.connectionFailureDelay(wasConnected = false)
+        Log.i(TAG, "main-frame load failed — arming retry watchdog in ${delay}ms")
+        armWatchdog(delay)
+    }
 
     /**
      * The frontend reported itself connected for [generation]: the handshake is done, its cadence starts
@@ -325,7 +343,7 @@ internal class DashboardRendererPacer(private val main: Handler, private val hos
      */
     fun onConnected(generation: Long) {
         awaitingFrontendReconnect = false
-        main.removeCallbacks(watchdog)
+        disarmWatchdog()
         retryPolicy.escalatedTo?.let { reached ->
             Log.i(
                 TAG,

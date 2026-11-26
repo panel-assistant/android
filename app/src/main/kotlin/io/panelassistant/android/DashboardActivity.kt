@@ -334,8 +334,9 @@ class DashboardActivity : AppCompatActivity() {
     // The cover over the WebView: up only while the phase is reconnecting or latched (see [phase]).
     private val webCover by lazy { createWebCover { tick, delayMs -> main.postDelayed(tick, delayMs) } }
     private fun createWebCover(post: (Runnable, Long) -> Unit) = DashboardWebCover(this, main, screenAwake = { pacer.screenAwake }, post = post)
+    private val reconnectSurfaceDark = { StatusSurface.darkFor(this, activityConfig) }
     private fun showWebCover(fill: (StatusSurface) -> Unit) =
-        webCover.show(swipe?.parent as? ViewGroup, StatusSurface.darkFor(this, activityConfig), fill)
+        webCover.show(swipe?.parent as? ViewGroup, reconnectSurfaceDark(), fill)
     // The main-frame document the dashboard WebView is actually showing (onPageCommitVisible), or null
     // before its first. A retry decides reload() versus a fresh load from this; see retryNeedsFreshLoad.
     private val shownPage = ShownPageTracker()
@@ -1090,7 +1091,7 @@ class DashboardActivity : AppCompatActivity() {
      * stale dashboard nor Android's grey error page sits behind the cover or shows through a rebuild.
      */
     private fun blankWebDocument() {
-        val background = statusPalette(StatusSurface.darkFor(this, activityConfig)).background
+        val background = statusPalette(reconnectSurfaceDark()).background
         web?.loadDataWithBaseURL(null, "<!doctype html><html><body style=\"background:$background;margin:0\"></body></html>", "text/html", "utf-8", null)
     }
 
@@ -1340,7 +1341,8 @@ class DashboardActivity : AppCompatActivity() {
     private fun showReconnecting(detail: String) {
         if (destroyed || phase.after(RendererEvent.MAIN_FRAME_FAILED) != RendererPhase.RECONNECTING || interstitialShown) return
         on(RendererEvent.MAIN_FRAME_FAILED)
-        Log.w(TAG, "main-frame load error ($detail) — showing reconnecting page; watchdog retries continue")
+        Log.w(TAG, "main-frame load error ($detail) — showing reconnecting page")
+        pacer.onMainFrameFailed()
         drawReconnecting(detail)
     }
 
@@ -2291,10 +2293,10 @@ class DashboardActivity : AppCompatActivity() {
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
                 if (!rendererCurrent(generation, view) || !request.isForMainFrame) return
                 swipe?.isRefreshing = false
-                // Replace Android's un-styleable gray net::ERR_* page with the branded reconnecting
-                // screen; the handshake watchdog (already armed by this load) keeps retrying behind it.
+                // WebView delivers this callback on the UI thread. Replace its gray net::ERR_* page
+                // with the reconnecting screen and ensure the handshake watchdog can retry it.
                 val detail = "${error.description}".replace("<", "&lt;")
-                runOnUiThread { showReconnecting(detail) }
+                showReconnecting(detail)
             }
 
             // HTTP errors are consulted ONLY for the main frame: a sub-resource 401/404 (a HACS module,
