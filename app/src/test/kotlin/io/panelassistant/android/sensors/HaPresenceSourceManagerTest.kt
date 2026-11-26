@@ -18,6 +18,7 @@ import io.panelassistant.android.control.MIN_AUTO_SLEEP_LEASE_MS
 import io.panelassistant.android.control.PRESENCE_GAP_GRACE_MS
 import io.panelassistant.android.control.ScreenController
 import io.panelassistant.android.device.ScreenOff
+import io.panelassistant.android.util.MonotonicDeadline
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.async
@@ -34,6 +35,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.FutureTask
+import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -465,6 +468,41 @@ class HaPresenceSourceManagerTest {
         assertEquals(0L, manager.latestAggregate().feedRevision)
         manager.close()
         owner.close()
+    }
+
+    @Test fun `a waiting presence refresh cannot restore the previous Area configuration epoch`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val exact = FakeExactTransport(FakeExactConnection()).apply { states[ENTITY] = state(ENTITY, "off") }
+        val (manager, owner) = manager(dispatcher, FakePresenceTransport(), exact, mutableListOf())
+        try {
+            manager.configure(request(controllerEpoch = 41L))
+            runCurrent()
+            assertEquals(HaPresencePhase.LIVE, manager.latestAggregate().phase)
+
+            // Use the monitor to schedule the refresh around a request change, then observe published state.
+            val monitor = HaPresenceSourceManager::class.java.getDeclaredField("lock").run {
+                isAccessible = true
+                requireNotNull(get(manager))
+            }
+            val refresh = FutureTask { manager.refresh() }
+            synchronized(monitor) {
+                val worker = thread(isDaemon = true) { refresh.run() }
+                val deadline = MonotonicDeadline(5_000)
+                while (worker.state != Thread.State.BLOCKED && deadline.remainingMs() > 0L) Thread.yield()
+                assertEquals("refresh reached the manager monitor", Thread.State.BLOCKED, worker.state)
+                manager.configure(request(controllerEpoch = 42L))
+            }
+            refresh.get(5, TimeUnit.SECONDS)
+            runCurrent()
+
+            val live = manager.latestAggregate()
+            assertEquals(HaPresencePhase.LIVE, live.phase)
+            assertEquals(setOf(ENTITY), live.selectedEntityIds)
+            assertEquals(42L, live.controllerEpoch)
+        } finally {
+            manager.close()
+            owner.close()
+        }
     }
 
     @Test fun `activity during a refresh reaches consumers and the unchanged result keeps it`() = runTest {

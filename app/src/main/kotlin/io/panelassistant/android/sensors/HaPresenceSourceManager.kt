@@ -487,39 +487,41 @@ internal class HaPresenceSourceManager(
         return HaPresenceSourceCatalog(chosen, chosen.filter { it !in known }, candidates)
     }
 
-    fun configure(next: HaPresenceRequest) = configure(next, force = false)
+    fun configure(next: HaPresenceRequest) = applyRequest(next)
 
     /** Re-runs bounded discovery/history without creating an autonomous retry lifecycle. */
-    fun refresh() = configure(request, force = true)
+    fun refresh() = applyRequest()
 
-    private fun configure(next: HaPresenceRequest, force: Boolean) {
-        val normalized = next
+    private fun applyRequest(configuration: HaPresenceRequest? = null) {
+        val force = configuration == null
+        val next: HaPresenceRequest
         var run = 0L
         var kept: HaPresenceResolution? = null
         var pendingDiscovery: Job? = null
         synchronized(lock) {
             check(!closed) { "presence source manager is closed" }
-            if (!force && normalized == request &&
+            next = configuration ?: request
+            if (!force && next == request &&
                 (discoveryJob?.isActive == true || selection != null)
             ) return
             // A refresh of the unchanged request keeps the selection, generation and live feed while
             // discovery revalidates it; [discover] publishes only an outcome that differs.
-            kept = selection?.takeIf { force && normalized == request }
-            if (!force && normalized != request) clearFailuresLocked()
-            request = normalized
+            kept = selection?.takeIf { force }
+            if (!force && next != request) clearFailuresLocked()
+            request = next
             discoveryJob?.cancel()
             discoveryJob = null
             if (kept == null) {
                 run = generation.incrementAndGet()
                 selection = null
             } else run = generation.get()
-            if (normalized.enabled) {
+            if (next.enabled) {
                 val revalidating = kept
-                pendingDiscovery = scope.launch(start = CoroutineStart.LAZY) { discover(run, normalized, revalidating) }
+                pendingDiscovery = scope.launch(start = CoroutineStart.LAZY) { discover(run, next, revalidating) }
                 discoveryJob = pendingDiscovery
             }
         }
-        if (!normalized.enabled) {
+        if (!next.enabled) {
             reconcileStreamSources()
             publish(run, HaPresenceAggregate(HaPresencePhase.DISABLED))
         } else {

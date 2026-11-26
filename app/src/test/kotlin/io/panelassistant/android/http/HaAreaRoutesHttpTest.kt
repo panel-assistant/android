@@ -35,7 +35,7 @@ import org.junit.Test
 import sun.misc.Unsafe
 
 class HaAreaRoutesHttpTest {
-    @Test fun `an unconfigured panel reports an unqueried registry through the production mount`() = withArea { fixture ->
+    @Test fun `an unconfigured panel reports an unqueried registry through the production mount`() = withArea { fixture, _ ->
         testApplication {
             application { fixture.mount(this) }
             repeat(2) {
@@ -52,7 +52,7 @@ class HaAreaRoutesHttpTest {
         }
     }
 
-    @Test fun `an unavailable HA registry never clears a requested local area`() = withArea { fixture ->
+    @Test fun `an unavailable HA registry never clears a requested local area`() = withArea { fixture, _ ->
         fixture.config.commitHaArea("Chosen area", userOverride = true)
         fixture.config.setHaConnection("http://127.0.0.1:9", "")
         testApplication {
@@ -70,7 +70,7 @@ class HaAreaRoutesHttpTest {
         assertEquals(true, fixture.config.haAreaUserOverride)
     }
 
-    @Test fun `the area endpoint retains production host admission`() = withArea { fixture ->
+    @Test fun `the area endpoint retains production host admission`() = withArea { fixture, _ ->
         testApplication {
             application { fixture.mount(this) }
             val response = client.get("/api/v1/config/ha-area") {
@@ -81,7 +81,7 @@ class HaAreaRoutesHttpTest {
         }
     }
 
-    @Test fun `Panel Assistant's request to read the area again adopts the area Home Assistant now reports`() = withArea { fixture ->
+    @Test fun `Panel Assistant's request adopts the area and refreshes Auto sleep once`() = withArea { fixture, refreshed ->
         val deviceArea = AtomicReference("")
         val ha = embeddedServer(CIO, port = 0, host = "127.0.0.1") {
             install(WebSockets)
@@ -126,13 +126,17 @@ class HaAreaRoutesHttpTest {
 
             assertEquals("applied", reply?.outcome)
             assertEquals("Kitchen", fixture.config.haArea)
+            assertEquals(listOf("Kitchen"), refreshed)
             assertEquals("Home Assistant's value is adopted, never recorded as a person's choice", false, fixture.config.haAreaUserOverride)
+            val repeated = runBlocking { fixture.server.managementRequest("ha_area.refresh", JSONObject(), {}, noSession) }
+            assertEquals("applied", repeated?.outcome)
+            assertEquals(listOf("Kitchen"), refreshed)
         } finally {
             ha.stop(100, 1_000)
         }
     }
 
-    @Test fun `a request to read the area again that cannot reach Home Assistant answers failed`() = withArea { fixture ->
+    @Test fun `a request to read the area again that cannot reach Home Assistant answers failed`() = withArea { fixture, refreshed ->
         fixture.config.setHaConnection("http://127.0.0.1:9", "test-token")
         val noSession = HaApiSessionProvider { error("no Home Assistant session in this test") }
 
@@ -140,9 +144,10 @@ class HaAreaRoutesHttpTest {
 
         assertEquals("failed", reply?.outcome)
         assertEquals("", fixture.config.haArea)
+        assertTrue(refreshed.isEmpty())
     }
 
-    private fun withArea(block: (PaneldServerHttpFixture) -> Unit) {
+    private fun withArea(block: (PaneldServerHttpFixture, List<String>) -> Unit) {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         try {
             PaneldServerHttpFixture().use { fixture ->
@@ -162,8 +167,11 @@ class HaAreaRoutesHttpTest {
                 field("scope", scope)
                 val mutationLock = Any()
                 field("directConfigMutationLock", mutationLock)
-                field("haArea", HaAreaRuntime(fixture.config, scope, mutationLock) { false })
-                block(fixture)
+                val refreshed = mutableListOf<String>()
+                field("haArea", HaAreaRuntime(
+                    fixture.config, scope, mutationLock, onAreaAdopted = { refreshed += fixture.config.haArea },
+                ) { false })
+                block(fixture, refreshed)
             }
         } finally {
             scope.cancel()

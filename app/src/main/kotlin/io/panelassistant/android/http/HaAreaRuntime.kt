@@ -35,6 +35,7 @@ internal class HaAreaRuntime(
     private val config: Config,
     private val scope: CoroutineScope,
     private val directConfigMutationLock: Any,
+    private val onAreaAdopted: () -> Unit = {},
     private val stopping: () -> Boolean,
 ) {
     private val haAreaWarmLock = Any()
@@ -190,8 +191,8 @@ internal class HaAreaRuntime(
         }
         when (HaAreaProtocol.reconcile(snapshot.localArea, catalog.device.areaName, catalog.admin, snapshot.userOverride)) {
             HaAreaProtocol.ReconcileAction.ADOPT_HA -> withContext(Dispatchers.IO) {
-                synchronized(directConfigMutationLock) {
-                    if (!ownsHaAreaSnapshot(snapshot)) return@synchronized
+                val adopted = synchronized(directConfigMutationLock) {
+                    if (!ownsHaAreaSnapshot(snapshot)) return@synchronized false
                     config.synchronizedTransaction {
                         if (!ownsHaAreaSnapshot(snapshot)) return@synchronizedTransaction false
                         Log.i(TAG, "ha-area: adopting Home Assistant's area for this device")
@@ -200,6 +201,7 @@ internal class HaAreaRuntime(
                         config.commitHaArea(catalog.device.areaName, userOverride = false)
                     }
                 }
+                if (adopted) onAreaAdopted()
             }
             HaAreaProtocol.ReconcileAction.WRITE_BACK -> if (allowWriteBack && ownsHaAreaSnapshot(snapshot)) {
                 val moved = applyRequestedArea(config, snapshot.localArea, snapshot.ownerKey)
