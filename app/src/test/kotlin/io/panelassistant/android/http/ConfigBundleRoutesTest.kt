@@ -184,6 +184,39 @@ class ConfigBundleRoutesTest {
         }
     }
 
+    @Test fun `a full settings import can explicitly clear the previous sign-in`() {
+        PaneldServerHttpFixture().use { fixture ->
+            val config = fixture.config
+            val url = "http://ha.test:8123"
+            assertTrue(config.setHaConnection(url, "access"))
+            config.setHaRefreshToken("refresh")
+            config.setHaTokenExpiry(2_345_678_901L)
+            config.setHaClientId("panel-client")
+            val before = config.haAuthSnapshot()
+            val bundle = ConfigBundle.fromValues(mapOf(
+                "ha_url" to url,
+                "ha_token" to "",
+                "ha_refresh_token" to "",
+                "ha_client_id" to "",
+                "ha_token_expiry" to "0",
+            )).serialize()
+            testApplication {
+                application { mountConfigBundleRoutes(fixture) }
+                val preview = client.post("/api/v1/config/import?dry_run=1") { setBody(bundle) }
+                val body = preview.bodyAsText()
+                assertEquals(body, HttpStatusCode.OK, preview.status)
+                val changes = JSONObject(body).getJSONArray("changes")
+                assertTrue(body, (0 until changes.length()).any {
+                    changes.getJSONObject(it).getString("key") == "ha_client_id"
+                })
+                assertEquals(before, config.haAuthSnapshot())
+                val result = client.post("/api/v1/config/import") { setBody(bundle) }
+                assertEquals(result.bodyAsText(), HttpStatusCode.OK, result.status)
+                assertEquals(HaAuthSnapshot(url, "", "", 0L, ""), config.haAuthSnapshot())
+            }
+        }
+    }
+
     @Test fun `an import that moves the panel to another Home Assistant drops the previous sign-in`() {
         importOntoSignedInPanel("", mapOf("ha_url" to "http://b.test:8123")) { config ->
             assertEquals(HaAuthSnapshot("http://b.test:8123", "", "", 0L, ""), config.haAuthSnapshot())

@@ -169,9 +169,13 @@ internal class ConfigBundleRoutes(
         warn += unavailable.map { "$it: unavailable on this panel" }
         // Default exports omit secret tokens but can still carry the source OAuth client ID.
         // Keep the target's token provenance together while previewing and applying this import.
-        // Revision replay and backup restore carry explicit credential values, including clears.
-        if (accepted["ha_token"].isNullOrEmpty() && accepted["ha_refresh_token"].isNullOrEmpty()) {
-            for (key in listOf("ha_client_id", "ha_token_expiry")) {
+        // A full export can explicitly clear both tokens and their provenance.
+        val accessToken = accepted["ha_token"]
+        val refreshToken = accepted["ha_refresh_token"]
+        if (accessToken.isNullOrEmpty() && refreshToken.isNullOrEmpty()) {
+            val explicitSignOut = accessToken == "" && refreshToken == ""
+            for ((key, clearValue) in mapOf("ha_client_id" to "", "ha_token_expiry" to "0")) {
+                if (explicitSignOut && accepted[key] == clearValue) continue
                 if (accepted.remove(key) != null) skipped.add(key)
             }
         }
