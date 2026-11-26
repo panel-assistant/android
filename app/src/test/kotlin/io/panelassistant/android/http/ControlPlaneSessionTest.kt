@@ -7,6 +7,9 @@ import io.panelassistant.android.panelassistant.PanelAssistantManageReply
 import io.panelassistant.android.security.ApprovalBroker
 import io.panelassistant.android.security.SensitiveOperation
 import io.panelassistant.android.sensors.HaApiSession
+import io.panelassistant.android.storage.DisposableDataClass
+import io.panelassistant.android.storage.DisposableFileSweeper
+import io.panelassistant.android.storage.appOwnedDisposableFileRules
 import io.panelassistant.android.util.BoundedStreams
 import io.panelassistant.android.util.InstallProgress
 import kotlinx.coroutines.CompletableDeferred
@@ -26,6 +29,7 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import java.io.File
 import java.net.InetSocketAddress
 import java.security.MessageDigest
 
@@ -85,6 +89,9 @@ class ControlPlaneSessionTest {
 
     private val installed = mutableListOf<ByteArray>()
     private val pending = PendingUploadStore { "upload-token" }.also { it.open() }
+    private val apkCache by lazy { temporary.newFolder("apk-cache") }
+    private var beforeApkInspection: (File) -> Unit = {}
+    private var beforeApkInstall: () -> Unit = {}
     private var built: PanelBackup.Artifact? = null
     private val backupRequests = mutableListOf<Pair<CompanionBackupRequest, String>>()
 
@@ -118,11 +125,18 @@ class ControlPlaneSessionTest {
             confirmedSelfUpdate = { true },
             ownPackage = "own.panel",
             pending = pending,
-            createStagingFile = { temporary.newFile() },
-            inspect = { staged -> UploadedApkIdentity("own.panel", String(staged.readBytes()), null) },
+            createStagingFile = { ApkUploadStaging.create(apkCache) },
+            inspect = { staged ->
+                beforeApkInspection(staged)
+                UploadedApkIdentity("own.panel", String(staged.readBytes()), null)
+            },
             startInstall = { claimed, progress ->
-                installed += claimed.file.readBytes()
-                InstallProgress.finish(progress, "installed")
+                try {
+                    beforeApkInstall()
+                    installed += claimed.file.readBytes()
+                } finally {
+                    InstallProgress.finish(progress, "installed")
+                }
             },
             maxBytes = 64,
             receiveBody = { input, output, maxBytes -> BoundedStreams.copy(input, output, maxBytes) },
@@ -172,6 +186,43 @@ class ControlPlaneSessionTest {
         assertEquals(listOf("GET download-token-0001 Bearer panel-token"), requests)
 
         val committed = request("install.apk.commit", JSONObject().put("token", "upload-token"))!!
+        assertEquals("applied" to mapOf<String, Any?>("status" to "started"), committed.outcome to committed.body!!.fields())
+        assertArrayEquals(apk, installed.single())
+    }
+
+    @Test fun sameArtifactRetrySurvivesAClockStepDuringReceiveStageAndInstall() {
+        val apk = "1.0.1".toByteArray()
+        val installedApk = temporary.newFile("base.apk").apply { writeBytes(apk) }
+        val previousUpload = File(apkCache, "apk-upload-0123456789abcdef0123456789abcdef-123.apk").apply {
+            writeBytes(apk)
+            assertTrue(setLastModified(996_000L))
+        }
+        val processBoundary = 1_000_000L
+        var wallTime = processBoundary
+        val rule = appOwnedDisposableFileRules(apkCache, temporary.root, installedApk = installedApk) { true }
+            .single { it.dataClass == DisposableDataClass.DOWNLOADS }
+        val sweep = DisposableFileSweeper(processBoundary, nowMillis = { wallTime })
+        lateinit var activeUpload: File
+        beforeApkInspection = { received ->
+            activeUpload = received
+            // The sweep sampled its boundary before the upload finished receiving after a clock step.
+            wallTime = 997_000L
+            assertTrue(received.setLastModified(wallTime))
+            sweep.sweep(rule)
+            assertFalse(previousUpload.exists())
+            assertTrue("The current upload must survive receive", received.isFile)
+        }
+        beforeApkInstall = {
+            wallTime += 7_200_000L
+            sweep.sweep(rule)
+            assertTrue("The claimed upload must survive the sweep", activeUpload.isFile)
+        }
+
+        val staged = request("install.apk", offer(apk))!!
+        assertEquals("applied", staged.outcome)
+        sweep.sweep(rule)
+        assertTrue("The pending upload must survive the sweep", activeUpload.isFile)
+        val committed = request("install.apk.commit", JSONObject().put("token", staged.body!!.getString("token")))!!
         assertEquals("applied" to mapOf<String, Any?>("status" to "started"), committed.outcome to committed.body!!.fields())
         assertArrayEquals(apk, installed.single())
     }

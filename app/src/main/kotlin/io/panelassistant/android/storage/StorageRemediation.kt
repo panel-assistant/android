@@ -2,6 +2,8 @@ package io.panelassistant.android.storage
 
 import io.panelassistant.android.dashboard.RECOVERY_INSPECTION_COPY
 import io.panelassistant.android.dashboard.RECOVERY_INSPECTION_DIRECTORY_PREFIX
+import io.panelassistant.android.http.ApkUploadStaging
+import io.panelassistant.android.util.AppInstaller
 import io.panelassistant.android.util.CompanionHelperProtocol
 import io.panelassistant.android.util.GuardDbMaintenanceProtocol
 import io.panelassistant.android.util.guardDbCandidateName
@@ -36,6 +38,8 @@ enum class DisposableDataClass {
  *
  * [ownedFile] is any further proof the writer itself applies to its file, such as the Guard DB
  * staging's exact owner, mode and link count; a file it refuses, or cannot judge, is kept.
+ * [matchesInstalledUpload] permits retiring an exact installed duplicate from a previous process
+ * before the usual minimum age. It never overrides the process boundary or [retain].
  */
 internal class DisposableFileRule(
     val dataClass: DisposableDataClass,
@@ -43,6 +47,7 @@ internal class DisposableFileRule(
     val ownedName: Regex,
     val retain: (List<File>) -> Set<String> = { emptySet() },
     val ownedFile: (File) -> Boolean = { true },
+    val matchesInstalledUpload: (File) -> Boolean = { false },
 )
 
 /**
@@ -87,9 +92,8 @@ internal fun disposableFileOrphaned(
     nowMillis - lastModifiedMillis >= minimumAgeMs
 
 /**
- * Deletes only files that both [DisposableFileRule.ownedName] proves are this app's and
- * [disposableFileOrphaned] proves no live operation holds. Bytes are counted only for files that are
- * gone afterwards, so a failed delete can never be reported as reclaimed space.
+ * Deletes only app-owned files that predate this process and have aged out, or are verified
+ * installed upload duplicates. Bytes are counted only for files that are gone afterwards.
  */
 internal class DisposableFileSweeper(
     private val processStartMillis: Long,
@@ -115,8 +119,12 @@ internal class DisposableFileSweeper(
         var kept = 0
         var failures = 0
         candidates.forEach { file ->
+            val modified = file.lastModified()
+            // Keep earlier-upload proof conservative when a filesystem rounds to seconds.
+            val canVerifyEarlierUpload = modified / 1_000L < processStartMillis / 1_000L
             if (file.name in retained ||
-                !disposableFileOrphaned(file.lastModified(), processStartMillis, now, minimumAgeMs)
+                !disposableFileOrphaned(modified, processStartMillis, now, 0L) ||
+                (now - modified < minimumAgeMs && !(canVerifyEarlierUpload && rule.matchesInstalledUpload(file)))
             ) {
                 kept++
                 return@forEach
@@ -230,12 +238,17 @@ internal fun appOwnedDisposableFileRules(
     cacheDir: File,
     filesDir: File,
     guardDbPairUnarmable: () -> Boolean = { false },
+    installedApk: File? = null,
     guardDbFileOwned: (File) -> Boolean,
 ): List<DisposableFileRule> = listOf(
     DisposableFileRule(
         DisposableDataClass.DOWNLOADS,
         cacheDir,
-        Regex("""(hapaneld-dl-|hapaneld-prepared-|apk-upload-)[0-9]+\.apk|hapaneld-helper-[0-9]+\.bin"""),
+        Regex("""(hapaneld-dl-|hapaneld-prepared-)[0-9]+\.apk|hapaneld-helper-[0-9]+\.bin|${ApkUploadStaging.fileName.pattern}"""),
+        retain = { candidates ->
+            candidates.filter(ApkUploadStaging::belongsToCurrentProcess).mapTo(mutableSetOf()) { it.name }
+        },
+        matchesInstalledUpload = installedUploadMatch(installedApk),
     ),
     DisposableFileRule(
         DisposableDataClass.CACHES,
@@ -269,6 +282,19 @@ internal fun appOwnedDisposableFileRules(
         ownedFile = lazy(guardDbPairUnarmable).let { unarmable -> { file -> guardDbFileOwned(file) && unarmable.value } },
     ),
 )
+
+/** The cache upload has no process-independent reader. Android owns its install copy, and the
+ * legacy helper and Guard DB take separate custody before using a path across processes. An exact
+ * match to the installed APK makes a prior process's upload redundant, including a retry. */
+private fun installedUploadMatch(installedApk: File?): (File) -> Boolean {
+    if (installedApk == null) return { false }
+    val installedSize by lazy { installedApk.length() }
+    val installedDigest by lazy { runCatching { AppInstaller.sha256(installedApk) }.getOrNull() }
+    return { file ->
+        ApkUploadStaging.fileName.matches(file.name) && installedSize > 0L && file.length() == installedSize &&
+            installedDigest?.let { digest -> runCatching { AppInstaller.sha256(file) == digest }.getOrDefault(false) } == true
+    }
+}
 
 /**
  * The temporary directories app writers create and remove themselves, left behind only when the

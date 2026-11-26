@@ -268,7 +268,7 @@ class OrphanedTemporarySweepTest {
             validateFile = { it.isFile },
             sessionRecordPresent = { sessionRecord },
         )
-        return appOwnedDisposableFileRules(cacheDir, filesDir, { staging.unarmable(installedApk) }, owned)
+        return appOwnedDisposableFileRules(cacheDir, filesDir, { staging.unarmable(installedApk) }, guardDbFileOwned = owned)
     }
 
     @Test fun anUnarmablePairIsRemovedAndReachesTheRemediationSummary() {
@@ -372,14 +372,24 @@ class OrphanedTemporarySweepTest {
 
     @Test fun healthyMaintenanceRemovesASelfUpdateUploadOrphanBeforeRetentionOnlyWhileTheLifecycleIsOwned() {
         for (owned in listOf(true, false)) {
-            val orphan = file(cacheDir, "apk-upload-1234.apk", bytes = 15_000)
+            val installed = file(root, "base.apk")
+            val orphan = File.createTempFile("apk-upload-", ".apk", cacheDir).apply {
+                writeBytes(installed.readBytes())
+                assertTrue(setLastModified(processStart - 2_000L))
+            }
             val live = file(cacheDir, "apk-upload-5678.apk", modified = processStart + 1_000L)
+            val sameSecond = file(cacheDir, "apk-upload-8765.apk", modified = processStart)
+            val unresolved = file(cacheDir, "apk-upload-9900.apk").apply {
+                writeBytes(ByteArray(100) { 1 })
+                assertTrue(setLastModified(processStart - 2_000L))
+            }
+            val helperStage = file(File(filesDir, "helper-install-staging"), "hapaneld-helper-install-1234.apk")
             val calls = mutableListOf<String>()
-            val sweeper = sweeper()
+            val sweeper = sweeper(start = processStart + 500L)
             val result = runHealthyStorageMaintenance(object : StorageRemediationOperations {
                 override fun sweepDisposableFiles(): List<DisposableSweepResult> {
                     calls += "sweep"
-                    return appOwnedDisposableFileRules(cacheDir, filesDir) { true }.map(sweeper::sweep)
+                    return appOwnedDisposableFileRules(cacheDir, filesDir, installedApk = installed) { true }.map(sweeper::sweep)
                 }
                 override fun enforceRetention(): RetentionResult { calls += "retention"; return RetentionResult.PRUNED }
                 override fun checkpointWal(): WalCheckpointOutcome = error("Healthy maintenance never checkpoints")
@@ -391,9 +401,11 @@ class OrphanedTemporarySweepTest {
             assertEquals(RetentionResult.PRUNED, result)
             assertEquals(if (owned) listOf("sweep", "retention") else listOf("retention"), calls)
             assertEquals("owned=$owned", !owned, orphan.exists())
-            assertTrue("A file written by this process is never an orphan", live.exists())
+            assertTrue("A current-process retry can still need the same bytes", live.exists())
+            assertTrue("A rounded timestamp in the process's first second is ambiguous", sameSecond.exists())
+            assertTrue("An equally sized upload with different bytes keeps its age gate", unresolved.exists())
+            assertTrue("A helper may still own its persistent staging file", helperStage.exists())
             orphan.delete()
-            live.delete()
         }
     }
 

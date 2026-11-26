@@ -16,7 +16,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 
 internal fun controlPlaneDependencies(
     appContext: Context,
@@ -55,7 +54,7 @@ internal fun controlPlaneDependencies(
         confirmedSelfUpdate = { ConfirmedSelfInstaller.available(appContext) },
         ownPackage = appContext.packageName,
         pending = pendingApks,
-        createStagingFile = { File.createTempFile("apk-upload-", ".apk", appContext.cacheDir) },
+        createStagingFile = { ApkUploadStaging.create(appContext.cacheDir) },
         inspect = { staged ->
             withContext(Dispatchers.IO) { AppInstaller.inspect(appContext, staged.absolutePath) }?.let {
                 UploadedApkIdentity(it.pkg, it.version, it.signerSha256, it.signerSha256s, it.versionCode)

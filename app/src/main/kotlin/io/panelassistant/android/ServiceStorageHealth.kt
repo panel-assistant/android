@@ -179,8 +179,18 @@ internal class ServiceStorageHealth(
             ) ?: return emptyList()
             val sweeper = DisposableFileSweeper(processStart)
             val pairUnarmable = { guardDbAppStaging(context).unarmable(File(context.applicationInfo.sourceDir)) }
-            return appOwnedDisposableFileRules(context.cacheDir, context.filesDir, pairUnarmable, ::validGuardDbAppFile).map(sweeper::sweep) +
-                appOwnedDisposableDirectoryRules(context.cacheDir).map(sweeper::sweep)
+            val files = appOwnedDisposableFileRules(
+                context.cacheDir, context.filesDir, pairUnarmable,
+                installedApk = File(context.applicationInfo.sourceDir),
+                guardDbFileOwned = ::validGuardDbAppFile,
+            ).map(sweeper::sweep)
+            val directories = appOwnedDisposableDirectoryRules(context.cacheDir).map(sweeper::sweep)
+            return (files + directories).also { results ->
+                results.filter { it.deleteFailures > 0 }.forEach { result ->
+                    val category = result.dataClass.name.lowercase(Locale.ROOT)
+                    Log.w(TAG, "storage sweep retained $category after ${result.deleteFailures} failed deletions")
+                }
+            }
         }
 
         override fun enforceRetention(): RetentionResult = runCatching {
