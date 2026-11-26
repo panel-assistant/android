@@ -184,6 +184,32 @@ class ConfigBundleRoutesTest {
         }
     }
 
+    @Test fun `tokenless import rejects invalid settings when only orphaned provenance remains`() {
+        PaneldServerHttpFixture().use { fixture ->
+            val config = fixture.config
+            assertTrue(config.setHaConnection("http://ha.test:8123", "access"))
+            config.setHaClientId("panel-client")
+            val before = config.haAuthSnapshot()
+            val approvals = mutableListOf<String>()
+            val bundle = ConfigBundle.fromValues(mapOf("ha_client_id" to "source-client", "ha_url" to "not-a-url"))
+            testApplication {
+                application { mountConfigBundleRoutes(fixture) { approvals += it } }
+                val responses = listOf("?dry_run=1", "").map { query ->
+                    client.post("/api/v1/config/import$query") { setBody(bundle.serialize()) }
+                }
+                val results = responses.map { it.status to JSONObject(it.bodyAsText()) }
+                assertEquals(results.toString(), List(2) { HttpStatusCode.UnprocessableEntity }, results.map { it.first })
+                for ((_, body) in results) {
+                    assertEquals("rejected", body.getString("status"))
+                    assertEquals("ha_client_id", body.getJSONArray("skipped").getString(0))
+                    assertTrue(body.toString(), body.getJSONArray("errors").length() > 0)
+                }
+                assertTrue(approvals.isEmpty())
+                assertEquals(before, config.haAuthSnapshot())
+            }
+        }
+    }
+
     @Test fun `a full settings import can explicitly clear the previous sign-in`() {
         PaneldServerHttpFixture().use { fixture ->
             val config = fixture.config
