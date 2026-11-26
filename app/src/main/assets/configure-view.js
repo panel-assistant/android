@@ -119,10 +119,10 @@
     if (cfg.hashJumpUntil < 0 || !location.hash) return;
     var target = document.getElementById(location.hash.slice(1));
     if (!target) return;
-    if (!cfg.hashJumpUntil) {
+    var firstJump = !cfg.hashJumpUntil;
+    if (firstJump) {
       cfg.hashJumpUntil = Date.now() + 1400;
       target.classList.add("flash");
-      setTimeout(function () { target.classList.remove("flash"); }, 1800);
     } else if (Date.now() > cfg.hashJumpUntil) {
       cfg.hashJumpUntil = -1;
       return;
@@ -134,6 +134,9 @@
     var root = document.getElementById("cfg-groups");
     root.classList.add("config-viewport-anchored");
     target.scrollIntoView({ block: "center" });
+    // Start the visible highlight's lifetime after the cold layout above it has
+    // been resolved. That synchronous work can otherwise consume most of it.
+    if (firstJump) setTimeout(function () { target.classList.remove("flash"); }, 1800);
     scheduleConfigExactLayoutRelease(root, configViewportAnchor(target));
   }
 

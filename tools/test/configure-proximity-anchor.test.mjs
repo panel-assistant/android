@@ -76,6 +76,18 @@ async function open(engine, t, viewport, colorScheme, hash) {
   // Record when the flash class arrives and leaves, so the test reads the flash's length instead of racing its end.
   await p.addInitScript((id) => {
     window.__flash = {};
+    // A cold panel or a busy runner can spend time laying out the cards above the
+    // target. Keep that cost deterministic: the highlight must still be visible
+    // for its full duration once the initial jump finishes.
+    const scrollIntoView = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (...args) {
+      if (this.id === id && !window.__flash.delayed) {
+        window.__flash.delayed = true;
+        const until = performance.now() + 800;
+        while (performance.now() < until) { /* synchronous layout cost */ }
+      }
+      return scrollIntoView.apply(this, args);
+    };
     new MutationObserver(() => {
       const on = document.getElementById(id)?.classList.contains('flash');
       if (on && !window.__flash.on) window.__flash.on = performance.now();
