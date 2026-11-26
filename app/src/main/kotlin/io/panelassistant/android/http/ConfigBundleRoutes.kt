@@ -167,6 +167,14 @@ internal class ConfigBundleRoutes(
         unavailable.forEach { accepted.remove(it) }
         skipped += unavailable
         warn += unavailable.map { "$it: unavailable on this panel" }
+        // Default exports omit secret tokens but can still carry the source OAuth client ID.
+        // Keep the target's token provenance together while previewing and applying this import.
+        // Revision replay and backup restore carry explicit credential values, including clears.
+        if (accepted["ha_token"].isNullOrEmpty() && accepted["ha_refresh_token"].isNullOrEmpty()) {
+            for (key in listOf("ha_client_id", "ha_token_expiry")) {
+                if (accepted.remove(key) != null) skipped.add(key)
+            }
+        }
         if (dryRun) {
             val current = values.currentValues()
             call.respondText(

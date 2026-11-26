@@ -121,6 +121,69 @@ class ConfigBundleRoutesTest {
         }
     }
 
+    @Test fun `replaying a revision clears credentials that were explicitly empty`() {
+        PaneldServerHttpFixture().use { fixture ->
+            val config = fixture.config
+            val url = "http://ha.test:8123"
+            assertTrue(config.setHaConnection(url, ""))
+            testApplication {
+                application { mountConfigBundleRoutes(fixture) }
+                val imported = client.post("/api/v1/config/import") {
+                    setBody(ConfigBundle.fromValues(mapOf(
+                        "ha_url" to url,
+                        "ha_token" to "access",
+                        "ha_refresh_token" to "refresh",
+                        "ha_token_expiry" to "2345678901",
+                        "ha_client_id" to "oauth-client",
+                    )).serialize())
+                }
+                assertEquals(imported.bodyAsText(), HttpStatusCode.OK, imported.status)
+                assertEquals(HaAuthSnapshot(url, "access", "refresh", 2_345_678_901L, "oauth-client"), config.haAuthSnapshot())
+                val revisions = JSONArray(client.get("/api/v1/config/revisions").bodyAsText())
+                val revision = revisions.getJSONObject(0).getLong("id")
+                val restored = client.post("/api/v1/config/revisions/$revision/restore")
+                val text = restored.bodyAsText()
+                assertEquals(text, HttpStatusCode.OK, restored.status)
+                assertEquals(HaAuthSnapshot(url, "", "", 0L, ""), config.haAuthSnapshot())
+                val applied = JSONObject(text).getJSONArray("applied")
+                assertTrue(text, (0 until applied.length()).any { applied.getString(it) == "ha_client_id" })
+            }
+        }
+    }
+
+    @Test fun `tokenless import skips orphaned provenance before preview and approval`() {
+        PaneldServerHttpFixture().use { fixture ->
+            val config = fixture.config
+            assertTrue(config.setHaConnection("http://ha.test:8123", "access"))
+            config.setHaRefreshToken("refresh")
+            config.setHaTokenExpiry(2_345_678_901L)
+            config.setHaClientId("panel-client")
+            val before = config.haAuthSnapshot()
+            val approvals = mutableListOf<String>()
+            val bundle = ConfigBundle.fromValues(mapOf("ha_client_id" to "source-client", "ha_token_expiry" to "1"))
+            testApplication {
+                application { mountConfigBundleRoutes(fixture) { approvals += it } }
+                val preview = client.post("/api/v1/config/import?dry_run=1") { setBody(bundle.serialize()) }
+                val dryRun = JSONObject(preview.bodyAsText())
+                val noOp = client.post("/api/v1/config/import") { setBody(bundle.serialize()) }
+                val applied = client.post("/api/v1/config/import") {
+                    setBody(bundle.copy(values = bundle.values + ("friendly_name" to "Imported panel")).serialize())
+                }
+                assertEquals(dryRun.toString(), HttpStatusCode.OK, preview.status)
+                assertEquals(noOp.bodyAsText(), HttpStatusCode.OK, noOp.status)
+                assertEquals(applied.bodyAsText(), HttpStatusCode.OK, applied.status)
+                assertEquals(0, dryRun.getJSONArray("changes").length())
+                assertEquals(setOf("ha_client_id", "ha_token_expiry"), dryRun.getJSONArray("skipped").let {
+                    (0 until it.length()).map(it::getString).toSet()
+                })
+                assertEquals("no-op", JSONObject(noOp.bodyAsText()).getString("status"))
+                assertEquals(listOf("Import 1 panel setting"), approvals)
+                assertEquals("Imported panel", config.friendlyName)
+                assertEquals(before, config.haAuthSnapshot())
+            }
+        }
+    }
+
     @Test fun `an import that moves the panel to another Home Assistant drops the previous sign-in`() {
         importOntoSignedInPanel("", mapOf("ha_url" to "http://b.test:8123")) { config ->
             assertEquals(HaAuthSnapshot("http://b.test:8123", "", "", 0L, ""), config.haAuthSnapshot())
@@ -207,7 +270,10 @@ class ConfigBundleRoutesTest {
     }
 
     /** The production route owner over the fixture's real Config, with sensitive admission granted. */
-    private fun Application.mountConfigBundleRoutes(fixture: PaneldServerHttpFixture) {
+    private fun Application.mountConfigBundleRoutes(
+        fixture: PaneldServerHttpFixture,
+        onApproval: (String) -> Unit = {},
+    ) {
         val config = fixture.config
         // This fixture has no device model to name the panel from.
         config.setRaw(requireNotNull(SettingsRegistry.spec("friendly_name")), "Contract panel")
@@ -256,9 +322,9 @@ class ConfigBundleRoutesTest {
                         revisions = revisions,
                         values = values,
                         transaction = transaction,
-                        authorizeSensitive = { _, _, _, _ -> true },
+                        authorizeSensitive = { _, _, _, description -> onApproval(description); true },
                         rejectHardenedNetworkAdb = { _, _ -> false },
-                        planEntityBackup = { error("No entity state") },
+                        planEntityBackup = ::planEntityBackup,
                         capabilities = { Capabilities(networkAdb = true) },
                     )
                 }

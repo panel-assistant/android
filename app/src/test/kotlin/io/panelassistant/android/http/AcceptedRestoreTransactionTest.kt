@@ -352,6 +352,48 @@ class AcceptedRestoreTransactionTest {
         }
     }
 
+    @Test fun sameOriginRestoreFailureRollsBackNewSignIn() = runBlocking {
+        PaneldServerHttpFixture().use { fixture ->
+            val config = fixture.config
+            val url = "http://ha.test:8123"
+            assertTrue(config.setHaConnection(url, ""))
+            config.setRaw(requireNotNull(SettingsRegistry.spec("friendly_name")), "Restore contract panel")
+            val imported = HaAuthSnapshot(url, "imported-access", "imported-refresh", 2_345_678_901L, "imported-client")
+            var committed: HaAuthSnapshot? = null
+            val executor = restoreExecutor(
+                fixture, capabilities = { Capabilities() }, persist = { true },
+                onReconfigure = {
+                    val signIn = config.haAuthSnapshot()
+                    if (signIn.accessToken == imported.accessToken) {
+                        committed = signIn
+                        error("configuration rearming failed")
+                    }
+                },
+            )
+            val ticket = requireNotNull(InstallProgress.start("restore"))
+            try {
+                val settings = mapOf(
+                    "ha_url" to url,
+                    "ha_token" to imported.accessToken,
+                    "ha_refresh_token" to imported.refreshToken,
+                    "ha_token_expiry" to imported.tokenExpiry.toString(),
+                    "ha_client_id" to imported.clientId,
+                )
+                executor.execute(
+                    RestoreConfigPlan(settings, emptyList(), emptyList()),
+                    null, null, null, null, emptyList(), false, emptyList(), null, ticket,
+                )
+                val result = JSONObject(InstallProgress.json()).getJSONObject("result")
+                assertEquals(imported, committed)
+                assertEquals("rolled_back", result.getJSONObject("config").getString("status"))
+                assertEquals("rolled_back", result.getJSONObject("rollback").getString("status"))
+                assertEquals(HaAuthSnapshot(url, "", "", 0L, ""), config.haAuthSnapshot())
+            } finally {
+                InstallProgress.finish(ticket, "test cleanup")
+            }
+        }
+    }
+
     @Test fun rendererFailureRollsBackToExecutionTimeValuesUsingTheAdmittedTicket() = runBlocking {
         checkRendererFailure(supersede = false)
     }
