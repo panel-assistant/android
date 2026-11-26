@@ -8,7 +8,7 @@ This update fixes keyboard delays, dashboard recovery, settings imports and seve
 
 - **Keyboard and Configure.** Swipe reveal no longer delays taps on the bottom row of the on-screen keyboard. Configure stays at the setting you just changed (#211). Text fields fit in their cards, help stays open after a quick click, and narrow pages are easier to use with enlarged browser text. Thanks to @jpbaril for reporting the keyboard delay and the scroll jump.
 - **Dashboard and setup.** The dashboard retries after a refused Home Assistant connection while the screen is on. Coming back to the dashboard rebuilds a WebView renderer that died while it was hidden. Setup asks again if it could not save your dashboard answer. Auto sleep refreshes when you put the panel in a Home Assistant Area.
-- **Settings and updates.** Importing a settings file that omits Home Assistant credentials keeps your current sign-in. A full import can still explicitly sign the panel out. The app clears leftover uploads that exactly match the installed APK.
+- **Settings and updates.** A settings import that omits credentials keeps your current sign-in when the Home Assistant address stays the same. A full import can still explicitly sign the panel out. The app clears leftover uploads that exactly match the installed APK.
 - **Profiles and diagnostics.** Startup skips incompatible replacements for a pinned bundled profile. Ordinary compatibility checks and repeated diagnostics create fewer warnings.
 - **Proximity.** Configure brings the proximity settings into view and clears their highlight after navigation.
 
