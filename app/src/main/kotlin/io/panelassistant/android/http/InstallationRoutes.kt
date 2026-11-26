@@ -1,10 +1,10 @@
 package io.panelassistant.android.http
 
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import android.util.Log
 import io.panelassistant.android.Config
 import io.panelassistant.android.control.Su
-import io.panelassistant.android.control.SystemController
 import io.panelassistant.android.device.DeviceProfile
 import io.panelassistant.android.security.SensitiveOperation
 import io.panelassistant.android.util.AndroidInput
@@ -38,6 +38,11 @@ internal fun Route.installationRoutes(
             else -> emptyList()
         }
     },
+    packageInventory: () -> PackageInventory = { systemPackageInventory(appContext) },
+    // Active: may start su. Only for the uninstall action about to use root.
+    rootAvailable: () -> Boolean = Su::availableCachedIsolated,
+    // Passive: never starts a process; false until root has been observed working.
+    rootObserved: () -> Boolean = Su::observedUsable,
 ) = ops {
     // Dismiss a component update from the DASHBOARD banner only (per-version; re-surfaces when
     // a newer release ships). The Install tab still lists it. See Config.ignoreUpdate.
@@ -91,20 +96,20 @@ internal fun Route.installationRoutes(
     }
     // Removable apps (third-party + updated-system; excludes ha-paneld + stock system apps,
     // which pm can't uninstall anyway) for the Uninstall card's picker.
-    get("/packages") { call.respondText(withContext(Dispatchers.IO) { packagesJson(appContext, config) }, ContentType.Application.Json) }
+    get("/packages") { call.respondText(withContext(Dispatchers.IO) { packagesJson(appContext, config, packageInventory(), rootObserved()) }, ContentType.Application.Json) }
     // Launchable apps plus the supported installed Companion renderer choices —
     // populates the Configure tab's Dashboard-app / Launcher-app pickers.
     // Uninstall a package over root. Guarded: never ha-paneld itself; the picker only offers
     // removable apps. `pm uninstall` (system/vendor apps aren't removable, only disable-able
     // via taming — a separate, safer path).
     post("/uninstall") {
-        if (!Su.availableCachedIsolated()) return@post call.respondText(
+        if (!rootAvailable()) return@post call.respondText(
             """{"ok":false,"error":"no-root"}""", ContentType.Application.Json, HttpStatusCode.ServiceUnavailable)
         val parameters = receiveBoundedFormParameters(call) ?: return@post
         val pkg = parameters["pkg"]?.trim().orEmpty()
         val protected = pkg == appContext.packageName || pkg == io.panelassistant.android.util.AppInstaller.WEBVIEW_PKG
         if (pkg.isEmpty() || protected || !AndroidInput.isPackage(pkg) ||
-            pkg !in removablePackages(appContext, config).mapTo(hashSetOf()) { it.first })
+            pkg !in removablePackages(appContext, config, packageInventory()).mapTo(hashSetOf()) { it.pkg })
             return@post call.respondText("""{"ok":false,"error":"bad-package"}""", ContentType.Application.Json, HttpStatusCode.BadRequest)
         if (!authorizeSensitive(
                 call,
@@ -146,40 +151,12 @@ internal fun Route.installationRoutes(
 
 }
 
-/** Removable apps (third-party or updated-system) for the Uninstall picker, sorted by label. Stock
- *  system apps + ha-paneld are excluded — pm can't uninstall stock system apps (only disable), and
- *  self-uninstall would kill the tool. */
-private fun packagesJson(appContext: Context, config: Config): String {
-    val apps = removablePackages(appContext, config)
-    val arr = apps.joinToString(",") { (pkg, label) -> "{\"pkg\":${Json.str(pkg)},\"label\":${Json.str(label)}}" }
-    return "{\"packages\":[$arr]}"
-}
-
-
-/** The server re-evaluates the same policy used by the picker; UI filtering is never authorization. */
-private fun removablePackages(appContext: Context, config: Config): List<Pair<String, String>> {
-    val pm = appContext.packageManager
-    val homePackage = runCatching {
-        pm.resolveActivity(
-            android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_HOME),
-            0,
-        )?.activityInfo?.packageName
-    }.getOrNull()
-    val excluded = setOfNotNull(
-        appContext.packageName,
-        io.panelassistant.android.util.AppInstaller.WEBVIEW_PKG,
-        config.dashboardPackage.takeIf { it.isNotBlank() && it != SystemController.BUILTIN_DASHBOARD },
-        config.launcherPackage.takeIf(String::isNotBlank),
-        homePackage,
-    )
-    return runCatching {
-        pm.getInstalledApplications(0)
-            .filter { it.packageName !in excluded }
-            .filter {
-                it.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM == 0 ||
-                    it.flags and android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP != 0
-            }
-            .map { it.packageName to runCatching { pm.getApplicationLabel(it).toString() }.getOrDefault(it.packageName) }
-            .sortedBy { it.second.lowercase(java.util.Locale.ROOT) }
-    }.getOrDefault(emptyList())
+/** Removable apps for the Uninstall picker, each marked when the panel's previous setup left it (never a
+ *  system app, even an updated one the picker still lists), plus
+ *  whether the `uninstall` op can run (it needs root). */
+private fun packagesJson(appContext: Context, config: Config, inventory: PackageInventory, uninstallAvailable: Boolean): String {
+    val arr = removablePackages(appContext, config, inventory).joinToString(",") {
+        "{\"pkg\":${Json.str(it.pkg)},\"label\":${Json.str(it.label)},\"previous_setup\":${it.flags and ApplicationInfo.FLAG_SYSTEM == 0 && isPreviousSetupPackage(it.pkg, config)}}"
+    }
+    return "{\"packages\":[$arr],\"uninstall_available\":$uninstallAvailable}"
 }

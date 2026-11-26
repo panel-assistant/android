@@ -807,9 +807,9 @@
     postForm("settings", fields)
       .then(function () { return postForm("setup.home_dashboard", {}); })
       .then(function () {
-        // Panel Assistant already chose this panel's native path. The filter defaults on
-        // for that new panel, before its answer releases the first dashboard render.
-        if (!(journey.handover && journey.handover.source && journey.entity_filter &&
+        // A new setup defaults the filter on, before its answer releases the first dashboard render.
+        // A repair (a re-armed journey on a panel that once completed setup) asks instead.
+        if (journey.repair || !(journey.entity_filter &&
           journey.entity_filter.relevant && !journey.entity_filter.answered)) return;
         return postForm("settings", { dashboard_entity_learning: "true" })
           .then(function () { return postForm("setup.entity_filter", {}); });

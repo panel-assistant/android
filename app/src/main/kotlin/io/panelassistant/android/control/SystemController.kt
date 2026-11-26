@@ -285,6 +285,9 @@ class SystemController(
             // code always skipped the default and grabbed the first alternate, which on kiosk panels is the
             // HA Companion (registers as HOME) → opened the dashboard instead of a launcher (the bug).
             default != null && !notALauncher(default) -> all.firstOrNull { it.pkg == default }
+            // The dashboard owns HOME: Auto is this app's own drawer, never a leftover third-party HOME app.
+            // Null makes launchLauncher open the admin launcher and the Auto label name it.
+            default == env.ownPackage || default != null && AppIdentity.isPanelApp(default) -> null
             // Default IS a kiosk/dashboard (or us): fall back to any other real launcher.
             else -> all.firstOrNull { !notALauncher(it.pkg) && it.pkg != default }
         }

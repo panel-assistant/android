@@ -21,7 +21,8 @@ for (const [engine, browserType] of [['Chromium', chromium], ['WebKit', webkit]]
   test(`Setup dashboard route corpus preserves advisory checks and submitted values in ${engine}`, async (t) => {
     const matrix = JSON.parse(await readFile(new URL('./fixtures/dashboard-path-parity.json', import.meta.url), 'utf8'));
     const rig = await openRig(t, {
-      initialJourney: journey('home_dashboard', { home_dashboard: { value: '/alpha' } }),
+      // The filter is answered so these dashboard saves post only the dashboard.
+      initialJourney: journey('home_dashboard', { home_dashboard: { value: '/alpha' }, entity_filter: { relevant: true, answered: true, enabled: false, count: 321, level: 'green', confidence: 'estimated', tier: 'capable' } }),
       locale: 'en',
       dashboards: {
         queried: true,
@@ -638,10 +639,9 @@ for (const [engine, browserType] of [['Chromium', chromium], ['WebKit', webkit]]
   });
 }
 
-browserTest('a Panel Assistant handover answers the filter on before releasing first render', async (t) => {
+browserTest('a new setup without a handover answers the filter on before releasing first render', async (t) => {
   const rig = await openRig(t, {
     initialJourney: journey('home_dashboard', {
-      handover: { source: true },
       home_dashboard: { value: '/dashboard-wall' },
     }),
     locale: 'en',
@@ -662,6 +662,29 @@ browserTest('a Panel Assistant handover answers the filter on before releasing f
   assert.equal(posts[2].body.includes('ha_token'), false);
 });
 
+browserTest('a repair after a completed setup leaves an unanswered filter to the user', async (t) => {
+  const dashboards = { queried: true, items: [{ group: 'panel', title: 'Wall', path: '/dashboard-wall' }], default: { explicit: true, path: '/dashboard-wall' } };
+  const rig = await openRig(t, {
+    initialJourney: journey('home_dashboard', { repair: true, home_dashboard: { value: '/dashboard-wall' } }),
+    locale: 'en',
+    dashboards,
+  });
+  await rig.page.locator('#wiz-home_dashboard').waitFor();
+  await rig.page.locator('button.wiz-primary').click();
+  await eventually(
+    () => Promise.resolve(rig.state.requests.filter((request) => request.method === 'POST').length),
+    (count) => count >= 2,
+  );
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  const posts = rig.state.requests.filter((request) => request.method === 'POST');
+  assert.deepEqual(posts.map((request) => request.path), ['/api/v1/config', '/api/v1/setup/home-dashboard']);
+  assert.equal(new URLSearchParams(posts[0].body).has('dashboard_entity_learning'), false);
+  await reloadJourney(rig, journey('entity_filter', { repair: true }), '/');
+  assert.equal(await rig.page.locator('button.wiz-primary').isVisible(), true);
+  assert.equal(await rig.page.locator('#ef-decline').isVisible(), true);
+  assert.equal(rig.state.requests.filter((request) => request.method === 'POST').length, 2, 'nothing chosen for the user');
+});
+
 browserTest('declining a previously enabled filter disables it before the answer', async (t) => {
   const rig = await openRig(t, {
     initialJourney: journey('entity_filter', {
@@ -679,10 +702,9 @@ browserTest('declining a previously enabled filter disables it before the answer
   assert.equal(new URLSearchParams(posts[0].body).get('dashboard_entity_learning'), 'false');
 });
 
-browserTest('revisiting a handed-over dashboard does not undo an answered filter choice', async (t) => {
+browserTest('revisiting the dashboard step does not undo an answered filter choice', async (t) => {
   const rig = await openRig(t, {
     initialJourney: journey('home_dashboard', {
-      handover: { source: true },
       home_dashboard: { value: '/dashboard-wall' },
       statuses: { entity_filter: { status: 'satisfied' } },
       entity_filter: { relevant: true, answered: true, enabled: false },
@@ -955,6 +977,7 @@ for (const [engine, browserType] of [['Chromium', chromium], ['WebKit', webkit]]
   const completed = () => journey('render_proof', {
     complete: true,
     home_dashboard: { value: '/home', answered: true },
+    entity_filter: { relevant: true, answered: true, enabled: false, count: 321, level: 'green', confidence: 'estimated', tier: 'capable' },
     statuses: { home_dashboard: { status: 'satisfied' }, render_proof: { status: 'satisfied' } },
   });
   const revisit = {

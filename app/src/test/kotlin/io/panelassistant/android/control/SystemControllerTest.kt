@@ -631,10 +631,36 @@ class SystemControllerTest {
     @Test fun launcherSkipsOnlyWhatTheProfileNames() {
         // The exclusion is profile data, not app code: a profile that names no vendor home app leaves
         // Stargate an ordinary launcher candidate.
-        val env = x2iHomes()
+        val env = x2iHomes().apply { default = null }
         val (c, _, _) = sc(env, daemon = null, su = false, profileId = "generic")
         c.launchLauncher("")
         assertEquals(listOf("cloud.shelly.stargate/cloud.shelly.stargate.activities.SplashActivity"), env.directStarts)
+    }
+
+    @Test fun autoLauncherWhileDashboardOwnsHomeOpensAdminLauncherNotLeftoverLauncher() {
+        // A migrated Sonoff kept the third-party launcher l.l; the dashboard owns HOME.
+        val env = FakeSystemEnv(homes = listOf(DASH_HOME, ActivityRef("l.l", "L")), default = DASH_HOME)
+        val (c, root, _) = sc(env, daemon = null)
+        c.launchLauncher("")
+        assertEquals(listOf("am start -n $OWN/io.panelassistant.android.AdminLauncherActivity"), root.ran)
+        assertNull("Auto label falls back to the Panel Assistant admin launcher", c.resolvedLauncher(""))
+    }
+
+    @Test fun autoLauncherStillPrefersARealThirdPartyDefault() {
+        val (c, root, _) = sc(launcherEnv("l.l", "l.l", VENDOR), daemon = null)
+        c.launchLauncher("")
+        assertEquals(listOf("am start -n l.l/L"), root.ran)
+        assertEquals("l.l", c.resolvedLauncher(""))
+    }
+
+    @Test fun autoLauncherLeavesHomeWithTheDashboard() {
+        // Auto keeps the dashboard HOME policy: a pending takeover reclaims HOME for DashboardActivity, never the drawer.
+        val env = FakeSystemEnv(pendingHomeTakeover = true, homes = listOf(DASH_HOME, ActivityRef("l.l", "L")), default = ActivityRef("l.l", "L"))
+        val (c, root, d) = sc(env, daemon = null)
+        assertFalse(c.applyLauncherHomePolicy("", BUILTIN))
+        val homeCommands = (root.ran + d.sent).filter { "home" in it.lowercase() }
+        assertTrue("dashboard reclaimed HOME: $homeCommands", homeCommands.any { "DashboardActivity" in it })
+        assertTrue("drawer never took HOME: $homeCommands", homeCommands.none { "AdminLauncherActivity" in it })
     }
 
     @Test fun launcherHonoursConfiguredPkg() {
@@ -675,7 +701,8 @@ class SystemControllerTest {
 
                 controller.launchLauncher("")
 
-                val expected = if (hasLauncher) vendor.component else admin
+                // This app owns HOME, so Auto stays on its own drawer even beside another launcher.
+                val expected = admin
                 assertEquals("default=${default.pkg} launcher=$hasLauncher", listOf("am start -n $expected"), root.ran)
             }
         }

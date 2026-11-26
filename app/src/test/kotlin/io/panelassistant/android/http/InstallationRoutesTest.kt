@@ -120,4 +120,76 @@ class InstallationRoutesTest {
             }
         }
     }
+
+    private fun packages(home: String?, apps: List<InstalledApp>, root: Boolean = true, previousHome: String? = "l.l/.Launcher", activeProbes: IntArray = IntArray(1)): JSONObject =
+        PaneldServerHttpFixture().use { fixture ->
+            previousHome?.let { fixture.values["device_local_previous_home_component"] = it }
+            var body = ""
+            testApplication {
+                application { routing {
+                    installationRoutes(fixture.context, fixture.config,
+                        io.panelassistant.android.control.fakeProfile(), fixture.pending,
+                        authorizeSensitive = { _, _, _, _ -> error("No approval") },
+                        packageInventory = { PackageInventory(home, apps) },
+                        rootAvailable = { activeProbes[0]++; true },
+                        rootObserved = { root })
+                } }
+                val response = client.get("/packages")
+                assertEquals(HttpStatusCode.OK, response.status)
+                body = response.bodyAsText()
+            }
+            JSONObject(body)
+        }
+
+    private fun flags(json: JSONObject): Map<String, Boolean> {
+        val arr = json.getJSONArray("packages")
+        return (0 until arr.length()).associate { arr.getJSONObject(it).getString("pkg") to arr.getJSONObject(it).getBoolean("previous_setup") }
+    }
+
+    private val user = 0
+    private val system = android.content.pm.ApplicationInfo.FLAG_SYSTEM
+
+    @Test fun `packages flag previous HOME and Companion leftovers but not unrelated apps`() {
+        val json = packages("io.github.maxlyth.hapaneld", listOf(
+            InstalledApp("l.l", "Old launcher", user),
+            InstalledApp("io.homeassistant.companion.android.minimal", "Home Assistant", user),
+            InstalledApp("com.example.notes", "Notes", user),
+        ))
+        assertEquals(mapOf("l.l" to true, "io.homeassistant.companion.android.minimal" to true, "com.example.notes" to false), flags(json))
+        assertTrue(json.getBoolean("uninstall_available"))
+    }
+
+    @Test fun `a leftover still holding HOME and a stock system Companion are not offered`() {
+        val json = packages("l.l", listOf(
+            InstalledApp("l.l", "Old launcher", user),
+            InstalledApp("io.homeassistant.companion.android", "Home Assistant", system),
+            InstalledApp("com.seaky.nspanelpro.tools", "NSPanel Pro Tools", user),
+        ))
+        assertEquals(mapOf("com.seaky.nspanelpro.tools" to true), flags(json))
+    }
+
+    @Test fun `an updated system Companion stays in the picker but is never offered as a leftover`() {
+        val json = packages(null, listOf(
+            InstalledApp("io.homeassistant.companion.android", "Home Assistant",
+                system or android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP),
+        ))
+        assertEquals(mapOf("io.homeassistant.companion.android" to false), flags(json))
+    }
+
+    @Test fun `uninstall is reported unavailable without root`() {
+        assertFalse(packages(null, emptyList(), root = false).getBoolean("uninstall_available"))
+    }
+
+    @Test fun `a cold package list starts no su probe and reports uninstall unavailable`() {
+        val probes = IntArray(1)
+        val json = packages(null, emptyList(), root = false, activeProbes = probes)
+        assertEquals(0, probes[0])
+        assertFalse(json.getBoolean("uninstall_available"))
+    }
+
+    @Test fun `a package list after root was observed starts no su probe and reports uninstall available`() {
+        val probes = IntArray(1)
+        assertTrue(packages(null, emptyList(), root = true, activeProbes = probes).getBoolean("uninstall_available"))
+        assertEquals(0, probes[0])
+    }
 }
