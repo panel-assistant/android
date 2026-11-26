@@ -4,13 +4,9 @@ The full notes for every release and pre-release, from 1.0.0 on, are on [panel-a
 
 ## v1.0.6 - 2026-11-26
 
-This update fixes keyboard delays, dashboard recovery, settings imports and several Configure problems.
+This update fixes delayed keyboard taps, dashboard reconnects and settings imports. Configure keeps its place when you change a setting and is easier to use with enlarged text (#211). Thanks to @jpbaril for reporting the keyboard delay and the scroll jump.
 
-- **Keyboard and Configure.** Swipe reveal no longer delays taps on the bottom row of the on-screen keyboard. Configure stays at the setting you just changed (#211). Text fields fit in their cards, help stays open after a quick click, and narrow pages are easier to use with enlarged browser text. Thanks to @jpbaril for reporting the keyboard delay and the scroll jump.
-- **Dashboard and setup.** The dashboard retries after a refused Home Assistant connection while the screen is on. Coming back to the dashboard rebuilds a WebView renderer that died while it was hidden. Setup asks again if it could not save your dashboard answer. Auto sleep refreshes when you put the panel in a Home Assistant Area. When the dashboard is your home screen and Launcher is set to Auto, the Launcher button opens the panel app's launcher. New setups turn on the dashboard entity filter by default when it applies. Setup Repair asks about filtering when setup still needs an answer.
-- **Settings and updates.** A settings import that omits credentials keeps your current sign-in when the Home Assistant address stays the same. A full import can still explicitly sign the panel out. The app clears leftover uploads that exactly match the installed APK.
-- **Profiles and diagnostics.** Startup skips incompatible replacements for a pinned bundled profile. Ordinary compatibility checks and repeated diagnostics create fewer warnings.
-- **Proximity.** Configure brings the proximity settings into view and clears their highlight after navigation.
+[Full release notes](https://panel-assistant.io/go/release-notes?v=1.0.6&component=panel-app)
 
 ## v1.0.5 - 2026-11-25
 
