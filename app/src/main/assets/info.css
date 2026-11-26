@@ -414,6 +414,11 @@ body.hdr-hide-logo .hdr .logo,body.hdr-hide-logo .hdr .sep{display:none}
 .frow .fctl{margin-left:auto}
 .frow .flabel small{display:block;color:var(--dim);font-weight:400;font-size:.8em;margin-top:2px;overflow-wrap:anywhere}
 .frow .fctl{flex:0 0 auto;display:flex;align-items:center;gap:12px;max-width:50%}
+/* A text field keeps its 170px beside its HA-exposure button even where half the row is less (a 400px card
+   at 1280px): the label yields the width, or the control moves under it, instead of the field running
+   past the card. A flex item's automatic minimum is capped by its max-width; an explicit one is not. A
+   menu is left to shrink: its widest choice can be far wider than the row. */
+.frow .fctl:has(>input[type=text],>input[type=password],>input[type=number],>input[type=search],>.ha-entity-picker){min-width:min-content}
 /* An action row keeps its button on one line: when a translation no longer fits beside the label, the
    button moves below it intact instead of wrapping inside itself. */
 .frow.frow-action{flex-wrap:wrap}
