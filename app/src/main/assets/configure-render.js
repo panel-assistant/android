@@ -16,9 +16,22 @@
     // one non-wrapping run, so a wrapped label takes its last word to the new line with them and the
     // button never sits on a line by itself. The shield is a pseudo-element, so a non-breaking space
     // alone would not bind it in older WebViews.
+    // A hyphenated last word ("Aktivierungswort-Pipelines") keeps its line break at the hyphen: only the part
+    // after the last hyphen joins the run, or the whole compound plus the icons outgrows a phone row. A
+    // short side ("Wi-Fi", "IP-адреса") stays whole.
     var words = f.label.trim().split(/\s+/);
-    if (words.length > 1) labelText.appendChild(document.createTextNode(words.slice(0, -1).join(" ") + " "));
-    var lastWord = cfg.el("span", { class: protectedSetting ? "hardened-label-tail" : "flabel-word", text: words[words.length - 1] || f.label });
+    var last = words.pop() || f.label;
+    var hyphen = Math.max(last.lastIndexOf("-"), last.lastIndexOf("‐"));
+    var lead = words.length ? words.join(" ") + " " : "";
+    var split = hyphen >= 3 && last.length - hyphen > 3;
+    if (split) {
+      lead += last.slice(0, hyphen + 1);
+      last = last.slice(hyphen + 1);
+    }
+    if (lead) labelText.appendChild(document.createTextNode(lead));
+    // WebKit needs an explicit break before the non-wrapping tail.
+    if (split) labelText.appendChild(document.createElement("wbr"));
+    var lastWord = cfg.el("span", { class: protectedSetting ? "hardened-label-tail" : "flabel-word", text: last });
     if (protectedSetting) {
       lastWord.setAttribute("data-hardened-approval", "conditional");
       lastWord.setAttribute("aria-describedby", "hardened-approval-conditional-description");

@@ -171,7 +171,11 @@ th{color:var(--accent);width:46%;font-weight:600}
 canvas{width:100%;display:block;background:var(--chart-bg);border:1px solid var(--divider);border-radius:8px;margin-bottom:6px}
 /* Package identifiers are unbreakable tokens: let a long one break rather than run out of its row or card
    (Vendor packages rows, the pending APK preview) when a longer translation narrows the space beside it. */
-#cfg-tame>div>span:first-child,#apk-preview{overflow-wrap:anywhere}
+#cfg-tame>div>span:first-child,#cfg-tame>.locked>div>span:first-child,#apk-preview{overflow-wrap:anywhere}
+/* Keep the label wide enough for its tag chips. When space is short the button moves below it.
+   VendorPackagesCard.kt sets min-width:0 on the label, and wraps rows in .locked without root. */
+#cfg-tame>div,#cfg-tame>.locked>div{flex-wrap:wrap}
+#cfg-tame>div>span:first-child,#cfg-tame>.locked>div>span:first-child{min-width:min-content!important}
 .leg{font-size:.72rem;color:var(--ok-dim);margin-bottom:6px}
 /* sub-heading + data table (column headers) so an in-card table reads as its own thing */
 .sub{margin:14px 0 2px;padding-top:10px;border-top:1px solid var(--divider);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--accent2)}
@@ -182,8 +186,9 @@ canvas{width:100%;display:block;background:var(--chart-bg);border:1px solid var(
 .top-process-modes>button{padding:2px 7px;font-size:.68rem;line-height:1.2}
 #noisyentities th:first-child,#noisyentities td:first-child{width:auto}
 #noisyentities .num{white-space:nowrap}
-#noisyentities .rate{width:68px}
-#noisyentities .payload{width:78px}
+/* Grow the numeric columns with their non-wrapping headers under enlarged browser text. */
+#noisyentities .rate{width:4.75rem}
+#noisyentities .payload{width:5.25rem}
 /* Install-tab managed-component rows: name on the left, channel/version picker + actions on the right. */
 /* Fact row: a name or label at the start, its value or controls at the end, a divider between rows. */
 .fact{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between;margin:0;padding:10px 0;border-bottom:1px solid var(--divider)}
@@ -206,7 +211,7 @@ input,button{font-size:.95rem;padding:8px 11px;border-radius:8px;border:1px soli
 input{width:100%}
 input[type=checkbox]{width:auto;flex:none}   /* checkboxes keep their natural size (never the 100% above) */
 button{background:var(--primary);border-color:var(--primary);color:var(--primary-text);cursor:pointer;align-self:flex-start}
-.note{color:var(--ok-dim);margin-top:8px;font-size:.82rem}
+.note{color:var(--ok-dim);margin-top:8px;font-size:.82rem;overflow-wrap:break-word}
 .prox-learning-state{font-weight:650;margin:.2rem 0 .35rem}
 .prox-learning-evidence{font-size:.78rem;margin:.45rem 0}
 .prox-learning-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
@@ -317,7 +322,7 @@ body.revealed input.secret,input.secret:focus,input.secret.shown{color:var(--tex
 @media (max-width:857px){.entity-search-row{margin-bottom:10px}}
 /* Two lines are reserved so the per-section counts can wrap on a 480px panel without moving the tables below. */.entity-search-status{min-height:2.7em;margin-top:6px;overflow-wrap:anywhere}
 .entity-action-result{min-height:1.3em;margin-top:9px}.entity-action-result.ok{color:var(--status-ok)}.entity-action-result.error{color:var(--status-bad)}
-.entity-issues{border-left:4px solid var(--border-strong)}.entity-issues.has-blocking{border-left-color:var(--edge-crit)}.entity-issues-list:empty{display:none}.entity-issues-list{display:grid;gap:10px;margin:12px 0}.entity-issue{border:1px solid var(--divider);border-radius:8px;padding:10px 12px;background:var(--input-bg2);overflow-wrap:anywhere}.entity-issue.blocking{border-left:4px solid var(--edge-crit)}.entity-issue.advisory{border-left:4px solid var(--edge-info)}.entity-issue.allowed{border-left:4px solid var(--ok-dim)}.entity-issue-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:7px}.entity-issue-label,.entity-issue-locations>span{color:var(--accent);font-weight:600}.entity-issue code{white-space:normal;word-break:break-word}.entity-issue p{margin:7px 0 0}.entity-issue-recommendation{color:var(--text-soft)}.entity-issue-allow-note{margin:9px 0 0;color:var(--text-soft)}.entity-issue-search{margin-top:7px}.entity-issue-toggle{margin-top:10px}
+.entity-issues{border-left:4px solid var(--border-strong)}.entity-issues.has-blocking{border-left-color:var(--edge-crit)}.entity-issues-list:empty{display:none}.entity-issues-list{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;margin:12px 0}.entity-issue{border:1px solid var(--divider);border-radius:8px;padding:10px 12px;background:var(--input-bg2);overflow-wrap:anywhere}.entity-issue.blocking{border-left:4px solid var(--edge-crit)}.entity-issue.advisory{border-left:4px solid var(--edge-info)}.entity-issue.allowed{border-left:4px solid var(--ok-dim)}.entity-issue-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:7px}.entity-issue-head .pill{white-space:normal;flex:0 1 auto;min-width:0}.entity-issue-label,.entity-issue-locations>span{color:var(--accent);font-weight:600}.entity-issue code{white-space:normal;word-break:break-word}.entity-issue p{margin:7px 0 0}.entity-issue-recommendation{color:var(--text-soft)}.entity-issue-allow-note{margin:9px 0 0;color:var(--text-soft)}.entity-issue-search{margin-top:7px}.entity-issue-toggle{margin-top:10px}
 .entity-dynamic{margin:14px 0 12px;padding-top:12px;border-top:1px solid var(--divider)}.entity-dynamic[hidden]{display:none}.entity-dynamic h3{margin:0 0 6px;color:var(--accent2);font-size:.86rem;text-transform:uppercase;letter-spacing:.04em}.entity-dynamic-list{display:grid;gap:8px;margin-top:10px}.entity-dynamic-expression{border:1px solid var(--divider);border-radius:8px;padding:9px 11px;background:var(--input-bg2);overflow:hidden}.entity-dynamic-expression pre{margin:7px 0 0;padding:8px;border-radius:6px;background:var(--bg);overflow:auto;white-space:pre-wrap;word-break:break-word}.entity-dynamic-expression code{font-size:.82rem}
 @media(max-width:600px){.entity-issue{padding:9px}.entity-issue-locations code{display:block;margin-top:3px}}
 .tablewrap{overflow:hidden;max-width:100%}.entity-table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:.85rem}.entity-table th,.entity-table td{padding:8px 10px;border-bottom:1px solid var(--card-border);text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.entity-table .col-select{width:34px;padding-left:6px;padding-right:4px}.entity-table .col-entity{width:auto}.entity-table .col-access{width:190px;text-align:center}.entity-table .col-rate{width:185px;text-align:center}.entity-table .col-reason{width:145px}.entity-table .col-last{width:95px}.entity-table .col-override{width:115px}.entity-table code{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.entity-table select{width:100%;max-width:105px}.metric-rank{font-family:inherit;font-variant-numeric:tabular-nums}.rank-low{color:var(--status-ok)}.rank-mid{color:var(--status-warn)}.rank-high{color:var(--status-bad)}.reason-icons{display:none}.reason-icon{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;margin-right:3px;border:1px solid var(--border);border-radius:50%;font-size:.76rem;color:var(--dim)}
@@ -710,4 +715,4 @@ body.hdr-hide-logo .hdr .logo,body.hdr-hide-logo .hdr .sep{display:none}
   #noisyentities th{white-space:nowrap}.log-source{flex-wrap:wrap;min-width:0;max-width:100%}
   /* The entity table's sortable headers are single words that cannot wrap: smaller header type lets the
      Override column fit its longest translation while the entity column keeps its own header whole. */
-  .entity-table th{font-size:.72rem}.entity-table .col-override{width:124px}}
+  .entity-table th{font-size:.72rem}.entity-table .col-override{width:7.75rem}}
