@@ -222,7 +222,19 @@
         caret = { value: active.value, start: active.selectionStart, end: active.selectionEnd, direction: active.selectionDirection };
       }
     } catch (_) { caret = null; }
+    // Rebuilding removes the cards; removing a control that still has focus (a select whose picker has just
+    // closed) made the browser lay the emptied grid out at once and clamp the scroll to the top (android #211).
+    // Let go of focus first; it returns to the same control below without scrolling.
+    // Cards above can come back a few pixels shorter or taller, and nothing anchors the scroll to the rebuilt
+    // row, so the row is put back where it was on screen.
+    var rowTop = row ? row.getBoundingClientRect().top : null;
+    if (row && typeof active.blur === "function") active.blur();
     renderNow();
+    var rebuilt = row && document.getElementById(row.id);
+    if (rebuilt && rowTop !== null) {
+      var drift = rebuilt.getBoundingClientRect().top - rowTop;
+      if (Math.abs(drift) >= 1) window.scrollBy(0, drift);
+    }
     if (index < 0 || document.activeElement !== document.body) return;
     var again = focusables(document.getElementById(row.id))[index];
     if (!again) return;
